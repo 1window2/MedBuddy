@@ -3,7 +3,10 @@
 
 import '../entities/nearby_care_entity.dart';
 
-// 표시 모양만 비교한다. 전화번호·영업정보 갱신은 마커를 다시 만들 필요가 없다.
+// 클래스명: NearbyCareMarkerStyle
+// 역할: 네이티브 마커 표시를 결정하는 record 타입이다.
+// 주요 책임: 전화번호·영업정보 변경은 제외하고 마커 재생성이 필요한 표시 차이만 비교한다.
+// 속성: name (String): 표시명; latitude/longitude (double): 좌표; selected/favorite (bool): 강조 상태.
 typedef NearbyCareMarkerStyle = ({
   String name,
   double latitude,
@@ -14,8 +17,8 @@ typedef NearbyCareMarkerStyle = ({
 
 // 함수이름: nearbyCareMarkerStyle
 // 함수역할: 장소와 선택·즐겨찾기 설정에서 표시 속성만 추출한다.
-// 매개변수: place: 장소, selectedId: 선택 ID, favoriteIds: 즐겨찾기 ID.
-// 반환값: 비교 가능한 마커 표시 record.
+// 매개변수: place (NearbyCarePlace): 장소; selectedId (String?): 선택 ID; favoriteIds (Set<String>): 즐겨찾기 ID.
+// 반환값: NearbyCareMarkerStyle: 비교 가능한 마커 표시 record.
 NearbyCareMarkerStyle nearbyCareMarkerStyle(
   NearbyCarePlace place, {
   required String? selectedId,
@@ -30,15 +33,17 @@ NearbyCareMarkerStyle nearbyCareMarkerStyle(
 
 // 전체 지도를 비우지 않고 제거·교체·추가할 ID만 계산한다.
 // 클래스명: NearbyCareMarkerDiff
-// 역할 및 주요 책임: 이전·새 표시 속성의 차이를 계산한다.
-// 속성: remove: 지울 ID, add: 추가하거나 교체할 ID.
+// 역할: 전체 지도를 비우지 않고 필요한 마커 변경 집합을 표현한다.
+// 주요 책임: 이전·새 표시 속성을 비교해 삭제·교체·추가할 마커 ID를 구분한다.
+// 속성: remove (Set<String>): 삭제하거나 교체할 ID; add (Set<String>): 추가하거나 교체할 ID.
 class NearbyCareMarkerDiff {
   final Set<String> remove;
   final Set<String> add;
 
   // 함수이름: NearbyCareMarkerDiff.between
   // 함수역할: 마커 ID별 표시 속성을 비교해 변경 집합을 생성한다.
-  // 매개변수: previous: 현재 지도 상태, next: 새 상태. 반환값: 변경 집합 객체.
+  // 매개변수: previous/next (Map<String, NearbyCareMarkerStyle>): 현재·새 ID별 마커 표시 상태.
+  // 반환값: NearbyCareMarkerDiff: 속성이 변경된 ID는 remove와 add 양쪽에 포함한다.
   NearbyCareMarkerDiff.between(
     Map<String, NearbyCareMarkerStyle> previous,
     Map<String, NearbyCareMarkerStyle> next,

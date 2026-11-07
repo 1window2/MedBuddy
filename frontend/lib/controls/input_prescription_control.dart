@@ -133,12 +133,10 @@ class InputPrescription {
     }
   }
 
-  // Function Name: requestPrescriptionImageFromGallery
-  // Description: Selects a bounded gallery image, clears the prior preview only once an image was actually chosen, signals only successful selection, and requests OCR analysis without claiming ownership of the gallery original. A cancelled picker leaves the previous image in place.
-  // Parameters:
-  // - onImageSelected (PrescriptionImageSelectedCallback?): Progress receiver called immediately after actual image selection.
-  // Returns:
-  // - Future<List<MedicationSchedule>?>: Recognized schedules of the chosen image, or null when the picker was cancelled.
+  // 함수이름: requestPrescriptionImageFromGallery
+  // 함수역할: 갤러리 사진을 선택한 뒤 이전 미리보기를 정리하고 OCR 분석을 시작한다. 선택 취소는 이전 사진을 유지한다.
+  // 매개변수: onImageSelected: 실제 선택 알림; onProgress: 인식 단계 알림.
+  // 반환값: 인식 일정 목록 또는 취소·오래된 선택의 경우 null; 갤러리 원본 소유권을 가져오지 않는다.
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
     PrescriptionRecognitionProgressCallback? onProgress,
@@ -177,13 +175,10 @@ class InputPrescription {
     );
   }
 
-  // Function Name: requestCapturedPrescriptionImage
-  // Description: Clears the prior preview, records ownership of the app capture, signals selection, and analyzes the captured prescription.
-  // Parameters:
-  // - image (XFile): Local image file selected or captured by the user.
-  // - onImageSelected (PrescriptionImageSelectedCallback?): Progress receiver called immediately after actual image selection.
-  // Returns:
-  // - Future<List<MedicationSchedule>>: Clears the prior preview, records ownership of the app capture, signals selection, and analyzes the captured prescription.
+  // 함수이름: requestCapturedPrescriptionImage
+  // 함수역할: 앱 촬영 이미지의 소유권을 기록하고 선택 세대가 유효한 경우에만 분석을 시작한다.
+  // 매개변수: image: 촬영한 XFile; onImageSelected: 선택 완료 알림; onProgress: 인식 단계 알림.
+  // 반환값: 인식 일정 목록 Future; 취소된 흐름은 StateError이며 사용하지 않는 앱 이미지를 정리한다.
   Future<List<MedicationSchedule>> requestCapturedPrescriptionImage(
     XFile image, {
     PrescriptionImageSelectedCallback? onImageSelected,
@@ -211,13 +206,10 @@ class InputPrescription {
     );
   }
 
-  // 함수이름: _requestPrescriptionAnalysis
-  // 함수역할: 로컬 OCR·비식별 처리 후 텍스트만 분석 서버에 보내고 처방 메타데이터를 보존한다.
-  //           실패 단계는 진단 로그에 남기되 원래 예외 종류를 유지하여 연결 오류로 잘못 안내하지 않는다.
-  // 매개변수:
-  // - image (XFile): 선택하거나 촬영한 로컬 처방 이미지.
-  // - imageSource (ImageSource): 카메라 또는 갤러리 입력 구분.
-  // 반환값: Future<List<MedicationSchedule>>: 인식된 복약 일정; 실패 시 원인별 예외.
+  // Function Name: _requestPrescriptionAnalysis
+  // Description: Performs local OCR and masking, sends only masked text to the server and merges prescription metadata into parsed schedules.
+  // Parameters: image: Local image; imageSource: Capture/gallery origin for file-error guidance; onProgress: Recognition-stage callback.
+  // Returns: Recognized schedules, or an empty list when no medication list is present; cancellation and file access become StateError, other failures retain their type.
   Future<List<MedicationSchedule>> _requestPrescriptionAnalysis(
     XFile image, {
     ImageSource imageSource = ImageSource.camera,
@@ -378,21 +370,26 @@ class InputPrescription {
     _lastRecognizedTextRegions = [];
   }
 
-  // Function Name: clearSelectedImage
-  // Description: Releases preview references immediately and waits for OCR on the image before removing it. An app-owned capture is always deleted. A gallery pick is deleted only when it is the picker's copy inside the app temporary directory; a gallery original outside that directory is never deleted.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>: asynchronous completion without a result payload.
+  // 함수이름: clearSelectedImage
+  // 함수역할: 선택 세대를 무효화하고 미리보기를 즉시 해제한 뒤 이미지 사용 종료를 기다려 소유권 규칙에 따라 파일을 정리한다.
+  // 매개변수: 없음.
+  // 반환값: 정리 완료 Future; 앱 촬영본 또는 앱 임시 폴더의 선택기 사본만 삭제 대상이다.
   Future<void> clearSelectedImage() {
     _selectionGeneration++;
     return _releaseSelectedImage(deleteFile: true);
   }
 
-  // 선택창이나 이전 사진 정리를 기다린 요청은 취소 후 새 흐름을 시작할 수 없다.
+  // 함수이름: _isCurrentSelection
+  // 함수역할: 비동기 선택이나 정리를 기다린 작업이 아직 현재 흐름인지 확인한다.
+  // 매개변수: generation: 작업 시작 때 저장한 선택 세대 번호.
+  // 반환값: 객체가 종료되지 않았고 현재 세대와 같으면 true.
   bool _isCurrentSelection(int generation) =>
       !_disposed && generation == _selectionGeneration;
 
+  // 함수이름: _discardUnusedImage
+  // 함수역할: 현재 선택이나 진행 중 OCR이 사용하지 않는 이미지만 정리한다.
+  // 매개변수: imagePath: 정리 후보 경로; ownedByApp: 앱 촬영본 여부.
+  // 반환값: 정리 완료 Future; 사용 중 경로는 그대로 둔다.
   Future<void> _discardUnusedImage(
     String imagePath, {
     required bool ownedByApp,
@@ -404,12 +401,10 @@ class InputPrescription {
     await _deleteImageFile(imagePath, ownedByApp: ownedByApp);
   }
 
-  // Function Name: _releaseSelectedImage
-  // Description: Releases the preview references of the selected image, waits for OCR still reading it, and then removes its file under the ownership rules of clearSelectedImage unless the caller keeps the file.
-  // Parameters:
-  // - deleteFile (bool): Whether the released image file may be removed; false when the same path already holds the next selection.
-  // Returns:
-  // - Future<void>: asynchronous completion without a result payload.
+  // 함수이름: _releaseSelectedImage
+  // 함수역할: 선택 이미지 참조를 먼저 비우고 진행 중 읽기를 기다린 뒤 허용된 경우 파일을 삭제한다.
+  // 매개변수: deleteFile: 파일 삭제 허용 여부; 같은 경로가 새 선택에 재사용되면 삭제하지 않는다.
+  // 반환값: 해제 완료 Future; 소유권에 따른 파일 정리 경계를 사용한다.
   Future<void> _releaseSelectedImage({required bool deleteFile}) async {
     final imagePath = _lastSelectedImagePath;
     final ownedByApp = _lastSelectedImageOwnedByApp;
@@ -425,6 +420,10 @@ class InputPrescription {
     await _deleteImageFile(imagePath, ownedByApp: ownedByApp);
   }
 
+  // 함수이름: _deleteImageFile
+  // 함수역할: 앱 촬영본을 삭제하거나 선택기 사본을 앱 임시 폴더 제한 삭제 함수에 맡긴다.
+  // 매개변수: imagePath: 정리할 파일 경로; ownedByApp: 앱이 직접 소유하는 촬영본인지 여부.
+  // 반환값: 정리 완료 Future; 촬영본 파일 시스템 오류는 로그에 남기고 삼킨다.
   Future<void> _deleteImageFile(
     String imagePath, {
     required bool ownedByApp,
@@ -506,12 +505,10 @@ class InputPrescription {
     return parsedValue < 0 ? 0 : parsedValue;
   }
 
-  // Function Name: cancelPendingRequests
-  // Description: Aborts every in-flight prescription analysis request without disposing reusable dependencies.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - No return value.
+  // 함수이름: cancelPendingRequests
+  // 함수역할: 진행 중 선택 세대와 분석 요청을 취소하되 재사용할 서비스는 해제하지 않는다.
+  // 매개변수: 없음.
+  // 반환값: 없음; 각 미완료 요청에 중단 신호를 보내고 목록을 비운다.
   void cancelPendingRequests() {
     _selectionGeneration++;
     for (final abortTrigger in _abortTriggers.toList(growable: false)) {
@@ -522,12 +519,10 @@ class InputPrescription {
     _abortTriggers.clear();
   }
 
-  // Function Name: dispose
-  // Description: Starts app-owned preview cleanup, aborts pending analysis requests, closes an owned HTTP client, and asynchronously releases an owned local OCR service.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - No return value.
+  // 함수이름: dispose
+  // 함수역할: 추가 선택을 막고 이미지 정리·요청 취소와 소유한 HTTP/OCR 자원 해제를 시작한다.
+  // 매개변수: 없음.
+  // 반환값: 없음; 파일과 OCR 해제는 비동기이며 반복 종료는 무시한다.
   void dispose() {
     if (_disposed) return;
     _disposed = true;

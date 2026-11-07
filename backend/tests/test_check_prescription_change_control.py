@@ -1,12 +1,16 @@
 # 파일명: test_check_prescription_change_control.py
 # 역할: 처방 비교의 환자 범위, 비교 기간, 관련 처방 선택 및 약·복용법 변경 분류를 검증한다.
 
+import sqlite3
 import sys
 import unittest
+from collections.abc import Sequence
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Connection, ExecutionContext
 from sqlalchemy.orm import sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -401,14 +405,13 @@ class CheckPrescriptionChangeTest(unittest.TestCase):
         self.assertTrue(response.has_previous_prescription)
         self.assertEqual(response.match_basis, "same_ingredient")
 
-    # 함수이름: test_reads_only_main_ingredient_from_approval_catalog
-    # 함수역할:
-    # - 이름이 서로 다른 두 제품을 허가정보의 주성분으로 연결하고, 그 조회가 품목 식별자와
-    #   주성분 열만 읽으며 원문 문서와 raw_json을 읽지 않는지 검증한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음 (None).
+    # Function Name: test_reads_only_main_ingredient_from_approval_catalog
+    # Description:
+    # - Match differently named products by approved ingredient using only identifier and ingredient columns, without loading source documents or raw_json.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_reads_only_main_ingredient_from_approval_catalog(self) -> None:
         for item_seq, item_name in (("BRAND-A", "브랜드A정"), ("BRAND-B", "브랜드B정")):
             self.db.add(
@@ -427,20 +430,25 @@ class CheckPrescriptionChangeTest(unittest.TestCase):
         self._save_previous(item_seq="BRAND-A", item_name="브랜드A정")
         catalog_statements: list[str] = []
 
-        # 함수이름: capture_catalog_statement
-        # 함수역할:
-        # - 허가정보 테이블을 읽는 SQL 문을 기록한다.
-        # 매개변수:
-        # - connection, cursor, statement, parameters, context, executemany: SQLAlchemy 실행 이벤트 입력.
-        # 반환값:
-        # - 없음 (None).
+        # Function Name: capture_catalog_statement
+        # Description:
+        # - Record SQL statements reading the approval catalog to verify the selected columns.
+        # Parameters:
+        # - connection: Connection; event connection, unused.
+        # - cursor: DBAPI cursor; execution cursor, unused.
+        # - statement: str; SQL text inspected for the catalog table.
+        # - parameters: object; bound values, unused.
+        # - context: ExecutionContext; execution metadata, unused.
+        # - executemany: bool; batch execution flag, unused.
+        # Returns:
+        # - None.
         def capture_catalog_statement(
-            connection,
-            cursor,
-            statement,
-            parameters,
-            context,
-            executemany,
+            connection: Connection,
+            cursor: sqlite3.Cursor,
+            statement: str,
+            parameters: Sequence[Any] | dict[str, Any],
+            context: ExecutionContext,
+            executemany: bool,
         ) -> None:
             if "drug_approval_infos" in statement:
                 catalog_statements.append(statement)

@@ -55,14 +55,10 @@ class DataMaintenanceService:
             chat_retention_policy or ChatMessageRetentionPolicy()
         )
 
-    # 함수이름: runOnce
-    # 함수역할:
-    # - 현재 시각을 기준으로 모든 데이터 보존 정책을 한 번 실행한다.
-    # 매개변수:
-    # - db (Session): 영속 기록에 접근할 호출자의 SQLAlchemy 세션.
-    # 반환값:
-    # - 저장 약, 고아 완료 기록, 연동 코드, 추천 캐시, 전송 알림과 채팅별 삭제 건수.
-    #   sent_caregiver_alerts에는 전송 완료 행과 함께 재시도를 끝낸 전송 포기 행도 포함된다.
+    # Function Name: runOnce
+    # Description: Applies medication/chat retention, removes orphan completions, expired/used codes, old recommendations and terminal caregiver events in one commit.
+    # Parameters: db (Session) is the maintenance transaction; application date and UTC instants are captured internally.
+    # Returns: Per-category deletion counts; sent_caregiver_alerts includes dead-letter rows, while pending/failed/processing events remain. Database failures propagate.
     def runOnce(self, db: Session) -> dict[str, int]:
         application_date = application_now().date()
         utc_now = datetime.now(UTC).replace(tzinfo=None)
@@ -131,27 +127,18 @@ class DataMaintenanceService:
         return deleted
 
 
-# 클래스명: PeriodicDataMaintenanceRunner
-# 역할:
-# - 서버가 실행되는 동안 보존 정책을 일정 간격으로 반복 실행한다.
-# 주요 책임:
-# - 동기 정리 서비스를 별도 스레드에서 반복 실행하고 종료 대기와 주기별 세션 수명을 관리한다.
-# 속성:
-# - session_factory (sessionmaker[Session]): 작업별 세션 생성기.
-# - service (DataMaintenanceService): 일괄 정리 서비스.
-# - _task / _stop_event: 반복 태스크와 종료 신호.
+# Class Name: PeriodicDataMaintenanceRunner
+# Role: Runs retention cleanup repeatedly during the server lifetime.
+# Responsibilities: Executes synchronous cleanup off the event loop using per-cycle sessions and inherited graceful shutdown.
+# Attributes: session_factory creates Sessions; service (DataMaintenanceService) applies retention; inherited _task/_stop_event control lifetime.
 class PeriodicDataMaintenanceRunner(BackgroundLoopRunner):
     _cycle_logger = logger
     _cycle_failure_message = "Periodic data cleanup cycle failed: %s"
 
-    # 함수이름: __init__
-    # 함수역할:
-    # - 정리 세션 생성기와 서비스를 저장하고 반복 태스크의 종료 이벤트를 준비한다.
-    # 매개변수:
-    # - session_factory (sessionmaker[Session]): 작업 주기마다 독립 SQLAlchemy 세션을 여는 팩터리.
-    # - service (DataMaintenanceService | None): 실행할 정리 서비스; None이면 기본 DataMaintenanceService.
-    # 반환값:
-    # - 없음; 반복 실행은 start에서 시작한다.
+    # Function Name: __init__
+    # Description: Stores the session factory and supplied/default maintenance service, then initializes lifecycle state without starting cleanup.
+    # Parameters: session_factory (sessionmaker[Session]) opens each cycle; service (DataMaintenanceService | None) overrides default retention behavior.
+    # Returns: None; start schedules the loop.
     def __init__(
         self,
         session_factory: sessionmaker[Session],
@@ -161,13 +148,10 @@ class PeriodicDataMaintenanceRunner(BackgroundLoopRunner):
         self.service = service or DataMaintenanceService()
         super().__init__()
 
-    # 함수이름: _cycle_interval_seconds
-    # 함수역할:
-    # - 정리 주기 사이에 기다릴 설정 간격을 주기마다 설정에서 다시 읽는다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - PERIODIC_MAINTENANCE_INTERVAL_SECONDS 설정값(초).
+    # Function Name: _cycle_interval_seconds
+    # Description: Reads the current maintenance interval after each cycle.
+    # Parameters: None.
+    # Returns: PERIODIC_MAINTENANCE_INTERVAL_SECONDS in seconds.
     def _cycle_interval_seconds(self) -> float:
         return settings.PERIODIC_MAINTENANCE_INTERVAL_SECONDS
 

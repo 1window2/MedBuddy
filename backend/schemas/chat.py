@@ -6,7 +6,7 @@
 from datetime import date
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from entities.chat_message_entity import (
     CHAT_MESSAGE_KINDS,
@@ -15,8 +15,44 @@ from entities.chat_message_entity import (
     MAX_CHAT_MEDICATION_CONTEXTS,
 )
 from entities.medication_schedule_entity import MEDICATION_SCHEDULE_SLOT_KEYS
+from entities.medication_image_url_entity import safe_medication_image_url
 
 
+# 클래스명: ChatMedicationReference
+# 역할:
+# - 일반 채팅에 첨부하는 검색약(저장하지 않은 약품)의 표시 스냅샷을 검증한다.
+# 주요 책임:
+# - 정해진 네 필드만 받고 길이·형식을 제한하며, 사진 주소는 허용한 공공 이미지 주소만 남긴다.
+# 속성:
+# - item_seq (str): 품목기준코드.
+# - item_name (str): 품목 이름.
+# - manufacturer (str): 제조사. 모르면 빈 문자열.
+# - image_url (str): 허용한 공공 이미지 주소. 허용하지 않으면 빈 문자열.
+class ChatMedicationReference(BaseModel):
+    """저장 약·복용 일정과 무관한 검색 결과의 최소 표시 스냅샷이다."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    item_seq: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    item_name: str = Field(min_length=1, max_length=300)
+    manufacturer: str = Field(default="", max_length=200)
+    image_url: str = Field(default="", max_length=2048)
+
+    # 함수이름: normalize_image
+    # 함수역할: 허용한 공공 이미지 주소만 남기고 나머지는 빈 문자열로 바꾼다.
+    # 매개변수:
+    # - value (str): 요청의 사진 주소.
+    # 반환값: 정규화한 주소 또는 빈 문자열.
+    @field_validator("image_url")
+    @classmethod
+    def normalize_image(cls, value: str) -> str:
+        return safe_medication_image_url(value) or ""
+
+
+# 클래스명: ChatMedicationTaken
+# 역할: 일반 대화와 구분되는 환자의 명시적 복용 확인 요청을 검증한다.
+# 주요 책임: 재전송 ID 형식·복용 시간대·양수 약 ID와 선택 개수 한도를 제한한다.
+# 속성: client_message_id (str)는 요청 ID, schedule_date (date)는 복용일, slot_key는 정기 시간대, medication_ids는 list[int]다.
 class ChatMedicationTaken(BaseModel):
     """Explicit patient confirmation; ordinary chat text never updates doses."""
 
@@ -57,6 +93,9 @@ class ChatMessageCreate(BaseModel):
         default_factory=list,
         max_length=MAX_CHAT_MEDICATION_CONTEXTS,
     )
+    medication_references: list[ChatMedicationReference] = Field(
+        default_factory=list, max_length=MAX_CHAT_MEDICATION_CONTEXTS,
+    )
     slot_key: str | None = Field(default=None, max_length=20)
     pharmacy_id: str | None = Field(default=None, max_length=32)
     hospital_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9]{1,32}$")
@@ -65,17 +104,41 @@ class ChatMessageCreate(BaseModel):
     history_start_date: date | None = None
     history_end_date: date | None = None
 
-    # 이력 공유는 날짜만 입력받고 클라이언트가 만든 집계·환자 식별자를 거부한다.
+    # Function Name: validate_medication_references
+    # Description: Allows searched-product attachments only in ordinary chat without other structured context, capping the combined saved/searched count.
+    # Parameters: None; validates the current request fields.
+    # Returns: This request; raises ValueError for conflicting context or too many attachments.
+    @model_validator(mode="after")
+    def validate_medication_references(self) -> "ChatMessageCreate":
+        if self.medication_references:
+            if self.message_kind != CHAT_MESSAGE_KIND_TEXT or any(value is not None for value in (
+                self.slot_key, self.pharmacy_id, self.hospital_id,
+                self.hospital_schedule_date, self.source_alert_id,
+            )):
+                raise ValueError("Medication references are only allowed in ordinary chat.")
+            count = len(set(self.medication_ids + ([self.medication_id] if self.medication_id else [])))
+            if count + len(self.medication_references) > MAX_CHAT_MEDICATION_CONTEXTS:
+                raise ValueError("Too many medication attachments.")
+        return self
+
+    # 함수이름: reject_history_snapshot_fields
+    # 함수역할: 이력 공유 입력에서 스키마에 없는 집계·환자 식별자 등 추가 필드를 거절한다.
+    # 매개변수: value (object)는 모델 변환 전 원본 입력이다.
+    # 반환값: 원본 입력 그대로. 이력 공유 dict의 추가 키는 ValueError이며 다른 유형 검증은 다음 단계에 맡긴다.
     @model_validator(mode="before")
     @classmethod
-    def reject_history_snapshot_fields(cls, value):
+    def reject_history_snapshot_fields(cls, value: object) -> object:
         if isinstance(value, dict) and str(value.get("message_kind", "")).strip().lower() == CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE:
             if set(value) - cls.model_fields.keys():
                 raise ValueError("History sharing accepts dates, not client snapshots or patient identifiers.")
         return value
 
+    # 함수이름: validate_history_share
+    # 함수역할: 이력 공유에는 시작·종료일을 요구하고 다른 문맥과 혼합하거나 일반 메시지에 기간을 붙이는 것을 거절한다.
+    # 매개변수: 없음. 검증된 모델 필드를 읽는다.
+    # 반환값: 현재 모델. 누락된 날짜·혼합 문맥은 ValueError이며 실제 날짜 범위 검증은 제어 계층이 수행한다.
     @model_validator(mode="after")
-    def validate_history_share(self):
+    def validate_history_share(self) -> "ChatMessageCreate":
         if self.message_kind == CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE:
             if self.history_start_date is None or self.history_end_date is None:
                 raise ValueError("History sharing requires start and end dates.")
@@ -88,9 +151,12 @@ class ChatMessageCreate(BaseModel):
             raise ValueError("History dates require a medication history share message.")
         return self
 
-    # 병원 공유에는 식별자와 조회 날짜만 받으며 제공자 정보는 서버에서 구성한다.
+    # 함수이름: validate_hospital_share
+    # 함수역할: 병원 공유에 ID·안전한 연도의 조회일을 요구하고 약국 문맥 혼합·다른 유형의 병원 필드를 거절한다.
+    # 매개변수: 없음. 검증된 모델 필드를 읽는다.
+    # 반환값: 현재 모델. 필수값·연도·유형 불일치는 ValueError다.
     @model_validator(mode="after")
-    def validate_hospital_share(self):
+    def validate_hospital_share(self) -> "ChatMessageCreate":
         if self.message_kind == "hospital_share":
             if not self.hospital_id or self.hospital_schedule_date is None:
                 raise ValueError("Hospital sharing requires an identifier and schedule date.")

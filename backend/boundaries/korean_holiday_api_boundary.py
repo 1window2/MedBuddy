@@ -193,7 +193,7 @@ class KoreanHolidayAPI:
             logger.warning("Korean holiday lookup failed: %s", type(exc).__name__)
             raise PharmacyApiUnavailableError(
                 "The Korean holiday data service is temporarily unavailable."
-            ) from exc
+            ) from None  # httpx errors carry the URL with serviceKey.
 
         result_code = (root.findtext(".//resultCode") or "").strip()
         if (
@@ -221,6 +221,7 @@ class KoreanHolidayAPI:
 # - Defines persistent monthly holiday snapshot storage.
 # Responsibilities:
 # - Distinguish a cached empty month from a missing or expired snapshot and replace complete monthly data.
+# Attributes: None required by this protocol; implementations own storage and connection state.
 class KoreanHolidayCache(Protocol):
     # Function Name: get_cached_korean_holidays
     # Description:

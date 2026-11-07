@@ -32,15 +32,10 @@ import '../widgets/keep_words_text.dart';
 // 파일명: check_schedule_ui_boundary.dart
 // 역할: 오늘 복약 일정과 시간대별 알림 설정 화면을 구성한다.
 
-// Class Name: CheckScheduleUI
-// Role: Represents today's per-slot dose completion, reminders, and attachment selection.
-// Responsibilities:
-// - Loads today's schedules and reminder settings on entry.
-// - Places medications into morning, lunch, evening, and bedtime slots by dose frequency.
-// - Opens slot reminder settings and requests local notification scheduling.
-// Attributes:
-// - initialSlotKey (String?): Key identifying morning, lunch, evening, or bedtime.
-// - showBackButton (bool): Whether to show the navigation action leaving the screen.
+// 클래스명: CheckScheduleUI
+// 역할: 오늘 복약 일정과 채팅 첨부 선택 화면.
+// 주요 책임: 일반 모드에서 시간대별 복용·알림을 표시하고 선택 모드에서는 상태 변경 없이 첨부할 약과 시간대를 고른다.
+// 속성: selectionSchedules/selectionLanguage/initialSelectedMedicationSlots: 첨부 입력; initialSlotKey/showBackButton: 진입 설정; asNeededControl: 필요시 기록 제어기; selectionHeader/additionalSelectionCount/maxSelectionCount: 선택 화면과 개수 제한.
 class CheckScheduleUI extends StatefulWidget {
   final List<MedicationSchedule>? selectionSchedules;
   final String selectionLanguage;
@@ -48,36 +43,38 @@ class CheckScheduleUI extends StatefulWidget {
   final String? initialSlotKey;
   final bool showBackButton;
   final MedicationHistoryControl? asNeededControl;
+  final Widget? selectionHeader;
+  final int additionalSelectionCount;
+  final int? maxSelectionCount;
 
-  // Function Name: CheckScheduleUI
-  // Description: Initializes today's per-slot dose completion, reminders, and attachment selection with the supplied configuration.
-  // Parameters:
-  // - key (Key?): Widget identity used to distinguish elements and preserve state.
-  // - initialSlotKey (String?): Key identifying morning, lunch, evening, or bedtime.
-  // - showBackButton (bool): Whether to show the navigation action leaving the screen.
-  // Returns: Initialized CheckScheduleUI instance.
+  // 함수이름: CheckScheduleUI
+  // 함수역할: 오늘 일정 조회·복용 체크용 일반 화면을 만들고 선택 모드는 해제한다.
+  // 매개변수: key (Key?): 식별자; initialSlotKey (String?): 처음 드러낼 시간대; showBackButton (bool): 뒤로가기 표시; asNeededControl (MedicationHistoryControl?): 필요시 복용 기록 제어기.
+  // 반환값: 일반 모드 CheckScheduleUI.
   const CheckScheduleUI({
     super.key,
     this.initialSlotKey,
     this.showBackButton = true,
     this.asNeededControl,
   }) : selectionSchedules = null,
+       selectionHeader = null,
+       additionalSelectionCount = 0,
+       maxSelectionCount = null,
        selectionLanguage = 'ko',
        initialSelectedMedicationSlots = const {};
 
-  // Function Name: CheckScheduleUI.selection
-  // Description: Initializes today's per-slot dose completion, reminders, and attachment selection with the supplied configuration.
-  // Parameters:
-  // - key (Key?): Widget identity used to distinguish elements and preserve state.
-  // - schedules (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
-  // - language (String): Language code selecting visible wording.
-  // - selectedMedicationSlots: Selected dose slots, indexed by medication ID.
-  // Returns: Initialized CheckScheduleUI instance.
+  // 함수이름: CheckScheduleUI.selection
+  // 함수역할: 제공된 일정을 첨부 선택용으로 사용하며 일반 복용 상태 변경과 필요시 기록 제어기는 사용하지 않는다.
+  // 매개변수: key: 식별자; schedules: 선택 후보 일정; language: 표시 언어; selectedMedicationSlots: 약별 초기 시간대 선택; selectionHeader: 추가 머리글; additionalSelectionCount: 다른 화면의 선택 수; maxSelectionCount: 총 선택 한도.
+  // 반환값: 선택 모드 CheckScheduleUI.
   const CheckScheduleUI.selection({
     super.key,
     required List<MedicationSchedule> schedules,
     required String language,
     Map<String, Set<String>> selectedMedicationSlots = const {},
+    this.selectionHeader,
+    this.additionalSelectionCount = 0,
+    this.maxSelectionCount,
   }) : selectionSchedules = schedules,
        selectionLanguage = language,
        initialSelectedMedicationSlots = selectedMedicationSlots,
@@ -101,15 +98,10 @@ class CheckScheduleUI extends StatefulWidget {
   State<CheckScheduleUI> createState() => _CheckScheduleUIState();
 }
 
-// Class Name: _CheckScheduleUIState
-// Role: Manages state for today's per-slot dose completion, reminders, and attachment selection.
-// Responsibilities:
-// - Builds chat attachment selection from schedules with dose-status updates disabled.
-// - Combines today's completion progress, slot content, and health-recommendation access.
-// - Selects schedule loading, failure, or empty states and connects completion and reminder actions to slot cards.
-// Attributes:
-// - _slotKeys (Map<String, GlobalKey>): Dose-slot keys assigned to the medication.
-// - _selectedDoses: Independent medication/slot selections for chat attachment.
+// 클래스명: _CheckScheduleUIState
+// 역할: 오늘 일정 표시와 첨부 선택의 화면 상태.
+// 주요 책임: 일정 로딩·오류·빈 상태를 구분하고 시간대별 복용·알림 명령을 연결하며 첨부 선택에서는 복용 상태 변경을 막는다.
+// 속성: _slotKeys: 시간대 스크롤 대상; _selectedDoses: 약·시간대별 독립 선택; widget: 일반/선택 모드 설정.
 class _CheckScheduleUIState extends State<CheckScheduleUI> {
   static const Duration _completionSnackBarDuration = Duration(seconds: 5);
   // 저장 실패 안내는 성공 안내 중 가장 긴 시간보다 짧지 않게 보여 어르신이 읽을 시간을 준다.
@@ -131,11 +123,10 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   bool _didRevealInitialSlot = false;
   final ScrollController _listController = ScrollController();
   late Set<({String medicationId, String slotKey})> _selectedDoses;
-  // 함수이름: initState
-  // 함수역할: 초기 선택 ID를 복사하고 일반 모드에서는 일정을 갱신한 뒤 요청 시간대를 드러낸다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // Function Name: initState
+  // Description: Copies the initial dose selections; in normal mode refreshes schedules and then reveals the requested time slot.
+  // Parameters: None.
+  // Returns: None.
   @override
   void initState() {
     super.initState();
@@ -149,13 +140,14 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       return;
     }
     // 함수이름: initState.addPostFrameCallback callback
-    // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에서 캡처된 작업 `context.read<MedBuddyViewModel>(); viewModel.refreshMedicationSchedule()`을 실행한다.
+    // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에서 캡처된 작업 `context.read<MedBuddyViewModel>(); viewModel.refreshMedicationSchedule(reuseRecent: true)`을 실행한다.
     // 매개변수:
     // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
     // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final viewModel = context.read<MedBuddyViewModel>();
-      await viewModel.refreshMedicationSchedule();
+      // The launch overview returns the same schedule list, so a first visit within 15 s uses it as a revisit does.
+      await viewModel.refreshMedicationSchedule(reuseRecent: true);
       if (!mounted) {
         return;
       }
@@ -174,7 +166,10 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     });
   }
 
-  // 함수역할: 선택 목록이 바뀌면 더 이상 표시하지 않는 약의 선택을 제거한다.
+  // Function Name: didUpdateWidget
+  // Description: Drops selections no longer available, or schedules a new initial-slot reveal when a notification changes the target slot.
+  // Parameters: oldWidget (CheckScheduleUI): previous selection/route configuration.
+  // Returns: No return value; stale post-frame work checks mounted.
   @override
   void didUpdateWidget(covariant CheckScheduleUI oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -190,7 +185,10 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     }
   }
 
-  // 같은 약의 아침/저녁은 별도 선택이며, 같은 약/시간대의 중복 데이터만 합친다.
+  // 함수이름: _selectableDoses
+  // 함수역할: 약 ID와 시간대의 조합을 모아 같은 조합만 중복 제거하고 빈 약 ID는 제외한다.
+  // 매개변수: 없음.
+  // 반환값: 선택 가능한 ({String medicationId, String slotKey}) 집합.
   Set<({String medicationId, String slotKey})> get _selectableDoses => {
     for (final schedule
         in widget.selectionSchedules ?? const <MedicationSchedule>[])
@@ -199,11 +197,17 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
           (medicationId: schedule.medicationID, slotKey: slot),
   };
 
-  // 필요시 분류 키는 선택 화면에서만 쓰고 실제 복용 시간대로 저장하지 않는다.
+  // 함수이름: _selectionSlotKeys
+  // 함수역할: 필요시 약은 선택용 분류 키를 쓰고 정기 약은 실제 복용 시간대를 반환한다.
+  // 매개변수: schedule (MedicationSchedule): 대상 일정.
+  // 반환값: 필요시에는 [as_needed], 그 외에는 일정의 slotKeys.
   List<String> _selectionSlotKeys(MedicationSchedule schedule) =>
       schedule.isAsNeeded ? const ['as_needed'] : schedule.slotKeys;
 
-  // 함수역할: 일부 선택은 전체 선택으로, 전체 선택은 모두 해제로 전환한다. 복용 기록은 변경하지 않는다.
+  // 함수이름: _toggleAllMedicationSelections
+  // 함수역할: 일부 선택이면 모두 선택하고 전체 선택이면 모두 해제한다. 복용 기록 자체는 수정하지 않는다.
+  // 매개변수: 없음.
+  // 반환값: 없음. 선택 가능한 항목이 없으면 무시한다.
   void _toggleAllMedicationSelections() {
     final ids = _selectableDoses;
     if (ids.isEmpty) return;
@@ -213,6 +217,10 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     });
   }
 
+  // Function Name: dispose
+  // Description: Disposes the schedule list scroll controller.
+  // Parameters: None.
+  // Returns: No return value.
   @override
   void dispose() {
     _listController.dispose();
@@ -220,10 +228,9 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   }
 
   // 함수이름: _revealInitialSlot
-  // 함수역할: 알림에서 전달된 시간대 카드가 화면에 보이도록 최초 한 번만 이동한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // 함수역할: 알림의 시간대 카드가 아직 생성되지 않았으면 프레임마다 한 화면씩 탐색한 뒤 해당 카드로 이동한다.
+  // 매개변수: attempt (int)는 탐색 횟수이며 기본값 0이다. 첫 탐색은 필요 시 목록 위로 이동하고 재시도마다 1씩 증가한다.
+  // 반환값: 없음. 이미 표시했거나 대상·스크롤 연결이 없으면 중단하며 20회 또는 목록 끝에 도달하면 탐색을 멈추고 시도한 목록을 위로 되돌린다.
   void _revealInitialSlot([int attempt = 0]) {
     if (_didRevealInitialSlot) {
       return;
@@ -317,6 +324,12 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       onBackRequested: () => Navigator.pop(context),
     );
     final selectableCount = _selectableDoses.length;
+    final selectedMedicationCount =
+        _selectedDoses.map((dose) => dose.medicationId).toSet().length +
+        widget.additionalSelectionCount;
+    final overLimit =
+        widget.maxSelectionCount != null &&
+        selectedMedicationCount > widget.maxSelectionCount!;
     final selectionControl = MedBuddySelectAllBar(
       tileKey: const Key('schedule-medication-select-all'),
       label: text.selectAll,
@@ -344,6 +357,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
                   children: [
                     if (scrollHeader) header,
                     if (scrollHeader) selectionControl,
+                    ?widget.selectionHeader,
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
                       child: Column(
@@ -406,10 +420,23 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
                   ],
                 ),
               ),
+              if (overLimit)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    text.isEnglish
+                        ? 'Attach up to ${widget.maxSelectionCount} medications.'
+                        : '약은 최대 ${widget.maxSelectionCount}개까지 첨부할 수 있어요.',
+                  ),
+                ),
               _ScheduleSelectionFooter(
                 text: text,
-                selectedCount: _selectedDoses.length,
-                onConfirmRequested: _selectedDoses.isEmpty
+                selectedCount:
+                    _selectedDoses.length + widget.additionalSelectionCount,
+                onConfirmRequested:
+                    overLimit ||
+                        (_selectedDoses.isEmpty &&
+                            widget.additionalSelectionCount == 0)
                     ? null
                     // 함수이름: _buildSelectionScreen.onConfirmRequested callback
                     // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에서 캡처된 작업 `_completeMedicationSelection(context, schedules)`을 실행한다.
@@ -429,7 +456,8 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   // 함수역할: 누른 약/시간대만 바꾸고 같은 약의 다른 시간대 선택은 유지한다.
   // 매개변수:
   // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // - slotKey (String): 같은 약의 다른 복용과 구분할 시간대 키. 필요시 복용 선택에는 as_needed를 쓴다.
+  // 반환값: 없음. 선택 가능한 약·시간대 쌍만 반전하고 그 외 입력은 무시한다.
   void _toggleMedicationSelection(MedicationSchedule schedule, String slotKey) {
     final dose = (medicationId: schedule.medicationID, slotKey: slotKey);
     if (!_selectableDoses.contains(dose)) return;
@@ -485,12 +513,10 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     );
   }
 
-  // Function Name: _buildScreen
-  // Description: Combines today's completion progress, slot content, and health-recommendation access.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // - viewModel (MedBuddyViewModel): View model exposing screen state, user settings, and medication actions.
-  // Returns: Widget tree for today's per-slot dose completion, reminders, and attachment selection.
+  // 함수이름: _buildScreen
+  // 함수역할: 오늘 복약 진행률과 시간대별 목록·건강 권고 진입을 현재 조회 상태에 맞춰 배치한다.
+  // 매개변수: context (BuildContext): 화면 문맥; viewModel (MedBuddyViewModel): 일정·설정·복약 명령.
+  // 반환값: 오늘 일정 화면 위젯.
   Widget _buildScreen(BuildContext context, MedBuddyViewModel viewModel) {
     final text = _ScheduleText(viewModel.userSetting.language);
     final slots = _buildSlots(viewModel);
@@ -559,10 +585,10 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     );
   }
 
-  // 함수이름: _openMedicationCabinet
-  // 함수역할: 등록한 약을 관리하는 복약함을 한 번만 연다.
-  // 매개변수: 없음.
-  // 반환값: 복약함이 닫히면 완료되는 Future.
+  // Function Name: _openMedicationCabinet
+  // Description: Opens the medication cabinet once, preventing overlapping navigation requests.
+  // Parameters: None.
+  // Returns: Future completing when the cabinet closes.
   Future<void> _openMedicationCabinet() async {
     if (_cabinetOpening) return;
     _cabinetOpening = true;
@@ -731,15 +757,10 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     );
   }
 
-  // 함수이름: _handleMedicationStatusChange
-  // 함수역할: 복용 완료 변경을 저장하고, 완료 직후에는 실수로 누른 상태를 되돌릴 기회를 제공한다. 실행 취소 요청도 동일한 상태 변경 API를 사용해 화면과 서버 상태를 함께 복원한다.
-  // 매개변수:
-  // - viewModel (MedBuddyViewModel): 화면 상태·사용자 설정·복약 작업을 제공하는 ViewModel.
-  // - slot (_ScheduleSlot): 복약 시간대의 식별·시각·표시 정보.
-  // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-  // - medicationStatus (bool): 복약 또는 저장 작업의 완료 상태.
-  // - text (_ScheduleText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _handleMedicationStatusChange
+  // Description: Persists the dose-status change and reports failure; successful completion offers undo through the same API, with mounted checks before feedback.
+  // Parameters: viewModel: persistence and screen state; slot: dose slot; schedule: medication; medicationStatus (bool): requested completion; text: localized feedback.
+  // Returns: Future completing after persistence and initial feedback; undo runs independently when selected.
   Future<void> _handleMedicationStatusChange({
     required MedBuddyViewModel viewModel,
     required _ScheduleSlot slot,
@@ -1005,7 +1026,10 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     }
   }
 
-  // 저장 응답이 끝나기 전에는 이전 설정으로 새 편집창을 열지 않는다.
+  // Function Name: _editAndSaveReminder
+  // Description: Edits one reminder and saves only changed settings, retaining the edited clock time even when disabling it.
+  // Parameters: viewModel (MedBuddyViewModel): save owner; slot (_ScheduleSlot): reminder slot; text (_ScheduleText): localized labels.
+  // Returns: Future<void>; cancellation/disposal skips updates, confirmed results are shown after persistence.
   Future<void> _editAndSaveReminder(
     MedBuddyViewModel viewModel,
     _ScheduleSlot slot,
@@ -1054,11 +1078,10 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     );
   }
 
-  // 함수이름: _showReminderConfiguration
-  // 함수역할: 활성 상태와 시각을 임시 편집하며 저장 전에는 기존 알림을 변경하지 않는다.
-  // 매개변수: setting은 기존 알림, slotTitle은 시간대 제목, text는 언어별 문구,
-  //           userSetting은 오전/오후·24시간 표시 방식을 정하는 사용자 설정.
-  // 반환값: 저장하면 선택한 설정, 취소·뒤로가기·바깥 터치이면 null.
+  // Function Name: _showReminderConfiguration
+  // Description: Edits reminder enablement and time in a draft without changing the active reminder before confirmation.
+  // Parameters: setting: current reminder; slotTitle: dose-slot heading; text: labels; userSetting: 12/24-hour display preference.
+  // Returns: Future resolving to the confirmed reminder, or null on cancellation/dismissal.
   Future<MedicationAlarm?> _showReminderConfiguration(
     MedicationAlarm setting,
     String slotTitle,
@@ -1148,12 +1171,10 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     );
   }
 
-  // 함수이름: _showReminderResultMessage
-  // 함수역할: 알림 설정 또는 해제 요청의 성공 여부를 화면 하단 안내로 명확히 전달한다.
-  // 매개변수:
-  // - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-  // - success (bool): 직전 저장·조회·변경 요청의 성공 여부.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // Function Name: _showReminderResultMessage
+  // Description: Reports reminder save or disable outcome in a snackbar with matching success/failure styling.
+  // Parameters: message (String): result text; success (bool): operation outcome.
+  // Returns: None.
   void _showReminderResultMessage(String message, {required bool success}) {
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
@@ -1593,19 +1614,18 @@ class _MedicationScheduleRow extends StatelessWidget {
   final bool isSelected;
   final VoidCallback? onSelectionRequested;
 
-  // Function Name: _MedicationScheduleRow
-  // Description: Initializes one medication's slot completion, details, and attachment selection with the supplied configuration.
-  // Parameters:
-  // - text (_ScheduleText): Localized labels used by this section.
-  // - schedule (MedicationSchedule): Medication schedule containing name, dosage, days, slots, and completion state.
-  // - isCompleted (bool): Completion state of the dose or save operation.
-  // - onGuideRequested (VoidCallback): Callback opening medication details or dosage guidance.
-  // - onStatusChanged (Future<void> Function(bool medicationStatus)): Callback reporting a medication's dose-completion change.
-  // - isStatusUpdating (bool): Whether the associated save, analysis, or medication update is in progress.
-  // - isSelectionMode (bool): Whether attachment or deletion selection replaces normal interaction.
-  // - isSelected (bool): Whether the item belongs to the current selection.
-  // - onSelectionRequested (VoidCallback?): Callback reporting the changed value or selection state to the owning screen.
-  // Returns: Initialized _MedicationScheduleRow instance.
+  // 함수이름: _MedicationScheduleRow
+  // 함수역할: 시간대별 약 행에 복용 상태 변경 또는 첨부 선택 동작을 연결한다.
+  // 매개변수:
+  // - selectionSlotKey (String): 약 ID와 함께 선택 행을 구분하는 시간대 키.
+  // - text (_ScheduleText), schedule (MedicationSchedule): 표시 문구와 약품·복약 일정.
+  // - isCompleted (bool): 이 시간대의 복용 완료 여부.
+  // - onGuideRequested (VoidCallback): 약품 상세 안내를 여는 동작.
+  // - onStatusChanged (Future<void> Function(bool)): 요청한 복용 완료 여부를 저장하는 동작.
+  // - isStatusUpdating (bool): 복용 상태 저장 중인지 여부이며 기본값은 false이다.
+  // - isSelectionMode, isSelected (bool): 첨부 선택 모드와 선택 상태이며 기본값은 false이다.
+  // - onSelectionRequested (VoidCallback?): 선택 모드에서 이 약·시간대의 선택을 전환할 동작.
+  // 반환값: 상태와 동작을 연결한 약품 일정 행.
   const _MedicationScheduleRow({
     required this.selectionSlotKey,
     required this.text,
@@ -1776,14 +1796,10 @@ class _MedicationScheduleRow extends StatelessWidget {
   }
 }
 
-// 클래스명: _ReminderIconButton
-// 역할: 알림 설정 여부를 나타내는 시간대별 명령을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 알림 설정 여부를 나타내는 시간대별 명령 위젯을 구성한다.
-// 속성:
-// - slotTitle (String): 시간대 또는 알림 시각의 표시 문구.
-// - isEnabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
-// - onPressed (VoidCallback): 해당 항목의 명시된 주 동작을 실행할 콜백.
+// Class Name: _ReminderIconButton
+// Role: Dose-slot reminder action and status.
+// Responsibilities: Shows whether a reminder is enabled and opens its configuration.
+// Attributes: slotTitle: dose group; isEnabled: reminder enabled state; onPressed: configuration action; text: localized labels.
 class _ReminderIconButton extends StatelessWidget {
   final _ScheduleText text;
   final String slotTitle;
@@ -1805,11 +1821,10 @@ class _ReminderIconButton extends StatelessWidget {
     required this.onPressed,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 알림 설정 여부를 나타내는 시간대별 명령 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 알림 설정 여부를 나타내는 시간대별 명령에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays the slot reminder icon and accessible label according to its enabled state.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final iconColor = isEnabled
@@ -1985,10 +2000,10 @@ class _ScrollableScheduleState extends StatelessWidget {
   }
 }
 
-// 클래스명: _ScheduleEmptyState
-// 역할: 오늘 일정 부재 안내와 처방전 입력 진입을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 오늘 일정 부재 안내와 처방전 입력 진입 위젯을 구성한다.
+// Class Name: _ScheduleEmptyState
+// Role: An empty daily-schedule notice with medication registration access.
+// Responsibilities: Explains the lack of scheduled medication and offers the shared registration flow.
+// Attributes: text (_ScheduleText): localized notice and action labels.
 class _ScheduleEmptyState extends StatelessWidget {
   final _ScheduleText text;
 
@@ -1999,11 +2014,10 @@ class _ScheduleEmptyState extends StatelessWidget {
   // 반환값: 입력 설정이 반영된 _ScheduleEmptyState 인스턴스.
   const _ScheduleEmptyState({required this.text});
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 오늘 일정 부재 안내와 처방전 입력 진입 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 오늘 일정 부재 안내와 처방전 입력 진입에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Explains that no doses are scheduled today and provides the registration entry action.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return _ScrollableScheduleState(
@@ -2040,13 +2054,10 @@ class _ScheduleEmptyState extends StatelessWidget {
   }
 }
 
-// 클래스명: _ScheduleLoadErrorState
-// 역할: 일정 조회 실패와 재시도를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 일정 조회 실패와 재시도 위젯을 구성한다.
-// 속성:
-// - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-// - onRetryRequested (Future<void> Function()): 실패하거나 오래된 화면 데이터를 다시 조회할 콜백.
+// Class Name: _ScheduleLoadErrorState
+// Role: Schedule-query failure with retry.
+// Responsibilities: Keeps a failed load distinct from an empty schedule and exposes a retry command.
+// Attributes: message: failure explanation; onRetryRequested: asynchronous reload.
 class _ScheduleLoadErrorState extends StatelessWidget {
   final _ScheduleText text;
   final String message;
@@ -2065,11 +2076,10 @@ class _ScheduleLoadErrorState extends StatelessWidget {
     required this.onRetryRequested,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 일정 조회 실패와 재시도 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 일정 조회 실패와 재시도에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Shows the schedule load failure and retry action.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return _ScrollableScheduleState(
@@ -2115,30 +2125,24 @@ class _ScheduleLoadErrorState extends StatelessWidget {
   }
 }
 
-// 클래스명: _ScheduleSlotDefinition
-// 역할: 복약 시간대의 식별 키를 담당한다.
-// 주요 책임:
-// - 시간대 키를 하나의 객체로 전달한다.
-// 속성:
-// - key (String): 복약 시간대를 구분하는 식별 문자열.
+// Class Name: _ScheduleSlotDefinition
+// Role: Immutable dose-slot identity.
+// Responsibilities: Carries the key used for schedule grouping and shared presentation.
+// Attributes: key (String): dose-slot identifier.
 class _ScheduleSlotDefinition {
   final String key;
 
-  // 함수이름: _ScheduleSlotDefinition
-  // 함수역할: 시간대 키를 _ScheduleSlotDefinition 인스턴스에 담는다.
-  // 매개변수:
-  // - key (String): 복약 시간대를 구분하는 식별 문자열.
-  // 반환값: 입력 설정이 반영된 _ScheduleSlotDefinition 인스턴스.
+  // Function Name: _ScheduleSlotDefinition
+  // Description: Stores a dose-slot key for grouping and presentation.
+  // Parameters: key (String): slot identifier.
+  // Returns: A _ScheduleSlotDefinition.
   const _ScheduleSlotDefinition({required this.key});
 }
 
-// 클래스명: _ScheduleSlot
-// 역할: 시간대에 배치된 약품과 표시 정보를 담당한다.
-// 주요 책임:
-// - 시간대 키와 공통 표시 스타일을 제공한다.
-// 속성:
-// - definition (_ScheduleSlotDefinition): 복약 시간대의 식별 정보.
-// - medications (List<MedicationSchedule>): 조회·선택·정렬·표시에 사용할 약품 목록.
+// Class Name: _ScheduleSlot
+// Role: Medications assigned to one dose slot.
+// Responsibilities: Combines slot identity with medication rows and shared display style.
+// Attributes: definition (_ScheduleSlotDefinition): slot identity; medications (List<MedicationSchedule>): assigned schedules.
 class _ScheduleSlot {
   final _ScheduleSlotDefinition definition;
   final List<MedicationSchedule> medications;
@@ -2157,18 +2161,17 @@ class _ScheduleSlot {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get key => definition.key;
-  // 함수이름: style
-  // 함수역할: 시간대 키에 맞는 공통 색상·옅은 배경·아이콘을 반환한다.
-  // 매개변수: 없음. 반환값: MedBuddySlotStyle.
+  // Function Name: style
+  // Description: Looks up shared icon and colors by slot key.
+  // Parameters: None.
+  // Returns: The corresponding MedBuddySlotStyle.
   MedBuddySlotStyle get style => MedBuddySlotStyle.of(definition.key);
 }
 
-// Class Name: _ScheduleText
-// Role: Represents localized wording for today's time-slot schedules, completion, reminders, and chat attachment selection.
-// Responsibilities:
-// - Selects Korean or English labels and interpolates message values for localized wording for today's time-slot schedules, completion, reminders, and chat attachment selection.
-// Attributes:
-// - language (String): Language code selecting visible wording.
+// 클래스명: _ScheduleText
+// 역할: 일정·복용 완료·알림·첨부 선택의 현지화 문구.
+// 주요 책임: 언어와 약품·시간대 입력에 맞춰 상태·선택·알림 안내를 제공한다.
+// 속성: language (String): 표시 언어 코드.
 class _ScheduleText {
   final String language;
 
@@ -2179,11 +2182,10 @@ class _ScheduleText {
   // 반환값: 입력 설정이 반영된 _ScheduleText 인스턴스.
   const _ScheduleText(this.language);
 
-  // 함수이름: isEnglish
-  // 함수역할: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두어로 영어 여부를 판별한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: isEnglish
+  // Description: Normalizes the language code and detects its English prefix.
+  // Parameters: None.
+  // Returns: True when the normalized code begins with en.
   bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: back
@@ -2204,7 +2206,10 @@ class _ScheduleText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get selectionTitle => isEnglish ? 'Choose Medications' : '대화할 약 선택';
-  // 함수역할: 다른 선택 화면과 같은 전체 선택 라벨을 제공한다.
+  // 함수이름: selectAll
+  // 함수역할: 일정 선택 화면의 전체 선택 명령을 표시한다.
+  // 매개변수: 없음.
+  // 반환값: 현재 언어의 전체 선택 라벨.
   String get selectAll => isEnglish ? 'Select all' : '전체 선택';
   // 함수이름: selectionDescription
   // 함수역할: 현재 언어와 입력값에 맞춰 "메시지에 함께 보낼 약을 하나 이상 선택해주세요." 문구를 제공한다.
@@ -2336,11 +2341,10 @@ class _ScheduleText {
         : '$slotTitle · $medicationName 복용을 완료했습니다.';
   }
 
-  // Function Name: completionCancelled
-  // Description: Provides localized wording for "$medicationName completion was undone." using the current language and message inputs.
-  // Parameters:
-  // - medicationName (String): Medication or account name shown to the user.
-  // Returns: The formatted display text or identifier described above.
+  // 함수이름: completionCancelled
+  // 함수역할: 지정한 약의 복용 완료가 취소되었음을 현재 언어로 알린다.
+  // 매개변수: medicationName (String): 취소한 약의 표시 이름.
+  // 반환값: 약 이름을 포함한 완료 취소 안내.
   String completionCancelled(String medicationName) {
     return isEnglish
         ? '$medicationName completion was undone.'

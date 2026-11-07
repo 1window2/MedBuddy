@@ -20,6 +20,13 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  // 함수이름: 처방전 뒤로가기 배치와 터치
+  // 함수역할:
+  // - 320px 화면에서 뒤로가기 버튼의 왼쪽 위치 4px과 최소 48px 터치 영역을 확인하고 누르면 콜백이 실행되는지 검증한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('처방전 뒤로가기는 왼쪽에 정렬하고 터치 영역을 유지한다', (tester) async {
     await _setViewport(tester, const Size(320, 568));
     var backRequested = false;

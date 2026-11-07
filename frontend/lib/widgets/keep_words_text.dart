@@ -55,9 +55,9 @@ String keepKoreanWords(String text) {
 }
 
 // Class Name: KeepWordsText
-// Role: A Text that wraps Korean by word.
-// Responsibilities:
-// - Paints the joined text while screen readers, finders and copies see the original text through the span's semantics label.
+// Role: Render text with Korean word-preserving line breaks and the original accessibility label.
+// Responsibilities: Apply keepKoreanWords without exposing inserted joiners to screen readers.
+// Attributes: data (String): original text; style/textAlign/maxLines/overflow/softWrap: standard optional text layout settings.
 class KeepWordsText extends StatelessWidget {
   final String data;
   final TextStyle? style;
@@ -71,6 +71,7 @@ class KeepWordsText extends StatelessWidget {
   // Parameters:
   // - data (String): Original display text.
   // - style, textAlign, maxLines, overflow, softWrap: Same meaning as on Text.
+  // - key (Key?): widget identity.
   // Returns: A configured KeepWordsText.
   const KeepWordsText(
     this.data, {

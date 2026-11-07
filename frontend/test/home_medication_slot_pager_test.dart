@@ -340,8 +340,13 @@ void main() {
   // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
   testWidgets('조회 중과 오류를 빈 일정이나 복용 완료로 표시하지 않는다', (tester) async {
     // 함수이름: save
-    // 함수역할: 조회 상태 검증에서 실제 저장 없이 성공 응답만 제공한다.
-    // 매개변수: 시간대와 완료 여부는 사용하지 않음. 반환값: 저장 성공.
+    // 함수역할:
+    // - 조회 상태 검증에서 실제 저장 없이 성공 응답을 제공한다.
+    // 매개변수:
+    // - _ (String): 사용하지 않는 시간대 식별자.
+    // - _ (bool): 사용하지 않는 완료 상태; 두 인자 모두 wildcard이다.
+    // 반환값:
+    // - Future<bool>: 항상 true.
     Future<bool> save(String _, bool _) async => true;
     await _show(tester, isLoading: true, onUpdate: save);
     expect(find.textContaining('복약 현황 확인 중'), findsOneWidget);
@@ -683,15 +688,10 @@ void main() {
   });
 }
 
-// 함수이름: _show
-// 함수역할: 공통 미리보기를 같은 위치에 갱신해 조회 이후에도 선택 상태가 유지되는지 검사한다.
-// 매개변수: tester/theme: 렌더링 환경, medicines/alarms: 일정·시각 대역,
-//   onUpdate/onDetails: 기록·조회 대역, isLoading/hasError: 조회 상태,
-//   language/scale/compact: 언어·글씨 배율·간결한 배치, initialSlot: 초기 시간대.
-// 반환값: 화면 구성과 한 프레임 갱신을 완료하는 Future<void>.
-// 함수이름: _confirmUndoIfAsked
-// 함수역할: 시간대 전체 복용 완료 취소 확인 창이 열렸으면 취소를 확정한다. 창이 없으면 아무것도 하지 않는다.
-// 매개변수: tester: 화면 조작 도구. 반환값: 비동기 조작 완료.
+// Function Name: _confirmUndoIfAsked
+// Description: Confirms the slot-wide undo dialog when present; otherwise leaves the current screen untouched.
+// Parameters: tester (WidgetTester) locates the confirmation action and advances its closing animation.
+// Returns: Future<void>; completes after optional confirmation and animation settling.
 Future<void> _confirmUndoIfAsked(WidgetTester tester) async {
   final confirm = find.byKey(const Key('home-slot-undo-confirm'));
   if (confirm.evaluate().isEmpty) return;
@@ -699,6 +699,23 @@ Future<void> _confirmUndoIfAsked(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+// Function Name: _show
+// Description:
+// - Mounts the slot pager in a scrollable test app with configurable state, actions, text scaling and reminder-time formatting.
+// Parameters:
+// - tester (WidgetTester): Widget driver.
+// - theme (ThemeData?): Optional app theme.
+// - medicines (List<MedicationSchedule>): Displayed schedules; defaults to the shared fixture.
+// - onUpdate (Future<bool> Function(String, bool)?): Slot completion callback.
+// - onDetails (VoidCallback?): Details action, shown only when completion editing is absent.
+// - isLoading, hasError, compact (bool): Loading, error and compact-layout states.
+// - language (String): en selects English; otherwise Korean.
+// - scale (double): Text scale.
+// - initialSlot (String): Initially selected slot key.
+// - alarms (Map<String, MedicationAlarm>?): Per-slot reminder settings.
+// - timeFormatter (String Function(int, int)?): Optional reminder-time formatter.
+// Returns:
+// - Future<void>: Completes mounting and one frame; does not wait for all animations.
 Future<void> _show(
   WidgetTester tester, {
   ThemeData? theme,

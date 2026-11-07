@@ -1,12 +1,17 @@
-// 파일명: prescription_ocr_reading_order_test.dart
-// 역할: 열 단위로 인식된 약봉투 줄이 화면의 행 순서로 정렬되는지 검증한다. 약 이름과 수치는 가상 예시다.
+// File Name: prescription_ocr_reading_order_test.dart
+// Role: Checks OCR column-to-row ordering using fictional medication text and coordinates.
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/services/prescription_ocr_reading_order.dart';
 
-// 함수이름: _ordered
-// 함수역할: (글자, 좌표) 목록을 인식기 순서대로 받아 정렬한 글자 목록을 돌려준다.
+// Function Name: _ordered
+// Description: Orders retained OCR lines by their on-screen rows.
+// Parameters:
+// - lines (List<(String, Rect)>): Text and bounds in recognizer order.
+// - masked (Set<int>): Original line indices to exclude; empty by default.
+// Returns:
+// - List<String>: Unmasked text in resolved reading order.
 List<String> _ordered(List<(String, Rect)> lines, {Set<int> masked = const {}}) {
   final keep = [
     for (var index = 0; index < lines.length; index++)
@@ -20,7 +25,21 @@ List<String> _ordered(List<(String, Rect)> lines, {Set<int> masked = const {}}) 
   ];
 }
 
+// Function Name: main
+// Description:
+// - Registers OCR row-order and masked-region regression cases.
+// Parameters:
+// - None.
+// Returns:
+// - No value; registers synchronous tests.
 void main() {
+  // Function Name: test callback
+  // Description:
+  // - Reassembles medicine, efficacy and dosage columns into row order while retaining independent receipt lines.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('약 이름·효능·용법 열이 따로 인식돼도 같은 행끼리 이어진다', () {
     // 인식기는 왼쪽 영수증, 약 이름 열, 용법 열을 각각 블록으로 돌려준다.
     final lines = <(String, Rect)>[
@@ -56,6 +75,13 @@ void main() {
     ]);
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Keeps a left-panel issue date ahead of the three adjacent right-panel fragments without splitting that medication row.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('세로 여백으로 나뉜 패널의 줄은 같은 높이여도 한 행에 넣지 않는다', () {
     final lines = <(String, Rect)>[
       ('발행일 2026-10-26', const Rect.fromLTRB(60, 388, 170, 405)),
@@ -73,6 +99,13 @@ void main() {
     ]);
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Removes a masked line without reordering the remaining single-column lines and accepts a zero-size rectangle.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('한 열로 쌓인 줄과 가린 줄은 순서를 바꾸지 않고 빼기만 한다', () {
     final lines = <(String, Rect)>[
       for (var row = 0; row < 4; row++)

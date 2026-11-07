@@ -6,33 +6,28 @@ import 'package:flutter/material.dart';
 import '../theme/medbuddy_theme.dart';
 import 'keep_words_text.dart';
 
-// Class Name: MedBuddyOptionSheet
-// Role: Frames a scrollable choice sheet with a drag handle.
-// Responsibilities:
-// - Keeps large-text option lists scrollable inside the safe area.
-// Attributes:
-// - children (List<Widget>): Options and headings shown below the handle.
+// 클래스명: MedBuddyOptionSheet
+// 역할: 선택 항목을 안전 영역 안의 스크롤 가능한 시트로 배치한다.
+// 주요 책임: 선택적으로 끌기 손잡이를 표시하고 자식 위젯의 순서를 유지한다.
+// 속성: children (List<Widget>): 시트 내용; showHandle (bool): 손잡이 및 위쪽 안전 영역 적용 여부.
 class MedBuddyOptionSheet extends StatelessWidget {
   final List<Widget> children;
   final bool showHandle;
 
-  // Function Name: MedBuddyOptionSheet
-  // Description: Stores the sheet content.
-  // Parameters:
-  // - key (Key?): Identity used to reset the sheet when its mode changes.
-  // - children (List<Widget>): Options and headings shown below the handle.
-  // Returns: A configured MedBuddyOptionSheet.
+  // 함수이름: MedBuddyOptionSheet
+  // 함수역할: 시트 내용과 손잡이 표시 여부를 보관한다.
+  // 매개변수: key (Key?): 위젯 식별자; children (List<Widget>): 내용; showHandle (bool): 손잡이 표시 여부.
+  // 반환값: MedBuddyOptionSheet: 구성된 시트.
   const MedBuddyOptionSheet({
     super.key,
     required this.children,
     this.showHandle = true,
   });
 
-  // Function Name: build
-  // Description: Places the drag handle above the supplied options.
-  // Parameters:
-  // - context (BuildContext): Widget tree location.
-  // Returns: A scrollable, safe-area sheet body.
+  // 함수이름: build
+  // 함수역할: 손잡이 표시 설정에 따라 여백·안전 영역을 적용한 스크롤 시트를 만든다.
+  // 매개변수: context (BuildContext): 빌드 문맥.
+  // 반환값: Widget: 자식 목록을 포함한 시트.
   @override
   Widget build(BuildContext context) {
     return SafeArea(

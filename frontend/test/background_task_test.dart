@@ -1,7 +1,6 @@
-// 파일명: background_task_test.dart
-// 역할: Android가 깨운 백그라운드 작업이 종류별로 필요한 일만 하는지 검증한다. 복용 기록 작업은 보낼 것이
-//   없으면 인증과 통신을 준비하지 않고, 복약 알림·보호자 작업은 인증한 통신 수단 하나를 쓰고 닫는다.
-// 복용 기록 저장소는 실제 SQLite·암호화 구현을 쓰고, 인증·위젯·알림·감시 호출은 기록용 대역으로 바꾼다.
+// File Name: background_task_test.dart
+// Role: Verifies scoped background task routing, idle authentication avoidance, client ownership and retry results.
+// Uses real SQLite/encryption for pending doses with recording authentication, widget, reminder and monitoring substitutes.
 import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart';
@@ -20,33 +19,58 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'support/dose_sync_harness.dart';
 
-// 클래스명: _ClosingClient
-// 역할: 요청을 대역 서버로 넘기고 작업이 통신 수단을 닫았는지 기록한다.
+// Class Name: _ClosingClient
+// Role: Tracks whether task cleanup requested client closure.
+// Responsibilities: Delegates sends to the fixture server and records close without closing the inner fake.
+// Attributes: _inner is the delegated client; closed records a close call.
 class _ClosingClient extends http.BaseClient {
-  // 함수이름: _ClosingClient
-  // 함수역할: 요청을 처리할 대역 클라이언트를 감싼다. 매개변수: _inner - 대역 서버. 반환값: 기록용 클라이언트.
+  // Function Name: _ClosingClient
+  // Description:
+  // - Wraps a fixture transport with observable close state.
+  // Parameters:
+  // - _inner (http.Client): Transport that handles each request.
+  // Returns:
+  // - A close-recording client.
   _ClosingClient(this._inner);
 
   final http.Client _inner;
   bool closed = false;
 
+  // Function Name: send
+  // Description:
+  // - Forwards the original request unchanged to the wrapped transport.
+  // Parameters:
+  // - request (http.BaseRequest): Request under test.
+  // Returns:
+  // - Future<http.StreamedResponse>: The inner transport result or error.
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) =>
       _inner.send(request);
 
+  // Function Name: close
+  // Description:
+  // - Marks the wrapper closed; deliberately does not dispose the wrapped fake transport.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; sets closed to true.
   @override
   void close() => closed = true;
 }
 
-// 클래스명: _RecordingDeps
-// 역할: 백그라운드 작업이 부른 서비스 호출을 순서대로 기록하는 대역.
-// 주요 책임: 인증 실패, 통신 필요 여부, 알림 갱신·감시 결과와 오류를 테스트가 정한 대로 재현한다.
-// 속성: calls 호출 순서, store 복용 기록 저장소, client 인증된 통신 수단(null이면 인증 복원 실패),
-//   needsNetwork 통신 필요 여부(null이면 실제 판정 사용), reminderResult/caregiverResult 작업 결과,
-//   failure 알림 갱신·감시가 던질 오류, widgetSyncs 위젯 갱신에 넘어온 동기화 서비스.
+// Class Name: _RecordingDeps
+// Role: Records background task dependency calls and supplied resources.
+// Responsibilities: Controls authentication restoration, network demand and reminder/caregiver outcomes without real platform services.
+// Attributes: store/client are optional resources; calls preserves order; widgetSyncs/widgetClients capture reuse. needsNetwork overrides demand; reminderResult/caregiverResult select results; failure injects an error.
 class _RecordingDeps extends BackgroundTaskDeps {
-  // 함수이름: _RecordingDeps
-  // 함수역할: 저장소와 통신 수단을 정한 기록용 대역을 만든다. 매개변수: store, client. 반환값: 대역.
+  // Function Name: _RecordingDeps
+  // Description:
+  // - Configures the store and restored session client available to a task.
+  // Parameters:
+  // - store (DoseOutboxStore?): Storage returned when requested.
+  // - client (_ClosingClient?): Restored client; null means authentication unavailable.
+  // Returns:
+  // - A dependency recorder with successful default service outcomes.
   _RecordingDeps({this.store, this.client});
 
   final DoseOutboxStore? store;
@@ -59,24 +83,53 @@ class _RecordingDeps extends BackgroundTaskDeps {
   bool caregiverResult = true;
   Object? failure;
 
+  // Function Name: openClient
+  // Description:
+  // - Records authentication/client restoration and returns the configured result.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<http.Client?>: Configured client, or null when session restoration fails.
   @override
   Future<http.Client?> openClient() async {
     calls.add('openClient');
     return client;
   }
 
+  // Function Name: openDoseStore
+  // Description:
+  // - Records opening the shared encrypted dose store.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<DoseOutboxStore>: Configured store; fails its null assertion if none was supplied.
   @override
   Future<DoseOutboxStore> openDoseStore() async {
     calls.add('openDoseStore');
     return store!;
   }
 
+  // Function Name: doseNeedsNetwork
+  // Description:
+  // - Records demand evaluation and uses the explicit override or production decision.
+  // Parameters:
+  // - owner (String): Account whose pending work and widget state are checked.
+  // Returns:
+  // - Future<bool>: Override when set, otherwise the base implementation result.
   @override
   Future<bool> doseNeedsNetwork(String owner) async {
     calls.add('doseNeedsNetwork');
     return needsNetwork ?? await super.doseNeedsNetwork(owner);
   }
 
+  // Function Name: refreshDoseWidget
+  // Description:
+  // - Records a local-only or service-backed refresh and captures both resources without performing platform work.
+  // Parameters:
+  // - sync (DoseSyncService?): Caller-owned service to reuse.
+  // - client (http.Client?): Caller-owned HTTP client.
+  // Returns:
+  // - Future<void>: Completes call and resource recording.
   @override
   Future<void> refreshDoseWidget({
     DoseSyncService? sync,
@@ -87,11 +140,27 @@ class _RecordingDeps extends BackgroundTaskDeps {
     widgetClients.add(client);
   }
 
+  // Function Name: initializeNotifications
+  // Description:
+  // - Records notification initialization without loading a platform plugin.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes after recording the call.
   @override
   Future<void> initializeNotifications() async {
     calls.add('initializeNotifications');
   }
 
+  // Function Name: refreshReminders
+  // Description:
+  // - Records patient/API scope, verifies client identity and returns the scripted reminder outcome.
+  // Parameters:
+  // - patientHash (String): Patient account.
+  // - baseUrl (String): Task API base URL.
+  // - client (http.Client): Must be the dependency's configured client.
+  // Returns:
+  // - Future<bool>: reminderResult; throws failure when configured or fails the identity expectation.
   @override
   Future<bool> refreshReminders({
     required String patientHash,
@@ -104,6 +173,15 @@ class _RecordingDeps extends BackgroundTaskDeps {
     return reminderResult;
   }
 
+  // Function Name: checkCaregiverAlerts
+  // Description:
+  // - Records caregiver/API scope, verifies client identity and returns the scripted monitor outcome.
+  // Parameters:
+  // - caregiverHash (String): Caregiver account.
+  // - baseUrl (String): Task API base URL.
+  // - client (http.Client): Must be the dependency's configured client.
+  // Returns:
+  // - Future<bool>: caregiverResult; throws failure when configured or fails the identity expectation.
   @override
   Future<bool> checkCaregiverAlerts({
     required String caregiverHash,
@@ -117,30 +195,70 @@ class _RecordingDeps extends BackgroundTaskDeps {
   }
 }
 
-// 클래스명: _NoWidgetPlatform
-// 역할: 홈 화면에 위젯이 없고 처리할 클릭도 없는 Android 기기를 재현해 실제 통신 필요 판정을 쓰게 한다.
+// Class Name: _NoWidgetPlatform
+// Role: Models a supported platform without installed widgets or pending clicks.
+// Responsibilities: Lets production network-demand logic inspect the actual test store while finding no widget work.
+// Attributes: store is the shared encrypted dose store.
 class _NoWidgetPlatform extends DoseHomeWidgetPlatform {
-  // 함수이름: _NoWidgetPlatform
-  // 함수역할: 테스트 저장소를 쓰는 플랫폼 대역을 만든다. 매개변수: store. 반환값: 대역.
+  // Function Name: _NoWidgetPlatform
+  // Description:
+  // - Connects the no-widget fixture to the test store.
+  // Parameters:
+  // - store (DoseOutboxStore): Store used by network-demand checks.
+  // Returns:
+  // - A platform reporting no installed widgets.
   _NoWidgetPlatform(this.store);
 
   final DoseOutboxStore store;
 
+  // Function Name: supported
+  // Description:
+  // - Allows widget demand logic to run on the test host.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - bool: Always true.
   @override
   bool get supported => true;
 
+  // Function Name: readJournal
+  // Description:
+  // - Reports that no widget click awaits processing.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<String?>: JSON empty array.
   @override
   Future<String?> readJournal() async => '[]';
 
+  // Function Name: hasInstalledWidget
+  // Description:
+  // - Reports that no widget requires refresh.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<bool>: Always false.
   @override
   Future<bool> hasInstalledWidget() async => false;
 
+  // Function Name: openStore
+  // Description:
+  // - Returns the shared encrypted store.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<DoseOutboxStore>: Constructor-supplied store.
   @override
   Future<DoseOutboxStore> openStore() async => store;
 }
 
-// 함수이름: main
-// 함수역할: 작업 종류별 백그라운드 실행 시나리오를 등록한다. 매개변수: 없음. 반환값: 없음.
+// Function Name: main
+// Description:
+// - Registers dose, reminder and caregiver task routing, resource-reuse and retry regressions.
+// Parameters:
+// - None.
+// Returns:
+// - No value; the test framework executes the cases and setup/cleanup hooks.
 void main() {
   const owner = 'patient-a';
   late Database db;
@@ -149,8 +267,13 @@ void main() {
   late int uploadStatus;
   late _ClosingClient client;
 
-  // 함수이름: medication
-  // 함수역할: 아침 한 번 복용하는 테스트 약 일정을 만든다. 반환값: 일정.
+  // Function Name: medication
+  // Description:
+  // - Creates the acknowledged morning dose returned by the fixture server.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - MedicationSchedule: ID 91 with morning marked completed.
   MedicationSchedule medication() => const MedicationSchedule(
     medicationID: '91',
     medicationName: 'test medicine',
@@ -158,8 +281,13 @@ void main() {
     slotStatuses: {'morning': true},
   );
 
-  // 함수이름: enqueue
-  // 함수역할: 앱에서 기록해 아직 전송하지 못한 아침 복용 요청을 대기열에 넣는다. 반환값: 저장 완료 Future.
+  // Function Name: enqueue
+  // Description:
+  // - Adds one unsent morning completion for today's medication date.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes durable storage of op-1; storage errors propagate.
   Future<void> enqueue() => store.enqueue(owner, {
     'operation_id': 'op-1',
     'schedule_date': doseScheduleDay(DateTime.now()),
@@ -168,6 +296,13 @@ void main() {
     'completed': true,
   });
 
+  // Function Name: setUp
+  // Description:
+  // - Creates an independent encrypted in-memory store and a recording receipt client, then installs the no-widget platform.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes resource setup.
   setUp(() async {
     sqfliteFfiInit();
     db = await databaseFactoryFfi.openDatabase(
@@ -191,15 +326,26 @@ void main() {
     DoseHomeWidget.platform = _NoWidgetPlatform(store);
   });
 
+  // Function Name: tearDown
+  // Description:
+  // - Resets widget globals and closes the test database.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes cleanup.
   tearDown(() async {
     DoseHomeWidget.resetForTest();
     await db.close();
   });
 
   group('복용 기록 작업', () {
-    // 함수이름: 할 일 없는 작업 테스트
-    // 함수역할: 보낼 기록도 새로 읽을 위젯 일정도 없으면 인증과 통신을 준비하지 않고, 기기 안의 위젯 상태만
-    //   맞춘 뒤 성공으로 끝나는지 검증한다.
+    // Function Name: nothing to upload: no authentication, no request, local widget refresh only
+    // Description:
+    // - With an active owner but no pending dose or widget, performs only store/demand checks and a local widget refresh, leaving authentication and client closure untouched.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('nothing to upload: no authentication, no request, local widget refresh only', () async {
       await store.activate(owner);
       final deps = _RecordingDeps(store: store, client: client);
@@ -218,9 +364,13 @@ void main() {
       expect(client.closed, isFalse);
     });
 
-    // 함수이름: 전송 대기 기록 테스트
-    // 함수역할: 전송할 기록이 있으면 인증한 통신 수단으로 한 번 전송하고, 전송을 마친 같은 동기화 서비스와
-    //   통신 수단을 위젯 갱신에 넘긴 뒤 닫는지 검증한다.
+    // Function Name: pending record: one upload, the drained service is handed to the widget
+    // Description:
+    // - Uploads op-1 once, hands the same drained service and client to widget refresh, empties uploadable work and closes the task-owned client.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('pending record: one upload, the drained service is handed to the widget', () async {
       await store.activate(owner);
       await enqueue();
@@ -247,8 +397,13 @@ void main() {
       expect(client.closed, isTrue);
     });
 
-    // 함수이름: 전송 실패 테스트
-    // 함수역할: 서버가 일시적으로 받지 못하면 기록을 남긴 채 실패를 돌려 작업이 다시 예약되게 하는지 검증한다.
+    // Function Name: upload rejected temporarily: the record stays and the task asks for a retry
+    // Description:
+    // - On upload status 503, retains uploadable work, closes the client and returns false so the scheduler can retry.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('upload rejected temporarily: the record stays and the task asks for a retry', () async {
       await store.activate(owner);
       await enqueue();
@@ -265,8 +420,13 @@ void main() {
       expect(client.closed, isTrue);
     });
 
-    // 함수이름: 인증 복원 실패 테스트
-    // 함수역할: 전송할 기록이 있는데 로그인 사용자를 복원하지 못하면 전송하지 않고 실패를 돌리는지 검증한다.
+    // Function Name: pending record without a restored session: no request and a retry
+    // Description:
+    // - When a pending dose exists but session restoration returns null, sends nothing, retains the operation and returns false.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('pending record without a restored session: no request and a retry', () async {
       await store.activate(owner);
       await enqueue();
@@ -282,8 +442,13 @@ void main() {
       expect(await store.hasUploadableOperation(owner), isTrue);
     });
 
-    // 함수이름: 다른 계정 작업 테스트
-    // 함수역할: 로그아웃했거나 다른 계정으로 바뀐 뒤 남은 작업, 계정 없는 작업은 아무 일도 하지 않는지 검증한다.
+    // Function Name: signed-out or foreign owner: nothing is opened beyond the store
+    // Description:
+    // - For a foreign active account, stops after store access; with no task account, skips even the store and sends no requests.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('signed-out or foreign owner: nothing is opened beyond the store', () async {
       await store.activate('patient-b');
       final deps = _RecordingDeps(store: store, client: client);
@@ -304,9 +469,13 @@ void main() {
   });
 
   group('복약 알림 작업', () {
-    // 함수이름: 알림 갱신 테스트
-    // 함수역할: 인증 뒤 알림 서비스를 준비하고 작업에 저장된 환자·API 주소로 알림을 갱신하며, 그 결과를 그대로
-    //   돌려주고 통신 수단을 닫는지 검증한다.
+    // Function Name: reminder refresh runs with the task scope and returns its result
+    // Description:
+    // - For both true and false reminder outcomes, initializes notifications, preserves the task patient and API URL, returns that outcome and closes the client.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('reminder refresh runs with the task scope and returns its result', () async {
       for (final outcome in [true, false]) {
         final taskClient = _ClosingClient(MockClient((_) async => http.Response('{}', 200)));
@@ -327,9 +496,13 @@ void main() {
       }
     });
 
-    // 함수이름: 알림 갱신 예외 테스트
-    // 함수역할: 계정 없는 작업은 인증 없이 끝내고, 인증 복원 실패와 실행 중 오류는 실패로 돌리며 통신 수단을
-    //   닫는지 검증한다.
+    // Function Name: missing scope is ignored; missing session and errors ask for a retry
+    // Description:
+    // - Ignores blank patient scope, requests retry without a restored session, and closes the client when reminder refresh throws.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('missing scope is ignored; missing session and errors ask for a retry', () async {
       final empty = _RecordingDeps(client: client);
       expect(
@@ -363,8 +536,13 @@ void main() {
   });
 
   group('보호자 감시 작업', () {
-    // 함수이름: 보호자 감시 테스트
-    // 함수역할: 보호자 계정 범위로 감시를 한 번 실행해 결과를 돌려주고, 환자 알림 갱신은 하지 않는지 검증한다.
+    // Function Name: caregiver check runs with the caregiver scope and returns its result
+    // Description:
+    // - For each scripted outcome, uses caregiver scope rather than the patient field, initializes notifications, returns the monitor result and closes the client.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('caregiver check runs with the caregiver scope and returns its result', () async {
       for (final outcome in [true, false]) {
         final taskClient = _ClosingClient(MockClient((_) async => http.Response('{}', 200)));
@@ -386,8 +564,13 @@ void main() {
       }
     });
 
-    // 함수이름: 범위 없는 감시 테스트
-    // 함수역할: 보호자 계정이 없는 작업과 알 수 없는 작업 이름은 아무 호출 없이 성공으로 끝나는지 검증한다.
+    // Function Name: missing caregiver scope and unknown task names do nothing
+    // Description:
+    // - Treats missing caregiver scope and an unknown task name as successful no-ops without opening or closing the client.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('missing caregiver scope and unknown task names do nothing', () async {
       final deps = _RecordingDeps(client: client);
 

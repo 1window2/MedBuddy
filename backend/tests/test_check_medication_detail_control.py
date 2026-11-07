@@ -96,6 +96,8 @@ class _FailingRedisClient:
 # Role: Medication cache double whose cleanup fails to exercise process-state reset and logging.
 # Responsibilities:
 # - Raises a Redis connection error during cache closure.
+# Attributes:
+# - None.
 class _CloseFailingMedicationCache:
     # Function Name: close
     # Description:
@@ -120,13 +122,13 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
-# 함수이름: test_build_search_keywords_splits_product_and_ingredient_names
-# 함수역할:
-# - 제품명·괄호 포함 원문·성분명이 기대 순서의 검색어로 분리되는지 검증한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_build_search_keywords_splits_product_and_ingredient_names
+# Description:
+# - Preserve the full product name before searching its product and parenthesized ingredient separately.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_build_search_keywords_splits_product_and_ingredient_names() -> None:
     normalizer = MedicationTextNormalizer()
 
@@ -195,13 +197,13 @@ def test_split_parenthesized_text_preserves_nested_groups() -> None:
     assert parenthesized_candidates == ["(ingredient)"]
 
 
-# 함수이름: test_build_search_keywords_strips_korean_dosage_unit
-# 함수역할:
-# - 함량을 포함한 원문을 먼저 조회하고 이후에만 검색어를 넓히는지 검증한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_build_search_keywords_strips_korean_dosage_unit
+# Description:
+# - Keep the strength-qualified name first, followed by strength-free and dosage-form-free search terms.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_build_search_keywords_strips_korean_dosage_unit() -> None:
     normalizer = MedicationTextNormalizer()
 
@@ -214,13 +216,13 @@ def test_build_search_keywords_strips_korean_dosage_unit() -> None:
     ]
 
 
-# 함수이름: test_build_search_keywords_adds_hangul_ocr_vowel_variants
-# 함수역할:
-# - 한글 OCR 모음 혼동을 보정한 애니코프 후보가 검색어에 포함되는지 검증한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_build_search_keywords_adds_hangul_ocr_vowel_variants
+# Description:
+# - Include the alternate Hangul vowel spelling used to recover the OCR-misread product name.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_build_search_keywords_adds_hangul_ocr_vowel_variants() -> None:
     normalizer = MedicationTextNormalizer()
 
@@ -229,13 +231,13 @@ def test_build_search_keywords_adds_hangul_ocr_vowel_variants() -> None:
     assert "애니코프" in search_keywords
 
 
-# 함수이름: test_build_search_keywords_removes_known_manufacturer_prefix
-# 함수역할:
-# - 알려진 제조사 접두어가 있는 원문과 접두어를 제거한 성분명 모두 검색어에 포함되는지 검증한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_build_search_keywords_removes_known_manufacturer_prefix
+# Description:
+# - Include both the manufacturer-prefixed name and the ingredient name without that known prefix.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_build_search_keywords_removes_known_manufacturer_prefix() -> None:
     normalizer = MedicationTextNormalizer()
 
@@ -266,13 +268,13 @@ def test_build_search_keywords_caps_parenthesized_request_amplification() -> Non
     assert len(search_keywords) <= 24
 
 
-# 함수이름: test_name_matcher_accepts_parenthesized_ingredient_and_dosage
-# 함수역할:
-# - 괄호 성분명과 용량이 추가된 동일 약품을 0.9 이상 점수의 확실한 일치로 판정하는지 검증한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_name_matcher_accepts_parenthesized_ingredient_and_dosage
+# Description:
+# - Score the strength-qualified product above 0.90 and retain it as a ranked candidate for the parenthesized ingredient query.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_name_matcher_accepts_parenthesized_ingredient_and_dosage() -> None:
     matcher = MedicationNameMatcher()
 
@@ -285,39 +287,39 @@ def test_name_matcher_accepts_parenthesized_ingredient_and_dosage() -> None:
     assert matcher.rank_candidates("켈로인정(펠루비프로펜)", ["켈로인정30밀리그램(펠루비프로펜)"], str, 1)
 
 
-# 함수이름: test_name_matcher_accepts_one_character_error_in_long_name
-# 함수역할:
-# - 긴 약품명의 한 글자 OCR 오류를 동일 약품의 확실한 일치로 허용하는지 검증한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_name_matcher_accepts_one_character_error_in_long_name
+# Description:
+# - Retain a long product name with one OCR character error as a search candidate.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_name_matcher_accepts_one_character_error_in_long_name() -> None:
     matcher = MedicationNameMatcher()
 
     assert matcher.rank_candidates("클래리트로마이산", ["클래리트로마이신정250밀리그램"], str, 1)
 
 
-# 함수이름: test_name_matcher_rejects_unrelated_medication_name
-# 함수역할:
-# - 아스피린과 타이레놀처럼 무관한 약품명을 확실한 일치로 판정하지 않는지 검증한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_name_matcher_rejects_unrelated_medication_name
+# Description:
+# - Exclude an unrelated product from the ranked medication candidates.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_name_matcher_rejects_unrelated_medication_name() -> None:
     matcher = MedicationNameMatcher()
 
     assert not matcher.rank_candidates("아스피린정", ["타이레놀정"], str, 1)
 
 
-# 함수이름: test_name_matcher_ranks_best_candidate_first
-# 함수역할:
-# - 가장 유사한 약품을 첫 후보로 정렬하고 무관한 성분의 후보를 제외하는지 검증한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_name_matcher_ranks_best_candidate_first
+# Description:
+# - Rank the closest strength-compatible spelling first and exclude the unrelated ingredient.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_name_matcher_ranks_best_candidate_first() -> None:
     matcher = MedicationNameMatcher()
     candidates = [
@@ -337,13 +339,13 @@ def test_name_matcher_ranks_best_candidate_first() -> None:
     assert all("아목시실린" not in item["itemName"] for item in ranked_candidates)
 
 
-# 함수이름: test_read_text_replaces_missing_public_api_fields
-# 함수역할:
-# - 누락·빈 공공 API 문자열에는 기본 안내를 적용하고 명시한 빈 대체값은 유지하는지 검증한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_read_text_replaces_missing_public_api_fields
+# Description:
+# - Use the missing-information default for absent or empty API text while honoring an explicit empty fallback.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_read_text_replaces_missing_public_api_fields() -> None:
     assert read_medication_detail_text(None) == "정보 없음"
     assert read_medication_detail_text("") == "정보 없음"
@@ -633,6 +635,8 @@ async def test_image_enrichment_uses_canonical_product_code() -> None:
     #   MFDS image.
     # Responsibilities:
     # - Records the requested product identity and returns the canonical-code image URL.
+    # Attributes:
+    # - None.
     class _FakePillImagePortal:
         # Function Name: searchMedicationImage
         # Description:
@@ -716,6 +720,8 @@ async def test_advanced_detail_preserves_product_code() -> None:
     # Role: Gemini models double that supplies deterministic medication-summary JSON.
     # Responsibilities:
     # - Returns fixed efficacy, usage, and warning JSON without invoking Gemini.
+    # Attributes:
+    # - None.
     class _FakeModels:
         # Function Name: generate_content
         # Description:
@@ -968,6 +974,8 @@ async def test_medication_summary_names_the_product_from_the_public_item() -> No
 
 # Class Name: _ManualClock
 # Role: Monotonic clock double that a test advances by hand to cross the cache cool-down.
+# Responsibilities:
+# - Return a manually controlled monotonic value so cooldown tests do not sleep.
 # Attributes:
 # - now (float): Current clock value in seconds.
 class _ManualClock:
@@ -1012,13 +1020,12 @@ def _detail(**overrides: object) -> MedicationDetail:
     return MedicationDetail(**values)
 
 
-# Function Name: test_medication_cache_round_trip_through_redis
-# Description:
-# - Requires a saved detail list to come back from the real cache class with the seven-day
-#   expiry, the versioned drug_info key namespace and the cache marker on its source.
-# Parameters:
-# - None.
-# Returns:
+# 함수이름: test_medication_cache_round_trip_through_redis
+# 함수역할:
+# - Redis 왕복 저장에서 7일 만료, 버전별 drug_info 키와 캐시 출처 표시가 유지되는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
 # - None.
 @pytest.mark.anyio
 async def test_medication_cache_round_trip_through_redis() -> None:
@@ -1036,14 +1043,12 @@ async def test_medication_cache_round_trip_through_redis() -> None:
     assert await cache.get("없는약") is None
 
 
-# Function Name: test_medication_cache_retries_redis_after_cooldown
-# Description:
-# - Requires a Redis failure to switch the cache off without raising, to keep Redis untouched
-#   during the cool-down, and to use Redis again by itself once the cool-down has passed.
-# - A second outage after the recovery starts a new cool-down.
-# Parameters:
-# - None.
-# Returns:
+# 함수이름: test_medication_cache_retries_redis_after_cooldown
+# 함수역할:
+# - Redis 장애 후 대기 시간에는 접근을 중단하고 자동 복구하며, 재장애 시 대기 시간을 다시 시작하는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
 # - None.
 @pytest.mark.anyio
 async def test_medication_cache_retries_redis_after_cooldown() -> None:
@@ -1075,13 +1080,12 @@ async def test_medication_cache_retries_redis_after_cooldown() -> None:
     assert redis_client.calls["get"] == 3
 
 
-# Function Name: test_medication_cache_save_failure_starts_cooldown_without_raising
-# Description:
-# - Requires a failed save to be swallowed and to pause both reads and writes for the cool-down,
-#   after which a save succeeds again.
-# Parameters:
-# - None.
-# Returns:
+# 함수이름: test_medication_cache_save_failure_starts_cooldown_without_raising
+# 함수역할:
+# - 저장 실패를 전파하지 않고 읽기·쓰기를 잠시 중단한 뒤 저장을 재개하는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
 # - None.
 @pytest.mark.anyio
 async def test_medication_cache_save_failure_starts_cooldown_without_raising() -> None:
@@ -1101,13 +1105,12 @@ async def test_medication_cache_save_failure_starts_cooldown_without_raising() -
     assert await cache.get("가나다정") is not None
 
 
-# Function Name: test_medication_cache_treats_unreadable_entry_as_miss_for_that_key
-# Description:
-# - Requires an entry that is not JSON, is not a list or lacks required fields to be a miss for
-#   its own key only: Redis stays in use and a well-formed key is still served.
-# Parameters:
-# - stored_value (str): Raw Redis value that cannot be turned into medication details.
-# Returns:
+# 함수이름: test_medication_cache_treats_unreadable_entry_as_miss_for_that_key
+# 함수역할:
+# - 손상된 캐시 항목만 미스로 처리하고 정상 키와 Redis 연결은 계속 사용하는지 검증한다.
+# 매개변수:
+# - stored_value: str; JSON 형식 또는 필수 필드가 잘못된 Redis 저장값.
+# 반환값:
 # - None.
 @pytest.mark.anyio
 @pytest.mark.parametrize(
@@ -1135,13 +1138,12 @@ async def test_medication_cache_treats_unreadable_entry_as_miss_for_that_key(
     assert await cache.get("bad") is not None
 
 
-# Function Name: test_medication_cache_ignores_stored_failed_summary
-# Description:
-# - Requires a snapshot saved before failed summaries were rejected to be a miss, so the
-#   failure text is not served again from Redis until the entry expires.
-# Parameters:
-# - None.
-# Returns:
+# 함수이름: test_medication_cache_ignores_stored_failed_summary
+# 함수역할:
+# - 실패 안내가 담긴 과거 요약 캐시를 재사용하지 않고 미스로 처리하는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
 # - None.
 @pytest.mark.anyio
 async def test_medication_cache_ignores_stored_failed_summary() -> None:
@@ -1177,12 +1179,12 @@ async def test_medication_cache_default_client_has_socket_timeouts() -> None:
         await cache.close()
 
 
-# Class Name: _StubDrugSource
-# Role: Stands in for the local catalogue, both public drug APIs and the image API in
-#   control-level tests; returns fixed rows and no image.
-# Attributes:
-# - items (list[dict[str, object]]): Rows returned by every public search.
-# - search_calls (list[str]): Keywords the control searched for, in order.
+# 클래스명: _StubDrugSource
+# 역할: 로컬 목록과 공공 약품·이미지 API를 대신하는 고정 응답 대역이다.
+# 주요 책임:
+# - 로컬 조회는 비우고 공공 검색어를 기록하며 지정 행과 빈 이미지를 반환한다.
+# 속성:
+# - items (list[dict[str, object]]): 공공 검색 결과 행. search_calls (list[str]): 호출 순서대로 기록한 검색어.
 class _StubDrugSource:
     # Function Name: __init__
     # Description:
@@ -1195,13 +1197,13 @@ class _StubDrugSource:
         self.items = items or []
         self.search_calls: list[str] = []
 
-    # Function Name: fetch_drug_info
-    # Description:
-    # - Answers the local catalogue lookup with no local product.
-    # Parameters:
-    # - drug_name (str): Search keyword.
-    # Returns:
-    # - MedicationLookupResult: Always empty and complete.
+    # 함수이름: fetch_drug_info
+    # 함수역할:
+    # - 공공 API 대체 조회가 실행되도록 로컬 약품 조회를 완전한 빈 결과로 응답한다.
+    # 매개변수:
+    # - drug_name: str; 조회할 약품 검색어.
+    # 반환값:
+    # - MedicationLookupResult; 항목이 없고 조회가 완전함을 표시한다.
     async def fetch_drug_info(self, drug_name: str) -> MedicationLookupResult:
         return MedicationLookupResult()
 
@@ -1373,19 +1375,24 @@ async def test_process_cache_cleanup_resets_state_after_close_failure(
     assert "ConnectionError" in caplog.text
 
 
-# Function Name: test_failed_candidate_summary_drops_only_that_candidate
-# Description:
-# - One candidate whose AI summary fails is dropped while the others are returned in order; only
-#   when every summary fails does the lookup fail. A medication without a summary is never
-#   returned.
-# Parameters:
-# - None.
-# Returns:
+# 함수이름: test_failed_candidate_summary_drops_only_that_candidate
+# 함수역할:
+# - 요약 실패 후보만 제외하고 나머지 순서를 유지하며 모든 요약이 실패하면 조회도 실패하는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
 # - None.
 @pytest.mark.anyio
 async def test_failed_candidate_summary_drops_only_that_candidate() -> None:
     from boundaries.medication_summary_boundary import gather_summaries_keeping_successes
 
+    # Function Name: summary
+    # Description:
+    # - Returns a synthetic summary except for the designated broken product.
+    # Parameters:
+    # - name: str; product name, with broken selecting the failure path.
+    # Returns:
+    # - MedicationDetail; raises RuntimeError for broken.
     async def summary(name: str) -> MedicationDetail:
         if name == "broken":
             raise RuntimeError("provider error")

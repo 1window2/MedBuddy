@@ -11,8 +11,9 @@ depends_on = None
 
 
 # Function Name: upgrade
-# Description: Add a message-owned queue with cascade cleanup and a due-work index.
-# Parameters: None. Returns: None.
+# Description: Create durable chat notification jobs keyed by message, with cascading message/account references and an index for due-job selection.
+# Parameters: None; uses the active Alembic connection.
+# Returns: None; DDL failures propagate.
 def upgrade() -> None:
     op.create_table(
         "chat_notification_jobs",
@@ -28,7 +29,8 @@ def upgrade() -> None:
 
 
 # Function Name: downgrade
-# Description: Remove delivery jobs only; messages, links and medication records remain.
-# Parameters: None. Returns: None.
+# Description: Drop the chat notification jobs table and its queued delivery state.
+# Parameters: None; uses the active Alembic connection.
+# Returns: None; DDL failures propagate.
 def downgrade() -> None:
     op.drop_table("chat_notification_jobs")

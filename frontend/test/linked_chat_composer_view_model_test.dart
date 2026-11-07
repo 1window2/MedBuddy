@@ -10,6 +10,7 @@ import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
 import 'package:medbuddy_frontend/entities/chat_message_draft_entity.dart';
 import 'package:medbuddy_frontend/entities/chat_message_entity.dart';
+import 'package:medbuddy_frontend/services/api_response_parser.dart';
 import 'package:medbuddy_frontend/viewmodels/linked_chat_composer_view_model.dart';
 
 // Function Name: main
@@ -42,6 +43,33 @@ void main() {
     ).readAsStringSync();
     expect(ui, isNot(contains('_control.sendMessage(')));
     expect(ui, isNot(contains('_pendingMedicationIdsSignature')));
+  });
+
+  // Function Name: expired searched medication test
+  // Description: Only the server's refusal of an attached searched medication asks for a new search.
+  // Parameters: None. Returns: Asynchronous assertions.
+  test('an expired searched medication is told apart from other failures', () async {
+    final fixture = _ComposerFixture();
+    addTearDown(fixture.dispose);
+    const reference = ChatMedicationReference(itemSeq: '1', itemName: '검색정');
+    final refusal = ApiRequestException(
+      '메시지를 보내지 못했습니다',
+      statusCode: 400,
+      detail: '검색한 약 정보가 만료되었습니다. 약을 다시 검색해 첨부해 주세요.',
+    );
+    fixture.control.failure = refusal;
+    await fixture.model.send(
+      ChatMessageDraft(body: 'Hello', medicationReferences: [reference]),
+    );
+    expect(fixture.model.medicationReferencesExpired, isTrue);
+    await fixture.model.send(ChatMessageDraft(body: 'Hello'));
+    expect(fixture.model.medicationReferencesExpired, isFalse);
+    fixture.control.failure = null;
+    await fixture.model.send(
+      ChatMessageDraft(body: 'Hello', medicationReferences: [reference]),
+    );
+    expect(fixture.model.sendFailed, isTrue);
+    expect(fixture.model.medicationReferencesExpired, isFalse);
   });
 
   // Function Name: immutable payload and primary-order test
@@ -361,6 +389,7 @@ class _SendControl extends ManageLinkedChat {
       >[];
   Completer<ChatMessage>? gate;
   bool fail = true;
+  Object? failure;
   bool disposed = false;
 
   // Function Name: _SendControl
@@ -373,8 +402,22 @@ class _SendControl extends ManageLinkedChat {
       );
 
   // Function Name: sendMessage
-  // Description: Snapshots wire input and returns the selected completion/failure outcome.
-  // Parameters: Existing production message/context/identity fields. Returns: Accepted or gated message; throws on configured failure.
+  // Description:
+  // - Records identity and draft fields, then returns the pending gate, throws a configured failure or creates a message from body.
+  // Parameters:
+  // - sourceAlertId (int?): Accepted source alert; not recorded by this fake.
+  // - linkId (int), clientMessageId (String): Conversation and client request identifiers.
+  // - body (String): Message content.
+  // - medicationId (int?): Primary medication recorded separately.
+  // - medicationIds (List<int>): Attached medication identifiers.
+  // - medicationReferences (List<ChatMedicationReference>): Attached catalog references.
+  // - messageKind (ChatMessageKind): Draft category.
+  // - slotKey (String?): Optional dose slot.
+  // - pharmacyId, hospitalId (String?): Optional shared place identifiers.
+  // - hospitalScheduleDate (String?): Shared hospital visit date.
+  // - historyStartDate, historyEndDate (String?): Accepted history range; not retained in the recorded draft.
+  // Returns:
+  // - Future<ChatMessage>: Gate result or synthetic message; propagates failure or throws StateError when fail is set.
   @override
   Future<ChatMessage> sendMessage({
     int? sourceAlertId,
@@ -383,6 +426,7 @@ class _SendControl extends ManageLinkedChat {
     required String body,
     int? medicationId,
     List<int> medicationIds = const [],
+    List<ChatMedicationReference> medicationReferences = const [],
     ChatMessageKind messageKind = ChatMessageKind.text,
     String? slotKey,
     String? pharmacyId,
@@ -398,6 +442,7 @@ class _SendControl extends ManageLinkedChat {
       draft: ChatMessageDraft(
         body: body,
         medicationIds: medicationIds,
+        medicationReferences: medicationReferences,
         messageKind: messageKind,
         slotKey: slotKey,
         pharmacyId: pharmacyId,
@@ -407,6 +452,7 @@ class _SendControl extends ManageLinkedChat {
     ));
     final pending = gate;
     if (pending != null) return pending.future;
+    if (failure case final error?) throw error;
     if (fail) throw StateError('Temporary failure');
     return _message(body);
   }

@@ -10,12 +10,11 @@ from services.medication_match_safety import can_auto_match, match_conflict, str
 _CandidateT = TypeVar("_CandidateT")
 
 
-# Class Name: MedicationTextNormalizer
-# Role:
-# - Reusable pure helper for medication search keyword normalization.
-# Responsibilities:
-# - Normalize OCR or UI-provided medication text.
-# - Strip dosage and dosage-form suffixes from search keywords.
+# 클래스명: MedicationTextNormalizer
+# 역할: OCR·입력 약명에서 제한된 검색 키워드와 표기 변형을 생성한다.
+# 주요 책임: 공백·괄호를 정리하고 함량·제형·제조사·알려진 OCR 변형을 이용해 후보 검색을 지원한다.
+# 속성: MAX_SEARCH_KEYWORDS·SEARCH_KEYWORD_LIMITS는 개수 상한, 함량·제형 정규식과 제조사·한글 쌍은 명시적 변형 규칙이다.
+# 비고: 검색 변형은 동일 제품임을 보장하지 않으며 안전성·확정 판정은 별도로 수행한다.
 class MedicationTextNormalizer:
     MAX_SEARCH_KEYWORDS = 24
     SEARCH_KEYWORD_LIMITS = {'fast': 2, 'balanced': 4, 'thorough': 8}
@@ -71,13 +70,10 @@ class MedicationTextNormalizer:
         ("케", "캐"),
     )
 
-    # 함수이름: normalize_raw_text
-    # 함수역할:
-    # - OCR 텍스트의 줄바꿈·연속 공백과 전각·대괄호 표기를 통일한다.
-    # 매개변수:
-    # - raw_text (str): 약품명 정규화 전의 원본 OCR 텍스트.
-    # 반환값:
-    # - 검색 후보 생성에 사용할 정리된 약품 텍스트.
+    # Function Name: normalize_raw_text
+    # Description: Converts newlines to spaces, harmonizes full-width/square brackets with parentheses and collapses whitespace.
+    # Parameters: raw_text (str) is OCR or user-provided medication text.
+    # Returns: Trimmed normalized text without guessing product identity.
     def normalize_raw_text(self, raw_text: str) -> str:
         normalized_text = (
             raw_text.replace("\n", " ")
@@ -132,13 +128,10 @@ class MedicationTextNormalizer:
             )
         return keywords[:limit]
 
-    # Function Name: _split_parenthesized_text
-    # Description:
-    # - Separates parenthesized names and recovers product text before a truncated group.
-    # Parameters:
-    # - normalized_text (str): OCR text with whitespace and bracket notation already normalized.
-    # Returns:
-    # - Normalized outside text and inner candidates of 1-80 characters.
+    # 함수이름: _split_parenthesized_text
+    # 함수역할: 중첩 괄호 깊이를 추적해 바깥 약명과 닫힌 괄호 후보를 분리하고 잘린 괄호 뒤 텍스트는 보조 후보에서 제외한다.
+    # 매개변수: normalized_text (str)는 공백·괄호 표기가 정리된 텍스트다.
+    # 반환값: 정리된 바깥 str과 1~80자 괄호 후보 목록. 원본 검색·함량 검증용 입력 자체는 바꾸지 않는다.
     def _split_parenthesized_text(self, normalized_text: str) -> tuple[str, list[str]]:
         outside_chars: list[str] = []
         parenthesized_candidates: list[str] = []
@@ -192,13 +185,10 @@ class MedicationTextNormalizer:
 
         return self._deduplicate_keywords(structural_keywords)
 
-    # 함수이름: _structural_variants
-    # 함수역할:
-    # - 공백 제거, 제형 제거, 제조사 접두어 제거를 적용한 구조적 검색 후보를 만든다.
-    # 매개변수:
-    # - keyword (str): 보정 전 검색어
-    # 반환값:
-    # - 구조적으로 단순화된 검색어 후보 목록
+    # Function Name: _structural_variants
+    # Description: Produces spacing, dosage-form and known manufacturer-prefix variants for broader candidate retrieval, retaining first-seen order.
+    # Parameters: keyword (str) is the current search candidate.
+    # Returns: Deduplicated nonblank variant list; these variants are not proof of product equivalence.
     def _structural_variants(self, keyword: str) -> list[str]:
         spacing_keywords = [keyword]
         compact_keyword = keyword.replace(" ", "")
@@ -217,36 +207,27 @@ class MedicationTextNormalizer:
 
         return self._deduplicate_keywords(structural_keywords)
 
-    # 함수이름: _strip_dosage_form
-    # 함수역할:
-    # - 검색 폭을 넓히기 위해 약품명 끝의 정/캡슐 같은 제형 표기를 제거한다.
-    # 매개변수:
-    # - keyword (str): 제형 표기가 포함될 수 있는 검색어
-    # 반환값:
-    # - 제형 표기를 제거한 검색어
+    # Function Name: _strip_dosage_form
+    # Description: Removes one recognized trailing dosage-form label to broaden search.
+    # Parameters: keyword (str) is the candidate name.
+    # Returns: Trimmed text without the matched suffix, otherwise the trimmed original.
     def _strip_dosage_form(self, keyword: str) -> str:
         return self._DOSAGE_FORM_SUFFIX_PATTERN.sub("", keyword).strip()
 
-    # 함수이름: _strip_manufacturer_prefix
-    # 함수역할:
-    # - 제조사명이 앞에 붙은 제품명에서 성분명 중심 후보를 만든다.
-    # 매개변수:
-    # - keyword (str): 제조사 접두어가 포함될 수 있는 검색어
-    # 반환값:
-    # - 알려진 제조사 접두어를 제거한 검색어
+    # Function Name: _strip_manufacturer_prefix
+    # Description: Removes the first recognized leading manufacturer only when at least two product-name characters remain.
+    # Parameters: keyword (str) is the candidate name.
+    # Returns: Remaining trimmed name, or unchanged input when no eligible prefix matches.
     def _strip_manufacturer_prefix(self, keyword: str) -> str:
         for prefix in self._MANUFACTURER_PREFIXES:
             if keyword.startswith(prefix) and len(keyword) > len(prefix) + 1:
                 return keyword[len(prefix) :].strip()
         return keyword
 
-    # 함수이름: _hangul_ocr_variants
-    # 함수역할:
-    # - 에/애, 레/래처럼 OCR에서 자주 뒤바뀌는 한글 모음 후보를 추가한다.
-    # 매개변수:
-    # - keyword (str): 원본 검색어 후보
-    # 반환값:
-    # - 한글 OCR 보정 검색어 후보 목록
+    # Function Name: _hangul_ocr_variants
+    # Description: Creates independent bidirectional substitutions for configured Korean vowel-confusion pairs.
+    # Parameters: keyword (str) is the original candidate.
+    # Returns: Variant list; replacements affect all occurrences of one pair at a time and are not combined across pairs.
     def _hangul_ocr_variants(self, keyword: str) -> list[str]:
         variants: list[str] = []
         for source, target in self._HANGUL_OCR_VARIANT_PAIRS:
@@ -256,13 +237,10 @@ class MedicationTextNormalizer:
                 variants.append(keyword.replace(target, source))
         return variants
 
-    # 함수이름: _deduplicate_keywords
-    # 함수역할:
-    # - 검색어 후보의 순서를 유지하면서 중복과 빈 문자열을 제거한다.
-    # 매개변수:
-    # - keywords (list[str]): 정리 전 검색어 후보 목록
-    # 반환값:
-    # - 중복이 제거된 검색어 후보 목록
+    # Function Name: _deduplicate_keywords
+    # Description: Trims keywords, drops blanks and keeps only the first occurrence of each remaining exact string.
+    # Parameters: keywords (list[str]) is the ordered candidate list.
+    # Returns: Nonblank deduplicated list preserving input priority.
     def _deduplicate_keywords(self, keywords: list[str]) -> list[str]:
         seen_keywords = set()
         deduplicated_keywords: list[str] = []
@@ -275,28 +253,20 @@ class MedicationTextNormalizer:
         return deduplicated_keywords
 
 
-# 클래스명: MedicationNameMatcher
-# 역할:
-# - OCR 검색어와 약품 후보 이름의 유사도를 계산하고 신뢰 가능한 후보를 선별한다.
-# 주요 책임:
-# - 기존 검색어 정규화 결과를 비교 가능한 문자열 키로 변환한다.
-# - 완전 일치, 포함 관계, 문자열 유사도를 조합해 이름 점수를 계산한다.
-# - 짧은 약 이름에는 더 엄격한 임계값을 적용해 오탐을 줄인다.
-# 속성:
-# - text_normalizer (MedicationTextNormalizer): OCR 특성을 반영한 약품명 정규화·변형 생성기.
+# Class Name: MedicationNameMatcher
+# Role: Scores normalized medication names and ranks candidates under length-sensitive confidence thresholds.
+# Responsibilities: Combines exact, containment and sequence similarity with strength/form safety checks; short names require stronger matches.
+# Attributes: text_normalizer generates comparison variants; score constants and _NON_NAME_CHARACTER_PATTERN define matching policy.
 class MedicationNameMatcher:
     _NON_NAME_CHARACTER_PATTERN = re.compile(r"[^0-9a-z가-힣]+", re.IGNORECASE)
     _LONG_NAME_MIN_SCORE = 0.76
     _MEDIUM_NAME_MIN_SCORE = 0.84
     _SHORT_NAME_MIN_SCORE = 0.96
 
-    # 함수이름: __init__
-    # 함수역할:
-    # - 비교 키 생성에 사용할 약품명 정규화기를 주입하거나 기본 생성한다.
-    # 매개변수:
-    # - text_normalizer (MedicationTextNormalizer | None): OCR 특성을 반영한 약품명 정규화·변형 생성기.
-    # 반환값:
-    # - 없음.
+    # Function Name: __init__
+    # Description: Binds the supplied text normalizer or creates the default variant generator.
+    # Parameters: text_normalizer (MedicationTextNormalizer | None) overrides normalization.
+    # Returns: None; no matching occurs during construction.
     def __init__(
         self,
         text_normalizer: MedicationTextNormalizer | None = None,
@@ -304,13 +274,9 @@ class MedicationNameMatcher:
         self.text_normalizer = text_normalizer or MedicationTextNormalizer()
 
     # 함수이름: calculate_score
-    # 함수역할:
-    # - OCR 검색어와 공공데이터 약품명의 가장 높은 이름 유사도를 계산한다.
-    # 매개변수:
-    # - search_text (str): OCR 보정 과정을 거친 검색어
-    # - candidate_name (str): DB 또는 공공데이터 API가 반환한 약품명
-    # 반환값:
-    # - 0.0 이상 1.0 이하의 이름 유사도 점수
+    # 함수역할: 함량·제형 충돌을 먼저 배제한 뒤 직접·변형 이름 점수를 비교하고 확인된 함량 일치에만 가산점을 준다.
+    # 매개변수: search_text·candidate_name (str)은 원본과 후보, allow_unknown_strength (bool)는 수동 확인용 후보의 함량 누락만 허용한다.
+    # 반환값: 0~1 float. 충돌은 0, 안전한 정규화 동일 제품은 1이며 변형 점수만으로 확정 일치를 보장하지 않는다.
     def calculate_score(
         self, search_text: str, candidate_name: str, *,
         allow_unknown_strength: bool = False,
@@ -345,15 +311,10 @@ class MedicationNameMatcher:
         )
 
     # 함수이름: rank_candidates
-    # 함수역할:
-    # - 여러 약품 후보 중 최소 유사도를 통과한 항목만 점수순으로 정렬한다.
-    # 매개변수:
-    # - search_text (str): OCR 보정 과정을 거친 검색어
-    # - candidates (list[_CandidateT]): DB 또는 API에서 조회한 원본 후보 목록
-    # - name_reader (Callable[[_CandidateT], str]): 후보 객체에서 약품명을 읽는 함수
-    # - limit (int): 반환할 최대 후보 수
-    # 반환값:
-    # - 신뢰도 점수가 높은 순서로 정렬된 후보 목록
+    # 함수역할: 길이별 최소 점수를 통과한 후보를 점수 내림차순으로 정렬하고 동점이면 원래 순서를 유지한다.
+    # 매개변수: search_text (str)는 검색어, candidates (list)는 원본 후보, name_reader (Callable)는 이름 추출기, limit (int)은 반환 상한이다.
+    #   allow_unknown_strength (bool)는 후보 함량 누락 허용 여부이며 명시적 함량·제형 충돌은 여전히 제외한다.
+    # 반환값: 상한까지의 원본 후보 목록. 이름 추출기·점수 계산 오류는 전달한다.
     def rank_candidates(
         self,
         search_text: str,
@@ -377,13 +338,10 @@ class MedicationNameMatcher:
         ranked_candidates.sort(key=lambda item: (-item[0], item[1]))
         return [item[2] for item in ranked_candidates[:limit]]
 
-    # 함수이름: _build_match_keys
-    # 함수역할:
-    # - 괄호, 용량, 제형, 제조사와 OCR 변형을 반영한 비교 키를 생성한다.
-    # 매개변수:
-    # - value (str): 비교할 원본 약품명
-    # 반환값:
-    # - 중복과 기호가 제거된 이름 비교 키 목록
+    # Function Name: _build_match_keys
+    # Description: Normalizes generated search variants into comparison keys, removing empty and duplicate keys.
+    # Parameters: value (str) is the original medication name.
+    # Returns: Ordered unique keys without punctuation or spacing.
     def _build_match_keys(self, value: str) -> list[str]:
         raw_candidates = self.text_normalizer.build_search_keywords(value)
         normalized_keys = [
@@ -391,25 +349,18 @@ class MedicationNameMatcher:
         ]
         return list(dict.fromkeys(key for key in normalized_keys if key))
 
-    # 함수이름: _normalize_match_key
-    # 함수역할:
-    # - 약품명에서 공백과 기호를 제거하고 영문 대소문자를 통일한다.
-    # 매개변수:
-    # - value (str): 정규화할 약품명
-    # 반환값:
-    # - 숫자, 영문, 한글만 남긴 비교 문자열
+    # Function Name: _normalize_match_key
+    # Description: Removes characters outside ASCII letters/digits and Korean syllables, then folds case.
+    # Parameters: value (str) is a product-name representation.
+    # Returns: Compact comparison string; an unsupported-only label becomes empty.
     @classmethod
     def _normalize_match_key(cls, value: str) -> str:
         return cls._NON_NAME_CHARACTER_PATTERN.sub("", value).casefold()
 
-    # 함수이름: _calculate_pair_score
-    # 함수역할:
-    # - 두 비교 키의 완전 일치, 포함 관계, 문자열 배열 유사도를 계산한다.
-    # 매개변수:
-    # - left (str): 첫 번째 이름 비교 키
-    # - right (str): 두 번째 이름 비교 키
-    # 반환값:
-    # - 0.0 이상 1.0 이하의 두 문자열 유사도
+    # Function Name: _calculate_pair_score
+    # Description: Combines exact match, sufficiently long substring containment and SequenceMatcher similarity without automatic junk filtering.
+    # Parameters: left, right (str) are normalized keys.
+    # Returns: Score in [0, 1], with 0 for an empty key and 1 for exact equality.
     @staticmethod
     def _calculate_pair_score(left: str, right: str) -> float:
         if not left or not right:
@@ -431,13 +382,10 @@ class MedicationNameMatcher:
         ).ratio()
         return max(containment_score, sequence_score)
 
-    # 함수이름: _required_score
-    # 함수역할:
-    # - 짧은 약품명의 오탐을 줄이기 위해 검색어 길이별 최소 점수를 선택한다.
-    # 매개변수:
-    # - search_text (str): OCR 보정 과정을 거친 검색어
-    # 반환값:
-    # - 해당 검색어에 적용할 최소 유사도 점수
+    # Function Name: _required_score
+    # Description: Selects stricter acceptance thresholds for short normalized search names.
+    # Parameters: search_text (str) is the query label.
+    # Returns: Short-name threshold through length 3, medium through 5, otherwise the long-name threshold.
     def _required_score(self, search_text: str) -> float:
         normalized_search = self._normalize_match_key(search_text)
         if len(normalized_search) <= 3:
@@ -446,17 +394,10 @@ class MedicationNameMatcher:
             return self._MEDIUM_NAME_MIN_SCORE
         return self._LONG_NAME_MIN_SCORE
 
-    # 함수이름: _adjust_dosage_score
-    # 함수역할:
-    # - 검색어의 함량이 후보의 함량과 같다고 확인되면 이름 점수에 0.03을 더한다.
-    # - 함량 비교는 medication_match_safety의 정규화 규칙을 그대로 사용한다. 다른 함량은 제외하고,
-    #   수동 확인용으로 허용한 함량 미표기 후보에는 가산점을 주지 않는다.
-    # 매개변수:
-    # - name_score (float): 약품명 문자열만으로 계산한 유사도
-    # - search_text (str): OCR 보정 과정을 거친 검색어
-    # - candidate_name (str): DB 또는 공공데이터 API가 반환한 약품명
-    # 반환값:
-    # - 함량 일치 여부를 반영해 0.0 이상 1.0 이하로 보정한 점수
+    # Function Name: _adjust_dosage_score
+    # Description: Adds 0.03 only when the query has explicit strengths equal to the candidate's normalized strengths; earlier safety checks handle conflicts.
+    # Parameters: name_score (float) is the prior score; search_text and candidate_name (str) supply strength labels.
+    # Returns: Boosted score capped at 1.0, or unchanged score when strengths are absent/different.
     def _adjust_dosage_score(
         self,
         name_score: float,

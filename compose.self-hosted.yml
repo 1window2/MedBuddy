@@ -75,11 +75,15 @@ services:
       DATABASE_USER: medbuddy
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       AUTO_CREATE_SCHEMA: "false"
+      # The migration keeps the owner role and provisions the data-only role the services use.
+      MEDBUDDY_APP_DB_USER: ${MEDBUDDY_APP_DB_USER:-}
+      MEDBUDDY_APP_DB_PASSWORD: ${MEDBUDDY_APP_DB_PASSWORD:-}
     command:
       - /bin/sh
       - -ec
       - |
         python -m alembic upgrade head
+        python scripts/provision_database_roles.py
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,8 +101,9 @@ services:
       DATABASE_HOST: postgres
       DATABASE_PORT: "5432"
       DATABASE_NAME: medbuddy
-      DATABASE_USER: medbuddy
-      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      # Data-only role once MEDBUDDY_APP_DB_USER and MEDBUDDY_APP_DB_PASSWORD are set; until then the owner.
+      DATABASE_USER: ${MEDBUDDY_APP_DB_USER:-medbuddy}
+      DATABASE_PASSWORD: ${MEDBUDDY_APP_DB_PASSWORD:-${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}}
       AUTO_CREATE_SCHEMA: "false"
     command:
       - /bin/sh
@@ -123,8 +128,9 @@ services:
       DATABASE_HOST: postgres
       DATABASE_PORT: "5432"
       DATABASE_NAME: medbuddy
-      DATABASE_USER: medbuddy
-      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      # Data-only role once MEDBUDDY_APP_DB_USER and MEDBUDDY_APP_DB_PASSWORD are set; until then the owner.
+      DATABASE_USER: ${MEDBUDDY_APP_DB_USER:-medbuddy}
+      DATABASE_PASSWORD: ${MEDBUDDY_APP_DB_PASSWORD:-${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}}
       AUTO_CREATE_SCHEMA: "false"
       CATALOG_REFRESH_INTERVAL_SECONDS: "${CATALOG_REFRESH_INTERVAL_SECONDS:-604800}"
       CATALOG_REFRESH_RETRY_SECONDS: "${CATALOG_REFRESH_RETRY_SECONDS:-3600}"
@@ -179,17 +185,20 @@ services:
       AUTH_MODE: firebase
       FIREBASE_ALLOW_PHONE_AUTH: "false"
       FIREBASE_ALLOW_ANONYMOUS_AUTH: "true"
-      # Revoked sessions and disabled users stop at once, and a typo in backend.env cannot
-      # turn the check off (the code default is off for local development).
+      # Revoked sessions and disabled users stop within FIREBASE_REVOCATION_CACHE_SECONDS (an
+      # account deleted by this server stops at once), and a typo in backend.env cannot turn
+      # the check off or lengthen the delay (the code default is off for local development).
       FIREBASE_CHECK_REVOKED_TOKENS: "true"
+      FIREBASE_REVOCATION_CACHE_SECONDS: "30"
       FIREBASE_REQUIRE_VERIFIED_EMAIL: "true"
       FIREBASE_APP_CHECK_REQUIRED: "${FIREBASE_APP_CHECK_REQUIRED:-true}"
       FIREBASE_OFF_PLAY_BETA_MODE: "${FIREBASE_OFF_PLAY_BETA_MODE:-false}"
       DATABASE_HOST: postgres
       DATABASE_PORT: "5432"
       DATABASE_NAME: medbuddy
-      DATABASE_USER: medbuddy
-      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      # Data-only role once MEDBUDDY_APP_DB_USER and MEDBUDDY_APP_DB_PASSWORD are set; until then the owner.
+      DATABASE_USER: ${MEDBUDDY_APP_DB_USER:-medbuddy}
+      DATABASE_PASSWORD: ${MEDBUDDY_APP_DB_PASSWORD:-${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}}
       AUTO_CREATE_SCHEMA: "false"
       REDIS_URL: redis://redis:6379/0
       RATE_LIMIT_REDIS_URL: redis://rate-limit-redis:6379/0

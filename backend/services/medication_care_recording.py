@@ -11,9 +11,10 @@ from entities.medication_completion_entity import _MedicationCompletion
 from entities.user_account_entity import as_naive_utc, utc_isoformat, utc_now
 
 
-# 함수이름: completion_snapshot
-# 함수역할: 이전 완료 행도 같은 사용자 보고 형식으로 변환한다. 실제 복용 시각은 추측하지 않는다.
-# 매개변수: row: 기록 행. 반환값: JSON 호환 상태 스냅샷.
+# Function Name: completion_snapshot
+# Description: Converts legacy and current rows to the same JSON-compatible report, retaining unknown actual intake time.
+# Parameters: row (_MedicationCompletion) is the persisted or in-memory completion record.
+# Returns: Dict with dose identity, report status, UTC timestamps, reason and revision; legacy completed flags supply missing report status.
 def completion_snapshot(row: _MedicationCompletion) -> dict[str, object]:
     return {
         "medication_id": row.saved_medication_id,
@@ -27,10 +28,11 @@ def completion_snapshot(row: _MedicationCompletion) -> dict[str, object]:
     }
 
 
-# 함수이름: apply_completion_report
-# 함수역할: 상태 변경과 이전·이후 감사 스냅샷을 호출자의 트랜잭션에 추가한다.
-# 매개변수: db: 세션, row: 기록, status: 상태, actual_taken_at: 실제 시각, reason: 이유, source: 경로.
-# 반환값: 없음. 호출자가 commit/rollback한다.
+# Function Name: apply_completion_report
+# Description: Captures the prior state, applies the caller-validated report, increments revision and records before/after audit data in the same transaction.
+# Parameters: db (Session), row (_MedicationCompletion) select the transaction/record; status (str), actual_taken_at (datetime | None), reason and source (str) describe the report;
+#   audit_rows (list[dict] | None) receives mappings for bulk insertion instead of adding an ORM audit row immediately.
+# Returns: None; never commits. The caller owns validation and commit/rollback.
 def apply_completion_report(
     db: Session, row: _MedicationCompletion, *, status: str,
     actual_taken_at: datetime | None = None, reason: str = "", source: str = "history",

@@ -20,18 +20,12 @@ logger = logging.getLogger(__name__)
 # Responsibilities:
 # - Build the structured request and JSON schema configuration.
 # - Reject an empty provider response.
+# Attributes: None; the client, model, prompt and schema are supplied to each call.
 class GeminiPrescriptionTextClient:
-    # 함수이름: generate_text_content
-    # 함수역할:
-    # - 기기에서 개인정보를 제거한 OCR 텍스트를 구조화된 처방 정보로 변환한다.
-    # 매개변수:
-    # - client (genai.Client): Gemini API 클라이언트
-    # - model_name (str): 구조화 분석에 사용할 Gemini 모델명
-    # - prompt (str): 처방전 추출 지시문
-    # - masked_text (str): 기기에서 민감정보를 제거한 OCR 텍스트
-    # - response_schema (dict[str, Any]): 구조화 응답 JSON 스키마
-    # 반환값:
-    # - Gemini가 반환한 JSON 문자열
+    # Function Name: generate_text_content
+    # Description: Sends the supplied masked OCR text with a constrained JSON schema, deterministic temperature and bounded output, without de-identifying it here.
+    # Parameters: client (genai.Client), model_name (str) select Gemini; prompt and masked_text (str) are trusted instructions/filtered text; response_schema (dict) defines output.
+    # Returns: Nonblank provider text; empty/safety-blocked output raises PrescriptionAnalysisFormatError and SDK failures propagate.
     async def generate_text_content(
         self,
         *,
@@ -117,7 +111,7 @@ class OCRServiceBoundary:
         if not normalized_text:
             raise ValueError("Masked prescription text is empty.")
         # 다른 호출 경로에서도 원문이 제공자 어댑터로 넘어가지 않게 마지막 경계에서 검사한다.
-        normalized_text = deidentify_prescription_text(normalized_text)
+        normalized_text = await asyncio.to_thread(deidentify_prescription_text, normalized_text)
         extraction_started_at = time.perf_counter()
         try:
             response = await asyncio.wait_for(

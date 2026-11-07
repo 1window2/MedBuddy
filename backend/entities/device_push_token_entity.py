@@ -44,6 +44,8 @@ class _DevicePushToken(Base):
     platform = Column(String, nullable=False, default="android", server_default="android")
     enabled = Column(Boolean, nullable=False, default=True, server_default="1")
     supports_caregiver_actions = Column(Boolean, nullable=False, default=False, server_default="0")
+    # 구버전 보호자 알림 지원과 환자 복용 완료 버튼 지원은 별개로 등록한다.
+    supports_slot_check_actions = Column(Boolean, nullable=False, default=False, server_default="0")
     created_at = Column(DateTime, nullable=False, default=utc_now)
     updated_at = Column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)
     # 시계·DB 시각 정밀도와 무관하게 재등록 전후의 전송 결과를 구분한다.

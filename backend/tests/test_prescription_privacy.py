@@ -1,3 +1,6 @@
+# 파일명: test_prescription_privacy.py
+# 역할: 처방전 개인정보의 외부 전송 차단, 비식별화와 약품·복용 정보 보존을 검증한다.
+
 """처방전 원문 개인정보가 외부 제공자로 넘어가지 않는지 검증한다."""
 
 from types import SimpleNamespace
@@ -17,6 +20,13 @@ _MEDICATION = "타이레놀정 500mg 1정 하루 3회 5일분"
 _DATE = "조제일자: 2026-10-22"
 
 
+# 함수이름: test_removes_entire_private_header_with_multiline_values
+# 함수역할:
+# - 여러 줄 개인정보 머리말은 제거하면서 처방 날짜·약품 행은 보존하고 반복 처리 결과도 같은지 확인한다.
+# 매개변수:
+# - header: str; 이름·생년월일·주소 등을 포함하는 여러 줄 개인정보 머리말.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("header", [
     "환자명: 홍길동\n생년월일: 1990-01-01\n주소: 서울특별시 종로구 사직로 100\n101동 202호",
     "환자 성명\n생년월일\n연령 / 성별\n홍길동\n1990.01.01\n36세 / 남",
@@ -33,6 +43,13 @@ def test_removes_entire_private_header_with_multiline_values(header: str) -> Non
     assert deidentify_prescription_text(safe) == safe
 
 
+# 함수이름: test_removes_inline_identifiers_without_changing_dose
+# 함수역할:
+# - 약품 행의 식별값만 REDACTED로 치환하고 용량·처방 날짜와 처리 멱등성을 유지하는지 확인한다.
+# 매개변수:
+# - identifier: str; 약품 행에 붙은 연락처·주민번호·이메일.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("identifier", [
     "900101-1234567", "9001011234567", "900101—1234567", "900101-*******",
     "900101-1******", "010-1234-5678", "01012345678", "02)1234-5678",
@@ -45,6 +62,13 @@ def test_removes_inline_identifiers_without_changing_dose(identifier: str) -> No
     assert deidentify_prescription_text(safe) == safe
 
 
+# 함수이름: test_preserves_medication_and_explicit_prescription_dates
+# 함수역할:
+# - 약품과 명시된 처방 날짜·용법은 비식별화 과정에서 변경하지 않는지 확인한다.
+# 매개변수:
+# - safe: str; 보존해야 하는 약품·처방 날짜 문자열.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("safe", [
     _MEDICATION,
     f"{_DATE}\n{_MEDICATION}",
@@ -57,6 +81,14 @@ def test_preserves_medication_and_explicit_prescription_dates(safe: str) -> None
     assert deidentify_prescription_text(safe) == safe
 
 
+# Function Name: test_identifying_lines_without_medication_are_left_out
+# Description:
+# - Removes standalone identifying lines without rejecting valid medication text, preserving idempotent redaction.
+# Parameters:
+# - private_line: str; standalone identifying line.
+# - leftover: str | None; retained redaction marker, or removed line.
+# Returns:
+# - None.
 @pytest.mark.parametrize(("private_line", "leftover"), [
     ("서울특별시 종로구 사직로 100", None),
     ("서울특별시 종로구", None),
@@ -68,7 +100,7 @@ def test_preserves_medication_and_explicit_prescription_dates(safe: str) -> None
     ("101동 202호", None),
     ("1990-01-01", "[REDACTED]"),
 ])
-def test_identifying_lines_without_medication_are_left_out(private_line, leftover) -> None:
+def test_identifying_lines_without_medication_are_left_out(private_line: str, leftover: str | None) -> None:
     # 약 정보가 없는 식별 줄은 요청 전체를 거부하지 않고 그 줄(날짜는 값)만 빼고 보낸다.
     safe = deidentify_prescription_text(f"{_MEDICATION}\n{private_line}")
     assert safe == (_MEDICATION if leftover is None else f"{_MEDICATION}\n{leftover}")
@@ -77,6 +109,14 @@ def test_identifying_lines_without_medication_are_left_out(private_line, leftove
     assert deidentify_prescription_text(safe) == safe
 
 
+# Function Name: test_realistic_prescription_and_bag_text_is_analysed
+# Description:
+# - Checks realistic prescription and bag text against exact expected output while preserving dosing instructions and explicit dates.
+# Parameters:
+# - source: str; synthetic prescription or medication-bag text.
+# - expected: str; exact deidentified content with medication instructions preserved.
+# Returns:
+# - None.
 @pytest.mark.parametrize(("source", "expected"), [
     # 약봉투: 환자 이름 줄, 약국 주소·전화, 필요시 용법.
     (
@@ -120,6 +160,13 @@ _UNSAFE = [
 ]
 
 
+# 함수이름: test_rejects_ambiguous_or_residual_high_risk_text
+# 함수역할:
+# - 안전하게 분리할 수 없거나 고위험 정보가 남은 입력을 거부하고 예외에도 개인정보를 넣지 않는지 확인한다.
+# 매개변수:
+# - source: str; 개인정보 잔류·혼합으로 거부해야 하는 원문.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("source", _UNSAFE)
 def test_rejects_ambiguous_or_residual_high_risk_text(source: str) -> None:
     with pytest.raises(PrescriptionPrivacyError) as failure:
@@ -129,6 +176,13 @@ def test_rejects_ambiguous_or_residual_high_risk_text(source: str) -> None:
     assert "900101" not in str(failure.value)
 
 
+# 함수이름: test_unsafe_text_never_calls_provider_or_control_boundary
+# 함수역할:
+# - 위험 원문은 OCR 경계와 컨트롤 양쪽에서 외부 제공자 호출 전에 거부되는지 확인한다.
+# 매개변수:
+# - source: str; 개인정보 잔류·혼합으로 거부해야 하는 원문.
+# 반환값:
+# - None.
 @pytest.mark.anyio
 @pytest.mark.parametrize("source", _UNSAFE)
 async def test_unsafe_text_never_calls_provider_or_control_boundary(source: str) -> None:
@@ -151,8 +205,15 @@ async def test_unsafe_text_never_calls_provider_or_control_boundary(source: str)
     extract.assert_not_awaited()
 
 
+# 함수이름: test_provider_receives_only_redacted_content_and_logs_no_pii
+# 함수역할:
+# - 제공자에는 비식별화된 내용만 전달하고 로그에는 문자 수 외 개인정보가 남지 않는지 확인한다.
+# 매개변수:
+# - caplog: LogCaptureFixture; 발생한 로그를 수집한다.
+# 반환값:
+# - None.
 @pytest.mark.anyio
-async def test_provider_receives_only_redacted_content_and_logs_no_pii(caplog) -> None:
+async def test_provider_receives_only_redacted_content_and_logs_no_pii(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.INFO)
     generate = AsyncMock(return_value=SimpleNamespace(text="{}"))
     client = SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(generate_content=generate)))
@@ -167,6 +228,13 @@ async def test_provider_receives_only_redacted_content_and_logs_no_pii(caplog) -
         assert private not in sent
 
 
+# 함수이름: test_control_sanitizes_before_injected_ocr_boundary
+# 함수역할:
+# - 대체 OCR 경계를 주입해도 컨트롤이 먼저 개인정보를 제거해 전달하는지 확인한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - None.
 @pytest.mark.anyio
 async def test_control_sanitizes_before_injected_ocr_boundary() -> None:
     extract = AsyncMock(return_value='{"medications": []}')
@@ -179,6 +247,13 @@ async def test_control_sanitizes_before_injected_ocr_boundary() -> None:
     extract.assert_awaited_once_with(f"{_DATE}\n{_MEDICATION}")
 
 
+# 함수이름: test_existing_secondary_response_masking_is_preserved
+# 함수역할:
+# - 외부 응답의 주민번호에 대한 기존 2차 마스킹을 유지하는지 확인한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - None.
 def test_existing_secondary_response_masking_is_preserved() -> None:
     control = InputPrescription(client=object(), medication_name_verifier=object(), ocr_service_boundary=object())
     assert control._apply_secondary_masking({"hospital_name": "900101-1234567"}) == {
@@ -186,11 +261,25 @@ def test_existing_secondary_response_masking_is_preserved() -> None:
     }
 
 
+# 함수이름: test_existing_device_redaction_markers_and_ocr_spacing_are_safe
+# 함수역할:
+# - 기기 마스킹 표시는 공통 REDACTED로 정리하고 OCR 공백을 정규화하는지 확인한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - None.
 def test_existing_device_redaction_markers_and_ocr_spacing_are_safe() -> None:
     safe = deidentify_prescription_text(f"Drug  name | Dose\n{_MEDICATION} [연락처 제거] [주민번호 제거] [이메일 제거]")
     assert safe == f"Drug name | Dose\n{_MEDICATION} [REDACTED] [REDACTED] [REDACTED]"
 
 
+# 함수이름: test_legitimate_korean_medication_rows_are_not_treated_as_patient_names
+# 함수역할:
+# - 정상 한국어 약품 행을 환자 이름으로 오인하지 않고 개인정보 머리말만 제거하는지 확인한다.
+# 매개변수:
+# - row: str; 정상 한국어 약품명·복용 지시 행.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("row", [
     "씨잘정5밀리그램 1정 1일 1회 7일분",
     "크레스토정10밀리그램 1정 1일 1회 30일분",
@@ -206,17 +295,38 @@ def test_legitimate_korean_medication_rows_are_not_treated_as_patient_names(row:
     assert deidentify_prescription_text(f"환자명 홍길동\n약품명\n{row}") == f"약품명\n{row}"
 
 
+# 함수이름: test_unicode_ocr_unit_normalization_preserves_medication_meaning
+# 함수역할:
+# - OCR의 유니코드 밀리그램 단위를 mg로 정규화하되 약품 의미를 보존하는지 확인한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - None.
 def test_unicode_ocr_unit_normalization_preserves_medication_meaning() -> None:
     assert deidentify_prescription_text("타이레놀정 500㎎ 1정") == "타이레놀정 500mg 1정"
 
 
+# 함수이름: test_bare_words_are_not_silently_guessed_to_be_patient_names
+# 함수역할:
+# - 이름처럼 보이는 단독 단어도 근거 없이 개인정보로 추정해 삭제하지 않는 탐지 한계를 명시한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - None.
 def test_bare_words_are_not_silently_guessed_to_be_patient_names() -> None:
     # 약명과 이름을 낱말 길이만으로 구분할 수 없어 미탐지 한계를 명시적으로 남긴다.
     assert deidentify_prescription_text("홍길동") == "홍길동"
 
 
+# 함수이름: test_privacy_rejection_returns_safe_400_without_external_call
+# 함수역할:
+# - 개인정보 거부는 안전한 400 안내로 변환하고 로그·응답·외부 호출에 원문 이름을 노출하지 않는지 확인한다.
+# 매개변수:
+# - caplog: LogCaptureFixture; 발생한 로그를 수집한다.
+# 반환값:
+# - None.
 @pytest.mark.anyio
-async def test_privacy_rejection_returns_safe_400_without_external_call(caplog) -> None:
+async def test_privacy_rejection_returns_safe_400_without_external_call(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.DEBUG)
     extract = AsyncMock()
     control = InputPrescription(
@@ -232,3 +342,24 @@ async def test_privacy_rejection_returns_safe_400_without_external_call(caplog) 
     assert "홍길동" not in failure.value.detail
     assert "홍길동" not in caplog.text
     extract.assert_not_awaited()
+
+
+# Function Name: test_overlong_line_is_refused_before_identifier_matching
+# Description: A line far longer than any prescription line is refused before the identifier
+#   patterns run, whose cost grows with the square of a line's length; a long text of normal
+#   lines is still processed.
+# Parameters: None.
+# Returns: None.
+def test_overlong_line_is_refused_before_identifier_matching() -> None:
+    import time
+
+    from services.prescription_privacy import MAX_PRESCRIPTION_LINE_LENGTH
+
+    started = time.perf_counter()
+    with pytest.raises(PrescriptionPrivacyError):
+        deidentify_prescription_text("가" * 20_000)
+    assert time.perf_counter() - started < 0.5
+    with pytest.raises(PrescriptionPrivacyError):
+        deidentify_prescription_text(f"{_MEDICATION}\n" + "a" * (MAX_PRESCRIPTION_LINE_LENGTH + 1))
+    many_lines = "\n".join([_MEDICATION] * 300)
+    assert deidentify_prescription_text(many_lines).count("\n") == 299

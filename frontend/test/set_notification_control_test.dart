@@ -194,6 +194,13 @@ void main() {
     expect(jsonDecode(bodies.last), {'hour': 19, 'minute': 5});
   });
 
+  // 함수이름: test callback
+  // 함수역할:
+  // - 알림 끄기와 수정한 시각을 환자 범위가 포함된 PATCH 한 번으로 보내고 비활성 19:05 설정을 반환하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('disableAlarmSetting sends edited time in one scoped PATCH', () async {
     var calls = 0;
     final client = MockClient((request) async {
@@ -224,6 +231,13 @@ void main() {
     expect(setting.isEnabled, isFalse);
   });
 
+  // 함수이름: test callback
+  // 함수역할:
+  // - 시만 전달하면 분을 0으로 보완해 한 번 요청하고 비활성 19:00 설정을 반환하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('disableAlarmSetting defaults an omitted minute to zero', () async {
     var calls = 0;
     final client = MockClient((request) async {
@@ -257,6 +271,13 @@ void main() {
     expect(setting.isEnabled, isFalse);
   });
 
+  // 함수이름: test callback
+  // 함수역할:
+  // - 시 없이 분만 전달한 알림 끄기는 네트워크 요청 전에 StateError로 거부하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('disableAlarmSetting rejects minute without hour before request', () async {
     var calls = 0;
     final control = SetNotification(client: MockClient((_) async {

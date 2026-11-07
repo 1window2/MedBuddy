@@ -1,3 +1,6 @@
+// File Name: caregiver_alert_action_test.dart
+// Role: Verifies caregiver alert payloads, authenticated action delivery, retries and notification deduplication.
+
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -12,16 +15,45 @@ import 'package:medbuddy_frontend/services/caregiver_alert_delivery_service.dart
 import 'package:medbuddy_frontend/services/notification_inbox_store.dart';
 import 'package:medbuddy_frontend/services/notification_service.dart';
 
+// Function Name: context
+// Description:
+// - Build one dated lunch alert with a stable source identity and a selectable delivery cycle.
+// Parameters:
+// - delivery (int): Delivery alert ID and zero-padded event ID; defaults to the original cycle.
+// - recipient (String): Caregiver account allowed to act on this alert.
+// Returns:
+// - CaregiverAlertContext: Synthetic context for patient-a, link 7 and the fixed schedule date.
 CaregiverAlertContext context({int delivery = 1, String recipient = 'caregiver-a'}) => CaregiverAlertContext(
   alertId: delivery, sourceAlertId: 1, linkId: 7,
   eventId: delivery.toString().padLeft(64, '0'), sourceEventId: '1'.padLeft(64, '0'),
   patientHash: 'patient-a', recipientHash: recipient, slotKey: 'lunch', scheduleDate: '2026-09-21',
 );
 
+// Function Name: main
+// Description:
+// - Register alert-action and delivery-marker cases using mocked HTTP and notification state.
+// Parameters:
+// - None.
+// Returns:
+// - No value; the framework executes the registered cases and fixture hooks.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // Function Name: setUp callback
+  // Description:
+  // - Reset delivery markers and make caregiver-a the active local notification account.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; installs isolated in-memory preferences for each case.
   setUp(() => SharedPreferences.setMockInitialValues({NotificationInboxStore.activeUserKey: 'caregiver-a'}));
 
+  // Function Name: test callback
+  // Description:
+  // - Round-trip delivery and source identities, map only caregiver-specific action IDs, reject malformed payloads and distinguish notification IDs between cycles.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('versioned payload preserves original/delivery context and dedicated actions', () {
     final alert = context(delivery: 2);
     final selected = NotificationService.selectionFromPayload(alert.payload,
@@ -41,6 +73,13 @@ void main() {
     expect(context().notificationId, isNot(alert.notificationId));
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Require a bodyless POST to the alert snooze endpoint, and reject denied, conflicted, failed or unrecognized success receipts.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   test('snooze uses only the server delivery endpoint and surfaces failed or unknown receipt', () async {
     var status = 200;
     var valid = true;
@@ -62,6 +101,13 @@ void main() {
     await expectLater(actions.execute(context(), CaregiverAlertAction.snooze), throwsStateError);
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Run a caregiver action as another account; require a local StateError before the HTTP stub can be called.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   test('wrong account is rejected before any HTTP request', () async {
     final actions = CaregiverAlertActionControl(userHash: 'other', client: MockClient((_) async {
       fail('Must not send a request');
@@ -69,6 +115,13 @@ void main() {
     await expectLater(actions.execute(context(), CaregiverAlertAction.requestCheck), throwsStateError);
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Lose the first chat response and retry another delivery cycle; both requests must use the original source alert's idempotency key and slot-check context.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   test('lost response can retry the same chat key across snooze cycles without navigation', () async {
     final bodies = <Map<String, dynamic>>[];
     var failNetwork = true;
@@ -92,8 +145,23 @@ void main() {
     expect(bodies.last['message_kind'], 'slot_check_request');
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Suppress a repeated delivery and a different recipient, but allow a new delivery cycle; only the two eligible events may reach the presenter.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   test('foreground/background duplicates display once, new cycles display again', () async {
     var calls = 0;
+    // Function Name: show
+    // Description:
+    // - Count actual display attempts after delivery deduplication and recipient checks.
+    // Parameters:
+    // - alert (CaregiverAlertContext): Accepted delivery context; not rendered by this stub.
+    // - title / body / language (String): Presentation values ignored by the counting stub.
+    // Returns:
+    // - Future<void>: Successful display completion after increasing calls.
     Future<void> show(CaregiverAlertContext alert, String title, String body, String language) async { calls++; }
     expect(await CaregiverAlertDeliveryService.display(context().toData(), presenter: show), isTrue);
     expect(await CaregiverAlertDeliveryService.display(context().toData(), presenter: show), isFalse);
@@ -116,6 +184,14 @@ void main() {
       legacyKey: true,
       'caregiver_delivery_note': 'keep',
     });
+    // Function Name: show
+    // Description:
+    // - Acknowledge notification presentation without platform calls so marker retention is isolated.
+    // Parameters:
+    // - alert (CaregiverAlertContext): Delivery whose marker is under test.
+    // - title / body / language (String): Presentation fields intentionally ignored.
+    // Returns:
+    // - Future<void>: Immediate successful completion with no presentation side effects.
     Future<void> show(CaregiverAlertContext alert, String title, String body, String language) async {}
     expect(await CaregiverAlertDeliveryService.display(context(delivery: 3).toData(), presenter: show), isFalse);
     expect(await CaregiverAlertDeliveryService.display(context().toData(), presenter: show), isTrue);
@@ -133,6 +209,13 @@ void main() {
     expect(preferences.getString('caregiver_delivery_note'), 'keep');
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Apply type-only privacy before the presenter sees private title/body values; a failed platform display must remain retryable rather than consuming its marker.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   test('failed display remains retryable and local privacy is respected', () async {
     SharedPreferences.setMockInitialValues({NotificationInboxStore.activeUserKey: 'caregiver-a',
       'user_setting_caregiver-a_notification_detail_mode': 'type_only'});
@@ -145,6 +228,13 @@ void main() {
     expect(await CaregiverAlertDeliveryService.display(data, presenter: (_, _, _, _) async {}), isTrue);
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Inspect Android notification actions and simulate a cold-launch response; both caregiver actions show UI and the selected action retains the original source context.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   test('Android actions show UI and cold-launch payload dispatches caregiver action only', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     AndroidFlutterLocalNotificationsPlugin.registerWith();

@@ -1,12 +1,24 @@
-// 파일명: linked_chat_route_observer_test.dart
-// 역할: 채팅 알림이 이미 열린 대화를 새로 쌓지 않도록 열린 채팅 경로 추적을 검증한다.
+// File Name: linked_chat_route_observer_test.dart
+// Role: Verifies chat route tracking across overlays, removals, and returns to an existing conversation.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/linked_chat_ui_boundary.dart';
 
-// 함수이름: main
-// 함수역할: 채팅 경로의 쌓기·닫기·제거·교체에 따른 추적 결과를 검사한다. 매개변수: 없음. 반환값: 없음.
+// Function Name: main
+// Description:
+// - Register a navigator-backed check of chat-route tracking across overlays, replacement, pop, and explicit removal.
+// Parameters:
+// - None.
+// Returns:
+// - void; no return value.
 void main() {
+  // Function Name: 열린 채팅 경로만 추적하고 닫거나 제거하면 지운다
+  // Description:
+  // - Track a chat beneath an unrelated overlay, retain it when only the overlay is popped, and clear or replace tracked links when their routes leave the navigator.
+  // Parameters:
+  // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('열린 채팅 경로만 추적하고 닫거나 제거하면 지운다', (tester) async {
     final chatRoutes = LinkedChatRouteObserver();
     final navigator = GlobalKey<NavigatorState>();
@@ -17,6 +29,13 @@ void main() {
         home: const SizedBox.shrink(),
       ),
     );
+    // Function Name: chat
+    // Description:
+    // - Create an empty route with the canonical chat name so observer behavior can be tested without rendering chat content.
+    // Parameters:
+    // - linkId (int): link encoded into the route name.
+    // Returns:
+    // - Route<void>; a MaterialPageRoute associated with that chat.
     Route<void> chat(int linkId) => MaterialPageRoute<void>(
       settings: RouteSettings(name: linkedChatRouteName(linkId)),
       builder: (_) => const SizedBox.shrink(),
@@ -30,7 +49,7 @@ void main() {
     expect(chatRoutes.isOpen(3), isTrue);
     expect(chatRoutes.isOpen(4), isFalse);
 
-    // 알림 처리처럼 채팅 위의 화면만 닫으면 채팅은 계속 열린 것으로 남는다.
+    // Popping only an overlay, as notification routing does, keeps the chat tracked.
     navigator.currentState!.popUntil(
       (route) => route.settings.name == linkedChatRouteName(3) || route.isFirst,
     );

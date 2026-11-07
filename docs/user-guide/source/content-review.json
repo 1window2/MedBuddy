@@ -1,0 +1,3329 @@
+{
+  "reviewed_on": "2026-11-07",
+  "sections": 84,
+  "steps": 327,
+  "baseline_steps_preserved": 321,
+  "added_steps": 6,
+  "caption_review": {
+    "sections_reviewed": 84,
+    "steps_reviewed": 327,
+    "caption_edits": 224,
+    "unchanged_concise_captions": 97,
+    "new_sections": 0,
+    "new_numbered_steps": 6,
+    "maximum_caption_chars": 153,
+    "mean_caption_chars": 78.47,
+    "captions_over_100_before": 164,
+    "captions_over_100_after": 2,
+    "all_sections_have_code_evidence": true,
+    "original_numbered_steps": 321,
+    "original_caption_edits": 224,
+    "new_step_captions": 6
+  },
+  "image_review": {
+    "sections": 84,
+    "steps": 327,
+    "original_unique_images": 168,
+    "final_unique_images": 173,
+    "new_assets": 29,
+    "status_counts": {
+      "reused": 277,
+      "replaced": 36,
+      "reused_cropped": 2,
+      "added": 6,
+      "reused_with_explanation": 6
+    },
+    "new_steps": 6,
+    "all_step_identities_preserved": true,
+    "all_box_counts_preserved": true,
+    "unresolved_required_image_replacements": [],
+    "all_original_321_steps_unchanged": false,
+    "all_original_321_reviews_unchanged": false,
+    "all_box_counts_preserved_scope": "Original 321 steps; each of six appended steps has one unlabeled highlight box.",
+    "original_step_change_exception": "CARE17-9.13:1 highlight top edge 732 -> 790; explicit final visual-QA correction. All other original steps unchanged.",
+    "original_review_observations_preserved": true,
+    "annotation_only_corrections": 1
+  },
+  "image_source_profile": {
+    "new_capture_type": "Production Flutter widgets with synthetic data and mocked responses in an isolated capture harness",
+    "app_text_size": "medium",
+    "text_scale": 1.0,
+    "device_status_and_navigation_bars": "excluded",
+    "existing_emulators_modified": false,
+    "production_network_or_ai_calls_performed": false,
+    "native_notification_action_new_capture": false
+  },
+  "steps_reviewed": [
+    {
+      "identity": "AUTH-INS-LANGUAGE-20260924:1",
+      "number": 1,
+      "title": "언어 선택 열기",
+      "image": "assets/login-new.png",
+      "image_sha256": "96250787b05a53b3e900be99915dfbe7eccf57069d00cf9eaf60b2d6dc9c480d",
+      "image_review": "reused",
+      "caption_chars": 80,
+      "content_reviewed": true
+    },
+    {
+      "identity": "AUTH-INS-LANGUAGE-20260924:2",
+      "number": 2,
+      "title": "한국어 선택",
+      "image": "assets/login-language.png",
+      "image_sha256": "47162edc2a9c3c0723d3c7b48cd1af4af8fcc901533283602a12f037126d7f6a",
+      "image_review": "reused",
+      "caption_chars": 67,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P001:1",
+      "number": 1,
+      "title": "이메일 로그인",
+      "image": "assets/login-new.png",
+      "image_sha256": "96250787b05a53b3e900be99915dfbe7eccf57069d00cf9eaf60b2d6dc9c480d",
+      "image_review": "reused",
+      "caption_chars": 69,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P002:1",
+      "number": 1,
+      "title": "회원가입 열기",
+      "image": "assets/login-new.png",
+      "image_sha256": "96250787b05a53b3e900be99915dfbe7eccf57069d00cf9eaf60b2d6dc9c480d",
+      "image_review": "reused",
+      "caption_chars": 74,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P002:2",
+      "number": 2,
+      "title": "가입 정보 입력",
+      "image": "assets/signup-new.png",
+      "image_sha256": "e4e114ee3a963223260afc15a24c7f1771b668c1e3166a8e42c911d2e2b30be6",
+      "image_review": "reused",
+      "caption_chars": 90,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P003:3",
+      "number": 3,
+      "title": "받는 주소와 인증 메일 확인",
+      "image": "source/assets/2964035ba01e9a1941fa001c89674fcb50126dcdba62895b5f73811619001c81.png",
+      "image_sha256": "b0a500f1b394c93881bdb1d1960991075d2ffec2dcb5842174fda23014aea5b3",
+      "image_review": "reused",
+      "caption_chars": 77,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P004:4",
+      "number": 4,
+      "title": "인증 후 앱으로 돌아오기",
+      "image": "source/assets/2964035ba01e9a1941fa001c89674fcb50126dcdba62895b5f73811619001c81.png",
+      "image_sha256": "b0a500f1b394c93881bdb1d1960991075d2ffec2dcb5842174fda23014aea5b3",
+      "image_review": "reused",
+      "caption_chars": 76,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P004:5",
+      "number": 5,
+      "title": "인증 상태 다시 확인",
+      "image": "source/assets/2964035ba01e9a1941fa001c89674fcb50126dcdba62895b5f73811619001c81.png",
+      "image_sha256": "b0a500f1b394c93881bdb1d1960991075d2ffec2dcb5842174fda23014aea5b3",
+      "image_review": "reused",
+      "caption_chars": 83,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P005:6",
+      "number": 6,
+      "title": "인증한 계정으로 시작",
+      "image": "assets/v025-home-medium.png",
+      "image_sha256": "69476bf3b603177018392965e4d037a7281cddffd677bf6dfa2359de02f22001",
+      "image_review": "reused",
+      "caption_chars": 65,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P006:1",
+      "number": 1,
+      "title": "Google 로그인 시작",
+      "image": "assets/login-new.png",
+      "image_sha256": "96250787b05a53b3e900be99915dfbe7eccf57069d00cf9eaf60b2d6dc9c480d",
+      "image_review": "reused",
+      "caption_chars": 87,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P006:2",
+      "number": 2,
+      "title": "Google 계정 선택과 인증",
+      "image": "assets/login-new.png",
+      "image_sha256": "96250787b05a53b3e900be99915dfbe7eccf57069d00cf9eaf60b2d6dc9c480d",
+      "image_review": "reused",
+      "caption_chars": 93,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P007:3",
+      "number": 3,
+      "title": "게스트 시작",
+      "image": "assets/login-new.png",
+      "image_sha256": "96250787b05a53b3e900be99915dfbe7eccf57069d00cf9eaf60b2d6dc9c480d",
+      "image_review": "reused",
+      "caption_chars": 43,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P007:4",
+      "number": 4,
+      "title": "게스트 이용 전 확인",
+      "image": "assets/guest-warning-new.png",
+      "image_sha256": "47205b8ad67f09b1ed661557ec39d4d6b94af57137f35928904b7b333c66c590",
+      "image_review": "reused",
+      "caption_chars": 83,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P007:5",
+      "number": 5,
+      "title": "게스트 계정 확인",
+      "image": "assets/guide-guest-account.png",
+      "image_sha256": "727ea89a69a7dedeacebeaf4981b1b67ca2e0db61eec366f618e8f742b038364",
+      "image_review": "reused",
+      "caption_chars": 76,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P008:1",
+      "number": 1,
+      "title": "재설정 메일 요청",
+      "image": "assets/login-new.png",
+      "image_sha256": "96250787b05a53b3e900be99915dfbe7eccf57069d00cf9eaf60b2d6dc9c480d",
+      "image_review": "reused",
+      "caption_chars": 81,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P008:2",
+      "number": 2,
+      "title": "재설정 안내 확인",
+      "image": "assets/simulated-password-reset-2026-11-05.png",
+      "image_sha256": "c131e14c866f314c36e83e77f2c3a58315c5566d6745c27a1e1b16679939982b",
+      "image_review": "reused",
+      "caption_chars": 85,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P009:3",
+      "number": 3,
+      "title": "새 비밀번호로 로그인",
+      "image": "assets/login-new.png",
+      "image_sha256": "96250787b05a53b3e900be99915dfbe7eccf57069d00cf9eaf60b2d6dc9c480d",
+      "image_review": "reused",
+      "caption_chars": 86,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P010:1",
+      "number": 1,
+      "title": "오늘의 기록 확인",
+      "image": "assets/v025-home-medium.png",
+      "image_sha256": "69476bf3b603177018392965e4d037a7281cddffd677bf6dfa2359de02f22001",
+      "image_review": "reused",
+      "caption_chars": 86,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P010:2",
+      "number": 2,
+      "title": "네 가지 바로가기",
+      "image": "assets/widget-home-registration-menu-medium-2026-11-07.png",
+      "image_sha256": "58998b7a874c4f6488fc744b32abdac41294df124a16afffa5bfafe318b9edc5",
+      "image_review": "replaced",
+      "caption_chars": 89,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P011:3:1",
+      "number": 3,
+      "title": "일정에서 오늘 기록하기",
+      "image": "assets/v025-home-medium.png",
+      "image_sha256": "69476bf3b603177018392965e4d037a7281cddffd677bf6dfa2359de02f22001",
+      "image_review": "reused",
+      "caption_chars": 47,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P011:3:2",
+      "number": 4,
+      "title": "복약함에서 저장한 약 찾기",
+      "image": "assets/v025-home-medium.png",
+      "image_sha256": "69476bf3b603177018392965e4d037a7281cddffd677bf6dfa2359de02f22001",
+      "image_review": "reused",
+      "caption_chars": 76,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P011:4:1",
+      "number": 5,
+      "title": "채팅에서 가족과 대화하기",
+      "image": "assets/v025-home-medium.png",
+      "image_sha256": "69476bf3b603177018392965e4d037a7281cddffd677bf6dfa2359de02f22001",
+      "image_review": "reused",
+      "caption_chars": 76,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P011:4:2",
+      "number": 6,
+      "title": "내 정보에서 계정과 연결 관리",
+      "image": "assets/v025-home-medium.png",
+      "image_sha256": "69476bf3b603177018392965e4d037a7281cddffd677bf6dfa2359de02f22001",
+      "image_review": "reused",
+      "caption_chars": 78,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P012:5",
+      "number": 7,
+      "title": "계정과 가족 연결",
+      "image": "assets/v025-myinfo-medium.png",
+      "image_sha256": "58954051ee2abeb2943f9c65db98c88d99e62cef7b7599670b54e3ce32a646da",
+      "image_review": "reused",
+      "caption_chars": 83,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P012:6",
+      "number": 8,
+      "title": "환경설정 메뉴 선택",
+      "image": "assets/v025-settings-home-medium.png",
+      "image_sha256": "d232424dfac6cf3f4fe5c977bcbce478192d086f005b5293af9e41f5f76ba723",
+      "image_review": "reused",
+      "caption_chars": 65,
+      "content_reviewed": true
+    },
+    {
+      "identity": "FEATURE-SEARCH-20261025:1",
+      "number": 1,
+      "title": "검색 화면과 전체 기능",
+      "image": "assets/widget-feature-start-medium-2026-11-07.png",
+      "image_sha256": "3ac8618490be5f2a8b7a451deab5a6a29abdca09acc9383ff397b0a0843da337",
+      "image_review": "replaced",
+      "caption_chars": 79,
+      "content_reviewed": true
+    },
+    {
+      "identity": "FEATURE-SEARCH-20261025:2",
+      "number": 2,
+      "title": "일상 표현으로 검색",
+      "image": "assets/widget-feature-text-medium-2026-11-07.png",
+      "image_sha256": "3037223cb8744ab23bc61c007d61808eb25a243213fc54aec8790ee9ca4fe44b",
+      "image_review": "replaced",
+      "caption_chars": 85,
+      "content_reviewed": true
+    },
+    {
+      "identity": "FEATURE-SEARCH-20261025:3",
+      "number": 3,
+      "title": "결과를 골라 기존 기능으로 이동",
+      "image": "assets/widget-medication-results-medium-2026-11-07.png",
+      "image_sha256": "a8c652f0d7f27efd4a45c29f83243d1cd27c5647049014e40eccae3747981e09",
+      "image_review": "replaced",
+      "caption_chars": 87,
+      "content_reviewed": true
+    },
+    {
+      "identity": "FEATURE-SEARCH-20261025:4",
+      "number": 4,
+      "title": "결과가 없을 때 다시 찾기",
+      "image": "assets/widget-feature-empty-medium-2026-11-07.png",
+      "image_sha256": "01adb7e803ea7fadffea6a5c42a5ec894434feb7df63233692e4b1e8dff418a1",
+      "image_review": "replaced",
+      "caption_chars": 86,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P013:1",
+      "number": 1,
+      "title": "처방전 분석 선택",
+      "image": "assets/v025-registration-options-medium.png",
+      "image_sha256": "2b8d57f3ebca44de02973ec32d3dfd18326bfcc70a989819868ba6eb4da67202",
+      "image_review": "reused",
+      "caption_chars": 49,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P013:2",
+      "number": 2,
+      "title": "사진 출처 선택",
+      "image": "assets/v025-prescription-source-medium.png",
+      "image_sha256": "fdd6d65a12ad0f529d3093c8d41c6aae8534e2e4908297c9a384a8da4b9f0f12",
+      "image_review": "reused",
+      "caption_chars": 78,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P014:3",
+      "number": 3,
+      "title": "갤러리 열기",
+      "image": "assets/v025-prescription-source-medium.png",
+      "image_sha256": "fdd6d65a12ad0f529d3093c8d41c6aae8534e2e4908297c9a384a8da4b9f0f12",
+      "image_review": "reused",
+      "caption_chars": 68,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P014:4",
+      "number": 4,
+      "title": "처방전 사진 선택",
+      "image": "assets/v025-prescription-picker-medium.png",
+      "image_sha256": "92e48dce06151e97b9b0f5af2d647bb4d7a5016ef85a86a3d798f5a29f6e2f26",
+      "image_review": "reused",
+      "caption_chars": 83,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P015:1",
+      "number": 1,
+      "title": "분석 진행 기다리기",
+      "image": "assets/prescription-progress-2026-10-29.png",
+      "image_sha256": "c2ae805a87447779d0287d3535d847f7c45631790ad16ee5e301a168531b878c",
+      "image_review": "reused",
+      "caption_chars": 90,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P019:9",
+      "number": 2,
+      "title": "조회 결과 요약 확인",
+      "image": "assets/prescription-lookup-review-2026-10-29.png",
+      "image_sha256": "854f372ec693c1d6b2e386cabe90eb2513767b853a021adfa9ef75679b4f8ff0",
+      "image_review": "reused",
+      "caption_chars": 85,
+      "content_reviewed": true
+    },
+    {
+      "identity": "DEV29-2.2:cards",
+      "number": 3,
+      "title": "약별 카드 대조",
+      "image": "assets/prescription-lookup-review-2026-10-29.png",
+      "image_sha256": "854f372ec693c1d6b2e386cabe90eb2513767b853a021adfa9ef75679b4f8ff0",
+      "image_review": "reused",
+      "caption_chars": 95,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P016:2",
+      "number": 4,
+      "title": "원본 사진 확인",
+      "image": "assets/prescription-review-legacy.png",
+      "image_sha256": "8f2ab0d65d09fbb6ff31f570240954ddeb111c5bcc1a850a79ada60676b6902c",
+      "image_review": "reused",
+      "caption_chars": 70,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P017:4",
+      "number": 5,
+      "title": "복용 정보 수정",
+      "image": "source/assets/82004ceaa692e1a5f2ea198195c8b9888d44a58a90231b08c4c145041b468fd9.png",
+      "image_sha256": "54faafc6e7e2980d4f0a87854b02db375512ff1c05b7b3bce8b15bf4c67e3347",
+      "image_review": "reused",
+      "caption_chars": 84,
+      "content_reviewed": true
+    },
+    {
+      "identity": "V023-2.2:dose-days",
+      "number": 6,
+      "title": "매일이 아닌 복용 지시 확인",
+      "image": "source/assets/82004ceaa692e1a5f2ea198195c8b9888d44a58a90231b08c4c145041b468fd9.png",
+      "image_sha256": "54faafc6e7e2980d4f0a87854b02db375512ff1c05b7b3bce8b15bf4c67e3347",
+      "image_review": "reused",
+      "caption_chars": 83,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P018:7",
+      "number": 7,
+      "title": "조제일자 달력 선택",
+      "image": "assets/prescription-date-picker-legacy.png",
+      "image_sha256": "021dce11d9a849f5832d9c1c2dc82c6fbd809e13fd1dc29ff1907d885a23de18",
+      "image_review": "reused_cropped",
+      "caption_chars": 61,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P019:8",
+      "number": 8,
+      "title": "수정 내용 적용 또는 취소",
+      "image": "source/assets/82004ceaa692e1a5f2ea198195c8b9888d44a58a90231b08c4c145041b468fd9.png",
+      "image_sha256": "54faafc6e7e2980d4f0a87854b02db375512ff1c05b7b3bce8b15bf4c67e3347",
+      "image_review": "reused",
+      "caption_chars": 84,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P020:10",
+      "number": 9,
+      "title": "누락된 약 추가",
+      "image": "assets/prescription-review-legacy.png",
+      "image_sha256": "8f2ab0d65d09fbb6ff31f570240954ddeb111c5bcc1a850a79ada60676b6902c",
+      "image_review": "reused",
+      "caption_chars": 90,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P022:1",
+      "number": 1,
+      "title": "확인이 필요한 약 찾기",
+      "image": "assets/prescription-lookup-review-2026-10-29.png",
+      "image_sha256": "854f372ec693c1d6b2e386cabe90eb2513767b853a021adfa9ef75679b4f8ff0",
+      "image_review": "reused",
+      "caption_chars": 90,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P022:2",
+      "number": 2,
+      "title": "미확인 약 다시 조회",
+      "image": "assets/prescription-lookup-review-2026-10-29.png",
+      "image_sha256": "854f372ec693c1d6b2e386cabe90eb2513767b853a021adfa9ef75679b4f8ff0",
+      "image_review": "reused",
+      "caption_chars": 84,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-2.3:open-candidates",
+      "number": 3,
+      "title": "약품 후보 열기",
+      "image": "assets/prescription-lookup-confirmed-2026-10-29.png",
+      "image_sha256": "7c380105e8075a78e86a01f94ff02087601706c739dcc956caff331e735811f5",
+      "image_review": "reused",
+      "caption_chars": 64,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-2.3:compare-candidates",
+      "number": 4,
+      "title": "이름·함량·제형 대조",
+      "image": "assets/v025-prescription-candidate-demo.png",
+      "image_sha256": "1b96ba53fffec503d09c7027a994a3397ae9ffdf0252d9b64f29fc9ef1f6df61",
+      "image_review": "reused",
+      "caption_chars": 79,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-2.3:confirm-candidate",
+      "number": 5,
+      "title": "맞는 후보 확정",
+      "image": "assets/v025-prescription-candidate-selected-demo.png",
+      "image_sha256": "6a745c015ceb0c44d0f370ea1ee26d7ddde7ef8e1da35cc6add885d389471e85",
+      "image_review": "reused",
+      "caption_chars": 80,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-2.3:analysis-result",
+      "number": 6,
+      "title": "확인 후 결과 보기",
+      "image": "assets/prescription-lookup-verified-only-2026-10-29.png",
+      "image_sha256": "c86e0ac993e034e9ed13e55ee329203da08bf1c8c28ae45ed1e0020bb9b55930",
+      "image_review": "reused",
+      "caption_chars": 59,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P023:3",
+      "number": 7,
+      "title": "대안: 확인된 약만 계속",
+      "image": "assets/prescription-lookup-verified-only-2026-10-29.png",
+      "image_sha256": "c86e0ac993e034e9ed13e55ee329203da08bf1c8c28ae45ed1e0020bb9b55930",
+      "image_review": "reused",
+      "caption_chars": 82,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P024:1",
+      "number": 1,
+      "title": "이전 처방과 비교하기",
+      "image": "assets/prescription-result-2026-10-29.png",
+      "image_sha256": "9e364cae964d7784301d910d4d301bed9edc48726f7b0ef162e809b3f4fb0a1e",
+      "image_review": "reused",
+      "caption_chars": 74,
+      "content_reviewed": true
+    },
+    {
+      "identity": "DEV29-2.4:radar-open",
+      "number": 2,
+      "title": "분류별 변화 확인",
+      "image": "assets/prescription-result-radar-2026-10-29.png",
+      "image_sha256": "94e47464946dc67d93cf89fc472de4a61e6f013f12d518413188d44419fa42d4",
+      "image_review": "reused",
+      "caption_chars": 84,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P025:1",
+      "number": 1,
+      "title": "분석 결과 열기",
+      "image": "assets/prescription-result-2026-10-29.png",
+      "image_sha256": "9e364cae964d7784301d910d4d301bed9edc48726f7b0ef162e809b3f4fb0a1e",
+      "image_review": "reused",
+      "caption_chars": 88,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P025:2",
+      "number": 2,
+      "title": "제품과 일정 대조",
+      "image": "assets/prescription-result-radar-2026-10-29.png",
+      "image_sha256": "94e47464946dc67d93cf89fc472de4a61e6f013f12d518413188d44419fa42d4",
+      "image_review": "reused",
+      "caption_chars": 83,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P026:3",
+      "number": 3,
+      "title": "전체 저장",
+      "image": "assets/prescription-result-2026-10-29.png",
+      "image_sha256": "9e364cae964d7784301d910d4d301bed9edc48726f7b0ef162e809b3f4fb0a1e",
+      "image_review": "reused",
+      "caption_chars": 82,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P027:5",
+      "number": 4,
+      "title": "한 약만 저장",
+      "image": "assets/prescription-result-2026-10-29.png",
+      "image_sha256": "9e364cae964d7784301d910d4d301bed9edc48726f7b0ef162e809b3f4fb0a1e",
+      "image_review": "reused",
+      "caption_chars": 74,
+      "content_reviewed": true
+    },
+    {
+      "identity": "DEV29-2.5:saved",
+      "number": 5,
+      "title": "저장 완료 확인",
+      "image": "assets/prescription-saved-2026-10-29.png",
+      "image_sha256": "6a75f4daafe8b9879882e2341e883b4179cc2c148a641d6c5b8e6ddb09a878f8",
+      "image_review": "reused",
+      "caption_chars": 88,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P028:1",
+      "number": 1,
+      "title": "약 이름과 수량 입력",
+      "image": "assets/widget-manual-top-medium-2026-11-07.png",
+      "image_sha256": "2bf061c23bb04a60f9c7a5675d723fac1ecfb8ce4d64eee206ba8fffb89ed817",
+      "image_review": "replaced",
+      "caption_chars": 88,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P028:2",
+      "number": 2,
+      "title": "복용량 단위 선택",
+      "image": "assets/widget-manual-top-medium-2026-11-07.png",
+      "image_sha256": "2bf061c23bb04a60f9c7a5675d723fac1ecfb8ce4d64eee206ba8fffb89ed817",
+      "image_review": "replaced",
+      "caption_chars": 84,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P029:3",
+      "number": 3,
+      "title": "알약 사진 추가",
+      "image": "assets/widget-manual-top-medium-2026-11-07.png",
+      "image_sha256": "2bf061c23bb04a60f9c7a5675d723fac1ecfb8ce4d64eee206ba8fffb89ed817",
+      "image_review": "replaced",
+      "caption_chars": 74,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P029:4",
+      "number": 4,
+      "title": "복용 기간 지정",
+      "image": "assets/widget-manual-second-medium-2026-11-07.png",
+      "image_sha256": "bbc708d469c2e17bb13a2a88f012a01d531ceadb63e89028f3309e0085ce135d",
+      "image_review": "replaced",
+      "caption_chars": 96,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P030:5",
+      "number": 5,
+      "title": "종료 날짜 선택",
+      "image": "assets/widget-manual-date-medium-2026-11-07.png",
+      "image_sha256": "6126aecd2365582aa1baf809e5a052b84df31569ea600aed3ca12e0a8e43250d",
+      "image_review": "replaced",
+      "caption_chars": 75,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P030:6",
+      "number": 6,
+      "title": "복용 기간 재확인",
+      "image": "assets/widget-manual-custom-medium-2026-11-07.png",
+      "image_sha256": "d99ec5c13ad4297d732e00d42c8ceb2dd31c28de54d808c22e9ac0e85cbeeb70",
+      "image_review": "replaced",
+      "caption_chars": 82,
+      "content_reviewed": true
+    },
+    {
+      "identity": "V023-2.6:dose-days",
+      "number": 7,
+      "title": "복용 주기 선택",
+      "image": "assets/widget-manual-custom-medium-2026-11-07.png",
+      "image_sha256": "d99ec5c13ad4297d732e00d42c8ceb2dd31c28de54d808c22e9ac0e85cbeeb70",
+      "image_review": "replaced",
+      "caption_chars": 83,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P031:7",
+      "number": 8,
+      "title": "복용 시간대 선택",
+      "image": "assets/widget-manual-bottom-medium-2026-11-07.png",
+      "image_sha256": "d99ec5c13ad4297d732e00d42c8ceb2dd31c28de54d808c22e9ac0e85cbeeb70",
+      "image_review": "replaced",
+      "caption_chars": 90,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P031:8",
+      "number": 9,
+      "title": "복약 정보 저장",
+      "image": "assets/widget-manual-partial-save-medium-2026-11-07.png",
+      "image_sha256": "4869bb0ffa005977a34ba2bf27d384d768ca15be94016b483fdf0816e7a6154c",
+      "image_review": "replaced",
+      "caption_chars": 87,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P032:10",
+      "number": 10,
+      "title": "빠진 약 이름 입력",
+      "image": "assets/widget-manual-validation-medium-2026-11-07.png",
+      "image_sha256": "67c741cf44c243209a491dd737578727d111a868893d38baa3a16df4bbccc00c",
+      "image_review": "replaced",
+      "caption_chars": 96,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CAPTURE-20261107-2.6:search-open",
+      "number": 11,
+      "title": "약 이름 검색 열기",
+      "image": "assets/widget-medication-search-medium-2026-11-07.png",
+      "image_sha256": "b0e6c08a450eaea34eac4bdebd1ff4d27af54fc157eda727cce827916e20651d",
+      "image_review": "added",
+      "caption_chars": 72,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CAPTURE-20261107-2.6:search-results",
+      "number": 12,
+      "title": "검색 결과에서 제품 확인",
+      "image": "assets/widget-medication-results-medium-2026-11-07.png",
+      "image_sha256": "a8c652f0d7f27efd4a45c29f83243d1cd27c5647049014e40eccae3747981e09",
+      "image_review": "added",
+      "caption_chars": 73,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CAPTURE-20261107-2.6:search-confirm",
+      "number": 13,
+      "title": "약품 정보 확인 후 선택",
+      "image": "assets/widget-medication-confirm-medium-2026-11-07.png",
+      "image_sha256": "fa1a2d99b99f08ad8ba32466df266f192cf38758595fdf1cf92a7445638aa58d",
+      "image_review": "added",
+      "caption_chars": 84,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P033:1",
+      "number": 1,
+      "title": "여러 알약 모드 선택",
+      "image": "assets/v025-pill-options-medium.png",
+      "image_sha256": "98afa4b642a2a0b0723606926ca3f669c4b998a20f9e7e346fc496d999078d6f",
+      "image_review": "reused",
+      "caption_chars": 78,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P033:2",
+      "number": 2,
+      "title": "한 장의 사진 추가",
+      "image": "source/assets/7de5d97c34721c4d1dd0e45529c920285e972fca133b6a2dac6518fb018aed74.png",
+      "image_sha256": "589b125cf011ea5b0539b87ea541d1295fd302db9cdc47db42ce667830f4c65a",
+      "image_review": "reused",
+      "caption_chars": 87,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P034:3",
+      "number": 3,
+      "title": "검출 번호와 후보 대조",
+      "image": "source/assets/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png",
+      "image_sha256": "5d82a774744e5e1ab995bf19b13cced8e92b70b5b8bd3204b066a5b4332c208e",
+      "image_review": "reused",
+      "caption_chars": 81,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P034:4",
+      "number": 4,
+      "title": "사진 교체 또는 영역 재분석",
+      "image": "source/assets/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png",
+      "image_sha256": "5d82a774744e5e1ab995bf19b13cced8e92b70b5b8bd3204b066a5b4332c208e",
+      "image_review": "reused",
+      "caption_chars": 75,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P035:1",
+      "number": 1,
+      "title": "같은 알약의 앞뒷면 추가",
+      "image": "source/assets/60aaef12b58b7c77465f663617bcbe3fca4ac2dbfe511d7515cebe0ad4900c52.png",
+      "image_sha256": "54d3b3280396b7dc2bb7a0beb7475600a54572b3d43478c2cd33f33bf73dafb4",
+      "image_review": "reused",
+      "caption_chars": 93,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P035:2",
+      "number": 2,
+      "title": "사진 확인과 삭제",
+      "image": "source/assets/fabb29595a3a9f2057df8379b570f49781c7edec86628f4610aa757c4cbbd5e8.png",
+      "image_sha256": "7f87f54264994e29fe81340531a894ab720cc5064377eace7d8b29d93e5e849d",
+      "image_review": "reused",
+      "caption_chars": 92,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P036:3",
+      "number": 3,
+      "title": "알약 묶음 추가",
+      "image": "source/assets/fabb29595a3a9f2057df8379b570f49781c7edec86628f4610aa757c4cbbd5e8.png",
+      "image_sha256": "7f87f54264994e29fe81340531a894ab720cc5064377eace7d8b29d93e5e849d",
+      "image_review": "reused",
+      "caption_chars": 85,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P036:4",
+      "number": 4,
+      "title": "후보 찾기 시작",
+      "image": "source/assets/fabb29595a3a9f2057df8379b570f49781c7edec86628f4610aa757c4cbbd5e8.png",
+      "image_sha256": "7f87f54264994e29fe81340531a894ab720cc5064377eace7d8b29d93e5e849d",
+      "image_review": "reused",
+      "caption_chars": 77,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P037:1",
+      "number": 1,
+      "title": "일치도 경고 확인",
+      "image": "source/assets/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png",
+      "image_sha256": "5d82a774744e5e1ab995bf19b13cced8e92b70b5b8bd3204b066a5b4332c208e",
+      "image_review": "reused",
+      "caption_chars": 86,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P037:2",
+      "number": 2,
+      "title": "대조한 후보 선택",
+      "image": "assets/guide-pill-selected.png",
+      "image_sha256": "3686906bb097a014b50835cbf47e9fe1dbedd26e9513aee717653d246027e94b",
+      "image_review": "reused",
+      "caption_chars": 75,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P038:3",
+      "number": 3,
+      "title": "비슷한 후보 더 보기",
+      "image": "source/assets/b533462d89b8c6eacb30858caf949eb76a964329221923180b082faabb076b22.png",
+      "image_sha256": "f1460e2bc64a3e2f77f0bb757e635355826324c7ede6ee7ccf32db5af07d3c03",
+      "image_review": "reused",
+      "caption_chars": 86,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P038:4",
+      "number": 4,
+      "title": "제품 정보를 비교",
+      "image": "assets/guide-pill-candidates-clean.png",
+      "image_sha256": "72931b6f61b917dc5db27a2b2ca6acecd066fdc63806296cde25a5ccc72902f9",
+      "image_review": "reused",
+      "caption_chars": 80,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P039:5",
+      "number": 5,
+      "title": "해당 알약 다시 확인",
+      "image": "source/assets/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png",
+      "image_sha256": "5d82a774744e5e1ab995bf19b13cced8e92b70b5b8bd3204b066a5b4332c208e",
+      "image_review": "reused",
+      "caption_chars": 86,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P039:6",
+      "number": 6,
+      "title": "사진 출처 선택",
+      "image": "source/assets/dfb6c50ab28a703dfa299c127bcf0cda27978de480a877365453019f4e952569.png",
+      "image_sha256": "ef5b074d9671a81d0034d9745f0acf1c41a401f44ceb94636c9cb03dc68f9187",
+      "image_review": "reused",
+      "caption_chars": 82,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P040:1",
+      "number": 1,
+      "title": "선택한 후보 검토",
+      "image": "assets/guide-pill-selected.png",
+      "image_sha256": "3686906bb097a014b50835cbf47e9fe1dbedd26e9513aee717653d246027e94b",
+      "image_review": "reused",
+      "caption_chars": 69,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P040:2",
+      "number": 2,
+      "title": "임시 기본값 반드시 수정",
+      "image": "assets/guide-pill-review-now.png",
+      "image_sha256": "3b7cb5c7cff1f9915f01fac4f31583468c138da4538b9f5d65f9c41983340597",
+      "image_review": "reused",
+      "caption_chars": 97,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P041:3",
+      "number": 3,
+      "title": "이름·시작일·복용량 입력",
+      "image": "assets/guide-pill-edit-now.png",
+      "image_sha256": "1cfb5aa1f88a0893b3fc4aa21d86d34a83f6f6a4eb34ddbbba861cf696863999",
+      "image_review": "reused",
+      "caption_chars": 67,
+      "content_reviewed": true
+    },
+    {
+      "identity": "V023-2.10:dose-days",
+      "number": 4,
+      "title": "복용하는 날 선택",
+      "image": "source/assets/e41407c545fc6063db6a0ffad482b2ae83c35fad6d4d73b1bf0f4ba1ae36efd2.png",
+      "image_sha256": "5332c5ebca09067b090d2a8c7d3c8a393c9500eeaab6fdd144c05635abe4da84",
+      "image_review": "reused",
+      "caption_chars": 68,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P041:4",
+      "number": 5,
+      "title": "횟수·기간·시간대 적용",
+      "image": "source/assets/e41407c545fc6063db6a0ffad482b2ae83c35fad6d4d73b1bf0f4ba1ae36efd2.png",
+      "image_sha256": "5332c5ebca09067b090d2a8c7d3c8a393c9500eeaab6fdd144c05635abe4da84",
+      "image_review": "reused",
+      "caption_chars": 79,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P042:5",
+      "number": 6,
+      "title": "저장 전 일정 재확인",
+      "image": "assets/guide-pill-review-now.png",
+      "image_sha256": "3b7cb5c7cff1f9915f01fac4f31583468c138da4538b9f5d65f9c41983340597",
+      "image_review": "reused",
+      "caption_chars": 83,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P042:6",
+      "number": 7,
+      "title": "확인한 정보 저장",
+      "image": "assets/guide-pill-review-now.png",
+      "image_sha256": "3b7cb5c7cff1f9915f01fac4f31583468c138da4538b9f5d65f9c41983340597",
+      "image_review": "reused",
+      "caption_chars": 94,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-2.10:saved-demo",
+      "number": 8,
+      "title": "저장 완료 상태 확인",
+      "image": "assets/guide-pill-saved-demo.png",
+      "image_sha256": "ec0211ccf3b5be43f965ac493e9c71a63be2139f010cfe0e5a6ba7f337b93177",
+      "image_review": "reused",
+      "caption_chars": 73,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-2.11:1",
+      "number": 1,
+      "title": "복용 유형 선택",
+      "image": "assets/widget-manual-prn-medium-2026-11-07.png",
+      "image_sha256": "27272424c76dde1253f1e38fbb9cca1b1cd7752ca617f565d2d9dd349674db39",
+      "image_review": "replaced",
+      "caption_chars": 72,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-2.11:2",
+      "number": 2,
+      "title": "정기 일정과 구분",
+      "image": "assets/widget-manual-prn-medium-2026-11-07.png",
+      "image_sha256": "27272424c76dde1253f1e38fbb9cca1b1cd7752ca617f565d2d9dd349674db39",
+      "image_review": "replaced",
+      "caption_chars": 80,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-2.11:3",
+      "number": 3,
+      "title": "복약함에서 확인",
+      "image": "assets/v025-cabinet-list-medium.png",
+      "image_sha256": "1602d100e49634b5f45219a83b3579764e8083608c14cb8decb5ccae6ce03a10",
+      "image_review": "reused",
+      "caption_chars": 76,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P044:1",
+      "number": 1,
+      "title": "오늘 기록의 진행률",
+      "image": "assets/v025-home-schedule-medium.png",
+      "image_sha256": "b2226a0d8dba004007ef52f035a2a897b92aa1b127e8979c3dc24b9e0eb1939e",
+      "image_review": "reused",
+      "caption_chars": 87,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P045:3",
+      "number": 2,
+      "title": "선택한 시간대 확인",
+      "image": "assets/v025-home-schedule-medium.png",
+      "image_sha256": "b2226a0d8dba004007ef52f035a2a897b92aa1b127e8979c3dc24b9e0eb1939e",
+      "image_review": "reused",
+      "caption_chars": 73,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P047:1",
+      "number": 1,
+      "title": "현재 시간대 기록",
+      "image": "assets/v025-home-schedule-medium.png",
+      "image_sha256": "b2226a0d8dba004007ef52f035a2a897b92aa1b127e8979c3dc24b9e0eb1939e",
+      "image_review": "reused",
+      "caption_chars": 83,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P047:2",
+      "number": 2,
+      "title": "완료된 기록 확인",
+      "image": "assets/widget-home-complete-medium-2026-11-07.png",
+      "image_sha256": "2766bb3f3ac464648f062542a9b9dc891bbac5a4d2f149e224944e841f4de3cc",
+      "image_review": "replaced",
+      "caption_chars": 98,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P048:3",
+      "number": 3,
+      "title": "시간대 전체 취소 확인",
+      "image": "assets/widget-home-cancel-confirm-medium-2026-11-07.png",
+      "image_sha256": "69008b6a158388c69827de5593d7f740821003e6a98c8a417c2d91aeb3e4fb89",
+      "image_review": "replaced",
+      "caption_chars": 100,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P048:4",
+      "number": 4,
+      "title": "취소 후 기록 확인",
+      "image": "assets/widget-home-not-taken-medium-2026-11-07.png",
+      "image_sha256": "b8cba6f9e5fea2a01c52ea176f621142fd9f2614da9c2e3a32fe315be9ff119c",
+      "image_review": "replaced",
+      "caption_chars": 74,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P049:1",
+      "number": 1,
+      "title": "내 전체 일정 열기",
+      "image": "assets/v025-schedule-current-medium.png",
+      "image_sha256": "c4b2a7224a7b4635de68a101641ca65cced760ddf7c4a8e25f9d37ecb8844bec",
+      "image_review": "reused",
+      "caption_chars": 100,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P050:2",
+      "number": 2,
+      "title": "기록·상세정보·알림 구분",
+      "image": "assets/v025-schedule-current-medium.png",
+      "image_sha256": "c4b2a7224a7b4635de68a101641ca65cced760ddf7c4a8e25f9d37ecb8844bec",
+      "image_review": "reused",
+      "caption_chars": 92,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P051:3",
+      "number": 3,
+      "title": "복용한 약만 기록",
+      "image": "assets/v025-schedule-current-medium.png",
+      "image_sha256": "c4b2a7224a7b4635de68a101641ca65cced760ddf7c4a8e25f9d37ecb8844bec",
+      "image_review": "reused",
+      "caption_chars": 81,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P051:4",
+      "number": 4,
+      "title": "완료 상태와 실행 취소",
+      "image": "source/assets/2be32d396f68b936afd40b4f2e84ab17ad9e826cbe9ab385033d07acd70749dc.png",
+      "image_sha256": "f6715edff2985a7f197df8be9cfe294013c04fa25671421770caca8f2674ffea",
+      "image_review": "reused",
+      "caption_chars": 73,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P052:5",
+      "number": 5,
+      "title": "약 하나의 기록 취소",
+      "image": "source/assets/2be32d396f68b936afd40b4f2e84ab17ad9e826cbe9ab385033d07acd70749dc.png",
+      "image_sha256": "f6715edff2985a7f197df8be9cfe294013c04fa25671421770caca8f2674ffea",
+      "image_review": "reused",
+      "caption_chars": 75,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P053:7",
+      "number": 6,
+      "title": "아래쪽 일정 확인",
+      "image": "assets/v025-schedule-current-medium.png",
+      "image_sha256": "c4b2a7224a7b4635de68a101641ca65cced760ddf7c4a8e25f9d37ecb8844bec",
+      "image_review": "reused",
+      "caption_chars": 87,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P055:1",
+      "number": 1,
+      "title": "시간대 전체 완료",
+      "image": "assets/v025-schedule-current-medium.png",
+      "image_sha256": "c4b2a7224a7b4635de68a101641ca65cced760ddf7c4a8e25f9d37ecb8844bec",
+      "image_review": "reused",
+      "caption_chars": 89,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P056:1",
+      "number": 1,
+      "title": "시간대 알림 설정 열기",
+      "image": "assets/v025-schedule-current-medium.png",
+      "image_sha256": "c4b2a7224a7b4635de68a101641ca65cced760ddf7c4a8e25f9d37ecb8844bec",
+      "image_review": "reused",
+      "caption_chars": 65,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P056:2",
+      "number": 2,
+      "title": "알림 사용과 시간 구분",
+      "image": "assets/v025-schedule-alarm-medium.png",
+      "image_sha256": "13cbb44438e7bb372efc4cc2a17a2ed02238c4ba481a97b1b8ae074209fa2cc6",
+      "image_review": "reused",
+      "caption_chars": 71,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P057:3",
+      "number": 3,
+      "title": "시·분 고르고 확인",
+      "image": "assets/v025-schedule-time-picker-medium.png",
+      "image_sha256": "59180da14cd7067a56d14bec6a17c5c4ce78e056b13ab95cb5d47ea84fb9603e",
+      "image_review": "reused",
+      "caption_chars": 74,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P058:4",
+      "number": 4,
+      "title": "숫자로 시간 입력",
+      "image": "assets/v025-schedule-time-input-medium.png",
+      "image_sha256": "03880960385da9c1b8bceb215e178044d8ddf8ee48392fca475a909f63530abc",
+      "image_review": "reused",
+      "caption_chars": 93,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P058:5",
+      "number": 5,
+      "title": "시간과 사용 여부 저장",
+      "image": "source/assets/2816052dd74eb97b30d2236c806e568710c05e1a3a8cacc3eb0f47441130e877.png",
+      "image_sha256": "781d2016524d792e42e8a7e6695853aba686e277c75564a2df34552f7f4e3390",
+      "image_review": "reused",
+      "caption_chars": 81,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P060:1",
+      "number": 1,
+      "title": "서버 전송 대기 확인",
+      "image": "source/assets/2be32d396f68b936afd40b4f2e84ab17ad9e826cbe9ab385033d07acd70749dc.png",
+      "image_sha256": "f6715edff2985a7f197df8be9cfe294013c04fa25671421770caca8f2674ffea",
+      "image_review": "reused",
+      "caption_chars": 97,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P061:4",
+      "number": 2,
+      "title": "전송 대기 표시 다시 확인",
+      "image": "source/assets/886654f161aeb46fcb79d949b0a74e79d0dfff9faa425a7455122036ff2df9c8.png",
+      "image_sha256": "471faca5d4615d27f625465270d9228f291bf4574016a67fc171308dc706c75a",
+      "image_review": "reused",
+      "caption_chars": 88,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-3.7:1",
+      "number": 1,
+      "title": "복용 기록 열기",
+      "image": "assets/v025-history-week-medium.png",
+      "image_sha256": "62cc6bd3ab2dad46183eca97f71847ae34034a4e4dfde43848ec0b3880428c10",
+      "image_review": "reused",
+      "caption_chars": 99,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-3.7:2",
+      "number": 2,
+      "title": "날짜별 기록 선택",
+      "image": "assets/v025-history-month-medium.png",
+      "image_sha256": "4f13a580ab4a2b7b55748a6161420d5e980cfe355cde94e4d280e64bb3461c71",
+      "image_review": "reused",
+      "caption_chars": 75,
+      "content_reviewed": true
+    },
+    {
+      "identity": "FINAL17-3.7:calendar",
+      "number": 3,
+      "title": "원하는 기간 선택",
+      "image": "assets/v025-history-range-medium.png",
+      "image_sha256": "eaf8aea16389b5246d150f121371daba18c414040c8ba3144fb5c849b46ba1ee",
+      "image_review": "reused",
+      "caption_chars": 72,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-3.7:3",
+      "number": 4,
+      "title": "상태와 기록 시각 확인",
+      "image": "assets/v025-history-detail-medium.png",
+      "image_sha256": "cc3b227aaf4ba64a39778d7b9f7f34ac1f9cb793acf06e3f1cc93962817b7601",
+      "image_review": "reused",
+      "caption_chars": 93,
+      "content_reviewed": true
+    },
+    {
+      "identity": "FINAL17-3.7:info",
+      "number": 5,
+      "title": "복용 기록의 의미 확인",
+      "image": "assets/v025-history-range-medium.png",
+      "image_sha256": "eaf8aea16389b5246d150f121371daba18c414040c8ba3144fb5c849b46ba1ee",
+      "image_review": "reused",
+      "caption_chars": 87,
+      "content_reviewed": true
+    },
+    {
+      "identity": "FINAL17-3.7:readonly",
+      "number": 6,
+      "title": "보호자 읽기 전용 확인",
+      "image": "assets/v025-caregiver-history-medium.png",
+      "image_sha256": "4a7ab770f7ab1434356aadfd135b3c6d929513c89f40408e1829ac9f30ec9fc9",
+      "image_review": "reused",
+      "caption_chars": 81,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-3.8:1",
+      "number": 1,
+      "title": "수정할 기록 선택",
+      "image": "assets/v025-history-edit-list-medium.png",
+      "image_sha256": "96c3a5e4a03d710115fba244625942b06b751f3db7bb53a96fd9caf786821c47",
+      "image_review": "reused",
+      "caption_chars": 83,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-3.8:2",
+      "number": 2,
+      "title": "상태와 이유 입력",
+      "image": "assets/v025-history-edit-skip-medium.png",
+      "image_sha256": "fff8ecf497e45aa883918d86f289e28118133d6029ae8160ad50b0523695a4cb",
+      "image_review": "reused",
+      "caption_chars": 78,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-3.8:3",
+      "number": 3,
+      "title": "확인 후 기록 저장",
+      "image": "assets/v025-history-edit-skip-medium.png",
+      "image_sha256": "fff8ecf497e45aa883918d86f289e28118133d6029ae8160ad50b0523695a4cb",
+      "image_review": "reused",
+      "caption_chars": 87,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-3.9:1",
+      "number": 1,
+      "title": "일정에서 필요시 약 체크",
+      "image": "assets/widget-prn-current-medium-2026-11-07.png",
+      "image_sha256": "533a94b2fe7c2a399573fc98c8669dd27533a02c3e1da851ff59ee19a579c8dc",
+      "image_review": "replaced",
+      "caption_chars": 81,
+      "content_reviewed": true
+    },
+    {
+      "identity": "FINAL17-3.9:batch",
+      "number": 2,
+      "title": "필요시 약 일괄 체크",
+      "image": "assets/widget-prn-current-medium-2026-11-07.png",
+      "image_sha256": "533a94b2fe7c2a399573fc98c8669dd27533a02c3e1da851ff59ee19a579c8dc",
+      "image_review": "replaced",
+      "caption_chars": 89,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-3.9:2",
+      "number": 3,
+      "title": "두 번째부터 추가 횟수 확인",
+      "image": "assets/widget-prn-additional-current-medium-2026-11-07.png",
+      "image_sha256": "2bf799df136dab770141028e53e402b646de2bc81912ecf71052a7c6759de143",
+      "image_review": "replaced",
+      "caption_chars": 85,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-3.9:3",
+      "number": 4,
+      "title": "기존 필요시 기록 정정",
+      "image": "assets/widget-history-prn-current-medium-2026-11-07.png",
+      "image_sha256": "5aa5edca3c6f9009b240b1860746cba2d7e526263688d108225aad3344aec3f4",
+      "image_review": "replaced",
+      "caption_chars": 90,
+      "content_reviewed": true
+    },
+    {
+      "identity": "FINAL17-3.9:reminder",
+      "number": 5,
+      "title": "원할 때만 확인 알림 켜기",
+      "image": "assets/widget-prn-reminder-current-medium-2026-11-07.png",
+      "image_sha256": "121bc48b38e682619d4794508b79286827c14fd00b4f0ca838e9b17207e348d4",
+      "image_review": "replaced",
+      "caption_chars": 90,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-3.10:1",
+      "number": 1,
+      "title": "공유 열기",
+      "image": "assets/widget-chat-patient-actions-medium-2026-11-07.png",
+      "image_sha256": "99156e6027a9f4870327cdba8943474669a287cacae0407a1bf13f4373053f0d",
+      "image_review": "replaced",
+      "caption_chars": 100,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-3.10:2",
+      "number": 2,
+      "title": "시작일과 종료일 각각 선택",
+      "image": "assets/v025-history-share-current-medium.png",
+      "image_sha256": "bccb0b2634d545b3d8641853ccd86c046d909a996dbc47c9b9c1c046085fc96d",
+      "image_review": "reused",
+      "caption_chars": 90,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT22-3.10:3",
+      "number": 3,
+      "title": "앱 안의 채팅으로 공유",
+      "image": "assets/widget-history-recipient-current-link-medium-2026-11-07.png",
+      "image_sha256": "a2a96d2c33bf4a32f412e57b5f19d3801e66667153fb0ce9346239ff8ff95e6c",
+      "image_review": "replaced",
+      "caption_chars": 96,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT22-3.10:4",
+      "number": 4,
+      "title": "공유한 카드의 건수 확인",
+      "image": "assets/v025-chat-history-current-medium.png",
+      "image_sha256": "70b9034438f3069999a771134fc30203c6fc75b9c253550c677bfce2407ac455",
+      "image_review": "reused",
+      "caption_chars": 83,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT22-3.10:5",
+      "number": 5,
+      "title": "같은 기간의 최신 기록 보기",
+      "image": "assets/widget-history-readonly-medium-2026-11-07.png",
+      "image_sha256": "4cfd25f1a40c3c101d8df550be553281d830db762cced8a9ec9022269bafc555",
+      "image_review": "replaced",
+      "caption_chars": 98,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-3.10:3",
+      "number": 6,
+      "title": "다른 앱에 글로 공유",
+      "image": "assets/v025-history-share-current-medium.png",
+      "image_sha256": "bccb0b2634d545b3d8641853ccd86c046d909a996dbc47c9b9c1c046085fc96d",
+      "image_review": "reused",
+      "caption_chars": 92,
+      "content_reviewed": true
+    },
+    {
+      "identity": "FINAL17-3.10:caregiver",
+      "number": 7,
+      "title": "보호자도 기간과 상대 확인",
+      "image": "assets/v025-caregiver-history-medium.png",
+      "image_sha256": "4a7ab770f7ab1434356aadfd135b3c6d929513c89f40408e1829ac9f30ec9fc9",
+      "image_review": "reused",
+      "caption_chars": 100,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CAPTURE-20261107-3.10:chat-plus-share",
+      "number": 8,
+      "title": "채팅의 더하기 메뉴에서 공유",
+      "image": "assets/widget-chat-patient-actions-medium-2026-11-07.png",
+      "image_sha256": "99156e6027a9f4870327cdba8943474669a287cacae0407a1bf13f4373053f0d",
+      "image_review": "added",
+      "caption_chars": 81,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P062:1",
+      "number": 1,
+      "title": "환자 코드 생성",
+      "image": "assets/v025-family-link-medium.png",
+      "image_sha256": "8f8bede5035abb326c1a2e2dc2ca011efae00d73da25feb5e7c3a9f9f569a20c",
+      "image_review": "reused",
+      "caption_chars": 74,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P062:2",
+      "number": 2,
+      "title": "코드 복사와 유효시간",
+      "image": "assets/expired-test-guide-code-temporary.png",
+      "image_sha256": "adf1c3f5852d596b8b2cf56a5b074935ff6d30f3309ceaac87649ceaed8e2b50",
+      "image_review": "reused",
+      "caption_chars": 78,
+      "content_reviewed": true
+    },
+    {
+      "identity": "V023-4.1:expired-code",
+      "number": 3,
+      "title": "만료되면 새 코드 발급",
+      "image": "assets/expired-test-guide-code-expired.png",
+      "image_sha256": "42c7e9ca38449b02ff7566d2aff9e7e8040146a9d274fe83103ccedb1c05c2ef",
+      "image_review": "reused",
+      "caption_chars": 98,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P064:1",
+      "number": 1,
+      "title": "받은 환자 코드 입력",
+      "image": "assets/current-caregiver-register.png",
+      "image_sha256": "1b2f8428187c07f54fc2321ec95e910b9fa1a075bf3271c2dc42a3d9082e160d",
+      "image_review": "reused",
+      "caption_chars": 73,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P066:2",
+      "number": 1,
+      "title": "가족과 복약 대화",
+      "image": "assets/v025-family-link-medium.png",
+      "image_sha256": "8f8bede5035abb326c1a2e2dc2ca011efae00d73da25feb5e7c3a9f9f569a20c",
+      "image_review": "reused",
+      "caption_chars": 65,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P067:1",
+      "number": 1,
+      "title": "환자 선택과 새로고침",
+      "image": "assets/v025-caregiver-home-medium.png",
+      "image_sha256": "4bdc23641ce62c914c11cf9e4d3b1f3bc2fa1c8b0035b160718fe3b4e9e292fa",
+      "image_review": "reused",
+      "caption_chars": 88,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P069:5",
+      "number": 2,
+      "title": "환자의 전체 일정 열기",
+      "image": "assets/v025-caregiver-home-medium.png",
+      "image_sha256": "4bdc23641ce62c914c11cf9e4d3b1f3bc2fa1c8b0035b160718fe3b4e9e292fa",
+      "image_review": "reused",
+      "caption_chars": 75,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P069:6",
+      "number": 3,
+      "title": "읽기 전용 일정 확인",
+      "image": "assets/v025-caregiver-schedule-medium.png",
+      "image_sha256": "1df3fd1814c4dcf1c6d30fae4e0e8b411674ddef674fbf9a3e86c893f0fc8727",
+      "image_review": "reused",
+      "caption_chars": 74,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P070:7",
+      "number": 4,
+      "title": "현재 기록 다시 확인",
+      "image": "assets/v025-caregiver-schedule-medium.png",
+      "image_sha256": "1df3fd1814c4dcf1c6d30fae4e0e8b411674ddef674fbf9a3e86c893f0fc8727",
+      "image_review": "reused",
+      "caption_chars": 94,
+      "content_reviewed": true
+    },
+    {
+      "identity": "FINAL17-4.4:prn",
+      "number": 5,
+      "title": "환자의 필요시 기록 확인",
+      "image": "source/assets/bed205f11bae97e9ff8fcd116817d00895bd2368177902db906839cd3431433f.png",
+      "image_sha256": "e0287c06f602b033891754823b9d4e0806ddfa154740a7bff94694a7ee7523fa",
+      "image_review": "reused",
+      "caption_chars": 85,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P073:1",
+      "number": 1,
+      "title": "표시 이름 입력",
+      "image": "assets/current-guide-link-alias.png",
+      "image_sha256": "7c1419996aea3fba082fa1e66a13978b1ca5af6939ef286b79228e8fa0ef1828",
+      "image_review": "reused",
+      "caption_chars": 69,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P075:1",
+      "number": 1,
+      "title": "상대 확인 후 해제 창 열기",
+      "image": "assets/current-guide-link-expand.png",
+      "image_sha256": "4215d13526ed787d9394d335166e499311cf9370713eae4c584a45fa13ccbb3e",
+      "image_review": "reused",
+      "caption_chars": 90,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P075:2",
+      "number": 2,
+      "title": "삭제 범위를 읽고 결정",
+      "image": "assets/current-guide-unlink.png",
+      "image_sha256": "36eca00b745562d0e831105444c155e017e048ceb1a0b9be5fb59a63b784a8d9",
+      "image_review": "reused",
+      "caption_chars": 83,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P076:1",
+      "number": 1,
+      "title": "안 읽은 대화 열기",
+      "image": "assets/v025-chat-list-medium.png",
+      "image_sha256": "f47fec469f3f2a8aafe9ccda1b720eca7395fe53c84f92f0626f7e7a5b1ee6b1",
+      "image_review": "reused",
+      "caption_chars": 97,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P077:2",
+      "number": 2,
+      "title": "새 메시지의 읽은 경계",
+      "image": "assets/v025-chat-unread-current-medium.png",
+      "image_sha256": "68a91a8cf62a19ab23920ef4d7c559792ed0d80479e6f88d6e6222142c2924d9",
+      "image_review": "reused",
+      "caption_chars": 93,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-5.1:3",
+      "number": 3,
+      "title": "상대의 읽음 확인",
+      "image": "assets/v025-chat-read-deleted-medium.png",
+      "image_sha256": "2de99d777121017b29fa3f13896e73aae910eb0fc66efe552d9e39299d7f403c",
+      "image_review": "reused",
+      "caption_chars": 153,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P078:1",
+      "number": 1,
+      "title": "대화할 약 고르기",
+      "image": "assets/widget-chat-search-selected-patient-medium-2026-11-07.png",
+      "image_sha256": "10c2140a8c805bf4642af9a71fea660808226336f817ec8443c934fd9f2885cc",
+      "image_review": "replaced",
+      "caption_chars": 90,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CAPTURE-20261107-5.2:search-reference",
+      "number": 2,
+      "title": "검색약 참고 정보 선택",
+      "image": "assets/widget-chat-search-selected-patient-medium-2026-11-07.png",
+      "image_sha256": "10c2140a8c805bf4642af9a71fea660808226336f817ec8443c934fd9f2885cc",
+      "image_review": "added",
+      "caption_chars": 84,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CAPTURE-20261107-5.2:reference-composer",
+      "number": 3,
+      "title": "미등록 검색약 첨부 확인",
+      "image": "assets/widget-chat-reference-patient-medium-2026-11-07.png",
+      "image_sha256": "ffa1afdb442c045a0a4377fc21fcad8d1098234e6a72e9deef67b0f011fc0fdb",
+      "image_review": "added",
+      "caption_chars": 92,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P083:4",
+      "number": 1,
+      "title": "전송한 글과 미확인 표시",
+      "image": "assets/v025-chat-read-deleted-medium.png",
+      "image_sha256": "2de99d777121017b29fa3f13896e73aae910eb0fc66efe552d9e39299d7f403c",
+      "image_review": "reused",
+      "caption_chars": 115,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P084:5",
+      "number": 2,
+      "title": "오늘의 시간대 선택",
+      "image": "assets/widget-chat-caregiver-actions-medium-2026-11-07.png",
+      "image_sha256": "e910d8d811f49952ade501bd897f50d01523ce1a7d6dc0d1d5d3a1d9629429e1",
+      "image_review": "replaced",
+      "caption_chars": 88,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P085:1",
+      "number": 1,
+      "title": "시간대와 약 확인",
+      "image": "assets/widget-chat-reference-patient-medium-2026-11-07.png",
+      "image_sha256": "ffa1afdb442c045a0a4377fc21fcad8d1098234e6a72e9deef67b0f011fc0fdb",
+      "image_review": "replaced",
+      "caption_chars": 99,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P086:3",
+      "number": 2,
+      "title": "먹었어요 누르기",
+      "image": "assets/v025-chat-attachment-medium.png",
+      "image_sha256": "5cc8c067ad7f003be8d3b428d14b2427db97c6427c1affd9c9cd147c4dcbb65b",
+      "image_review": "reused",
+      "caption_chars": 90,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P087:5",
+      "number": 3,
+      "title": "상황에 맞는 응답 선택",
+      "image": "assets/v025-chat-attachment-medium.png",
+      "image_sha256": "5cc8c067ad7f003be8d3b428d14b2427db97c6427c1affd9c9cd147c4dcbb65b",
+      "image_review": "reused",
+      "caption_chars": 84,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-5.5:2",
+      "number": 1,
+      "title": "대화에서 찾기",
+      "image": "assets/widget-chat-patient-actions-medium-2026-11-07.png",
+      "image_sha256": "99156e6027a9f4870327cdba8943474669a287cacae0407a1bf13f4373053f0d",
+      "image_review": "replaced",
+      "caption_chars": 97,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-5.5:3",
+      "number": 2,
+      "title": "병원 또는 약국 선택",
+      "image": "assets/widget-chat-patient-actions-medium-2026-11-07.png",
+      "image_sha256": "99156e6027a9f4870327cdba8943474669a287cacae0407a1bf13f4373053f0d",
+      "image_review": "replaced",
+      "caption_chars": 73,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-5.5:4",
+      "number": 3,
+      "title": "병원 정보 확인",
+      "image": "source/assets/fc215c29cecb95d37866242bfef578c4db09c0fa1218f6a330ca5c41d100c4e2.png",
+      "image_sha256": "241c296bdfb5da6f4aba0af492cf3e4c0d8ea54b78f78dc0265eef231626e4a8",
+      "image_review": "reused",
+      "caption_chars": 93,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-5.5:5",
+      "number": 4,
+      "title": "병원 공유 최종 확인",
+      "image": "source/assets/6e6fad171b6622a7cf1bbed3f465ae567fd5eaa50a56a6b95e48f7bfbed70e2a.png",
+      "image_sha256": "e9672d3396102eb9a4fd6abcaf9ec1c6baea521d032960a2001e28731c49b5ce",
+      "image_review": "reused_cropped",
+      "caption_chars": 66,
+      "content_reviewed": true
+    },
+    {
+      "identity": "DEV29-5.5:place-card",
+      "number": 5,
+      "title": "공유한 장소 카드 읽기",
+      "image": "assets/v025-chat-place-current-medium.png",
+      "image_sha256": "5cc6bdcaf208726ecb9d425c067932630f3c852e3e23f4b4fbd6d82898d57948",
+      "image_review": "reused",
+      "caption_chars": 91,
+      "content_reviewed": true
+    },
+    {
+      "identity": "DEV29-5.5:reopen",
+      "number": 6,
+      "title": "카드를 눌러 현재 정보 보기",
+      "image": "assets/chat-place-reopened-2026-10-29.png",
+      "image_sha256": "9ca35b302c0369d376df50547ad98409e2e20a42f8fefef459014d24b95eec3a",
+      "image_review": "reused",
+      "caption_chars": 98,
+      "content_reviewed": true
+    },
+    {
+      "identity": "DEV29-5.6:actions",
+      "number": 1,
+      "title": "길게 눌러 복사 또는 선택",
+      "image": "assets/v025-chat-message-menu-medium.png",
+      "image_sha256": "5f50808882032dcd9ef034c2e6e69d9250c7e1e0269a14c27bf97f6aea16c9ae",
+      "image_review": "reused",
+      "caption_chars": 90,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P095:1",
+      "number": 2,
+      "title": "지울 메시지 선택",
+      "image": "assets/v025-chat-message-select-medium.png",
+      "image_sha256": "c6490d46dfe5b90dedaacc81fec841978b26721a9ceeb631152533617df715df",
+      "image_review": "reused",
+      "caption_chars": 83,
+      "content_reviewed": true
+    },
+    {
+      "identity": "DEV29-5.6:scope",
+      "number": 3,
+      "title": "삭제 범위 고르기",
+      "image": "assets/chat-message-delete-2026-10-29.png",
+      "image_sha256": "b8252790ce32dfebf295d45303805b5aa5efe6c0dea312d5bf156b5e25773771",
+      "image_review": "reused",
+      "caption_chars": 100,
+      "content_reviewed": true
+    },
+    {
+      "identity": "DEV29-5.6:deleted",
+      "number": 4,
+      "title": "삭제된 메시지 확인",
+      "image": "assets/v025-chat-read-deleted-medium.png",
+      "image_sha256": "2de99d777121017b29fa3f13896e73aae910eb0fc66efe552d9e39299d7f403c",
+      "image_review": "reused",
+      "caption_chars": 84,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P100:1",
+      "number": 1,
+      "title": "시간대의 종 아이콘",
+      "image": "assets/v025-caregiver-schedule-medium.png",
+      "image_sha256": "1df3fd1814c4dcf1c6d30fae4e0e8b411674ddef674fbf9a3e86c893f0fc8727",
+      "image_review": "reused",
+      "caption_chars": 73,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P100:2",
+      "number": 2,
+      "title": "알림 방식 선택",
+      "image": "assets/v025-caregiver-alarm-medium.png",
+      "image_sha256": "49f28359d35802077bcac2daa4b96957553e2ed597475634f41360299910fb09",
+      "image_review": "reused",
+      "caption_chars": 78,
+      "content_reviewed": true
+    },
+    {
+      "identity": "FINAL17-5.7:prn",
+      "number": 3,
+      "title": "필요시 약은 완료 알림만",
+      "image": "source/assets/eceba40187a300c968627e83e4489753364aa163fb74ddecdcb98b0307c744d8.png",
+      "image_sha256": "6157e001c3a447887010387b09426f377d7e0f2e6547c4d165e01bfbc5574cdd",
+      "image_review": "reused",
+      "caption_chars": 81,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P106:1",
+      "number": 1,
+      "title": "알림함 열기",
+      "image": "assets/v025-home-medium.png",
+      "image_sha256": "69476bf3b603177018392965e4d037a7281cddffd677bf6dfa2359de02f22001",
+      "image_review": "reused",
+      "caption_chars": 79,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P106:2",
+      "number": 2,
+      "title": "내용과 시각 읽기",
+      "image": "assets/v025-inbox-medium.png",
+      "image_sha256": "34a580cfad20c17f5ba13de733df3a76bf5e165bc4faf5b7b936c922ecd6ccb4",
+      "image_review": "reused",
+      "caption_chars": 59,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P107:3",
+      "number": 3,
+      "title": "알림 내용 누르기",
+      "image": "assets/v025-caregiver-schedule-medium.png",
+      "image_sha256": "1df3fd1814c4dcf1c6d30fae4e0e8b411674ddef674fbf9a3e86c893f0fc8727",
+      "image_review": "reused",
+      "caption_chars": 95,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P107:4",
+      "number": 4,
+      "title": "최신 메시지와 읽은 위치",
+      "image": "assets/v025-chat-unread-current-medium.png",
+      "image_sha256": "68a91a8cf62a19ab23920ef4d7c559792ed0d80479e6f88d6e6222142c2924d9",
+      "image_review": "reused",
+      "caption_chars": 89,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P108:5",
+      "number": 5,
+      "title": "모두 읽음 누르기",
+      "image": "assets/v025-inbox-medium.png",
+      "image_sha256": "34a580cfad20c17f5ba13de733df3a76bf5e165bc4faf5b7b936c922ecd6ccb4",
+      "image_review": "reused",
+      "caption_chars": 73,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P111:11",
+      "number": 6,
+      "title": "선택 모드 확인",
+      "image": "assets/v025-inbox-medium.png",
+      "image_sha256": "34a580cfad20c17f5ba13de733df3a76bf5e165bc4faf5b7b936c922ecd6ccb4",
+      "image_review": "reused",
+      "caption_chars": 76,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P113:1",
+      "number": 1,
+      "title": "앱에서 추가 요청",
+      "image": "assets/v025-settings-preview-medium.png",
+      "image_sha256": "b3e378c4f9faa38fcd679dcd5180c1d93af85e70baf02a7ca3d2b761894a87cf",
+      "image_review": "reused",
+      "caption_chars": 71,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P113:2",
+      "number": 2,
+      "title": "위젯 목록에서 선택",
+      "image": "source/assets/d36848ebd1dca2b6239a02651e605fb211f74bd3d9a173d48cdc91140ce23b37.png",
+      "image_sha256": "581d34abe1ed71df464ef1ad8f452ed33c2e1967de84605faa5d845e6eb7d3d9",
+      "image_review": "reused",
+      "caption_chars": 89,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P114:3",
+      "number": 3,
+      "title": "한 줄 위젯 확인",
+      "image": "assets/v025-widget-patient-medium.png",
+      "image_sha256": "168899b8a32028b87391569df8890779b31961396a9fc1a5d85d24fbe8d8329f",
+      "image_review": "reused",
+      "caption_chars": 70,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P115:4",
+      "number": 4,
+      "title": "크기를 늘려 시간대 이동",
+      "image": "assets/v025-widget-patient-medium.png",
+      "image_sha256": "168899b8a32028b87391569df8890779b31961396a9fc1a5d85d24fbe8d8329f",
+      "image_review": "reused",
+      "caption_chars": 70,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P115:5",
+      "number": 5,
+      "title": "선택한 시간대 전체 기록",
+      "image": "source/assets/f7029a6adee10b9f6940607d92a930d24e6cce5d05973c30b8d6f437f1f29360.png",
+      "image_sha256": "58bf1ac4086a5bb5aec357a19e63f17bfd5d731bd86706c72205f140621e8979",
+      "image_review": "reused",
+      "caption_chars": 97,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P116:6",
+      "number": 6,
+      "title": "완료 기록과 전송 대기",
+      "image": "source/assets/a4a1ea598e520bc362be4a0a9b3ae6c2723222f6eb884b890b0ee40243d582a8.png",
+      "image_sha256": "a4e34218f2861b3284b93996d0e944199e462967a4ae6be005464b3695ef8f11",
+      "image_review": "reused",
+      "caption_chars": 83,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P116:7",
+      "number": 7,
+      "title": "완료한 시간대 기록 취소",
+      "image": "source/assets/5ad111191bf94c2811538a1b8ac99dee8e78f8e124af1e98502a5d1967aa23e0.png",
+      "image_sha256": "a33f8f7af3065210dd2b8bbd56f2486954b058b79746c59fc829402b01807d46",
+      "image_review": "reused",
+      "caption_chars": 86,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P117:8",
+      "number": 8,
+      "title": "취소와 전송 상태 확인",
+      "image": "source/assets/4584c08fce705bbe44b14889d159983f60e1ddc52b67b4da385bc07396d88669.png",
+      "image_sha256": "d695958f1216d5caf3d1367be5863efb9fc82683912cbf54a405cbcecef3abaa",
+      "image_review": "reused",
+      "caption_chars": 72,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P119:1",
+      "number": 1,
+      "title": "환자 이름 확인",
+      "image": "assets/guide-caregiver-widget.png",
+      "image_sha256": "e93a44b8328d871e61217da6bebad905bdddc34a7615f4549ddc4cdc51fc2222",
+      "image_review": "reused",
+      "caption_chars": 59,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P119:2",
+      "number": 2,
+      "title": "다음 시간대 확인",
+      "image": "assets/guide-caregiver-widget-next.png",
+      "image_sha256": "6707c177d55cae4fac8fbef2faff31488047dbf8389b627b913ad04bcfa42d1c",
+      "image_review": "reused",
+      "caption_chars": 63,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P120:3",
+      "number": 3,
+      "title": "점으로 시간대 바로 이동",
+      "image": "assets/guide-caregiver-widget-evening.png",
+      "image_sha256": "aae88e122da334876b4af8890fa7b229551843c0336697717452020fd430717d",
+      "image_review": "reused",
+      "caption_chars": 66,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P121:4",
+      "number": 4,
+      "title": "앱의 환자 일정 열기",
+      "image": "assets/guide-caregiver-widget.png",
+      "image_sha256": "e93a44b8328d871e61217da6bebad905bdddc34a7615f4549ddc4cdc51fc2222",
+      "image_review": "reused",
+      "caption_chars": 91,
+      "content_reviewed": true
+    },
+    {
+      "identity": "AUTH-INS-WIDGET-SIGNEDOUT-20260924:2",
+      "number": 1,
+      "title": "같은 계정으로 로그인",
+      "image": "assets/login-new.png",
+      "image_sha256": "96250787b05a53b3e900be99915dfbe7eccf57069d00cf9eaf60b2d6dc9c480d",
+      "image_review": "reused",
+      "caption_chars": 66,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P124:1",
+      "number": 1,
+      "title": "복약함 선택",
+      "image": "assets/widget-home-registration-menu-medium-2026-11-07.png",
+      "image_sha256": "58998b7a874c4f6488fc744b32abdac41294df124a16afffa5bfafe318b9edc5",
+      "image_review": "replaced",
+      "caption_chars": 89,
+      "content_reviewed": true
+    },
+    {
+      "identity": "V023-7.1:next-dose-day",
+      "number": 2,
+      "title": "다음 복용일 확인",
+      "image": "assets/widget-cabinet-current-status-medium-2026-11-07.png",
+      "image_sha256": "17c11a73e8a7e1bafe3b927eef58d4b75dda00fa1f296283111573956d2f2673",
+      "image_review": "replaced",
+      "caption_chars": 80,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P125:1",
+      "number": 1,
+      "title": "조회 조건 열기",
+      "image": "assets/v025-cabinet-filter-medium.png",
+      "image_sha256": "0033581784db9c00ec5aaf113f1490f2fd56906cf59eaf9f2c6ccd50209610c4",
+      "image_review": "reused",
+      "caption_chars": 66,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P125:2",
+      "number": 2,
+      "title": "복용 상태 선택",
+      "image": "assets/v025-cabinet-status-medium.png",
+      "image_sha256": "ae8af97c10e3514dd7ac4a3b36104ffd0245b90554dc7a095f6137dfa6a910df",
+      "image_review": "reused",
+      "caption_chars": 59,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P126:3",
+      "number": 3,
+      "title": "날짜 기준 선택",
+      "image": "assets/v025-cabinet-date-medium.png",
+      "image_sha256": "35d7fd4039a924d8083f3b3d71cd315b0637074c7369d463a9a8810863576862",
+      "image_review": "reused",
+      "caption_chars": 54,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P126:4",
+      "number": 4,
+      "title": "표시 순서 선택",
+      "image": "assets/v025-cabinet-order-medium.png",
+      "image_sha256": "c487921676ac32375529d5698049fae58ca5bb32feed7634d85be89021602e69",
+      "image_review": "reused",
+      "caption_chars": 54,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P126:5",
+      "number": 5,
+      "title": "조건 적용",
+      "image": "assets/v025-cabinet-filter-medium.png",
+      "image_sha256": "0033581784db9c00ec5aaf113f1490f2fd56906cf59eaf9f2c6ccd50209610c4",
+      "image_review": "reused",
+      "caption_chars": 46,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P127:6",
+      "number": 6,
+      "title": "현재 기준 확인",
+      "image": "assets/v025-cabinet-list-medium.png",
+      "image_sha256": "1602d100e49634b5f45219a83b3579764e8083608c14cb8decb5ccae6ce03a10",
+      "image_review": "reused",
+      "caption_chars": 43,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P127:7",
+      "number": 7,
+      "title": "날짜 묶음 확인",
+      "image": "assets/v025-cabinet-list-medium.png",
+      "image_sha256": "1602d100e49634b5f45219a83b3579764e8083608c14cb8decb5ccae6ce03a10",
+      "image_review": "reused",
+      "caption_chars": 50,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P128:9",
+      "number": 8,
+      "title": "기간이 지난 약 확인",
+      "image": "assets/v025-cabinet-list-medium.png",
+      "image_sha256": "1602d100e49634b5f45219a83b3579764e8083608c14cb8decb5ccae6ce03a10",
+      "image_review": "reused",
+      "caption_chars": 60,
+      "content_reviewed": true
+    },
+    {
+      "identity": "DEV29-7.2:collapse",
+      "number": 9,
+      "title": "날짜 묶음 접고 펼치기",
+      "image": "assets/v025-med-collapsed-medium.png",
+      "image_sha256": "bb6b798c14e07ca090bafff340ebbf1eaf30688d24c2547917c1e6890ad11abf",
+      "image_review": "reused",
+      "caption_chars": 89,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P129:1",
+      "number": 1,
+      "title": "복용 종료 적용",
+      "image": "assets/v025-cabinet-status-medium.png",
+      "image_sha256": "ae8af97c10e3514dd7ac4a3b36104ffd0245b90554dc7a095f6137dfa6a910df",
+      "image_review": "reused",
+      "caption_chars": 60,
+      "content_reviewed": true
+    },
+    {
+      "identity": "FINAL17-7.3:status",
+      "number": 2,
+      "title": "중단·교체 상태 배지 읽기",
+      "image": "assets/widget-cabinet-current-status-medium-2026-11-07.png",
+      "image_sha256": "17c11a73e8a7e1bafe3b927eef58d4b75dda00fa1f296283111573956d2f2673",
+      "image_review": "replaced",
+      "caption_chars": 89,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P130:1",
+      "number": 1,
+      "title": "가이드 열기",
+      "image": "assets/v025-cabinet-list-medium.png",
+      "image_sha256": "1602d100e49634b5f45219a83b3579764e8083608c14cb8decb5ccae6ce03a10",
+      "image_review": "reused",
+      "caption_chars": 93,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P130:2",
+      "number": 2,
+      "title": "제품명과 효능 안내",
+      "image": "assets/v025-med-detail-medium.png",
+      "image_sha256": "e7e1f1f0ecbd839acbb05c767b172892e48a316191ad1657696a77adc4160454",
+      "image_review": "reused",
+      "caption_chars": 76,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P133:1",
+      "number": 1,
+      "title": "음성 안내 시작과 중지",
+      "image": "assets/v025-med-detail-medium.png",
+      "image_sha256": "e7e1f1f0ecbd839acbb05c767b172892e48a316191ad1657696a77adc4160454",
+      "image_review": "reused",
+      "caption_chars": 95,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P134:1",
+      "number": 1,
+      "title": "복약 선택 모드",
+      "image": "assets/v025-cabinet-list-medium.png",
+      "image_sha256": "1602d100e49634b5f45219a83b3579764e8083608c14cb8decb5ccae6ce03a10",
+      "image_review": "reused",
+      "caption_chars": 68,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P134:2",
+      "number": 2,
+      "title": "선택 개수 확인",
+      "image": "assets/v025-cabinet-selected-medium.png",
+      "image_sha256": "3dc2721f123ec2b3412d596259b3185970e88605c280a247938e543256e55219",
+      "image_review": "reused",
+      "caption_chars": 94,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P134:3",
+      "number": 3,
+      "title": "선택 삭제 누르기",
+      "image": "assets/v025-cabinet-selected-medium.png",
+      "image_sha256": "3dc2721f123ec2b3412d596259b3185970e88605c280a247938e543256e55219",
+      "image_review": "reused",
+      "caption_chars": 74,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P135:4",
+      "number": 4,
+      "title": "삭제 개수와 경고 확인",
+      "image": "assets/v025-cabinet-delete-confirm-medium.png",
+      "image_sha256": "a06b2c1fa80d8f0ee965a1025dbdda7363c17679db05fdd76f6e18ff72bc898c",
+      "image_review": "reused",
+      "caption_chars": 99,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P135:5",
+      "number": 5,
+      "title": "삭제 취소",
+      "image": "assets/v025-cabinet-delete-confirm-medium.png",
+      "image_sha256": "a06b2c1fa80d8f0ee965a1025dbdda7363c17679db05fdd76f6e18ff72bc898c",
+      "image_review": "reused",
+      "caption_chars": 92,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P136:6",
+      "number": 6,
+      "title": "묶음 삭제하기",
+      "image": "assets/v025-cabinet-list-medium.png",
+      "image_sha256": "1602d100e49634b5f45219a83b3579764e8083608c14cb8decb5ccae6ce03a10",
+      "image_review": "reused",
+      "caption_chars": 90,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P137:1",
+      "number": 1,
+      "title": "건강 관리 추천 열기",
+      "image": "assets/v025-home-schedule-medium.png",
+      "image_sha256": "b2226a0d8dba004007ef52f035a2a897b92aa1b127e8979c3dc24b9e0eb1939e",
+      "image_review": "reused",
+      "caption_chars": 77,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P137:2",
+      "number": 2,
+      "title": "식사 추천 확인",
+      "image": "source/assets/971b0b5304b27737e8bb1ba74966ced02baaacc4f026c5dd650832fa70f6c2e4.png",
+      "image_sha256": "1410f5a4b4deb214cf6ee2f9949a29e2750534fb811685f6c6a2e1883d88c12e",
+      "image_review": "reused",
+      "caption_chars": 62,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P138:3",
+      "number": 3,
+      "title": "운동 추천 확인",
+      "image": "source/assets/971b0b5304b27737e8bb1ba74966ced02baaacc4f026c5dd650832fa70f6c2e4.png",
+      "image_sha256": "1410f5a4b4deb214cf6ee2f9949a29e2750534fb811685f6c6a2e1883d88c12e",
+      "image_review": "reused",
+      "caption_chars": 89,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P138:4",
+      "number": 4,
+      "title": "주의사항 확인",
+      "image": "source/assets/74e25afc26d7fd2b41fff4469952cc4b483baf3b566468688cd725d06943e466.png",
+      "image_sha256": "0310748db469152a8539222e69e42bbb99d7c8e5184d3f65aebc33914f05c733",
+      "image_review": "reused",
+      "caption_chars": 54,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P139:1",
+      "number": 1,
+      "title": "추천 대상과 연결 확인",
+      "image": "assets/v025-home-schedule-medium.png",
+      "image_sha256": "b2226a0d8dba004007ef52f035a2a897b92aa1b127e8979c3dc24b9e0eb1939e",
+      "image_review": "reused_with_explanation",
+      "caption_chars": 81,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-7.9:1",
+      "number": 1,
+      "title": "약 관리 메뉴 열기",
+      "image": "assets/v025-cabinet-list-medium.png",
+      "image_sha256": "1602d100e49634b5f45219a83b3579764e8083608c14cb8decb5ccae6ce03a10",
+      "image_review": "reused",
+      "caption_chars": 74,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-7.9:2",
+      "number": 2,
+      "title": "수정 또는 교체 선택",
+      "image": "assets/v025-med-actions-medium.png",
+      "image_sha256": "8aae8149d4b6bf0bdb8f776437094be4d142802b9e33a2a179a29eb80ae79bdc",
+      "image_review": "reused",
+      "caption_chars": 84,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-7.9:3",
+      "number": 3,
+      "title": "기존 정보 수정하기",
+      "image": "assets/v025-med-edit-medium.png",
+      "image_sha256": "9ce13e2d99e1f47e9e64e79f8d98c94322f063bdfac8e2504eb193c8f2c5f019",
+      "image_review": "reused",
+      "caption_chars": 93,
+      "content_reviewed": true
+    },
+    {
+      "identity": "FINAL17-7.9:replacement",
+      "number": 4,
+      "title": "직접 등록과 같은 형식으로 교체",
+      "image": "assets/v025-med-replace-medium.png",
+      "image_sha256": "51167b6d8c285412c967a8526d718d36190695ae8b3692fb6625bcb3b367d437",
+      "image_review": "reused_with_explanation",
+      "caption_chars": 93,
+      "content_reviewed": true
+    },
+    {
+      "identity": "FINAL17-7.9:confirmation",
+      "number": 5,
+      "title": "새 약과 날짜 마지막 확인",
+      "image": "assets/v025-med-replace-confirm-medium.png",
+      "image_sha256": "204014f9d18c9a1099f7d4910efa3a8c1566ffe24a8aea525264eac780d48083",
+      "image_review": "reused_with_explanation",
+      "caption_chars": 73,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-7.10:1",
+      "number": 1,
+      "title": "중단 메뉴 선택",
+      "image": "assets/v025-med-actions-medium.png",
+      "image_sha256": "8aae8149d4b6bf0bdb8f776437094be4d142802b9e33a2a179a29eb80ae79bdc",
+      "image_review": "reused",
+      "caption_chars": 73,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-7.10:2",
+      "number": 2,
+      "title": "적용일 확인",
+      "image": "assets/v025-med-stop-medium.png",
+      "image_sha256": "e7d7a93facee9a53f57a9ddd6b51fa35374fb22a5751e4ea06b6e50019b8214d",
+      "image_review": "reused",
+      "caption_chars": 87,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-7.10:3",
+      "number": 3,
+      "title": "마지막 확인",
+      "image": "assets/v025-med-stop-confirm-medium.png",
+      "image_sha256": "d7dcb460050be9a9210396c0f8718ba50387f91496e1e9b0d25a7d1489fd945a",
+      "image_review": "reused_with_explanation",
+      "caption_chars": 80,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.1:1",
+      "number": 1,
+      "title": "홈에서 검색 열기",
+      "image": "assets/v025-home-schedule-medium.png",
+      "image_sha256": "b2226a0d8dba004007ef52f035a2a897b92aa1b127e8979c3dc24b9e0eb1939e",
+      "image_review": "reused",
+      "caption_chars": 70,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.1:2",
+      "number": 2,
+      "title": "찾을 곳 선택",
+      "image": "assets/v025-places-choice-medium.png",
+      "image_sha256": "cd7ea191c4341d4fa8ccf5296f08064773a104f1e1d3bfd661c862e1d864a11a",
+      "image_review": "reused",
+      "caption_chars": 68,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.1:3",
+      "number": 3,
+      "title": "진료과목 먼저 선택",
+      "image": "assets/v025-departments-medium.png",
+      "image_sha256": "2a8588fd55938e7b9f8eaaceb8dde6cd3e01609197a31e6c3f8a41e6237e9b83",
+      "image_review": "reused",
+      "caption_chars": 74,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.1:4",
+      "number": 4,
+      "title": "약국 지도 확인",
+      "image": "assets/v025-pharmacy-map-medium.png",
+      "image_sha256": "52634e354bee43115c32cb5a5589042059daa9dfb9f96f1222c3469346f59be7",
+      "image_review": "reused",
+      "caption_chars": 70,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.2:1",
+      "number": 1,
+      "title": "진료과목 목록 살펴보기",
+      "image": "assets/v025-departments-medium.png",
+      "image_sha256": "2a8588fd55938e7b9f8eaaceb8dde6cd3e01609197a31e6c3f8a41e6237e9b83",
+      "image_review": "reused",
+      "caption_chars": 99,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.2:2",
+      "number": 2,
+      "title": "초성으로 바로 이동",
+      "image": "assets/v025-departments-medium.png",
+      "image_sha256": "2a8588fd55938e7b9f8eaaceb8dde6cd3e01609197a31e6c3f8a41e6237e9b83",
+      "image_review": "reused",
+      "caption_chars": 83,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.2:4",
+      "number": 3,
+      "title": "가까운 결과 확인",
+      "image": "assets/v025-hospital-map-medium.png",
+      "image_sha256": "1bfa7f13d079ab4cf5d6149fada4f8de3097793a62f21a4012e2d5904c81ca11",
+      "image_review": "reused",
+      "caption_chars": 76,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.2:5",
+      "number": 4,
+      "title": "현재 위치에서 다시 찾기",
+      "image": "assets/v025-hospital-map-medium.png",
+      "image_sha256": "1bfa7f13d079ab4cf5d6149fada4f8de3097793a62f21a4012e2d5904c81ca11",
+      "image_review": "reused",
+      "caption_chars": 70,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.2:6",
+      "number": 5,
+      "title": "진료과목 바꾸기",
+      "image": "assets/v025-hospital-map-medium.png",
+      "image_sha256": "1bfa7f13d079ab4cf5d6149fada4f8de3097793a62f21a4012e2d5904c81ca11",
+      "image_review": "reused",
+      "caption_chars": 73,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.3:1",
+      "number": 1,
+      "title": "조회 조건 열기",
+      "image": "assets/v025-hospital-map-medium.png",
+      "image_sha256": "1bfa7f13d079ab4cf5d6149fada4f8de3097793a62f21a4012e2d5904c81ca11",
+      "image_review": "reused",
+      "caption_chars": 39,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.3:2",
+      "number": 2,
+      "title": "날짜와 진료 상태 구분",
+      "image": "assets/v025-hospital-filter-medium.png",
+      "image_sha256": "d6972c3944509713c9e7a3930804c0919401a5d2ed56829332e69982d3c9a45a",
+      "image_review": "reused",
+      "caption_chars": 77,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.3:3",
+      "number": 3,
+      "title": "저녁 진료 선택",
+      "image": "assets/v025-hospital-filter-medium.png",
+      "image_sha256": "d6972c3944509713c9e7a3930804c0919401a5d2ed56829332e69982d3c9a45a",
+      "image_review": "reused",
+      "caption_chars": 70,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.3:4",
+      "number": 4,
+      "title": "주말·공휴일 또는 전체 선택",
+      "image": "assets/v025-hospital-filter-medium.png",
+      "image_sha256": "d6972c3944509713c9e7a3930804c0919401a5d2ed56829332e69982d3c9a45a",
+      "image_review": "reused",
+      "caption_chars": 57,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.3:7",
+      "number": 5,
+      "title": "조건 적용",
+      "image": "assets/v025-hospital-filter-medium.png",
+      "image_sha256": "d6972c3944509713c9e7a3930804c0919401a5d2ed56829332e69982d3c9a45a",
+      "image_review": "reused",
+      "caption_chars": 57,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.3:8",
+      "number": 6,
+      "title": "적용한 조건 다시 확인",
+      "image": "assets/v025-hospital-filter-medium.png",
+      "image_sha256": "d6972c3944509713c9e7a3930804c0919401a5d2ed56829332e69982d3c9a45a",
+      "image_review": "reused",
+      "caption_chars": 78,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.4:1",
+      "number": 1,
+      "title": "병원 목록 열기",
+      "image": "assets/v025-hospital-map-medium.png",
+      "image_sha256": "1bfa7f13d079ab4cf5d6149fada4f8de3097793a62f21a4012e2d5904c81ca11",
+      "image_review": "reused",
+      "caption_chars": 64,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.4:2",
+      "number": 2,
+      "title": "목록에서 병원 선택",
+      "image": "assets/v025-hospital-list-medium.png",
+      "image_sha256": "5be41e745a78a3cfbe72eec9483f37caf835f4419be003326df2372f204523b9",
+      "image_review": "reused",
+      "caption_chars": 60,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.4:3",
+      "number": 3,
+      "title": "상세 정보 읽기",
+      "image": "assets/v025-hospital-detail-medium.png",
+      "image_sha256": "b0b327ce6681e1255b94fa6c7157c7c445cf3aebefd0b00200419b63a6b33d3f",
+      "image_review": "reused",
+      "caption_chars": 73,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.4:4",
+      "number": 4,
+      "title": "상세 접기와 지도 복귀",
+      "image": "assets/v025-hospital-detail-medium.png",
+      "image_sha256": "b0b327ce6681e1255b94fa6c7157c7c445cf3aebefd0b00200419b63a6b33d3f",
+      "image_review": "reused",
+      "caption_chars": 67,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.5:1",
+      "number": 1,
+      "title": "즐겨찾기 등록",
+      "image": "assets/v025-hospital-detail-medium.png",
+      "image_sha256": "b0b327ce6681e1255b94fa6c7157c7c445cf3aebefd0b00200419b63a6b33d3f",
+      "image_review": "reused",
+      "caption_chars": 55,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.5:2",
+      "number": 2,
+      "title": "등록 확인과 해제",
+      "image": "assets/v025-hospital-favorite-medium.png",
+      "image_sha256": "6fc0cd2380014f1f22121a2a1a9f37aa387f01dbee45e020f3ea087da3a1869d",
+      "image_review": "reused",
+      "caption_chars": 57,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.5:3",
+      "number": 3,
+      "title": "방문 전 전화 확인",
+      "image": "assets/v025-hospital-detail-medium.png",
+      "image_sha256": "b0b327ce6681e1255b94fa6c7157c7c445cf3aebefd0b00200419b63a6b33d3f",
+      "image_review": "reused",
+      "caption_chars": 67,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.6:1",
+      "number": 1,
+      "title": "근처 약국 선택",
+      "image": "assets/v025-places-choice-medium.png",
+      "image_sha256": "cd7ea191c4341d4fa8ccf5296f08064773a104f1e1d3bfd661c862e1d864a11a",
+      "image_review": "reused",
+      "caption_chars": 80,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.6:2",
+      "number": 2,
+      "title": "지도와 목록 이용",
+      "image": "assets/v025-pharmacy-map-medium.png",
+      "image_sha256": "52634e354bee43115c32cb5a5589042059daa9dfb9f96f1222c3469346f59be7",
+      "image_review": "reused",
+      "caption_chars": 84,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.6:3",
+      "number": 3,
+      "title": "다른 지역 찾기",
+      "image": "assets/v025-pharmacy-map-medium.png",
+      "image_sha256": "52634e354bee43115c32cb5a5589042059daa9dfb9f96f1222c3469346f59be7",
+      "image_review": "reused_with_explanation",
+      "caption_chars": 100,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.6:4",
+      "number": 4,
+      "title": "거리와 주소 확인",
+      "image": "assets/v025-pharmacy-list-medium.png",
+      "image_sha256": "f96249ad2112c19e1d3c660c43e19a341ff2d8b2eaa126527909323ba9df791f",
+      "image_review": "reused",
+      "caption_chars": 72,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.7:1",
+      "number": 1,
+      "title": "조회 조건 열기",
+      "image": "assets/v025-pharmacy-map-medium.png",
+      "image_sha256": "52634e354bee43115c32cb5a5589042059daa9dfb9f96f1222c3469346f59be7",
+      "image_review": "reused",
+      "caption_chars": 56,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.7:2",
+      "number": 2,
+      "title": "영업 상태 선택",
+      "image": "assets/v025-pharmacy-filter-medium.png",
+      "image_sha256": "f8792ee8cc13489d225116e3f3e9b59b445b4c82a7b383bf24d2360119d146ba",
+      "image_review": "reused",
+      "caption_chars": 56,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.7:3",
+      "number": 3,
+      "title": "주말·공휴일 선택",
+      "image": "assets/v025-pharmacy-weekend-medium.png",
+      "image_sha256": "8e5a64e7dc7baa0868f3de0655a8f366d59547a06735e78f17a7b61f0a2d5036",
+      "image_review": "reused",
+      "caption_chars": 70,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.7:4",
+      "number": 4,
+      "title": "같은 창에서 날짜 열기",
+      "image": "assets/v025-pharmacy-weekend-medium.png",
+      "image_sha256": "8e5a64e7dc7baa0868f3de0655a8f366d59547a06735e78f17a7b61f0a2d5036",
+      "image_review": "reused",
+      "caption_chars": 65,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.7:5",
+      "number": 5,
+      "title": "방문일 고르기",
+      "image": "assets/v025-pharmacy-calendar-medium.png",
+      "image_sha256": "3e6f479767a9d83b2488f72fbd0ebb0279db50eb703de277c91910eac003fdcd",
+      "image_review": "reused",
+      "caption_chars": 54,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.7:6",
+      "number": 6,
+      "title": "적용 눌러 조회",
+      "image": "assets/v025-pharmacy-weekend-medium.png",
+      "image_sha256": "8e5a64e7dc7baa0868f3de0655a8f366d59547a06735e78f17a7b61f0a2d5036",
+      "image_review": "reused",
+      "caption_chars": 53,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.7:7",
+      "number": 7,
+      "title": "지도와 목록 확인",
+      "image": "source/assets/2393f932120a6e398a08f370a474639f584b6dc8d888bad044f3ff58d74234ef.png",
+      "image_sha256": "68595a6b038fb2d288a046320bb20b12e520ab5dd19b4a70d2604f0bb3f458c3",
+      "image_review": "reused",
+      "caption_chars": 73,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.7:8",
+      "number": 8,
+      "title": "현재 기준으로 돌아가기",
+      "image": "assets/v025-pharmacy-filter-medium.png",
+      "image_sha256": "f8792ee8cc13489d225116e3f3e9b59b445b4c82a7b383bf24d2360119d146ba",
+      "image_review": "reused",
+      "caption_chars": 72,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.8:1",
+      "number": 1,
+      "title": "약국 목록 살펴보기",
+      "image": "assets/v025-pharmacy-list-medium.png",
+      "image_sha256": "f96249ad2112c19e1d3c660c43e19a341ff2d8b2eaa126527909323ba9df791f",
+      "image_review": "reused",
+      "caption_chars": 97,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.8:2",
+      "number": 2,
+      "title": "상세 정보 확인",
+      "image": "assets/v025-pharmacy-detail-medium.png",
+      "image_sha256": "ff30ff7b7d444f5322f95411d1ce7333b7833dffebd01855ac8b8ef047ec6174",
+      "image_review": "reused",
+      "caption_chars": 78,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.8:3",
+      "number": 3,
+      "title": "상세 정보 접기",
+      "image": "assets/v025-pharmacy-detail-medium.png",
+      "image_sha256": "ff30ff7b7d444f5322f95411d1ce7333b7833dffebd01855ac8b8ef047ec6174",
+      "image_review": "reused",
+      "caption_chars": 60,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.8:4",
+      "number": 4,
+      "title": "지도 크게 보기",
+      "image": "assets/v025-pharmacy-list-medium.png",
+      "image_sha256": "f96249ad2112c19e1d3c660c43e19a341ff2d8b2eaa126527909323ba9df791f",
+      "image_review": "reused",
+      "caption_chars": 65,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.9:1",
+      "number": 1,
+      "title": "즐겨찾기 등록",
+      "image": "assets/v025-pharmacy-detail-medium.png",
+      "image_sha256": "ff30ff7b7d444f5322f95411d1ce7333b7833dffebd01855ac8b8ef047ec6174",
+      "image_review": "reused",
+      "caption_chars": 63,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.9:2",
+      "number": 2,
+      "title": "등록 상태 확인",
+      "image": "assets/current-guide-pharmacy-star.png",
+      "image_sha256": "1a9506f65a7b2e3de09d4efba5f9b7d34025701ed9b13e5a4e890bd324204fe4",
+      "image_review": "reused",
+      "caption_chars": 61,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.9:3",
+      "number": 3,
+      "title": "즐겨찾기 해제",
+      "image": "assets/current-guide-pharmacy-star.png",
+      "image_sha256": "1a9506f65a7b2e3de09d4efba5f9b7d34025701ed9b13e5a4e890bd324204fe4",
+      "image_review": "reused",
+      "caption_chars": 82,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.9:4",
+      "number": 4,
+      "title": "다시 정보 확인",
+      "image": "assets/v025-pharmacy-detail-medium.png",
+      "image_sha256": "ff30ff7b7d444f5322f95411d1ce7333b7833dffebd01855ac8b8ef047ec6174",
+      "image_review": "reused",
+      "caption_chars": 46,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.10:1",
+      "number": 1,
+      "title": "전화 앱 열기",
+      "image": "assets/v025-pharmacy-detail-medium.png",
+      "image_sha256": "ff30ff7b7d444f5322f95411d1ce7333b7833dffebd01855ac8b8ef047ec6174",
+      "image_review": "reused",
+      "caption_chars": 66,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.10:2",
+      "number": 2,
+      "title": "길찾기 열기",
+      "image": "assets/v025-pharmacy-detail-medium.png",
+      "image_sha256": "ff30ff7b7d444f5322f95411d1ce7333b7833dffebd01855ac8b8ef047ec6174",
+      "image_review": "reused",
+      "caption_chars": 61,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.10:3",
+      "number": 3,
+      "title": "지도 앱 선택",
+      "image": "assets/current-guide-directions.png",
+      "image_sha256": "16515dd46f8b00c3514df9e2d0e447bddd35a171e8e0e22b8fecf63c060d2451",
+      "image_review": "reused",
+      "caption_chars": 69,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-8.10:4",
+      "number": 4,
+      "title": "주소 복사 이용",
+      "image": "assets/current-guide-directions.png",
+      "image_sha256": "16515dd46f8b00c3514df9e2d0e447bddd35a171e8e0e22b8fecf63c060d2451",
+      "image_review": "reused",
+      "caption_chars": 74,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P155:1",
+      "number": 1,
+      "title": "세 가지 설정 메뉴",
+      "image": "assets/v025-settings-home-medium.png",
+      "image_sha256": "d232424dfac6cf3f4fe5c977bcbce478192d086f005b5293af9e41f5f76ba723",
+      "image_review": "reused",
+      "caption_chars": 87,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P156:3",
+      "number": 2,
+      "title": "변경 후 뒤로가기",
+      "image": "assets/guide-settings-unsaved-medium.png",
+      "image_sha256": "ae0043f6a48a355c9fd0000aa7a2f7681061404e36a1ed6914bc57d0d0cc6bda",
+      "image_review": "reused",
+      "caption_chars": 94,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P156:4",
+      "number": 3,
+      "title": "저장하고 나가기",
+      "image": "assets/guide-settings-unsaved-medium.png",
+      "image_sha256": "ae0043f6a48a355c9fd0000aa7a2f7681061404e36a1ed6914bc57d0d0cc6bda",
+      "image_review": "reused",
+      "caption_chars": 71,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P157:5",
+      "number": 4,
+      "title": "취소하거나 계속 편집",
+      "image": "assets/guide-settings-unsaved-medium.png",
+      "image_sha256": "ae0043f6a48a355c9fd0000aa7a2f7681061404e36a1ed6914bc57d0d0cc6bda",
+      "image_review": "reused",
+      "caption_chars": 99,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P158:1",
+      "number": 1,
+      "title": "글자 크기 선택",
+      "image": "assets/settings-order-display.png",
+      "image_sha256": "a34d8a44c819ddf3178801286bea8b721ba4f3d46ba9aea20eb0aab2b1abb9ef",
+      "image_review": "reused_with_explanation",
+      "caption_chars": 81,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P158:2",
+      "number": 2,
+      "title": "글자 크기 저장",
+      "image": "assets/settings-order-display.png",
+      "image_sha256": "a34d8a44c819ddf3178801286bea8b721ba4f3d46ba9aea20eb0aab2b1abb9ef",
+      "image_review": "reused",
+      "caption_chars": 60,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P159:1",
+      "number": 1,
+      "title": "읽기 속도 선택",
+      "image": "assets/v025-settings-reading-speed-medium.png",
+      "image_sha256": "3a714a6369a2e0ff7acc66fb760e80ddbbb5844db4006717a1c95a65f45f1cdf",
+      "image_review": "reused",
+      "caption_chars": 60,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P159:2",
+      "number": 2,
+      "title": "음성 미리보기",
+      "image": "assets/v025-settings-preview-medium.png",
+      "image_sha256": "b3e378c4f9faa38fcd679dcd5180c1d93af85e70baf02a7ca3d2b761894a87cf",
+      "image_review": "reused",
+      "caption_chars": 49,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P159:3",
+      "number": 3,
+      "title": "읽기 속도 저장",
+      "image": "assets/v025-settings-preview-medium.png",
+      "image_sha256": "b3e378c4f9faa38fcd679dcd5180c1d93af85e70baf02a7ca3d2b761894a87cf",
+      "image_review": "reused",
+      "caption_chars": 43,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P160:1",
+      "number": 1,
+      "title": "언어 선택",
+      "image": "assets/v025-settings-language-medium.png",
+      "image_sha256": "a1f94e1aac2f80e3727e57a4864489c72d26cbe9226773b47c27b40359edd5dc",
+      "image_review": "reused",
+      "caption_chars": 53,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P160:2",
+      "number": 2,
+      "title": "시간 표시 선택",
+      "image": "assets/v025-settings-time-medium.png",
+      "image_sha256": "9c84008831bf32235ec67971967e026c04dad37082f888c505fdb1ba727e86cb",
+      "image_review": "reused",
+      "caption_chars": 59,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P160:3",
+      "number": 3,
+      "title": "언어와 시간 표시 저장",
+      "image": "assets/v025-settings-preview-medium.png",
+      "image_sha256": "b3e378c4f9faa38fcd679dcd5180c1d93af85e70baf02a7ca3d2b761894a87cf",
+      "image_review": "reused",
+      "caption_chars": 90,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P161:1",
+      "number": 1,
+      "title": "일정 대상 선택",
+      "image": "assets/v025-settings-home-target-medium.png",
+      "image_sha256": "99c549a994d69fc1981208aedaf5e55915f61ea9ad649a094345006a52791590",
+      "image_review": "reused",
+      "caption_chars": 84,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P161:2",
+      "number": 2,
+      "title": "일정 대상 저장",
+      "image": "assets/v025-settings-preview-medium.png",
+      "image_sha256": "b3e378c4f9faa38fcd679dcd5180c1d93af85e70baf02a7ca3d2b761894a87cf",
+      "image_review": "reused",
+      "caption_chars": 73,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P162:1",
+      "number": 1,
+      "title": "알림 수신 스위치",
+      "image": "assets/v025-notification-settings-medium.png",
+      "image_sha256": "2df10f4412fc87dd0a484da53dd55320d032a6f323ae6572367f28617d04a727",
+      "image_review": "reused",
+      "caption_chars": 84,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P162:2",
+      "number": 2,
+      "title": "알림 수신 저장",
+      "image": "assets/v025-notification-settings-medium.png",
+      "image_sha256": "2df10f4412fc87dd0a484da53dd55320d032a6f323ae6572367f28617d04a727",
+      "image_review": "reused",
+      "caption_chars": 56,
+      "content_reviewed": true
+    },
+    {
+      "identity": "DEV29-9.6:search",
+      "number": 3,
+      "title": "약품 검색 방식 선택",
+      "image": "assets/v025-notification-lower-medium.png",
+      "image_sha256": "43e0bf253a8a42e6b191b987fc69066d5e9da8f3afba6b3980692df9f6cea0b1",
+      "image_review": "reused",
+      "caption_chars": 85,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P163:1",
+      "number": 1,
+      "title": "시간대 선택",
+      "image": "assets/v025-notification-lower-medium.png",
+      "image_sha256": "43e0bf253a8a42e6b191b987fc69066d5e9da8f3afba6b3980692df9f6cea0b1",
+      "image_review": "reused",
+      "caption_chars": 52,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P163:2",
+      "number": 2,
+      "title": "시간 선택",
+      "image": "assets/v025-default-time-picker-medium.png",
+      "image_sha256": "82b734fef68f9f833c4b775f43e98351c3261ed9b2937fad78112f3cfcfdda8f",
+      "image_review": "reused",
+      "caption_chars": 70,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P164:3",
+      "number": 3,
+      "title": "기본 시간 저장",
+      "image": "assets/v025-notification-lower-medium.png",
+      "image_sha256": "43e0bf253a8a42e6b191b987fc69066d5e9da8f3afba6b3980692df9f6cea0b1",
+      "image_review": "reused",
+      "caption_chars": 81,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P165:4",
+      "number": 4,
+      "title": "숫자 입력 열기",
+      "image": "assets/v025-default-time-picker-medium.png",
+      "image_sha256": "82b734fef68f9f833c4b775f43e98351c3261ed9b2937fad78112f3cfcfdda8f",
+      "image_review": "reused",
+      "caption_chars": 49,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P165:5",
+      "number": 5,
+      "title": "숫자 적용",
+      "image": "assets/v025-default-time-input-medium.png",
+      "image_sha256": "c34da9598e50fba88a2dee93b641ebbc8ae90adef73c81595111be2014502126",
+      "image_review": "reused",
+      "caption_chars": 57,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P165:6",
+      "number": 6,
+      "title": "시간 확인과 최종 저장",
+      "image": "assets/v025-default-time-picker-medium.png",
+      "image_sha256": "82b734fef68f9f833c4b775f43e98351c3261ed9b2937fad78112f3cfcfdda8f",
+      "image_review": "reused",
+      "caption_chars": 86,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P166:1",
+      "number": 1,
+      "title": "알림 내용 선택",
+      "image": "assets/v025-notification-privacy-dialog-medium.png",
+      "image_sha256": "32333c6bee677d5d54312ee3672c4322773979156523c8461df3d282ad485a58",
+      "image_review": "reused",
+      "caption_chars": 85,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P166:2",
+      "number": 2,
+      "title": "공개 범위 저장",
+      "image": "assets/v025-notification-privacy-medium.png",
+      "image_sha256": "474931b66ed8c6084c4bb4673e33d5ded78d2bfc1fe6b9b9bbb6cb781b034c5b",
+      "image_review": "reused",
+      "caption_chars": 80,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P167:1",
+      "number": 1,
+      "title": "휴대폰 알림 설정 열기",
+      "image": "assets/v025-notification-settings-medium.png",
+      "image_sha256": "2df10f4412fc87dd0a484da53dd55320d032a6f323ae6572367f28617d04a727",
+      "image_review": "reused",
+      "caption_chars": 88,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P167:2",
+      "number": 2,
+      "title": "휴대폰에서 알림 허용",
+      "image": "source/assets/7f3a8b916618e3658a3974eeaf11a12d1f65906e06910d6880edf2bb3907c593.png",
+      "image_sha256": "4bcbbd1a9c05c332fd8597a8164b1cbf3a98df0421b6cdc78008fd9d22b9504f",
+      "image_review": "reused",
+      "caption_chars": 60,
+      "content_reviewed": true
+    },
+    {
+      "identity": "V023-9.9:exact-notice",
+      "number": 3,
+      "title": "정확한 알람 허용 안내",
+      "image": "assets/v025-notification-settings-medium.png",
+      "image_sha256": "2df10f4412fc87dd0a484da53dd55320d032a6f323ae6572367f28617d04a727",
+      "image_review": "reused",
+      "caption_chars": 85,
+      "content_reviewed": true
+    },
+    {
+      "identity": "V023-9.9:exact-permission",
+      "number": 4,
+      "title": "휴대폰 권한에서 허용",
+      "image": "source/assets/05a8354c867ecf06980fc097a12f1a73ffd3d1bee2dfd1a40c8ec48cb6c759f0.png",
+      "image_sha256": "2241df340023606892ed53184da08d0be255bea4f02c305d3ea673be7bf24991",
+      "image_review": "reused",
+      "caption_chars": 88,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P168:3",
+      "number": 5,
+      "title": "위젯 추가 열기",
+      "image": "assets/settings-order-display.png",
+      "image_sha256": "a34d8a44c819ddf3178801286bea8b721ba4f3d46ba9aea20eb0aab2b1abb9ef",
+      "image_review": "reused",
+      "caption_chars": 73,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P169:1",
+      "number": 1,
+      "title": "일반 계정 로그아웃",
+      "image": "assets/v025-account-medium.png",
+      "image_sha256": "5d25c37156beb638451ff9feb59d31c396355c3475526c64fae3af6897faced8",
+      "image_review": "reused",
+      "caption_chars": 69,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P169:2",
+      "number": 2,
+      "title": "로그인 화면 확인",
+      "image": "assets/login-new.png",
+      "image_sha256": "96250787b05a53b3e900be99915dfbe7eccf57069d00cf9eaf60b2d6dc9c480d",
+      "image_review": "reused",
+      "caption_chars": 79,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P170:3",
+      "number": 3,
+      "title": "게스트 로그아웃 열기",
+      "image": "assets/guide-guest-account.png",
+      "image_sha256": "727ea89a69a7dedeacebeaf4981b1b67ca2e0db61eec366f618e8f742b038364",
+      "image_review": "reused",
+      "caption_chars": 83,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P170:4",
+      "number": 4,
+      "title": "영구 삭제 경고 읽기",
+      "image": "assets/guide-guest-warning.png",
+      "image_sha256": "482a51f4619f988723e80602e02134bb3b0528049272c1f46dd47eac8cb9bd11",
+      "image_review": "reused",
+      "caption_chars": 75,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P171:5",
+      "number": 5,
+      "title": "게스트 로그아웃 뒤 확인",
+      "image": "assets/login-new.png",
+      "image_sha256": "96250787b05a53b3e900be99915dfbe7eccf57069d00cf9eaf60b2d6dc9c480d",
+      "image_review": "reused",
+      "caption_chars": 69,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P172:1",
+      "number": 1,
+      "title": "삭제 확인 창 열기",
+      "image": "assets/v025-account-medium.png",
+      "image_sha256": "5d25c37156beb638451ff9feb59d31c396355c3475526c64fae3af6897faced8",
+      "image_review": "reused",
+      "caption_chars": 90,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P172:2",
+      "number": 2,
+      "title": "삭제 범위와 취소 확인",
+      "image": "assets/v025-account-delete-confirm-medium.png",
+      "image_sha256": "3949fc8653710a0750b1233af2936f202695495445143774e175beedc976e013",
+      "image_review": "reused",
+      "caption_chars": 72,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P172:3",
+      "number": 3,
+      "title": "계정 삭제 뒤 화면 확인",
+      "image": "assets/login-new.png",
+      "image_sha256": "96250787b05a53b3e900be99915dfbe7eccf57069d00cf9eaf60b2d6dc9c480d",
+      "image_review": "reused",
+      "caption_chars": 70,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-9.12:1",
+      "number": 1,
+      "title": "휴대폰 설정 구역 열기",
+      "image": "assets/v025-notification-settings-medium.png",
+      "image_sha256": "2df10f4412fc87dd0a484da53dd55320d032a6f323ae6572367f28617d04a727",
+      "image_review": "reused",
+      "caption_chars": 54,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-9.12:2",
+      "number": 2,
+      "title": "알림 허용 확인",
+      "image": "assets/v025-notification-settings-medium.png",
+      "image_sha256": "2df10f4412fc87dd0a484da53dd55320d032a6f323ae6572367f28617d04a727",
+      "image_review": "reused",
+      "caption_chars": 86,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-9.12:3",
+      "number": 3,
+      "title": "앱에서 받을 알림 종류 저장",
+      "image": "assets/v025-notification-settings-medium.png",
+      "image_sha256": "2df10f4412fc87dd0a484da53dd55320d032a6f323ae6572367f28617d04a727",
+      "image_review": "reused",
+      "caption_chars": 80,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-9.12:4",
+      "number": 4,
+      "title": "테스트 알림 보내기",
+      "image": "assets/v025-notification-settings-medium.png",
+      "image_sha256": "2df10f4412fc87dd0a484da53dd55320d032a6f323ae6572367f28617d04a727",
+      "image_review": "reused",
+      "caption_chars": 88,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-9.13:1",
+      "number": 1,
+      "title": "데이터 안내 찾기",
+      "image": "assets/v025-account-medium.png",
+      "image_sha256": "5d25c37156beb638451ff9feb59d31c396355c3475526c64fae3af6897faced8",
+      "image_review": "reused",
+      "caption_chars": 66,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-9.13:2",
+      "number": 2,
+      "title": "정보 처리 위치 읽기",
+      "image": "assets/v025-data-open-medium.png",
+      "image_sha256": "6b905b9b7543e0f1a7f7fa55a394dba17a395f28865a716ab78baa8c2f72efb6",
+      "image_review": "reused",
+      "caption_chars": 86,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CARE17-9.13:3",
+      "number": 3,
+      "title": "삭제와 공유 사본 구분",
+      "image": "assets/v025-data-medium.png",
+      "image_sha256": "8a40ba79e3f5010fa8f900992a91140289ce9e7889c5a47afc0e0b0f5c3c8fe6",
+      "image_review": "reused",
+      "caption_chars": 84,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P173:1",
+      "number": 1,
+      "title": "가입 입력 오류 확인",
+      "image": "assets/signup-validation.png",
+      "image_sha256": "4b6d589c439d618ca2014c0df865d5c2d008fffc59758937785ae1675a7f4f10",
+      "image_review": "reused",
+      "caption_chars": 94,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P173:2",
+      "number": 2,
+      "title": "로그인 정보 다시 확인",
+      "image": "assets/simulated-wrong-password-2026-11-05.png",
+      "image_sha256": "e6295c05ef8240bbe3c822b595391c0b189f4a8c9496ee5837f33d0487c2cb7b",
+      "image_review": "reused",
+      "caption_chars": 86,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P176:1",
+      "number": 1,
+      "title": "사진과 연결 다시 확인",
+      "image": "assets/v025-prescription-offline-error-medium.png",
+      "image_sha256": "390ab75d9d629fc4d004227f27756dddbeb96cd70e40b9d5ace1e29c560c8258",
+      "image_review": "reused",
+      "caption_chars": 77,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P177:1",
+      "number": 1,
+      "title": "불확실한 번호 다시 확인",
+      "image": "source/assets/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png",
+      "image_sha256": "5d82a774744e5e1ab995bf19b13cced8e92b70b5b8bd3204b066a5b4332c208e",
+      "image_review": "reused",
+      "caption_chars": 61,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P177:2",
+      "number": 2,
+      "title": "재분석 또는 사진 교체",
+      "image": "source/assets/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png",
+      "image_sha256": "5d82a774744e5e1ab995bf19b13cced8e92b70b5b8bd3204b066a5b4332c208e",
+      "image_review": "reused",
+      "caption_chars": 80,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P178:1",
+      "number": 1,
+      "title": "받을 알림 켜기",
+      "image": "assets/v025-notification-settings-medium.png",
+      "image_sha256": "2df10f4412fc87dd0a484da53dd55320d032a6f323ae6572367f28617d04a727",
+      "image_review": "reused",
+      "caption_chars": 76,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P178:2",
+      "number": 2,
+      "title": "휴대전화 권한 확인",
+      "image": "source/assets/7f3a8b916618e3658a3974eeaf11a12d1f65906e06910d6880edf2bb3907c593.png",
+      "image_sha256": "4bcbbd1a9c05c332fd8597a8164b1cbf3a98df0421b6cdc78008fd9d22b9504f",
+      "image_review": "reused",
+      "caption_chars": 87,
+      "content_reviewed": true
+    },
+    {
+      "identity": "ASM-P179:2",
+      "number": 1,
+      "title": "위젯의 환자 상태 새로고침",
+      "image": "assets/guide-caregiver-widget.png",
+      "image_sha256": "e93a44b8328d871e61217da6bebad905bdddc34a7615f4549ddc4cdc51fc2222",
+      "image_review": "reused",
+      "caption_chars": 90,
+      "content_reviewed": true
+    },
+    {
+      "identity": "CURRENT-10.6:4",
+      "number": 1,
+      "title": "운영 정보가 불확실할 때",
+      "image": "assets/v025-hospital-detail-medium.png",
+      "image_sha256": "b0b327ce6681e1255b94fa6c7157c7c445cf3aebefd0b00200419b63a6b33d3f",
+      "image_review": "reused",
+      "caption_chars": 85,
+      "content_reviewed": true
+    }
+  ],
+  "review_scope": "Inherited local content and code review; merge checks refresh caption metrics and verify step order, notes, hashes and PDF text. No device or production validation performed in this merge."
+}

@@ -1,12 +1,18 @@
-// 파일명: prescription_preview_regions_test.dart
-// 역할: 처방전 미리보기에 그릴 개인정보 가림 영역과 약 이름 영역의 선택·정렬 규칙을 검증한다.
+// File Name: prescription_preview_regions_test.dart
+// Role: Checks selection, deduplication and ordering of sensitive and medication preview regions.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/prescription_preview_regions.dart';
 import 'package:medbuddy_frontend/entities/recognized_text_region_entity.dart';
 
-// 함수이름: region
-// 함수역할: 지정한 범주·문구·위치의 인식 영역을 만든다. 매개변수: category, text, top, left. 반환값: 인식 영역.
+// Function Name: region
+// Description: Builds a recognized region with a ten-unit square bounding box.
+// Parameters:
+// - category (String): Recognition category.
+// - text (String): Recognized content.
+// - top, left (double): Box origin; both default to zero.
+// Returns:
+// - RecognizedTextRegion with the requested content and position.
 RecognizedTextRegion region(
   String category,
   String text, {
@@ -18,9 +24,18 @@ RecognizedTextRegion region(
   box2d: [top, left, top + 10, left + 10],
 );
 
-// 함수이름: main
-// 함수역할: 미리보기 영역 선택 테스트를 등록한다. 매개변수: 없음. 반환값: 없음.
+// Function Name: main
+// Description: Registers preview filtering and OCR name-match cases.
+// Parameters: None.
+// Returns: No value; registers synchronous tests.
 void main() {
+  // Function Name: test callback
+  // Description:
+  // - Keeps sensitive text, promotes a matching medicine name, drops dosage-only text and sorts the retained regions by position.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('sensitive regions stay and matching text becomes a medication', () {
     final regions = resolvePrescriptionPreviewRegions(
       localRegions: [
@@ -36,7 +51,21 @@ void main() {
     ]);
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Accepts a one-character name error only when the recognized text retains a valid dosage-form suffix.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('a one-letter OCR error matches only text with a dosage form', () {
+    // Function Name: matched
+    // Description:
+    // - Resolves one OCR string against the captured Tylenol schedule and returns retained text.
+    // Parameters:
+    // - text (String): OCR text to test.
+    // Returns:
+    // - List<String>: Matched region text, or an empty list when rejected.
     List<String> matched(String text) => resolvePrescriptionPreviewRegions(
       localRegions: [region('recognized_text', text)],
       medicationSchedules: const [MedicationSchedule(medicationName: '타이레놀정')],
@@ -45,6 +74,13 @@ void main() {
     expect(matched('타이레눌정'), ['타이레눌정']);
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Deduplicates identical sensitive boxes and excludes a medication candidate whose name is too short.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('short names and duplicate boxes are left out', () {
     final regions = resolvePrescriptionPreviewRegions(
       localRegions: [

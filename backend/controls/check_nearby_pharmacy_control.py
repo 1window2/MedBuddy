@@ -54,6 +54,7 @@ logger = logging.getLogger(__name__)
 # - Enumerates unrestricted, open-at-time, late-hours, designated-night and weekend/holiday pharmacy searches.
 # Responsibilities:
 # - Keep public search-mode values stable across the API and pharmacy filtering logic.
+# Attributes: ALL, OPEN_AT_TIME, LATE_HOURS, OFFICIAL_LATE_NIGHT and WEEKEND_HOLIDAY are the serialized mode values.
 class PharmacySearchMode(StrEnum):
     ALL = "all"
     OPEN_AT_TIME = "open_at_time"
@@ -67,6 +68,7 @@ class PharmacySearchMode(StrEnum):
 # - Defines persisted pharmacy lookup and date-specific holiday-roster caching required by nearby search.
 # Responsibilities:
 # - Supply geographic candidates and catalog timestamps and manage dated holiday-roster replacement and cache age.
+# Attributes: None required; implementations provide catalog and holiday-roster storage.
 class PharmacyCatalogLookup(Protocol):
     # Function Name: search_nearby_candidates
     # Description:
@@ -136,6 +138,7 @@ class PharmacyCatalogLookup(Protocol):
 # - Defines date-specific emergency pharmacy roster retrieval independently of weekly hours.
 # Responsibilities:
 # - Supply dated opening intervals that take precedence over regular weekly hours.
+# Attributes: None required; implementations provide the external roster adapter.
 class HolidayEmergencyPharmacyBoundary(Protocol):
     # Function Name: fetchSchedules
     # Description:
@@ -191,6 +194,10 @@ class CheckNearbyPharmacy:
             lambda: datetime.now(ZoneInfo(settings.APPLICATION_TIME_ZONE))
         )
 
+    # Function Name: requestShareOperatingSnapshot
+    # Description: Uses the server catalog coordinates for one bounded location/calendar lookup and accepts hours only for exactly one matching pharmacy ID.
+    # Parameters: pharmacy (PharmacyCatalogEntry) is the verified server record, used when no weekly schedule is available.
+    # Returns: Share-time operating snapshot; known provider failures degrade to unknown, as do pre-opening periods without yesterday's hours or unverified calendar dates.
     async def requestShareOperatingSnapshot(self, pharmacy: PharmacyCatalogEntry) -> dict[str, object]:
         """서버에 저장된 좌표에서 정확한 약국 ID의 당일 시간만 제한적으로 확인한다."""
         timezone = ZoneInfo(settings.APPLICATION_TIME_ZONE)
@@ -261,18 +268,10 @@ class CheckNearbyPharmacy:
         )
         return result.data
 
-    # 함수이름: requestNearbyPharmacySearch
-    # 함수역할:
-    # - 좌표·시간을 검증하고 카탈로그 또는 실시간 API에서 영업·거리 조건에 맞는 약국과 자료 최신성을 조회한다.
-    # 매개변수:
-    # - latitude (float): 검색 기준 위치의 위도(도).
-    # - longitude (float): 검색 기준 위치의 경도(도).
-    # - search_mode (PharmacySearchMode): 요청한 약국 영업 시간·공식 지정 필터.
-    # - target_datetime (datetime | None): 선택적 약국 영업 여부 조회 기준 시각.
-    # - limit (int): 반환할 최대 결과 수.
-    # - max_distance_km (float): 허용할 최대 검색 반경(km).
-    # 반환값:
-    # - 필터링된 약국 목록, 기준 시각과 카탈로그·공휴일 자료 상태.
+    # Function Name: requestNearbyPharmacySearch
+    # Description: Validate location/range, combine current and prior holiday schedules with catalog data, and use live lookup when needed; cache-write failures do not discard usable results.
+    # Parameters: latitude and longitude locate the user; search_mode selects the filter; target_datetime defaults to now; limit caps results; max_distance_km bounds the search.
+    # Returns: NearbyPharmacySearchResult with sorted candidates and freshness/holiday status; invalid requests or unavailable data sources raise errors.
     async def requestNearbyPharmacySearch(
         self,
         *,
@@ -731,18 +730,10 @@ class CheckNearbyPharmacy:
             or pharmacy.is_public_holiday
         ) and pharmacy.today_open_time is not None
 
-    # 함수이름: _to_nearby_pharmacy
-    # 함수역할:
-    # - 운영 시각과 전날 야간 이월을 해석하고 거리·심야 지정·마감 및 다음 개점 정보를 계산한다.
-    # 매개변수:
-    # - record (PharmacyLocationRecord): 약국 좌표와 오늘·전날 신고 운영 시간.
-    # - latitude (float): 검색 기준 위치의 위도(도).
-    # - longitude (float): 검색 기준 위치의 경도(도).
-    # - now (datetime): 상태·만료 판정에 사용할 기준 시각.
-    # - is_public_holiday (bool): 조회 날짜가 법정 공휴일인지 여부.
-    # - has_weekend_or_holiday_hours (bool): 주말 또는 공휴일 개점 시간이 등록되어 있는지 여부.
-    # 반환값:
-    # - 영업 상태와 자료 출처·최신성을 담은 주변 약국 엔티티.
+    # Function Name: _to_nearby_pharmacy
+    # Description: Derive overnight opening state, closing time, next opening and designation freshness from a location record; compute distance when the provider distance is absent or negative.
+    # Parameters: record supplies hours and location; latitude and longitude locate the user; now is the local query time; is_public_holiday and has_weekend_or_holiday_hours supply calendar context.
+    # Returns: NearbyPharmacy with normalized hours, rounded distance and source metadata.
     @classmethod
     def _to_nearby_pharmacy(
         cls,
@@ -888,16 +879,10 @@ class CheckNearbyPharmacy:
             return (now.date() - timedelta(days=1)).isoweekday()
         return now.isoweekday()
 
-    # 함수이름: _next_open_at
-    # 함수역할:
-    # - 문을 닫은 약국의 다음 정규 영업 시작 시각을 최대 일주일 탐색한다.
-    # 매개변수:
-    # - now (datetime): 상태·만료 판정에 사용할 기준 시각.
-    # - is_open_now (bool | None): 알려진 영업 여부; 운영 시간이 없으면 None.
-    # - weekly_hours (dict[str, tuple[str, str]] | None): ISO 요일별 개점·폐점 문자열; 8은 공휴일.
-    # - is_public_holiday (bool): 조회 날짜가 법정 공휴일인지 여부.
-    # 반환값:
-    # - 주간 운영표에서 찾은 다음 개점 ISO 시각; 이미 영업 중이거나 찾을 수 없으면 None.
+    # Function Name: _next_open_at
+    # Description: Search today through seven days ahead for a later opening; today's holiday hours override its weekday, while future dates use weekly hours.
+    # Parameters: now (datetime) supplies time and zone; is_open_now skips already-open pharmacies; weekly_hours maps day keys to intervals; is_public_holiday selects today's holiday key.
+    # Returns: str ISO timestamp, or None when already open, hours are absent, or no usable future opening is found.
     @classmethod
     def _next_open_at(
         cls,

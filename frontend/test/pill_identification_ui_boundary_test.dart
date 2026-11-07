@@ -25,6 +25,7 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 // Responsibilities:
 // - Supply the embedded PNG without opening camera or gallery UI.
 // - Provide a confident candidate with front/back imprints while still requiring user confirmation.
+// Attributes: _png (Uint8List): Embedded valid image returned by photo selection.
 class _FakeIdentifyPill extends IdentifyPill {
   static final Uint8List _png = base64Decode(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
@@ -101,6 +102,7 @@ class _FakeIdentifyPill extends IdentifyPill {
 // Role: Image-selection stub that reproduces client-side image-size rejection.
 // Responsibilities:
 // - Reject photo selection with the typed oversized-image failure.
+// Attributes: No additional state; inherits the fixed identification fixture.
 class _OversizedImageIdentifyPill extends _FakeIdentifyPill {
   // Function Name: requestPillImage
   // Description:
@@ -118,10 +120,40 @@ class _OversizedImageIdentifyPill extends _FakeIdentifyPill {
   }
 }
 
+// Class Name: _CountingIdentifyPill
+// Role: Identification fixture that counts analysis requests.
+// Responsibilities:
+// - Return the normal candidate and record how many requests reached the control.
+// Attributes: identificationCalls counts requestPillIdentification calls.
+class _CountingIdentifyPill extends _FakeIdentifyPill {
+  int identificationCalls = 0;
+
+  // Function Name: requestPillIdentification
+  // Description:
+  // - Count the request and return the normal candidate.
+  // Parameters:
+  // - frontImage (Uint8List): Front-side pill photo bytes.
+  // - backImage (Uint8List?): Optional reverse-side photo bytes.
+  // Returns:
+  // - The inherited normal identification result.
+  @override
+  Future<PillIdentificationResult> requestPillIdentification({
+    required Uint8List frontImage,
+    Uint8List? backImage,
+  }) {
+    identificationCalls++;
+    return super.requestPillIdentification(
+      frontImage: frontImage,
+      backImage: backImage,
+    );
+  }
+}
+
 // Class Name: _LowConfidenceIdentifyPill
 // Role: Identification fixture that adds a low-confidence image-quality warning.
 // Responsibilities:
 // - Reuse the normal candidate but mark the result uncertain and the pill too small in frame.
+// Attributes: No additional state; adjusts the inherited result on each call.
 class _LowConfidenceIdentifyPill extends _FakeIdentifyPill {
   // Function Name: requestPillIdentification
   // Description:
@@ -158,6 +190,7 @@ class _LowConfidenceIdentifyPill extends _FakeIdentifyPill {
 // Role: Identification fixture for the accessible no-candidates state.
 // Responsibilities:
 // - Model a completed identification that found no matching pill candidates.
+// Attributes: No additional state; the empty result is built per request.
 class _EmptyIdentifyPill extends _FakeIdentifyPill {
   // Function Name: requestPillIdentification
   // Description:
@@ -270,6 +303,7 @@ class _MultipleIdentifyPill extends _FakeIdentifyPill {
 // Role: Single-photo fixture containing two separately numbered pill observations.
 // Responsibilities:
 // - Return two bounded observations with distinct shapes, candidates, and confidence levels.
+// Attributes: No additional state; returns fixed numbered observations.
 class _OnePhotoMultipleIdentifyPill extends _FakeIdentifyPill {
   // Function Name: requestMultiplePillIdentification
   // Description:
@@ -341,6 +375,11 @@ class _OnePhotoMultipleIdentifyPill extends _FakeIdentifyPill {
 
 // 클래스명: _RefinementIdentifyPill
 // 역할: 번호별 자르기·뒷면·실패·동점 확장을 외부 호출 없이 검증한다.
+// 주요 책임: 선택·자르기·재식별 입력을 기록하고 취소·실패·후보 확장을 재현한다.
+// 속성: expandCandidates, incompleteCandidateList, failRefinement, cancelPicker (bool): 응답 조건.
+// - refinementCalls (int): 재식별 횟수; croppedRegion (PillBoundingBox?): 자른 범위.
+// - submittedFront, submittedBack (Uint8List?): 최근 앞·뒷면 입력.
+// - croppedBytes (Uint8List): 원본과 구분되는 자른 사진 바이트.
 class _RefinementIdentifyPill extends _OnePhotoMultipleIdentifyPill {
   bool expandCandidates = false;
   bool incompleteCandidateList = false;
@@ -524,11 +563,22 @@ Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
 
 // 클래스명: _PhotoSourceIdentifyPill
 // 역할: 각 입력칸의 카메라·갤러리 선택과 취소를 외부 앱 없이 재현한다.
+// 주요 책임:
+// - 요청한 사진 출처를 기록하고 선택 취소 또는 고정 PNG 결과를 반환한다.
+// 속성:
+// - cancelSelection(bool): true이면 선택 결과를 null로 반환한다.
+// - sources(List<ImageSource>): 사진 선택 호출 순서대로 기록한 출처 목록.
 class _PhotoSourceIdentifyPill extends _FakeIdentifyPill {
   bool cancelSelection = false;
   final List<ImageSource> sources = [];
 
-  // 함수역할: 취소 상태에서는 사진을 변경하지 않는다. 매개변수: source. 반환값: 이미지 또는 null.
+  // 함수이름: requestPillImage
+  // 함수역할:
+  // - 요청 출처를 기록하고 취소 여부에 따라 고정 사진 또는 null을 반환한다.
+  // 매개변수:
+  // - source(ImageSource): 카메라 또는 갤러리 중 선택한 출처.
+  // 반환값:
+  // - Future<Uint8List?>: 선택 성공 시 공용 PNG 바이트, 취소 시 null.
   @override
   Future<Uint8List?> requestPillImage(ImageSource source) async {
     sources.add(source);
@@ -720,6 +770,81 @@ Future<void> _reviewAndConfirm(
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  // 함수이름: testWidgets callback
+  // 함수역할:
+  // - 알약 후보 확인을 연속 호출해도 검토창 하나만 열리고 취소 시 저장하지 않으며 이후 재확인에서 한 번만 저장하는지 검증한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
+  testWidgets('후보 확인 연속 호출은 검토창 하나만 열고 취소 후 다시 열린다', (tester) async {
+    _setTallPillViewport(tester);
+    var saves = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(),
+          control: _FakeIdentifyPill(),
+          onSaveRequested: (_, _) async {
+            saves++;
+            return const MedicationSaveResult(
+              status: MedicationSaveStatus.saved,
+              message: 'saved',
+            );
+          },
+        ),
+      ),
+    );
+    await _addPillPhoto(tester, 0);
+    await _tapVisible(tester, find.byKey(const Key('identify-pill-button')));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('페라트라정2.5밀리그램(레트로졸)'));
+    await tester.pump();
+    final confirm = _confirmButton(tester).onPressed!;
+    confirm();
+    confirm();
+    await tester.pumpAndSettle();
+    final review = find.byKey(const Key('schedule-review-confirm'));
+    Navigator.of(tester.element(review)).pop();
+    await tester.pumpAndSettle();
+    expect(review, findsNothing);
+    expect(saves, 0);
+    expect(_confirmButton(tester).onPressed, isNotNull);
+    await _reviewAndConfirm(tester);
+    expect(saves, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: testWidgets callback
+  // 함수역할:
+  // - 버튼이 다시 그려지기 전에 분석 버튼이 두 번 눌려도 사진 분석을 한 번만 요청하는지 검증한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
+  testWidgets('분석 버튼 연속 호출은 사진 분석을 한 번만 요청한다', (tester) async {
+    _setTallPillViewport(tester);
+    final control = _CountingIdentifyPill();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(),
+          control: control,
+        ),
+      ),
+    );
+    await _addPillPhoto(tester, 0);
+    final identify = tester
+        .widget<FilledButton>(find.byKey(const Key('identify-pill-button')))
+        .onPressed!;
+    identify();
+    identify();
+    await tester.pumpAndSettle();
+    expect(control.identificationCalls, 1);
+    expect(find.text('페라트라정2.5밀리그램(레트로졸)'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final language in ['ko', 'en']) {
     // 함수이름: 빈 알약 입력 추가 테스트
     // 함수역할: 사진 없이도 앞·뒷면 입력을 10개까지 추가하고 새 영역으로 이동하는지 확인한다.
@@ -869,8 +994,13 @@ void main() {
     });
   }
 
-  // 함수역할: 전체 사진 변경을 취소해도 기존 번호·후보와 저장 가능 상태를 유지한다.
-  // 매개변수: tester. 반환값: 결과 보존 검증 완료.
+  // 함수이름: 전체 사진 변경 취소 테스트
+  // 함수역할:
+  // - 알약 두 개를 선택한 뒤 새 전체 사진 선택을 취소해도 기존 후보와 확인 버튼이 유지되는지 검증한다.
+  // 매개변수:
+  // - tester(WidgetTester): 사진 선택과 후보 확인 상태를 조작하는 도구.
+  // 반환값:
+  // - Future<void>: 선택 상태 보존 검증 완료.
   testWidgets('전체 사진 변경 취소는 후보 선택을 보존한다', (tester) async {
     final control = _RefinementIdentifyPill();
     addTearDown(control.dispose);
@@ -914,6 +1044,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // Function Name: testWidgets callback
+  // Description:
+  // - Select visible candidates from an incomplete result set; the UI must explain that more matches exist and keep confirmation disabled.
+  // Parameters:
+  // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   testWidgets('응답 상한 밖 후보가 있으면 저장을 차단한다', (tester) async {
     final control = _RefinementIdentifyPill()..incompleteCandidateList = true;
     await _openRefinementGroup(tester, control);

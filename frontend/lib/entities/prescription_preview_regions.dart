@@ -67,13 +67,10 @@ List<RecognizedTextRegion> resolvePrescriptionPreviewRegions({
   return List.unmodifiable(uniqueRegions);
 }
 
-// 함수이름: _classifyLocalMedicationRegions
-// 함수역할: 구조화된 약 이름과 일치하거나 충분히 유사한 로컬 OCR 문구만 약품 정보 영역으로 변환한다.
-// 매개변수:
-// - localRegions (List<RecognizedTextRegion>): 기기 내 OCR이 생성한 전체 영역
-// - medicationSchedules (List<MedicationSchedule>): 비교할 파싱 완료 약품 목록
-// 반환값:
-// - 약 이름과 대응된 로컬 OCR 영역 목록
+// Function Name: _classifyLocalMedicationRegions
+// Description: Retain medication regions and reclassify matching generic OCR text; require at least one normalized medication name of three characters.
+// Parameters: localRegions (List<RecognizedTextRegion>): local OCR regions; medicationSchedules (List<MedicationSchedule>): analyzed medication names.
+// Returns: List<RecognizedTextRegion>: selected medication regions, empty when no usable names exist.
 List<RecognizedTextRegion> _classifyLocalMedicationRegions(
   List<RecognizedTextRegion> localRegions,
   List<MedicationSchedule> medicationSchedules,
@@ -144,13 +141,10 @@ List<RecognizedTextRegion> _classifyLocalMedicationRegions(
       .toList(growable: false);
 }
 
-// 함수이름: _isMedicationRegionMatch
-// 함수역할: 정확 포함 비교를 우선하고 OCR 한두 글자 오류는 편집거리 유사도로 보완한다. 유사도 비교에는 약품 제형 문구가 있는 영역만 허용해 일반 안내 문구의 오탐을 줄인다.
-// 매개변수:
-// - regionText (String): 정규화된 로컬 OCR 문구
-// - medicationName (String): 정규화된 파싱 완료 약 이름
-// 반환값:
-// - 약품 영역으로 볼 수 있으면 true
+// Function Name: _isMedicationRegionMatch
+// Description: Accept containment matches, otherwise require sufficiently long dosage-form text and thresholded edit similarity.
+// Parameters: regionText/medicationName (String): normalized OCR text and medication name.
+// Returns: bool: whether the region can represent that medication.
 bool _isMedicationRegionMatch(String regionText, String medicationName) {
   if (regionText.contains(medicationName) ||
       medicationName.contains(regionText)) {
@@ -165,13 +159,10 @@ bool _isMedicationRegionMatch(String regionText, String medicationName) {
       _medicationRegionSimilarityThreshold;
 }
 
-// 함수이름: _bestWindowSimilarity
-// 함수역할: 긴 문자열에 성분명이나 용량이 붙어도 약 이름과 가장 유사한 구간을 찾아 점수화한다.
-// 매개변수:
-// - left (String): 비교할 첫 번째 정규화 문자열
-// - right (String): 비교할 두 번째 정규화 문자열
-// 반환값:
-// - 0.0부터 1.0 사이의 최고 편집거리 유사도
+// Function Name: _bestWindowSimilarity
+// Description: Find the best normalized edit similarity against the whole longer string or nearby-length windows; stop at an exact match.
+// Parameters: left/right (String): normalized texts of at least four characters.
+// Returns: double: best similarity in [0, 1].
 double _bestWindowSimilarity(String left, String right) {
   final shorter = left.length <= right.length ? left : right;
   final longer = left.length <= right.length ? right : left;
@@ -201,13 +192,10 @@ double _bestWindowSimilarity(String left, String right) {
   return bestScore;
 }
 
-// 함수이름: _editSimilarity
-// 함수역할: 두 문자열의 레벤슈타인 편집거리를 길이 대비 유사도로 변환한다.
-// 매개변수:
-// - left (String): 비교할 첫 번째 문자열
-// - right (String): 비교할 두 번째 문자열
-// 반환값:
-// - 완전히 같으면 1.0, 차이가 커질수록 0.0에 가까운 값
+// Function Name: _editSimilarity
+// Description: Normalize Levenshtein distance by the longer text length.
+// Parameters: left/right (String): comparison strings.
+// Returns: double: similarity in [0, 1], with two empty strings equal to 1.
 double _editSimilarity(String left, String right) {
   final longestLength = left.length > right.length
       ? left.length
@@ -218,13 +206,10 @@ double _editSimilarity(String left, String right) {
   return 1 - (_levenshteinDistance(left, right) / longestLength);
 }
 
-// 함수이름: _levenshteinDistance
-// 함수역할: 삽입, 삭제, 치환으로 한 문자열을 다른 문자열로 바꾸는 최소 횟수를 계산한다.
-// 매개변수:
-// - left (String): 기준 문자열
-// - right (String): 비교 문자열
-// 반환값:
-// - 최소 편집 횟수
+// Function Name: _levenshteinDistance
+// Description: Compute insertion, deletion and substitution distance with two rolling rows.
+// Parameters: left/right (String): comparison strings.
+// Returns: int: minimum unit-cost edit count.
 int _levenshteinDistance(String left, String right) {
   if (left == right) {
     return 0;
@@ -274,12 +259,10 @@ int _levenshteinDistance(String left, String right) {
   return previousRow.last;
 }
 
-// 함수이름: _normalizeRegionText
-// 함수역할: OCR 문구와 파싱된 약 이름을 공백·기호 차이에 영향받지 않는 비교 문자열로 정리한다.
-// 매개변수:
-// - value (String): 비교할 OCR 문구 또는 약 이름
-// 반환값:
-// - 한글, 영문, 숫자만 남긴 소문자 문자열
+// Function Name: _normalizeRegionText
+// Description: Lowercase OCR text and retain only ASCII letters, digits and Korean syllables.
+// Parameters: value (String): OCR region or medication name.
+// Returns: String: normalized matching text.
 String _normalizeRegionText(String value) {
   return value.toLowerCase().replaceAll(RegExp(r'[^0-9a-z가-힣]'), '');
 }

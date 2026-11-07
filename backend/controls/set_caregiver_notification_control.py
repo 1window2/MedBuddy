@@ -4,10 +4,11 @@
 import logging
 
 from fastapi import HTTPException
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
+from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operations
 from entities.caregiver_notification_entity import (
     CAREGIVER_NOTIFICATION_MODE_DISABLED,
     CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE,
@@ -20,19 +21,15 @@ from entities.caregiver_notification_entity import (
     normalize_notification_slot,
 )
 from entities.patient_hash_entity import normalize_patient_hash
+from entities.user_account_entity import _UserAccount
 
 logger = logging.getLogger(__name__)
 
 
-# 클래스명: SetCaregiverNotification
-# 역할:
-# - 연동 권한을 검증하고 시간대별 보호자 알림 설정을 관리한다.
-# 주요 책임:
-# - 보호자와 환자의 연동 관계를 검증한다.
-# - 아침, 점심, 저녁, 취침 전 설정을 서로 독립적으로 조회하고 저장한다.
-# - 기존 단일 알림 설정을 시간대별 구조로 호환한다.
-# 속성:
-# - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+# Class Name: SetCaregiverNotification
+# Role: Manages per-slot caregiver alert settings under an active patient link.
+# Responsibilities: Validates linked ownership, independently configures slots/deadlines and interprets legacy single-setting rows.
+# Attributes: db (Session) is the request transaction; account locks guard setting writes against unlink/deletion.
 class SetCaregiverNotification:
     # Function Name: __init__
     # Description:
@@ -50,7 +47,7 @@ class SetCaregiverNotification:
     # 매개변수:
     # - caregiver_hash (str): 환자와 연동된 보호자 계정 식별자.
     # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
-    # - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
+    # - slot_key (str): morning, lunch, evening, bedtime 또는 필요시 복용 알림용 as_needed 키.
     # 반환값:
     # - 선택 시간대의 저장 설정 또는 기본값을 담은 성공 응답.
     def requestCaregiverNotificationSetting(
@@ -178,7 +175,7 @@ class SetCaregiverNotification:
 
     # 함수이름: saveCaregiverNotificationSetting
     # 함수역할:
-    # - 연동 관계를 검증한 뒤 지정한 시간대의 알림 설정만 생성하거나 갱신한다.
+    # - 두 계정 잠금 안에서 삭제·연동을 재검증한 뒤 선택 시간대만 저장한다. 필요시 복용에는 미복용 마감 모드를 허용하지 않는다.
     # 매개변수:
     # - caregiver_hash (str): 환자와 연동된 보호자 계정 식별자.
     # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
@@ -186,9 +183,9 @@ class SetCaregiverNotification:
     # - alert_option (str | None): 기존 활성 플래그보다 우선하는 선택적 알림 모드.
     # - deadline_hour (int | None): 선택적인 미복용 마감 시.
     # - deadline_minute (int | None): 선택적인 미복용 마감 분.
-    # - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
+    # - slot_key (str): morning, lunch, evening, bedtime 또는 필요시 복용 알림용 as_needed 키.
     # 반환값:
-    # - 저장된 선택 시간대의 알림 모드·활성 여부·마감 시각 응답.
+    # - 저장된 선택 시간대 응답. 동시 생성은 재시도하며 저장 실패는 롤백한다. 입력·삭제·연동·잠금 오류는 해당 HTTP 상태로 전파한다.
     def saveCaregiverNotificationSetting(
         self,
         caregiver_hash: str,
@@ -217,6 +214,7 @@ class SetCaregiverNotification:
         )
 
         try:
+            self._lock_notification_scope(normalized_caregiver_hash, normalized_patient_hash)
             setting = self._find_setting(
                 normalized_caregiver_hash,
                 normalized_patient_hash,
@@ -257,6 +255,38 @@ class SetCaregiverNotification:
                 status_code=500,
                 detail="Caregiver notification setting could not be saved.",
             ) from exc
+
+    # 함수이름: _lock_notification_scope
+    # 함수역할: 두 계정 잠금 안에서 삭제·연동을 재확인하고 설정 저장까지 유지한다.
+    # 매개변수: caregiver_hash, patient_hash: 정규화된 참여자 식별자.
+    # 반환값: 없음. 미저장 변경은 RuntimeError, 삭제는 410, 연동 실패는 403/404, 잠금 실패는 503이다.
+    def _lock_notification_scope(self, caregiver_hash: str, patient_hash: str) -> None:
+        if self.db.new or self.db.dirty or self.db.deleted:
+            raise RuntimeError("Notification settings require a clean database session.")
+        # 인증 단계에서 만든 계정은 보존하고, 단일 계정 잠금을 풀어 정렬된 순서로 다시 잡는다.
+        self.db.commit()
+        try:
+            lock_account_operations(self.db, (caregiver_hash, patient_hash))
+            self.db.expire_all()
+            deleted_account = (
+                self.db.query(_UserAccount.user_hash)
+                .filter(
+                    _UserAccount.user_hash.in_((caregiver_hash, patient_hash)),
+                    _UserAccount.deletion_requested_at.is_not(None),
+                )
+                .first()
+            )
+            if deleted_account is not None:
+                raise HTTPException(410, "This MedBuddy account has been deleted.")
+            self._resolve_scope(caregiver_hash, patient_hash)
+        except OperationalError as exc:
+            self.db.rollback()
+            raise HTTPException(
+                503, ACCOUNT_BUSY_DETAIL, headers={"Retry-After": "5"},
+            ) from exc
+        except BaseException:
+            self.db.rollback()
+            raise
 
     # Function Name: _resolve_scope
     # Description:
@@ -310,16 +340,16 @@ class SetCaregiverNotification:
 
     # 함수이름: _update_existing_setting_after_conflict
     # 함수역할:
-    # - 동시 생성 충돌 후 기존 연동 알림 행을 찾아 선택 시간대의 설정을 재적용한다.
+    # - 동시 생성 충돌 후 두 계정을 다시 잠그고 삭제·연동을 재검증하여 기존 행의 선택 시간대 설정을 재적용한다.
     # 매개변수:
     # - caregiver_hash (str): 환자와 연동된 보호자 계정 식별자.
     # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
-    # - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
+    # - slot_key (str): morning, lunch, evening, bedtime 또는 필요시 복용 알림용 as_needed 키.
     # - notification_mode (str): 정규화된 비활성·복용 완료·미복용 마감 알림 모드.
     # - deadline_hour (int | None): 선택적인 미복용 마감 시.
     # - deadline_minute (int | None): 선택적인 미복용 마감 분.
     # 반환값:
-    # - 갱신된 알림 응답; 행이 없으면 HTTP 409, 저장 실패는 HTTP 500.
+    # - 갱신된 알림 응답. 행 부재는 409, 저장 실패는 500이며 잠금·삭제·연동 오류는 저장 재시도 전에 전파한다.
     def _update_existing_setting_after_conflict(
         self,
         caregiver_hash: str,
@@ -329,6 +359,7 @@ class SetCaregiverNotification:
         deadline_hour: int | None,
         deadline_minute: int | None,
     ) -> dict[str, object]:
+        self._lock_notification_scope(caregiver_hash, patient_hash)
         setting = self._find_setting(caregiver_hash, patient_hash)
         if setting is None:
             raise HTTPException(
@@ -359,12 +390,12 @@ class SetCaregiverNotification:
     # - 선택 시간대의 설정을 JSON에 병합하고 기존 호환 열과 전체 활성 상태를 함께 저장한다.
     # 매개변수:
     # - setting (_CaregiverNotification): 기존 호환 열과 시간대별 값을 포함한 보호자·환자 알림 설정 행.
-    # - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
+    # - slot_key (str): morning, lunch, evening, bedtime 또는 필요시 복용 알림용 as_needed 키.
     # - notification_mode (str): 정규화된 비활성·복용 완료·미복용 마감 알림 모드.
     # - deadline_hour (int | None): 선택적인 미복용 마감 시.
     # - deadline_minute (int | None): 선택적인 미복용 마감 분.
     # 반환값:
-    # - 갱신된 시간대 알림 설정을 포함한 성공 응답.
+    # - 커밋 전에 구성한 시간대 알림 성공 응답. 저장 오류는 전파하며 롤백은 호출자가 담당한다.
     def _persist_setting_state(
         self,
         setting: _CaregiverNotification,
@@ -393,19 +424,21 @@ class SetCaregiverNotification:
         setting.alert_option = setting_state.notification_type
         setting.deadline_hour = setting_state.deadline_hour
         setting.deadline_minute = setting_state.deadline_minute
-        self.db.commit()
-        self.db.refresh(setting)
-        return self._success_response(
+        # 잠금 해제 뒤 환자 삭제가 먼저 끝나도 응답 때문에 삭제된 행을 다시 읽지 않는다.
+        self.db.flush()
+        response = self._success_response(
             "Caregiver notification setting was saved.",
             setting,
             slot_key,
         )
+        self.db.commit()
+        return response
 
     # 함수이름: _normalize_slot
     # 함수역할:
     # - 시간대 키를 정규화하고 지원하지 않는 값은 API 입력 오류로 변환한다.
     # 매개변수:
-    # - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
+    # - slot_key (str): morning, lunch, evening, bedtime 또는 필요시 복용 알림용 as_needed 키.
     # 반환값:
     # - 지원하는 시간대 키; 잘못된 값은 HTTP 400.
     def _normalize_slot(self, slot_key: str) -> str:
@@ -473,7 +506,7 @@ class SetCaregiverNotification:
     # - 저장 행의 시간대별 설정을 도메인 엔티티로 읽고 이미 엔티티인 입력은 유지한다.
     # 매개변수:
     # - setting (_CaregiverNotification | CaregiverNotification): 기존 호환 열과 시간대별 값을 포함한 보호자·환자 알림 설정 행.
-    # - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
+    # - slot_key (str): morning, lunch, evening, bedtime 또는 필요시 복용 알림용 as_needed 키.
     # 반환값:
     # - 선택 시간대의 CaregiverNotification.
     def _to_entity(
@@ -500,14 +533,10 @@ class SetCaregiverNotification:
             deadline_minute=slot_setting.get("deadline_minute"),
         )
 
-    # 함수이름: _read_or_seed_slot_settings
-    # 함수역할:
-    # - 저장된 시간대 JSON을 읽고 누락된 시간대는 기존 단일 알림 설정으로 채운다.
-    # - 규칙은 알림 큐·전송 작업과 공유하는 엔티티 모듈의 effective_slot_settings가 소유한다.
-    # 매개변수:
-    # - setting (_CaregiverNotification): 기존 호환 열과 시간대별 값을 포함한 보호자·환자 알림 설정 행.
-    # 반환값:
-    # - 모든 지원 시간대를 포함한 알림 설정 사전.
+    # Function Name: _read_or_seed_slot_settings
+    # Description: Delegates legacy-column and per-slot JSON interpretation to the shared effective settings policy without persisting anything.
+    # Parameters: setting (_CaregiverNotification) is the current preference row.
+    # Returns: Effective slot-to-setting dictionary used consistently by settings, queueing and dispatch paths.
     def _read_or_seed_slot_settings(
         self,
         setting: _CaregiverNotification,
@@ -519,7 +548,7 @@ class SetCaregiverNotification:
     # - 선택 시간대의 알림 상태를 도메인 엔티티를 통해 응답 필드로 변환한다.
     # 매개변수:
     # - setting (_CaregiverNotification | CaregiverNotification): 기존 호환 열과 시간대별 값을 포함한 보호자·환자 알림 설정 행.
-    # - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
+    # - slot_key (str): morning, lunch, evening, bedtime 또는 필요시 복용 알림용 as_needed 키.
     # 반환값:
     # - 환자·보호자·시간대와 알림 모드·마감 시각을 담은 사전.
     def _to_response_dict(
@@ -535,7 +564,7 @@ class SetCaregiverNotification:
     # 매개변수:
     # - message (str): 사용자에게 표시할 처리 결과 문구.
     # - setting (_CaregiverNotification | CaregiverNotification): 기존 호환 열과 시간대별 값을 포함한 보호자·환자 알림 설정 행.
-    # - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
+    # - slot_key (str): morning, lunch, evening, bedtime 또는 필요시 복용 알림용 as_needed 키.
     # 반환값:
     # - success, message, data를 포함한 알림 설정 응답.
     def _success_response(

@@ -35,10 +35,17 @@ def db() -> Iterator[Session]:
     engine.dispose()
 
 
-# 함수이름: test_reviewed_course_reaches_pillbox_and_today
-# 함수역할: 15개 시간대 조합과 5개 기간 경계에서 저장·중복 재시도·환자 격리·오늘 일정 반영을 확인한다.
-# 매개변수: db 격리 세션, slots 선택 시간대, offset 시작일 차이, days 기간, active 오늘 포함 여부.
-# 반환값: 없음; 저장 정보나 조회 결과가 다르면 단언 실패.
+# Function Name: test_reviewed_course_reaches_pillbox_and_today
+# Description:
+# - Persist a reviewed prescription once across retries and show it only in its patient's pillbox and active-day schedule.
+# Parameters:
+# - db: Session; isolated database session.
+# - slots: list[str]; selected slot combination.
+# - offset: int; start-date offset from today.
+# - days: int; course duration, with zero represented as unknown.
+# - active: bool; whether today belongs to the course.
+# Returns:
+# - None.
 @pytest.mark.parametrize("slots", SLOT_SETS)
 @pytest.mark.parametrize(
     "offset,days,active",

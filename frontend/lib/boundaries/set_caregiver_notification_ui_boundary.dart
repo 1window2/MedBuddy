@@ -10,9 +10,9 @@ import 'set_notification_ui_boundary.dart';
 // 역할: 보호자 알림 조건과 마감 시각 선택을 제공한다.
 
 // 클래스명: SetCaregiverNotificationUI
-// 역할: 보호자의 알림 조건과 미복용 마감 시각 대화상자를 담당한다.
-// 주요 책임:
-// - 현재 보호자 알림 조건·마감 시각을 편집하고 저장으로 확정된 설정을 반환한다.
+// 역할: 보호자 알림 조건과 마감 시각을 선택하는 정적 대화상자 도우미.
+// 주요 책임: 환자 알림 이후의 확인 마감과 알림 조건을 검증하고 선택값을 반환한다.
+// 속성: _defaultDeadlineDelayMinutes (int): 기본 복약 시각 뒤 마감까지 60분.
 class SetCaregiverNotificationUI {
   // 함수이름: SetCaregiverNotificationUI._
   // 함수역할: 정적 대화상자 도우미가 외부에서 인스턴스화되지 않도록 제한한다.
@@ -25,13 +25,10 @@ class SetCaregiverNotificationUI {
   // 서버가 알림 시각 뒤에 두는 유예(30분)보다 길다.
   static const int _defaultDeadlineDelayMinutes = 60;
 
-  // 함수이름: slotReminderTime
-  // 함수역할: 시간대의 복약 알림 시각을 정한다. 보호자 앱은 환자가 바꾼 알림 시각을 받지 못하므로, 호출자가
-  //   알려 주지 않으면 그 시간대의 기본 알림 시각(08:00·12:00·18:00·22:00)을 쓴다.
-  // 매개변수:
-  // - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키.
-  // - reminderTime (TimeOfDay?): 호출자가 아는 환자의 알림 시각.
-  // 반환값: 확인 시각이 그보다 이를 수 없는 기준 시각.
+  // Function Name: slotReminderTime
+  // Description: Uses a known patient reminder time or the slot default because the caregiver app cannot otherwise read patient-customized times.
+  // Parameters: slotKey (String): morning, lunch, evening or bedtime; reminderTime (TimeOfDay?): caller-known reminder.
+  // Returns: The baseline reminder time: default 08:00, 12:00, 18:00 or 22:00 when not supplied.
   static TimeOfDay slotReminderTime(String slotKey, {TimeOfDay? reminderTime}) {
     return reminderTime ??
         TimeOfDay(hour: MedicationAlarm.defaultHourFor(slotKey), minute: 0);
@@ -52,10 +49,10 @@ class SetCaregiverNotificationUI {
     return TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
   }
 
-  // 함수이름: isDeadlineBeforeReminder
-  // 함수역할: 확인 시각이 그 시간대의 복약 알림 시각보다 이른지 판단한다.
-  // 매개변수: deadline - 확인 시각, reminder - 복약 알림 시각.
-  // 반환값: 확인 시각이 더 이르면 true.
+  // Function Name: isDeadlineBeforeReminder
+  // Description: Compares the caregiver confirmation deadline with the dose reminder time.
+  // Parameters: deadline/reminder (TimeOfDay): confirmation and dose-reminder times.
+  // Returns: True when the deadline is earlier than the reminder.
   static bool isDeadlineBeforeReminder(TimeOfDay deadline, TimeOfDay reminder) {
     return deadline.hour * 60 + deadline.minute <
         reminder.hour * 60 + reminder.minute;
@@ -344,15 +341,10 @@ class SetCaregiverNotificationUI {
   }
 }
 
-// 클래스명: _NotificationModeOption
-// 역할: 보호자 알림 모드의 설명과 선택 표시를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 보호자 알림 모드의 설명과 선택 표시 위젯을 구성한다.
-// 속성:
-// - title (String): 화면·구역·항목에 표시할 제목.
-// - description (String): 주 표시 아래에 제공할 설명 또는 계정 상세.
-// - selected (bool): 현재 선택 집합에 포함되는지 여부.
-// - onTap (VoidCallback): 해당 항목의 명시된 주 동작을 실행할 콜백.
+// Class Name: _NotificationModeOption
+// Role: Selectable caregiver notification mode.
+// Responsibilities: Combines the mode title, explanation and checked state with its selection action.
+// Attributes: title/description: mode copy; selected: checked state; onTap: select this mode.
 class _NotificationModeOption extends StatelessWidget {
   final String title;
   final String description;
@@ -374,11 +366,10 @@ class _NotificationModeOption extends StatelessWidget {
     required this.onTap,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 보호자 알림 모드의 설명과 선택 표시 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 보호자 알림 모드의 설명과 선택 표시에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays one caregiver alert mode with its explanation and selection indicator.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return InkWell(

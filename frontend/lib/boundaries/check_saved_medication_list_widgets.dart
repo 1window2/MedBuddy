@@ -3,21 +3,10 @@ part of 'check_saved_medication_ui_boundary.dart';
 // 파일명: check_saved_medication_list_widgets.dart
 // 역할: 저장 약품 정렬, 날짜·복용기간 표시 및 상세·사진 진입을 제공한다.
 
-// 클래스명: _SavedMedicationNameRow
-// 역할: 약 사진·약품명·등록일·복용기간을 한 줄 목록 항목으로 보여 주고 선택·가이드·사진 동작을 연결한다.
-// 주요 책임:
-// - 일반 모드에서는 항목 전체를 눌러 복약 가이드를 열고 사진은 따로 확대한다.
-// - 선택 모드에서는 항목 전체나 체크박스를 눌러 선택을 바꾸고 가이드·사진 동작을 막는다.
-// 속성:
-// - showRegisteredDate (bool): 등록일 줄을 함께 표시할지 여부.
-// - medication (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-// - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
-// - isSelectionMode (bool): 일반 조작 대신 첨부·삭제 선택 모드를 사용할지 여부.
-// - enabled (bool): 삭제 중이 아니어서 조작할 수 있는지 여부.
-// - isSelected (bool): 현재 선택 집합에 포함되는지 여부.
-// - onSelectionChanged (void Function(bool selected)): 선택 상태 변경을 소유 화면에 전달할 콜백.
-// - onGuideRequested (VoidCallback): 복약 가이드를 여는 콜백.
-// - onImageRequested (VoidCallback): 약품 사진을 확대해 표시할 콜백.
+// Class Name: _SavedMedicationNameRow
+// Role: Saved medication list row with separate image and guide actions.
+// Responsibilities: Opens guidance from the row and enlarges photos separately; selection mode instead toggles selection and blocks both detail actions.
+// Attributes: medication: row data; text: labels; showRegisteredDate: date visibility; isSelectionMode/isSelected: selection state; enabled: interaction allowed outside deletion; onSelectionChanged/onGuideRequested/onImageRequested: row commands.
 class _SavedMedicationNameRow extends StatelessWidget {
   final bool showRegisteredDate;
   final MedicationDetail medication;
@@ -31,9 +20,17 @@ class _SavedMedicationNameRow extends StatelessWidget {
   final ValueChanged<MedicationRegimenAction> onRegimenRequested;
 
   // 함수이름: _SavedMedicationNameRow
-  // 함수역할: 목록 항목 표시와 동작에 필요한 입력값을 보관한다.
-  // 매개변수: 클래스 속성 설명과 같다.
-  // 반환값: 입력 설정이 반영된 _SavedMedicationNameRow 인스턴스.
+  // 함수역할: 저장 약의 날짜·이름·사진과 상세 조회, 선택 또는 복약 변경 동작을 연결한다.
+  // 매개변수:
+  // - showRegisteredDate (bool): 처방 날짜 외에 등록 날짜도 표시할지 여부.
+  // - medication (MedicationDetail): 약품 정보와 복약 변경·중단 상태.
+  // - text (_SavedMedicationText): 날짜·상태·동작에 사용할 언어별 문구.
+  // - isSelectionMode, isSelected (bool): 삭제 선택 모드와 이 약의 선택 상태.
+  // - enabled (bool): 삭제 중이 아니어서 행을 조작할 수 있는지 여부.
+  // - onSelectionChanged (void Function(bool)): 선택 모드에서 바뀐 선택 여부를 전달할 콜백.
+  // - onGuideRequested, onImageRequested (VoidCallback): 일반 모드에서 상세 안내와 사진 확대를 여는 콜백.
+  // - onRegimenRequested (ValueChanged<MedicationRegimenAction>): 일반 모드에서 유효한 저장 ID가 있고 중단일이 설정되지 않은 약품의 복약 변경·중단 메뉴 선택을 전달할 콜백.
+  // 반환값: 저장 약 한 행. 생성 시 콜백을 실행하지 않는다.
   const _SavedMedicationNameRow({
     required this.showRegisteredDate,
     required this.medication,
@@ -47,11 +44,10 @@ class _SavedMedicationNameRow extends StatelessWidget {
     required this.onRegimenRequested,
   });
 
-  // 함수이름: build
-  // 함수역할: 사진·이름·날짜와 이동 표시를 가로로 배치한 목록 항목을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 저장 약 한 건의 목록 항목 위젯 트리.
+  // Function Name: build
+  // Description: Lays out the medication photo, name, dates and navigation indicator, switching row interaction to selection when requested.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final interactive = enabled && !isSelectionMode;
@@ -63,8 +59,10 @@ class _SavedMedicationNameRow extends StatelessWidget {
     // 매일 복용하지 않는 약은 쉬는 날 오늘 일정에 없으므로 다음 복용일을 함께 알려준다.
     final today = MedicationHistoryDates.today(DateTime.now());
     final nextDoseDay = medication.nextDoseDayFrom(today);
-    // 서버 날짜는 기기 자정, today는 UTC 자정이라 시각으로 비교하면 한국에서는 마지막 복용일에
-    // 이미 종료로 보인다. 어느 형식이든 연·월·일만 같은 기준으로 맞춰 비교한다.
+    // Function Name: calendarDay
+    // Description: Normalizes calendar fields without converting time zones so UTC and local date-only values compare as the same day.
+    // Parameters: value (DateTime): medication or current calendar date.
+    // Returns: Local-midnight DateTime with identical year/month/day.
     DateTime calendarDay(DateTime value) =>
         DateTime(value.year, value.month, value.day);
     final localToday = calendarDay(today);
@@ -245,27 +243,19 @@ class _SavedMedicationNameRow extends StatelessWidget {
   }
 }
 
-// 클래스명: _MedicationDateLine
-// 역할: 날짜 제목·값과 날짜 부재 대체 표시를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 날짜 제목·값과 날짜 부재 대체 표시 위젯을 구성한다.
-// 속성:
-// - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-// - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-// - fallback (String): 값이나 약품 정보를 제공할 수 없을 때 사용할 대체 문구.
+// Class Name: _MedicationDateLine
+// Role: A labeled medication date.
+// Responsibilities: Displays the complete value with a fallback for an absent date and wrapping for large text.
+// Attributes: label: date meaning; value: formatted date; fallback: missing-date text.
 class _MedicationDateLine extends StatelessWidget {
   final String label;
   final String value;
   final String fallback;
 
-  // 함수이름: _MedicationDateLine
-  // 함수역할: 날짜 제목·값과 날짜 부재 대체 표시에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - key (Key?): 테스트와 위젯 식별에 쓰는 키.
-  // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-  // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-  // - fallback (String): 값이나 약품 정보를 제공할 수 없을 때 사용할 대체 문구.
-  // 반환값: 입력 설정이 반영된 _MedicationDateLine 인스턴스.
+  // Function Name: _MedicationDateLine
+  // Description: Stores a date label, value and missing-date fallback.
+  // Parameters: key (Key?): identity; label/value/fallback (String): date caption, formatted value and empty replacement.
+  // Returns: A _MedicationDateLine.
   const _MedicationDateLine({
     super.key,
     required this.label,
@@ -273,11 +263,10 @@ class _MedicationDateLine extends StatelessWidget {
     required this.fallback,
   });
 
-  // 함수이름: build
-  // 함수역할: 날짜 제목과 전체 값을 읽기 쉬운 대비로 표시하고 큰 글씨에서는 줄바꿈한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 날짜 제목·값과 날짜 부재 대체 표시에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Shows the complete date value or fallback with its label, allowing text to wrap.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final displayValue = value.trim().isEmpty ? fallback : value.trim();
@@ -295,11 +284,10 @@ class _MedicationDateLine extends StatelessWidget {
   }
 }
 
-// 함수이름: _formatMedicationDate
-// 함수역할: 날짜를 다른 검토 화면과 같은 연-월-일(2026-10-01)로 표시하고 null이면 빈 문자열을 반환한다.
-// 매개변수:
-// - value (DateTime?): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-// 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+// Function Name: _formatMedicationDate
+// Description: Formats a date as year-month-day to match review screens.
+// Parameters: value (DateTime?): date to display.
+// Returns: A zero-padded date, or an empty string for null.
 String _formatMedicationDate(DateTime? value) {
   if (value == null) {
     return '';

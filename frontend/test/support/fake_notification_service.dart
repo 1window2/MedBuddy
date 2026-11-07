@@ -2,9 +2,9 @@
 // Role: Shared recording substitute for NotificationService, so a change to the notification
 //   interface is made in one test double instead of in a full copy per test file.
 //
-// Records: every call to the 17 instance members of NotificationService, in call order, with the
-//   arguments it received (reminder registrations, cancellations, snoozes, shown alerts, the
-//   history account and the privacy flag).
+// Records: reminder registrations, cancellations, snoozes, selected alert fields, language changes,
+//   history-account changes and permission/session counters in per-operation call order.
+//   Optional grouping metadata and onlyAlertOnce are accepted but not recorded.
 // Does not simulate: the platform plugin, scheduling, the per-date notification ids, the
 //   notification inbox, the serialisation of reminder writes, or the privacy-neutral text chosen
 //   by setShowSensitiveDetails (alert bodies are recorded exactly as passed). A cancellation does
@@ -13,6 +13,7 @@
 
 import 'package:medbuddy_frontend/entities/caregiver_alert_context_entity.dart';
 import 'package:medbuddy_frontend/services/notification_service.dart';
+import 'package:medbuddy_frontend/services/slot_check_notification_context.dart';
 
 // One registerNotification call.
 typedef RecordedReminderRegistration = ({
@@ -92,7 +93,54 @@ typedef RecordedHistoryUser = ({String? userHash, bool persistSession});
 // - initializeCount, permissionRequestCount, systemSettingsOpenCount,
 //   cancelAllMedicationRemindersCount, cancelAllScheduledMedicationRemindersCount (int): Call
 //   counters.
+// - slotCheckAlerts (List of records): Slot-check context and presentation flags.
+// - languages (List<String>): Requested language changes in order.
+// - exactRemindersAllowed (bool), exactPermissionAfterRequest (bool?): Current and next permission results.
+// - exactPermissionRequestCount, exactRescheduleCount (int): Exact-alarm request counters.
 class RecordingNotificationService implements NotificationService {
+  final List<
+    ({
+      SlotCheckNotificationContext request,
+      int id,
+      String language,
+      String? messagePreview,
+      bool recordHistory,
+      bool withTakenAction,
+    })
+  >
+  slotCheckAlerts = [];
+
+  // Function Name: showSlotCheckAlert
+  // Description:
+  // - Records the slot-check request and taken-action flag without displaying a notification.
+  // Parameters:
+  // - request (SlotCheckNotificationContext): Patient and dose context.
+  // - id (int): Notification identifier.
+  // - language (String): Requested locale.
+  // - messagePreview (String?): Optional body preview.
+  // - recordHistory (bool): Requested inbox flag, recorded only.
+  // - withTakenAction (bool): Whether a taken action was requested.
+  // Returns:
+  // - Future<void>: Completes after appending the call record.
+  @override
+  Future<void> showSlotCheckAlert({
+    required SlotCheckNotificationContext request,
+    required int id,
+    required String language,
+    String? messagePreview,
+    bool recordHistory = false,
+    bool withTakenAction = true,
+  }) async {
+    slotCheckAlerts.add((
+      request: request,
+      id: id,
+      language: language,
+      messagePreview: messagePreview,
+      recordHistory: recordHistory,
+      withTakenAction: withTakenAction,
+    ));
+  }
+
   // Function Name: RecordingNotificationService
   // Description: Creates a fake that succeeds unless a failure switch is set.
   // Parameters: failRegistration, failSnooze, permissionGranted - see the class attributes.
@@ -117,6 +165,13 @@ class RecordingNotificationService implements NotificationService {
   bool? showSensitiveDetails;
   final List<String> languages = [];
 
+  // 함수이름: updateLanguage
+  // 함수역할:
+  // - 플랫폼 언어를 바꾸지 않고 전달된 언어를 호출 순서대로 기록한다.
+  // 매개변수:
+  // - language (String): 요청한 알림 언어.
+  // 반환값:
+  // - Future<void>: languages 목록에 추가한 뒤 완료한다.
   @override
   Future<void> updateLanguage(String language) async {
     languages.add(language);
@@ -241,9 +296,16 @@ class RecordingNotificationService implements NotificationService {
   }
 
   // Function Name: registerNotification
-  // Description: Records a reminder registration, then fails when failRegistration is set.
-  // Parameters: Same as NotificationService.registerNotification; activeDates is copied.
-  // Returns: Completion, or StateError when failRegistration is true.
+  // Description:
+  // - Copies a registration into the call log, then throws StateError when failRegistration is enabled.
+  // Parameters:
+  // - id (int): Notification identifier.
+  // - slotKey, slotTitle (String): Dose slot and display label.
+  // - hour, minute (int): Requested reminder time.
+  // - activeDates (List<DateTime>): Dates copied into the record.
+  // - language (String): Requested locale; defaults to ko.
+  // Returns:
+  // - Future<void>: Recorded attempt, or the configured registration failure.
   @override
   Future<void> registerNotification({
     required int id,
@@ -269,9 +331,16 @@ class RecordingNotificationService implements NotificationService {
   }
 
   // Function Name: snoozeMedicationReminder
-  // Description: Records a snooze request, then fails when failSnooze is set.
-  // Parameters: Same as NotificationService.snoozeMedicationReminder.
-  // Returns: Completion, or StateError when failSnooze is true.
+  // Description:
+  // - Records a snooze request before applying the failSnooze switch.
+  // Parameters:
+  // - id (int): Notification identifier.
+  // - slotKey, slotTitle (String): Dose slot and label.
+  // - language (String): Requested locale.
+  // - delay (Duration): Requested delay; defaults to ten minutes.
+  // - scheduleDate (DateTime?): Optional dose day.
+  // Returns:
+  // - Future<void>: Recorded request, or StateError when failSnooze is enabled.
   @override
   Future<void> snoozeMedicationReminder({
     required int id,
@@ -331,8 +400,19 @@ class RecordingNotificationService implements NotificationService {
   }
 
   // Function Name: showCaregiverAlert
-  // Description: Records a caregiver alert exactly as passed instead of displaying it.
-  // Parameters: Same as NotificationService.showCaregiverAlert. Returns: Completion.
+  // Description:
+  // - Records caregiver alert content and scope without displaying it; onlyAlertOnce is accepted but not recorded.
+  // Parameters:
+  // - id (int): Alert identifier.
+  // - title, body (String): Unmodified alert text.
+  // - patientHash (String?): Optional patient scope.
+  // - language (String): Requested locale.
+  // - historyUserHash (String?): Optional inbox owner.
+  // - recordHistory (bool): Requested history flag; no inbox is written.
+  // - alertContext (CaregiverAlertContext?): Optional dose-action context.
+  // - onlyAlertOnce (bool): Ignored platform-alert suppression flag.
+  // Returns:
+  // - Future<void>: Completes after appending the recorded alert.
   @override
   Future<void> showCaregiverAlert({
     required int id,
@@ -358,8 +438,17 @@ class RecordingNotificationService implements NotificationService {
   }
 
   // Function Name: showLinkedChatAlert
-  // Description: Records a linked-chat alert exactly as passed instead of displaying it.
-  // Parameters: Same as NotificationService.showLinkedChatAlert. Returns: Completion.
+  // Description:
+  // - Records chat alert fields without displaying an alert or simulating grouped summaries.
+  // Parameters:
+  // - id, linkId (int): Alert and conversation identifiers.
+  // - language (String): Requested locale.
+  // - messagePreview, messageKind, slotKey (String?): Optional preview, message type and dose slot.
+  // - historyUserHash (String?): Optional inbox owner.
+  // - recordHistory (bool): Requested history flag; no inbox is written.
+  // - summary (ChatNotificationSummary?): Accepted but ignored grouping metadata.
+  // Returns:
+  // - Future<void>: Completes after appending the recorded alert.
   @override
   Future<void> showLinkedChatAlert({
     required int id,

@@ -217,42 +217,27 @@ class MedicationSchedule {
   final DateTime? stoppedOn;
   final DateTime? regimenEffectiveFrom;
 
+  // Function Name: isAsNeeded
+  // Description: Classifies the schedule using explicit mode, frequency, dosage instructions and chosen slots.
+  // Parameters: None.
+  // Returns: Whether the shared regimen rule treats this course as as-needed.
   bool get isAsNeeded => isAsNeededRegimen(
     dosingMode: dosingMode,
     frequency: intakeTime,
     dosage: dosage,
     hasSlots: scheduleSlotKeys.isNotEmpty,
   );
+  // 함수이름: needsScheduleReview
+  // 함수역할: 필요시 약을 제외하고 정기 횟수 지시의 사용자 검토 필요 여부를 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 정기 약이며 횟수를 안전하게 해석할 수 없으면 true.
   bool get needsScheduleReview =>
       !isAsNeeded && requiresDoseScheduleReview(intakeTime);
 
-  // Function Name: MedicationSchedule
-  // Description: Captures a medication course and its OCR provenance, patient ownership, optional catalog details, and per-slot completion state.
-  // Parameters:
-  // - createdDate (DateTime?): Creation date of the saved medication or course.
-  // - prescriptionDate (DateTime?): Dispensing or prescription date used as the course start.
-  // - prescriptionBatchId (String): Identifier grouping medications from the same prescription analysis.
-  // - medicationID (String): Identifier of the targeted saved medication.
-  // - medicationName (String): Medication name used for display and persistence.
-  // - dosage (String): Dose per intake including its unit.
-  // - intakeTime (String): Daily intake-frequency text from the prescription.
-  // - medicationStatus (bool): Completion state to apply or retain.
-  // - slotStatuses (Map<String, bool>): Completion flags keyed by medication slot.
-  // - scheduleSlotKeys (List<String>): Explicitly selected medication schedule slot keys.
-  // - patientID (String): Patient identifier retained for legacy response compatibility.
-  // - medicationTime (int): Total course length in days.
-  // - efficacy (String?): Public-catalog medication efficacy description.
-  // - usageMethod (String?): Original medication usage and intake-timing instructions.
-  // - warning (String?): Important medication warning text.
-  // - imageUrl (String?): Remote image URL associated with medication details or a candidate.
-  // - rawMedicationName (String): Original OCR medication name before correction.
-  // - nameConfidence (double): Confidence assigned to the recognized medication name.
-  // - nameCorrectionSource (String): Provenance of medication-name correction or review.
-  // - doseCycleDays (int): Length in days of the repeating dose cycle; 1 means every day.
-  // - doseCycleOffsets (List<int>): Dose days within the cycle.
-  // - doseCycleAnchor (DateTime?): Date counted as day 0 of the cycle.
-  // Returns:
-  // - MedicationSchedule: the initialized instance.
+  // 함수이름: MedicationSchedule
+  // 함수역할: 약 일정과 OCR 출처, 소유권, 주기 및 복용 상태를 보관한다.
+  // 매개변수: medicationName/medicationID/patientID: 약과 환자 식별; dosage/intakeTime/medicationTime/dosingMode: 복용 지시; createdDate/prescriptionDate/prescriptionBatchId: 출처; medicationStatus/slotStatuses/scheduleSlotKeys: 구간 상태; efficacy/usageMethod/warning/imageUrl: 상세; rawMedicationName/nameConfidence/nameCorrectionSource: OCR 보정; doseCycleDays/doseCycleOffsets/doseCycleAnchor: 주기; regimenRevision/stoppedOn/regimenEffectiveFrom: 변경 이력.
+  // 반환값: 일정 객체; 직접 생성은 값 검증이나 컬렉션 복사를 수행하지 않는다.
   const MedicationSchedule({
     this.createdDate,
     this.prescriptionDate,
@@ -418,12 +403,10 @@ class MedicationSchedule {
     return offsets.isEmpty ? const [0] : offsets;
   }
 
-  // Function Name: isDoseDay
-  // Description: Tells whether a dose of this medication is due on a calendar date according to the dose cycle the server sent. A medication without a cycle is due every day.
-  // Parameters:
-  // - date (DateTime): Calendar date asked about.
-  // Returns:
-  // - bool: true on dose days.
+  // 함수이름: isDoseDay
+  // 함수역할: 필요시 약을 제외하고 적용일·중단일과 서버 주기를 기준으로 해당 날짜의 복용 여부를 확인한다.
+  // 매개변수: date: 확인할 달력 날짜.
+  // 반환값: 적용일 이상·중단일 미만이며 주기상 복용일이면 true; 전체 처방 기간의 종료 검사는 여기서 수행하지 않는다.
   bool isDoseDay(DateTime date) =>
       !isAsNeeded &&
       (regimenEffectiveFrom == null ||
@@ -485,12 +468,10 @@ class MedicationSchedule {
     return medicationName.isEmpty ? '약품명 확인 필요' : medicationName;
   }
 
-  // 함수이름: displayNameForLanguage
-  // 함수역할: 약품명이 비어 있을 때 현재 언어에 맞는 대체 문구를 반환한다. 공공데이터나 OCR에서 받은 실제 약품명은 번역하지 않고 그대로 유지한다.
-  // 매개변수:
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - String: 약품명이 비어 있을 때 현재 언어에 맞는 대체 문구를 반환한다. 공공데이터나 OCR에서 받은 실제 약품명은 번역하지 않고 그대로 유지한다.
+  // Function Name: displayNameForLanguage
+  // Description: Uses the original medication name, with a localized fallback only when blank.
+  // Parameters: language: App display language.
+  // Returns: Trimmed name or an unavailable-name label; real catalog/OCR names are not translated.
   String displayNameForLanguage(String language) {
     if (medicationName.trim().isNotEmpty) {
       return medicationName.trim();
@@ -528,12 +509,10 @@ class MedicationSchedule {
         (nameConfidence > 0 && nameConfidence < 0.75);
   }
 
-  // 함수이름: dailyFrequencyCount
-  // 함수역할: 하루 복용 횟수 텍스트에서 횟수 단위가 붙은 숫자를, 없으면 마지막 숫자 묶음을 정수로 읽는다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - int: 하루 복용 횟수. 읽을 수 없으면 0.
+  // Function Name: dailyFrequencyCount
+  // Description: Reads the schedule count using the shared frequency parser.
+  // Parameters: None.
+  // Returns: The parsed count, with unrecognized input handled by medicationScheduleCountFromText.
   int get dailyFrequencyCount {
     return medicationScheduleCountFromText(intakeTime);
   }
@@ -587,12 +566,10 @@ class MedicationSchedule {
     return localizedDoseAmountLabel(value, language);
   }
 
-  // 함수이름: dailyFrequencyLabelForLanguage
-  // 함수역할: 1일 복용 횟수를 현재 언어의 문장형 표시값으로 변환한다.
-  // 매개변수:
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - String: 1일 복용 횟수를 현재 언어의 문장형 표시값으로 변환한다.
+  // Function Name: dailyFrequencyLabelForLanguage
+  // Description: Formats as-needed or regular frequency while preserving unsupported instructions.
+  // Parameters: language: App display language.
+  // Returns: An as-needed label, recognized English daily-frequency label, original text or missing-frequency fallback.
   String dailyFrequencyLabelForLanguage(String language) {
     if (isAsNeeded) {
       return isEnglishLanguage(language) ? 'As needed' : '필요시 복용';
@@ -609,12 +586,10 @@ class MedicationSchedule {
     return englishDailyFrequencyLabel(value) ?? value;
   }
 
-  // 함수이름: durationLabelForLanguage
-  // 함수역할: 총 복용 일수를 현재 언어에 맞는 표시값으로 변환한다.
-  // 매개변수:
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - String: 총 복용 일수를 현재 언어에 맞는 표시값으로 변환한다.
+  // Function Name: durationLabelForLanguage
+  // Description: Formats a positive course length in the chosen display language.
+  // Parameters: language: App display language.
+  // Returns: Localized day count, or unavailable-duration guidance for nonpositive values.
   String durationLabelForLanguage(String language) {
     if (medicationTime <= 0) {
       return isEnglishLanguage(language)
@@ -627,13 +602,10 @@ class MedicationSchedule {
     return englishDurationLabel(medicationTime)!;
   }
 
-  // 함수이름: slotSummaryLabelForLanguage
-  // 함수역할: 검토·결과 표의 복약 시간대 칸에 쓸 필요시 복용 문구 또는 매일이 아닌 복용 주기와 시간대 이름을 만든다.
-  // 매개변수:
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // - emptySlotsLabel (String): 시간대가 없을 때 시간대 자리에 둘 문구
-  // 반환값:
-  // - String: 필요시 복용이면 해당 문구, 아니면 매일이 아닌 주기 문구와 시간대 이름 목록을 줄바꿈으로 이은 값.
+  // Function Name: slotSummaryLabelForLanguage
+  // Description: Combines a non-daily cycle label and selected slot names for a compact summary.
+  // Parameters: language: Display language; emptySlotsLabel: Substitute when no slots exist.
+  // Returns: An as-needed label, or newline-separated cycle/slot text.
   String slotSummaryLabelForLanguage(
     String language, {
     String emptySlotsLabel = '',
@@ -652,12 +624,10 @@ class MedicationSchedule {
     ].join('\n');
   }
 
-  // Function Name: toJson
-  // Description: Serializes schedule and correction metadata using API keys, derives completed slots, formats dates, and validates the remote image URL.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Map<String, dynamic>: Serializes schedule and correction metadata using API keys, derives completed slots, formats dates, and validates the remote image URL.
+  // 함수이름: toJson
+  // 함수역할: 일정·복용 완료 구간·OCR 보정 및 변경 이력을 API 키로 직렬화한다.
+  // 매개변수: 없음.
+  // 반환값: 날짜와 이미지 URL을 정규화한 JSON 맵; 필요시 여부와 실제 해석된 구간 목록을 포함한다.
   Map<String, dynamic> toJson() {
     return {
       'medication_id': medicationID,
@@ -711,33 +681,10 @@ class MedicationSchedule {
     };
   }
 
-  // Function Name: copyWith
-  // Description: Creates a medication course with explicitly supplied changes while preserving unspecified schedule, catalog, and OCR correction fields.
-  // Parameters:
-  // - createdDate (DateTime?): Creation date of the saved medication or course.
-  // - prescriptionDate (DateTime?): Dispensing or prescription date used as the course start.
-  // - prescriptionBatchId (String?): Identifier grouping medications from the same prescription analysis.
-  // - medicationID (String?): Identifier of the targeted saved medication.
-  // - medicationName (String?): Medication name used for display and persistence.
-  // - dosage (String?): Dose per intake including its unit.
-  // - intakeTime (String?): Daily intake-frequency text from the prescription.
-  // - medicationStatus (bool?): Completion state to apply or retain.
-  // - slotStatuses (Map<String, bool>?): Completion flags keyed by medication slot.
-  // - scheduleSlotKeys (List<String>?): Explicitly selected medication schedule slot keys.
-  // - patientID (String?): Patient identifier retained for legacy response compatibility.
-  // - medicationTime (int?): Total course length in days.
-  // - efficacy (String?): Public-catalog medication efficacy description.
-  // - usageMethod (String?): Original medication usage and intake-timing instructions.
-  // - warning (String?): Important medication warning text.
-  // - imageUrl (String?): Remote image URL associated with medication details or a candidate.
-  // - rawMedicationName (String?): Original OCR medication name before correction.
-  // - nameConfidence (double?): Confidence assigned to the recognized medication name.
-  // - nameCorrectionSource (String?): Provenance of medication-name correction or review.
-  // - doseCycleDays (int?): Length in days of the repeating dose cycle.
-  // - doseCycleOffsets (List<int>?): Dose days within the cycle.
-  // - doseCycleAnchor (DateTime?): Date counted as day 0 of the cycle.
-  // Returns:
-  // - MedicationSchedule: a copy with supplied replacements and all other fields preserved.
+  // 함수이름: copyWith
+  // 함수역할: null이 아닌 대체 값으로 일정·상세·OCR·변경 이력을 교체하고 나머지는 유지한다.
+  // 매개변수: createdDate/prescriptionDate/stoppedOn/regimenEffectiveFrom/doseCycleAnchor (DateTime?): 생성·처방·중단·변경 시작·주기 기준일; prescriptionBatchId/medicationID/patientID (String?): 처방 묶음·약·환자 ID; medicationName/rawMedicationName (String?): 표시·OCR 원문명; dosage/intakeTime (String?): 용량·횟수; medicationTime/doseCycleDays/regimenRevision (int?): 기간·주기 길이·계획 버전; medicationStatus (bool?)/slotStatuses (Map<String, bool>?): 전체·시간대 완료 상태; scheduleSlotKeys (List<String>?): 복용 시간대; efficacy/usageMethod/warning/imageUrl (String?): 효능·용법·경고·사진; nameConfidence (double?)/nameCorrectionSource (String?): 이름 신뢰도·수정 근거; doseCycleOffsets (List<int>?): 주기 내 복용 날짜 오프셋; dosingMode (String?): 정기·필요시 구분.
+  // 반환값: MedicationSchedule: 새 사본; nullable 필드를 null로 지울 수 없고 컬렉션은 별도 복사하지 않는다.
   MedicationSchedule copyWith({
     DateTime? createdDate,
     DateTime? prescriptionDate,

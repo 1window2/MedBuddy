@@ -11,9 +11,9 @@ depends_on = None
 
 
 # Function Name: upgrade
-# Description: Creates the refresh schedule table; it starts empty, which the refresh loop reads
-#   as "never refreshed".
-# Parameters: None. Returns: None.
+# Description: Create named catalog refresh attempt/success tracking when absent; accept a preexisting local table without recreating it.
+# Parameters: None; uses the active Alembic connection.
+# Returns: None; inspection and DDL failures propagate.
 def upgrade() -> None:
     inspector = sa.inspect(op.get_bind())
     # A table already created by a local create_all is accepted as it is.
@@ -27,7 +27,8 @@ def upgrade() -> None:
 
 
 # Function Name: downgrade
-# Description: Removes only the schedule state; catalogue rows and user data are untouched.
-# Parameters: None. Returns: None.
+# Description: Drop catalog refresh state, removing the persisted attempt and success timestamps.
+# Parameters: None; uses the active Alembic connection.
+# Returns: None; DDL failures propagate.
 def downgrade() -> None:
     op.drop_table("catalog_refresh_state")

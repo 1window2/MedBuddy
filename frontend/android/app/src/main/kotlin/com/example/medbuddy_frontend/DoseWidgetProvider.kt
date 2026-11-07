@@ -1,3 +1,5 @@
+// File Name: DoseWidgetProvider.kt
+// Role: Renders Android dose widgets and journals opaque actions for the Dart owner checks.
 package com.example.medbuddy_frontend
 
 import android.app.PendingIntent
@@ -27,6 +29,8 @@ import java.util.SimpleTimeZone
 // 클래스명: DoseWidgetProvider
 // 역할: 불투명 클릭 토큰을 보관하고 위젯을 표시한다.
 // 복약 소유권과 중복 요청 검증은 암호화된 Dart 저장소의 트랜잭션에서 처리한다.
+// 주요 책임: 위젯별 환자·시간대 선택을 유지하고 저장된 클릭 요청을 백그라운드로 전달한다.
+// 속성: companion object의 lock(Any)은 선택 상태와 클릭 대기열 갱신을 직렬화한다.
 class DoseWidgetProvider : HomeWidgetProvider() {
     // 함수이름: onReceive
     // 함수역할: 조회는 즉시 전환하고 복용·취소 요청은 토큰 검증 후 백그라운드 처리한다.
@@ -107,11 +111,20 @@ class DoseWidgetProvider : HomeWidgetProvider() {
         wake(context, data)
     }
 
+    // 함수이름: onEnabled
+    // 함수역할: 첫 위젯이 추가될 때 Flutter 백그라운드 갱신을 예약한다.
+    // 매개변수: context(Context)는 위젯 실행 환경이다.
+    // 반환값: Unit. 갱신 예약 오류는 호출자에게 전달한다.
     override fun onEnabled(context: Context) {
         super.onEnabled(context)
         wake(context, HomeWidgetPlugin.getData(context))
     }
 
+    // 함수이름: onAppWidgetOptionsChanged
+    // 함수역할: 런처 크기가 바뀌면 현재 옵션을 다시 읽어 모든 위젯을 그린다.
+    // 매개변수: context(Context)는 실행 환경, manager(AppWidgetManager)·id(Int)·options(Bundle)는
+    //           Android 콜백 계약이며 직접 쓰지 않고 renderAll에서 최신 값을 조회한다.
+    // 반환값: Unit.
     override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager, id: Int, options: Bundle) {
         renderAll(context)
     }
@@ -126,10 +139,10 @@ class DoseWidgetProvider : HomeWidgetProvider() {
         super.onDeleted(context, ids)
     }
 
-    // 함수이름: onUpdate
-    // 함수역할: 처리한 요청을 정리하고 다음 일정과 저장 상태를 모든 위젯에 반영한다.
-    // 매개변수: context 실행 환경, manager 위젯 관리자, ids 대상 위젯, data 저장 상태.
-    // 반환값: 없음. 이전 되돌리기 화면은 새로고침하여 교체한다.
+    // Function Name: onUpdate
+    // Description: Removes acknowledged actions and renders account-scoped, size-aware widget state.
+    // Parameters: context (Context), manager (AppWidgetManager), ids (IntArray), data (SharedPreferences).
+    // Returns: Unit. Expired or legacy undo state schedules a refresh instead of enabling stale writes.
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray, data: SharedPreferences) {
         val state = json(data.getString(STATE, "{}"))
         val pending = synchronized(lock) {
@@ -151,6 +164,10 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             remaining.length() > 0
         }
         val english = state.optString("language") == "en"
+        // Function Name: tr
+        // Description: Selects the widget snapshot's language, not the Android system locale.
+        // Parameters: ko (String) and en (String) are equivalent Korean and English labels.
+        // Returns: The English label when requested; otherwise the Korean label.
         fun tr(ko: String, en: String) = if (english) en else ko
         val known = state.has("date")
         // 이전 버전의 되돌리기 화면은 다음 일정으로 새로고침한다.
@@ -175,7 +192,10 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                     .appendQueryParameter("patient", state.optString("patient_key"))
                     .appendQueryParameter("context", rootState.optString("navigation_key"))
                     .appendQueryParameter("slot", page.optString("slot")).build())
-            // 1칸 높이용 한 줄 배치도 같은 뷰 ID를 쓰므로 같은 코드로 채운다. 없는 ID의 설정은 무시된다.
+            // Function Name: build
+            // Description: Populates either layout with identical state, accessibility labels and actions.
+            // Parameters: layout (Int) identifies the standard or single-row RemoteViews resource.
+            // Returns: RemoteViews. Missing view IDs in the single-row layout ignore those assignments.
             fun build(layout: Int): RemoteViews {
                 val views = RemoteViews(context.packageName, layout)
                 views.setOnClickPendingIntent(R.id.widget_content, open)
@@ -320,14 +340,27 @@ class DoseWidgetProvider : HomeWidgetProvider() {
         private const val JOURNAL = "dose_widget_actions"
         private const val LAST_WAKE = "dose_widget_last_wake"
         private val lock = Any()
+        // 함수이름: pageKey
+        // 함수역할: 위젯별 시간대 선택을 저장할 키를 만든다.
+        // 매개변수: id(Int)는 위젯 번호다. 반환값: 설정 키 String.
         private fun pageKey(id: Int) = "dose_widget_page_$id"
+        // 함수이름: patientKey
+        // 함수역할: 위젯별 환자 선택을 저장할 키를 만든다.
+        // 매개변수: id(Int)는 위젯 번호다. 반환값: 설정 키 String.
         private fun patientKey(id: Int) = "dose_widget_patient_$id"
+        // 함수이름: patients
+        // 함수역할: 보호자 위젯 상태에서 유효한 환자 표시 객체만 읽는다.
+        // 매개변수: state(JSONObject)는 저장된 위젯 상태다.
+        // 반환값: List<JSONObject>. 보호자 상태가 아니거나 목록이 없으면 빈 목록이다.
         private fun patients(state: JSONObject): List<JSONObject> {
             if (state.optString("source") != "patients") return emptyList()
             val items = state.optJSONArray("patients") ?: return emptyList()
             return (0 until items.length()).mapNotNull { items.optJSONObject(it) }
         }
-        // Each widget retains its patient independently; removed links fall back safely.
+        // 함수이름: patientState
+        // 함수역할: 위젯별 선택 환자를 공통 상태에 합치고 끊어진 선택은 첫 환자로 대체한다.
+        // 매개변수: root(JSONObject), data(SharedPreferences), id(Int)는 공통 상태·선택 저장소·위젯 번호다.
+        // 반환값: 환자별 JSONObject 복사본. 환자가 없으면 root를 그대로 반환한다.
         private fun patientState(root: JSONObject, data: SharedPreferences, id: Int): JSONObject {
             val patients = patients(root)
             val selection = json(data.getString(patientKey(id), "{}"))
@@ -339,6 +372,10 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             result.put("navigation_key", root.optString("navigation_key") + ":" + patient.optString("patient_key"))
             return result
         }
+        // Function Name: patientAction
+        // Description: Builds a read-only patient-switch action tied to the widget navigation context.
+        // Parameters: context (Context), id (Int), patient (String), key (String) identify environment and target.
+        // Returns: Immutable PendingIntent; the receiver rechecks the patient link and expiry.
         private fun patientAction(context: Context, id: Int, patient: String, key: String) = broadcast(context, "patient",
             listOf("widget" to id.toString(), "patient" to patient, "context" to key))
         // 함수이름: pages / 함수역할: 표시 가능한 시간대 페이지를 읽는다.
@@ -347,21 +384,30 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             val items = state.optJSONArray("pages") ?: return emptyList()
             return (0 until items.length()).mapNotNull { items.optJSONObject(it) }
         }
+        // 함수이름: json
+        // 함수역할: 비어 있거나 손상된 위젯 JSON을 빈 상태로 처리한다.
+        // 매개변수: value(String?)는 저장 문자열이다. 반환값: JSONObject.
         private fun json(value: String?) = runCatching { JSONObject(value ?: "{}") }.getOrDefault(JSONObject())
+        // 함수이름: queue
+        // 함수역할: 위젯 클릭 대기열을 읽고 손상된 값은 빈 배열로 처리한다.
+        // 매개변수: data(SharedPreferences)는 위젯 저장소다. 반환값: JSONArray.
         private fun queue(data: SharedPreferences) = runCatching { JSONArray(data.getString(JOURNAL, "[]")) }.getOrDefault(JSONArray())
+        // Function Name: action
+        // Description: Gives take, cancel and refresh broadcasts foreground delivery priority.
+        // Parameters: context (Context), kind/token (String), widget (Int, -1 when not widget-specific).
+        // Returns: Immutable PendingIntent. It contains only routing data; it does not record a dose.
         private fun action(context: Context, kind: String, token: String, widget: Int = -1) = broadcast(context, kind,
             listOf("token" to token, "widget" to widget.toString()), foreground = true)
-        // 함수이름: pageAction
-        // 함수역할: 복약을 기록하지 않는 조회 전환 요청을 위젯별로 만든다.
-        // 매개변수: context 실행 환경, id 위젯 번호, slot 대상 시간대, key 계정·날짜 구분용 토큰.
-        // 반환값: 홈 화면에서 즉시 처리하는 페이지 선택 요청.
+        // Function Name: pageAction
+        // Description: Builds a time-slot navigation action without recording medication.
+        // Parameters: context (Context), id (Int), slot (String), key (String) identify widget and context.
+        // Returns: Immutable PendingIntent for the receiver's validated page-switch path.
         private fun pageAction(context: Context, id: Int, slot: String, key: String) = broadcast(context, "page",
             listOf("widget" to id.toString(), "slot" to slot, "context" to key))
-        // 함수이름: broadcast
-        // 함수역할: 이 Provider가 받는 위젯 버튼 요청을 만든다. 쿼리 매개변수는 받은 순서대로 붙여 같은 요청의 주소를 유지한다.
-        // 매개변수: context 실행 환경, kind 요청 종류(주소의 호스트), params 쿼리 이름·값 목록,
-        //   foreground 즉시 처리할 요청이면 전면 수신 플래그를 붙일지 여부.
-        // 반환값: 같은 주소의 이전 요청을 갱신하는 변경 불가 PendingIntent.
+        // Function Name: broadcast
+        // Description: Builds an explicit widget intent with stable query ordering and optional priority.
+        // Parameters: context (Context), kind (String), params (List<Pair<String, String>>), foreground (Boolean).
+        // Returns: Immutable PendingIntent that updates the previous request with the same URI identity.
         private fun broadcast(context: Context, kind: String, params: List<Pair<String, String>>, foreground: Boolean = false): PendingIntent {
             val intent = Intent(context, DoseWidgetProvider::class.java).apply {
                 action = ACTION
@@ -383,11 +429,16 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             loader.ensureInitializationComplete(context.applicationContext, null)
             DoseWidgetRefreshScheduler.enqueue(WorkManager.getInstance(context))
         }
-        // 함수이름: widgetIds
-        // 함수역할: 홈 화면에 놓인 이 Provider의 위젯 번호를 읽는다.
-        // 매개변수: context 실행 환경. 반환값: 현재 설치된 위젯 번호 배열.
+        // Function Name: widgetIds
+        // Description: Lists installed widget instances belonging to this provider.
+        // Parameters: context (Context) supplies the app's widget manager.
+        // Returns: IntArray, empty when no widgets are installed.
         private fun widgetIds(context: Context) = AppWidgetManager.getInstance(context).getAppWidgetIds(
             ComponentName(context, DoseWidgetProvider::class.java))
+        // 함수이름: renderAll
+        // 함수역할: 설치된 모든 위젯에 최신 공유 상태와 런처 크기를 반영한다.
+        // 매개변수: context(Context)는 실행 환경이다.
+        // 반환값: Unit. onUpdate가 만료·미처리 상태의 갱신을 예약할 수 있다.
         private fun renderAll(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, DoseWidgetProvider::class.java))

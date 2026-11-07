@@ -92,6 +92,7 @@ class _ControlledIdentifyPill extends IdentifyPill {
 // 역할: 첫 요청만 호출 제한으로 실패시켜 자동 대기와 재시도 동작을 검증한다.
 // 주요 책임:
 // - 각 이미지의 첫 시도는 7초 재시도 대기로 거절하고 다음 시도에 후보를 제공한다.
+// 속성: attemptsByImageId (Map<int, int>): 이미지 식별값별 요청 시도 횟수.
 class _RateLimitedOnceIdentifyPill extends IdentifyPill {
   final Map<int, int> attemptsByImageId = <int, int>{};
 

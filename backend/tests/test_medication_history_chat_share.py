@@ -1,9 +1,14 @@
+# 파일명: test_medication_history_chat_share.py
+# 역할: 복약 이력 공유의 서버 집계, 권한·멱등성·삭제와 푸시 개인정보 경계를 검증한다.
+
 """복약 이력 공유의 서버 집계·권한·멱등성·삭제·푸시 개인정보 경계를 검증한다."""
 
 from collections import Counter
+from collections.abc import Iterator
 import json
 from datetime import timedelta
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
@@ -12,11 +17,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from api import chat_router, medication_care_router, route_support
 from controls.authorization_control import AuthorizationControl
 from controls.dispatch_chat_message_alert_control import DispatchChatMessageAlert
-from controls.manage_linked_chat_control import ManageLinkedChat
+from controls.manage_linked_chat_control import ChatSendResult, ManageLinkedChat
 from controls.manage_medication_care_control import ManageMedicationCare
 from core.application_clock import application_now, application_today
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
@@ -35,8 +41,15 @@ from support.fakes import RecordingPushBoundary
 KIND = "medication_history_share"
 
 
+# 함수이름: chat
+# 함수역할:
+# - 환자·보호자·외부 계정을 만들고 활성 연동을 저장한다.
+# 매개변수:
+# - fk_db: Session; 외래 키가 활성화된 격리 데이터베이스.
+# 반환값:
+# - tuple[ManageLinkedChat, int]; 컨트롤과 연동 ID.
 @pytest.fixture
-def chat(fk_db):
+def chat(fk_db: Session) -> tuple[ManageLinkedChat, int]:
     seed_account(fk_db, "patient-a", "caregiver-a", "outsider")
     link = _PatientCaregiverLink(patient_hash="patient-a", caregiver_hash="caregiver-a", linked=True)
     fk_db.add(link)
@@ -44,7 +57,14 @@ def chat(fk_db):
     return ManageLinkedChat(fk_db), link.id
 
 
-def payload(**changes):
+# 함수이름: payload
+# 함수역할:
+# - 어제부터 오늘까지의 기본 이력 공유 요청에 지정 필드를 덮어쓴다.
+# 매개변수:
+# - changes: dict; 공유 요청에 덮어쓸 필드.
+# 반환값:
+# - ChatMessageCreate; 잘못된 필드는 ValidationError.
+def payload(**changes: Any) -> ChatMessageCreate:
     today = application_today()
     return ChatMessageCreate(**{
         "client_message_id": "history_share_001", "body": "복약 기록을 공유해요.",
@@ -53,14 +73,30 @@ def payload(**changes):
     })
 
 
-def send(chat, *, sender="patient-a", **changes):
+# 함수이름: send
+# 함수역할:
+# - 이력 공유 요청을 검증한 뒤 병원 전용 필드를 제외하고 실제 채팅 저장을 실행한다.
+# 매개변수:
+# - chat: tuple[ManageLinkedChat, int]; 격리 컨트롤과 활성 연동 ID.
+# - sender: str; 메시지를 보내는 사용자 식별자.
+# - changes: dict; 공유 요청에 덮어쓸 필드.
+# 반환값:
+# - 채팅 전송 결과; 검증·권한·충돌 오류는 전파.
+def send(chat: tuple[ManageLinkedChat, int], *, sender: str="patient-a", **changes: Any) -> ChatSendResult:
     request = payload(**changes)
     arguments = request.model_dump(exclude={"hospital_id", "hospital_schedule_date"})
     return chat[0].send_message(link_id=chat[1], sender_hash=sender, **arguments)
 
 
+# 함수이름: records
+# 함수역할:
+# - 환자의 정기·필요시 여러 상태 기록과 다른 계정 약품을 만들어 집계 범위를 구별한다.
+# 매개변수:
+# - chat: tuple[ManageLinkedChat, int]; 격리 컨트롤과 활성 연동 ID.
+# 반환값:
+# - list[_MedicationCompletion]; 생성한 환자 복용 기록.
 @pytest.fixture
-def records(chat):
+def records(chat: tuple[ManageLinkedChat, int]) -> list[_MedicationCompletion]:
     """정기 일정과 필요시 실제 기록을 함께 만들고 다른 사람의 약도 분리한다."""
     db = chat[0].db
     today = application_today()
@@ -87,8 +123,17 @@ def records(chat):
     return rows
 
 
+# 함수이름: test_snapshot_counts_all_history_items_including_prn
+# 함수역할:
+# - 양측 참여자의 공유 집계가 정기·필요시 전체 이력과 일치하고 다른 계정 약품을 제외하며 알림 작업은 한 건 생성하는지 확인한다.
+# 매개변수:
+# - chat: tuple[ManageLinkedChat, int]; 격리 컨트롤과 활성 연동 ID.
+# - records: list[_MedicationCompletion]; 정기·필요시 복용 기록.
+# - sender: str; 메시지를 보내는 사용자 식별자.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("sender", ["patient-a", "caregiver-a"])
-def test_snapshot_counts_all_history_items_including_prn(chat, records, sender):
+def test_snapshot_counts_all_history_items_including_prn(chat: tuple[ManageLinkedChat, int], records: list[_MedicationCompletion], sender: str) -> None:
     response = send(chat, sender=sender).message.to_response_dict()
     request = payload()
     history = ManageMedicationCare(chat[0].db).history(
@@ -110,7 +155,14 @@ def test_snapshot_counts_all_history_items_including_prn(chat, records, sender):
     assert chat[0].db.query(ChatNotificationJob).count() == 1
 
 
-def test_prn_undo_matches_latest_care_history_without_rewriting_shared_snapshot(chat):
+# 함수이름: test_prn_undo_matches_latest_care_history_without_rewriting_shared_snapshot
+# 함수역할:
+# - 필요시 복용 취소를 최신 집계에 반영하되 이미 공유된 스냅샷과 재시도 결과는 바꾸지 않는지 확인한다.
+# 매개변수:
+# - chat: tuple[ManageLinkedChat, int]; 격리 컨트롤과 활성 연동 ID.
+# 반환값:
+# - None.
+def test_prn_undo_matches_latest_care_history_without_rewriting_shared_snapshot(chat: tuple[ManageLinkedChat, int]) -> None:
     """필요시 취소는 복용 건수에서 빠지고 미기록으로 남으며 이전 공유는 바뀌지 않는다."""
     db = chat[0].db
     today = application_today()
@@ -144,8 +196,17 @@ def test_prn_undo_matches_latest_care_history_without_rewriting_shared_snapshot(
     assert not replay.created and replay.message.to_response_dict() == first.message.to_response_dict()
 
 
+# 함수이름: test_invalid_range_creates_no_message_or_notification
+# 함수역할:
+# - 잘못된 기간은 422로 거부하고 메시지·알림 작업을 만들지 않는지 확인한다.
+# 매개변수:
+# - chat: tuple[ManageLinkedChat, int]; 격리 컨트롤과 활성 연동 ID.
+# - start: int; 오늘 기준 시작일 차이.
+# - end: int; 오늘 기준 종료일 차이.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("start,end", [(-90, -90), (-31, 0), (1, 1), (0, -1)])
-def test_invalid_range_creates_no_message_or_notification(chat, start, end):
+def test_invalid_range_creates_no_message_or_notification(chat: tuple[ManageLinkedChat, int], start: int, end: int) -> None:
     today = application_today()
     with pytest.raises(HTTPException) as caught:
         send(chat, history_start_date=today + timedelta(days=start), history_end_date=today + timedelta(days=end))
@@ -154,16 +215,35 @@ def test_invalid_range_creates_no_message_or_notification(chat, start, end):
     assert chat[0].db.query(ChatNotificationJob).count() == 0
 
 
+# 함수이름: test_inclusive_range_boundaries_and_empty_history
+# 함수역할:
+# - 허용 기간의 양 끝을 포함하여 빈 이력도 영 건 집계로 공유되는지 확인한다.
+# 매개변수:
+# - chat: tuple[ManageLinkedChat, int]; 격리 컨트롤과 활성 연동 ID.
+# - start: int; 오늘 기준 시작일 차이.
+# - end: int; 오늘 기준 종료일 차이.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("start,end", [(-89, -89), (-30, 0), (-89, -59), (0, 0)])
-def test_inclusive_range_boundaries_and_empty_history(chat, start, end):
+def test_inclusive_range_boundaries_and_empty_history(chat: tuple[ManageLinkedChat, int], start: int, end: int) -> None:
     today = application_today()
     context = send(chat, history_start_date=today + timedelta(days=start),
                    history_end_date=today + timedelta(days=end)).message.context_payload["history_context"]
     assert [context[key] for key in ("taken_count", "skipped_count", "unrecorded_count")] == [0, 0, 0]
 
 
+# 함수이름: test_requires_active_link_participant_before_history_lookup
+# 함수역할:
+# - 활성 연동 참여자가 아니면 복약 이력 조회 전에 404로 거부되는지 확인한다.
+# 매개변수:
+# - chat: tuple[ManageLinkedChat, int]; 격리 컨트롤과 활성 연동 ID.
+# - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
+# - sender: str; 메시지를 보내는 사용자 식별자.
+# - active: bool; 연동 활성 여부.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("sender,active", [("outsider", True), ("patient-a", False), ("caregiver-a", False)])
-def test_requires_active_link_participant_before_history_lookup(chat, monkeypatch, sender, active):
+def test_requires_active_link_participant_before_history_lookup(chat: tuple[ManageLinkedChat, int], monkeypatch: pytest.MonkeyPatch, sender: str, active: bool) -> None:
     db = chat[0].db
     db.get(_PatientCaregiverLink, chat[1]).linked = active
     db.commit()
@@ -175,6 +255,13 @@ def test_requires_active_link_participant_before_history_lookup(chat, monkeypatc
     lookup.assert_not_called()
 
 
+# 함수이름: test_invalid_request_fields_are_rejected
+# 함수역할:
+# - 필수 날짜 누락·다른 문맥 혼합·클라이언트 집계 위조는 요청 검증에서 거부되는지 확인한다.
+# 매개변수:
+# - changes: dict; 공유 요청에 덮어쓸 필드.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("changes", [
     {"history_start_date": None}, {"history_end_date": None},
     {"history_start_date": "not-a-date"}, {"message_kind": "text"},
@@ -185,17 +272,25 @@ def test_requires_active_link_participant_before_history_lookup(chat, monkeypatc
     {"taken_count": 100}, {"skipped_count": 100}, {"unrecorded_count": 100},
     {"history_context": {"taken_count": 100}}, {"context": {"history_context": {}}},
 ])
-def test_invalid_request_fields_are_rejected(changes):
+def test_invalid_request_fields_are_rejected(changes: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         payload(**changes)
 
 
+# 함수이름: test_internal_send_also_rejects_mixed_contexts_before_retry
+# 함수역할:
+# - 내부 전송도 멱등 재시도 전에 잘못된 이력·혼합 문맥을 400으로 거부하는지 확인한다.
+# 매개변수:
+# - chat: tuple[ManageLinkedChat, int]; 격리 컨트롤과 활성 연동 ID.
+# - changes: dict; 공유 요청에 덮어쓸 필드.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("changes", [
     {"history_start_date": None}, {"history_end_date": None}, {"message_kind": "text"},
     {"medication_id": 1}, {"medication_ids": [1]}, {"slot_key": "morning"},
     {"pharmacy_id": "P123"}, {"hospital_context": {}}, {"source_alert_id": 1},
 ])
-def test_internal_send_also_rejects_mixed_contexts_before_retry(chat, changes):
+def test_internal_send_also_rejects_mixed_contexts_before_retry(chat: tuple[ManageLinkedChat, int], changes: dict[str, Any]) -> None:
     send(chat)
     arguments = payload().model_dump(exclude={"hospital_id", "hospital_schedule_date"})
     with pytest.raises(HTTPException) as caught:
@@ -203,7 +298,16 @@ def test_internal_send_also_rejects_mixed_contexts_before_retry(chat, changes):
     assert caught.value.status_code == 400
 
 
-def test_retry_preserves_snapshot_after_records_change(chat, records, monkeypatch):
+# 함수이름: test_retry_preserves_snapshot_after_records_change
+# 함수역할:
+# - 원본 기록이나 조회 가능 날짜 범위가 바뀌어도 재시도는 최초 스냅샷을 반환하고 새 요청만 최신 집계를 만드는지 확인한다.
+# 매개변수:
+# - chat: tuple[ManageLinkedChat, int]; 격리 컨트롤과 활성 연동 ID.
+# - records: list[_MedicationCompletion]; 정기·필요시 복용 기록.
+# - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
+# 반환값:
+# - None.
+def test_retry_preserves_snapshot_after_records_change(chat: tuple[ManageLinkedChat, int], records: list[_MedicationCompletion], monkeypatch: pytest.MonkeyPatch) -> None:
     first = send(chat)
     records[0].report_status = "skipped"
     records[0].completed = False
@@ -221,13 +325,21 @@ def test_retry_preserves_snapshot_after_records_change(chat, records, monkeypatc
     assert chat[0].db.query(ChatNotificationJob).count() == 2
 
 
+# 함수이름: test_request_id_cannot_change_history_period_body_or_kind
+# 함수역할:
+# - 같은 요청 ID의 기간·본문·종류 변경은 409로 거부하여 최초 메시지 한 건을 보존하는지 확인한다.
+# 매개변수:
+# - chat: tuple[ManageLinkedChat, int]; 격리 컨트롤과 활성 연동 ID.
+# - changes: dict; 공유 요청에 덮어쓸 필드.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("changes", [
     {"history_start_date": application_today()},
     {"history_end_date": application_today() - timedelta(days=1)},
     {"body": "다른 요청"},
     {"message_kind": "text", "history_start_date": None, "history_end_date": None},
 ])
-def test_request_id_cannot_change_history_period_body_or_kind(chat, changes):
+def test_request_id_cannot_change_history_period_body_or_kind(chat: tuple[ManageLinkedChat, int], changes: dict[str, Any]) -> None:
     send(chat)
     with pytest.raises(HTTPException) as caught:
         send(chat, **changes)
@@ -235,15 +347,31 @@ def test_request_id_cannot_change_history_period_body_or_kind(chat, changes):
     assert chat[0].db.query(_ChatMessage).count() == 1
 
 
-def test_history_cannot_reuse_another_message_kind_id(chat):
+# 함수이름: test_history_cannot_reuse_another_message_kind_id
+# 함수역할:
+# - 다른 종류에 사용한 메시지 ID를 이력 공유에 재사용하면 409로 거부되는지 확인한다.
+# 매개변수:
+# - chat: tuple[ManageLinkedChat, int]; 격리 컨트롤과 활성 연동 ID.
+# 반환값:
+# - None.
+def test_history_cannot_reuse_another_message_kind_id(chat: tuple[ManageLinkedChat, int]) -> None:
     send(chat, message_kind="text", history_start_date=None, history_end_date=None)
     with pytest.raises(HTTPException) as caught:
         send(chat)
     assert caught.value.status_code == 409
 
 
+# 함수이름: test_insert_race_checks_the_winning_request
+# 함수역할:
+# - 삽입 경합에서 먼저 저장된 요청과 동일하면 재사용하고 기간이 다르면 409로 거부하며 알림을 중복 생성하지 않는지 확인한다.
+# 매개변수:
+# - chat: tuple[ManageLinkedChat, int]; 격리 컨트롤과 활성 연동 ID.
+# - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
+# - changed: bool; 삽입 경합 재시도에서 기간을 변경할지 지정한다.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("changed", [False, True])
-def test_insert_race_checks_the_winning_request(chat, monkeypatch, changed):
+def test_insert_race_checks_the_winning_request(chat: tuple[ManageLinkedChat, int], monkeypatch: pytest.MonkeyPatch, changed: bool) -> None:
     first = send(chat)
     repository = chat[0].message_repository
     existing = repository.find_client_request(link_id=chat[1], sender_hash="patient-a",
@@ -260,8 +388,16 @@ def test_insert_race_checks_the_winning_request(chat, monkeypatch, changed):
     assert chat[0].db.query(ChatNotificationJob).count() == 1
 
 
+# 함수이름: test_deleted_messages_never_return_history_context
+# 함수역할:
+# - 개인 숨김·전체 삭제 후 이력 문맥은 응답에서 제거되고 전체 삭제된 요청의 재전송은 거부되는지 확인한다.
+# 매개변수:
+# - chat: tuple[ManageLinkedChat, int]; 격리 컨트롤과 활성 연동 ID.
+# - scope: str; me 또는 everyone 삭제 범위.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("scope", ["me", "everyone"])
-def test_deleted_messages_never_return_history_context(chat, scope):
+def test_deleted_messages_never_return_history_context(chat: tuple[ManageLinkedChat, int], scope: str) -> None:
     first = send(chat)
     control, link_id = chat
     control.delete_messages(link_id=link_id, user_hash="patient-a",
@@ -280,9 +416,18 @@ def test_deleted_messages_never_return_history_context(chat, scope):
         assert other["data"][0]["context"] is None
 
 
+# 함수이름: test_push_preview_is_generic_even_when_body_contains_health_details
+# 함수역할:
+# - 본문에 건강 세부정보가 있어도 푸시 본문·미리보기·그룹 요약에는 언어별 일반 문구만 표시하는지 확인한다.
+# 매개변수:
+# - chat: tuple[ManageLinkedChat, int]; 격리 컨트롤과 활성 연동 ID.
+# - language: str; 수신 언어 ko 또는 en.
+# - mode: str; 알림 상세 공개 모드.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("language", ["ko", "en"])
 @pytest.mark.parametrize("mode", ["full", "type_only"])
-def test_push_preview_is_generic_even_when_body_contains_health_details(chat, language, mode):
+def test_push_preview_is_generic_even_when_body_contains_health_details(chat: tuple[ManageLinkedChat, int], language: str, mode: str) -> None:
     first = send(chat, body="PRIVATE-DRUG 2026-10-20 taken 198 skipped 77")
     db = chat[0].db
     db.add(_DevicePushToken(user_hash="caregiver-a", token="history-share-push-token"))
@@ -307,8 +452,16 @@ def test_push_preview_is_generic_even_when_body_contains_health_details(chat, la
     assert summary["count"] == 1 and summary["latest_message_id"] == first.message.message_id
 
 
+# 함수이름: client
+# 함수역할:
+# - 인증·권한·저장은 실제 경로로 실행하고 외부 조회·방송을 교체한 HTTP 클라이언트를 제공·종료한다.
+# 매개변수:
+# - chat: tuple[ManageLinkedChat, int]; 격리 컨트롤과 활성 연동 ID.
+# - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
+# 반환값:
+# - Iterator[TestClient]; 보호자로 인증된 채팅 클라이언트. 종료 시 병원 조회 미호출 검증.
 @pytest.fixture
-def client(chat, monkeypatch):
+def client(chat: tuple[ManageLinkedChat, int], monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     """실제 요청 검증·권한·DB 작업·응답을 쓰되 외부 조회와 실시간 전송은 격리한다."""
     app = FastAPI()
     app.include_router(chat_router.router)
@@ -327,7 +480,16 @@ def client(chat, monkeypatch):
     provider.requestShareContext.assert_not_awaited()
 
 
-def test_route_maps_dates_and_uses_authenticated_sender_and_link_patient(chat, records, client):
+# 함수이름: test_route_maps_dates_and_uses_authenticated_sender_and_link_patient
+# 함수역할:
+# - HTTP 경로가 쿼리 위조 대신 인증된 발신자와 연동 환자로 집계하고 재시도·다른 공유 종류의 ID 충돌을 처리하는지 확인한다.
+# 매개변수:
+# - chat: tuple[ManageLinkedChat, int]; 격리 컨트롤과 활성 연동 ID.
+# - records: list[_MedicationCompletion]; 정기·필요시 복용 기록.
+# - client: TestClient; 인증된 보호자의 채팅 HTTP 클라이언트.
+# 반환값:
+# - None.
+def test_route_maps_dates_and_uses_authenticated_sender_and_link_patient(chat: tuple[ManageLinkedChat, int], records: list[_MedicationCompletion], client: TestClient) -> None:
     url = f"/links/{chat[1]}/messages?user_hash=outsider"
     first = client.post(url, json=payload().model_dump(mode="json"))
     assert first.status_code == 200
@@ -346,7 +508,15 @@ def test_route_maps_dates_and_uses_authenticated_sender_and_link_patient(chat, r
     assert hospital.status_code == 409
 
 
-def test_route_rejects_forged_snapshot(chat, client):
+# 함수이름: test_route_rejects_forged_snapshot
+# 함수역할:
+# - 클라이언트가 보낸 집계 스냅샷은 422로 거부하고 메시지를 저장하지 않는지 확인한다.
+# 매개변수:
+# - chat: tuple[ManageLinkedChat, int]; 격리 컨트롤과 활성 연동 ID.
+# - client: TestClient; 인증된 보호자의 채팅 HTTP 클라이언트.
+# 반환값:
+# - None.
+def test_route_rejects_forged_snapshot(chat: tuple[ManageLinkedChat, int], client: TestClient) -> None:
     response = client.post(f"/links/{chat[1]}/messages", json={
         **payload().model_dump(mode="json"), "context": {"history_context": {"taken_count": 999}},
     })

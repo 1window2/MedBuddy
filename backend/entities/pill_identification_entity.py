@@ -205,16 +205,10 @@ class PillIdentificationCandidate:
     matched_attributes: tuple[str, ...] = ()
 
 
-# Class Name: PillIdentificationResult
-# Role:
-# - Candidate identification result; it is intentionally not a diagnosis.
-# Responsibilities:
-# - Reject confidence without candidates and disallow disabling mandatory user confirmation.
-# Attributes:
-# - observed_features (PillVisualFeatures): Visual evidence extracted from the supplied pill photographs.
-# - candidates (tuple[PillIdentificationCandidate, ...]): Ranked product matches that still require user confirmation.
-# - is_confident (bool): Whether candidate and image evidence meets the confidence policy.
-# - requires_confirmation (Literal[True]): Mandatory user confirmation before using an identification candidate.
+# 클래스명: PillIdentificationResult
+# 역할: 이미지에서 관찰한 특징과 식별 후보를 변경 불가능한 결과로 묶는다.
+# 주요 책임: 후보 신뢰도·추가 후보 여부를 전달하되 진단이나 확정 식별로 취급하지 않고 사용자 확인을 항상 요구한다.
+# 속성: observed_features는 관찰 특징, candidates는 후보 튜플, is_confident는 신뢰도 판정, requires_confirmation은 항상 True, has_more_candidates는 표시 한도 초과 여부이다.
 @dataclass(frozen=True)
 class PillIdentificationResult:
     """Candidate identification result; it is intentionally not a diagnosis."""

@@ -6,11 +6,16 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 API_CONTRACT_HEADER = "X-MedBuddy-Api-Contract"
+# The contract this commit's app requires; a backend answering with another one cannot serve it.
+EXPECTED_API_CONTRACT = (
+    Path(__file__).resolve().parents[1] / "backend" / "API_CONTRACT_VERSION"
+).read_text(encoding="utf-8").strip()
 ROUTES = {
     "pharmacy": "/api/v1/pharmacy/nearby",
     "hospital": "/api/v1/hospitals/nearby",
@@ -21,6 +26,7 @@ ROUTES = {
 # Class Name: NoRedirect
 # Role: Keep probes on the requested API route.
 # Responsibilities: Treat redirects to login, challenge or other destinations as release failures.
+# Attributes: No additional state; inherits urllib redirect-handler configuration.
 class NoRedirect(HTTPRedirectHandler):
     # Function Name: redirect_request
     # Description: Disable automatic redirect following for route verification.
@@ -55,6 +61,8 @@ def validate_response(
         # Every backend answer under /api/v1 carries this header; an edge rule that only imitates
         # the JSON shape does not.
         raise ValueError("Response lacks the API contract header; it did not come from the backend.")
+    if api_contract is not None and api_contract.strip() != EXPECTED_API_CONTRACT:
+        raise ValueError("Response carries another API contract than this build requires.")
 
 
 # Function Name: check_routes

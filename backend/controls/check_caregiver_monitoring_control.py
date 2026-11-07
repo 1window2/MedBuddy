@@ -122,14 +122,11 @@ class CheckCaregiverMonitoring:
             },
         }
 
-    # 함수이름: _build_patient_snapshot
-    # 함수역할:
-    # - 환자 연동과 알림 설정을 묶고 활성 알림이 있을 때만 오늘 복약 정보를 조회한다.
-    # 매개변수:
-    # - link (_PatientCaregiverLink): 저장된 환자·보호자 연동과 참여자 식별자.
-    # - notification_settings (list[dict[str, object]]): 연동 환자의 시간대별 알림 설정.
-    # 반환값:
-    # - 연동 정보, 환자 별칭, 시간대별 알림과 오늘 복약 정보.
+    # Function Name: _build_patient_snapshot
+    # Description: Combines the visible link and alert settings with an already-fetched schedule summary; performs no medication query itself.
+    # Parameters: link (_PatientCaregiverLink), notification_settings (list[dict]) describe the pair; include_all_schedules (bool) includes schedules even with alerts disabled;
+    #   today_response (dict | None) is the caller's batch result for this patient.
+    # Returns: Patient snapshot; disabled/unavailable schedules use an empty summary, while aliases are filtered for the caregiver.
     def _build_patient_snapshot(
         self,
         link: _PatientCaregiverLink,

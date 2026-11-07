@@ -93,6 +93,8 @@ class ManageUserSettingUI extends StatefulWidget {
   // - onExtendedSettingSaveRequested (ExtendedUserSettingSaver): 편집한 설정 전체를 저장하고 동기화 결과를 반환할 콜백.
   // - onMedicationScheduleRequested (VoidCallback?): 오늘 복약 일정 화면을 여는 콜백.
   // - notificationService (NotificationService?): 정확한 알람 허용 안내에 쓰는 알림 서비스.
+  // - initialDestination (UserSettingDestination?): 기능 검색에서 지정한 초기 설정 구역·항목. 생략하면 설정 개요를 연다.
+  // - readinessControl (NotificationReadinessControl?): 기기 알림 권한·전달 준비 상태를 확인할 제어기. 생략하면 알림 서비스로 기본 제어기를 만든다.
   // 반환값: 입력 설정이 반영된 ManageUserSettingUI 인스턴스.
   const ManageUserSettingUI({
     super.key,
@@ -119,9 +121,9 @@ class ManageUserSettingUI extends StatefulWidget {
 }
 
 // 클래스명: _SettingSection
-// 역할: 설정 하위 화면의 현재 분류를 담당한다.
-// 주요 책임:
-// - 설정 홈, 복약 및 알림, 화면 및 음성, 계정 분류를 구분한다.
+// 역할: 설정 화면의 현재 분류.
+// 주요 책임: 개요·복약 및 알림·화면 및 음성·계정을 구분한다.
+// 속성: overview/medicationAndNotifications/displayAndVoice/account: 설정 구역.
 enum _SettingSection {
   overview,
   medicationAndNotifications,
@@ -151,7 +153,9 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   final _initialTargetKey = GlobalKey();
 
   // 함수이름: _targetKey
-  // 함수역할: 검색으로 요청한 설정 한 곳에만 최초 스크롤 위치를 연결한다.
+  // 함수역할: 기능 검색에서 지정한 설정에만 최초 스크롤 대상 키를 연결한다.
+  // 매개변수: target (UserSettingDestination): 현재 설정 항목.
+  // 반환값: 요청 대상과 일치하면 GlobalKey, 아니면 null.
   Key? _targetKey(UserSettingDestination target) =>
       widget.initialDestination == target ? _initialTargetKey : null;
 
@@ -200,11 +204,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     super.dispose();
   }
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 접근성·기본 복약 시각·계정 보안 설정 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 접근성·기본 복약 시각·계정 보안 설정에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays draft accessibility, default medication times and account-security settings with save/navigation state.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final text = _SettingText(_language);
@@ -357,6 +360,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     };
   }
 
+  // 함수이름: _deviceNotificationControl
+  // 함수역할: 주입된 알림 준비 제어기를 사용하고 없으면 화면 소유 제어기를 최초 한 번 만든다.
+  // 매개변수: 없음.
+  // 반환값: NotificationReadinessControl; 내부 생성 인스턴스는 재사용한다.
   NotificationReadinessControl get _deviceNotificationControl =>
       widget.readinessControl ??
       (_ownedNotificationControl ??= NotificationReadinessControl(
@@ -364,7 +371,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
             widget.notificationService ?? NotificationService.instance,
       ));
 
-  // 새 안내 화면도 선택한 글씨 크기를 전달받아 큰 글씨 사용자가 같은 배율로 읽는다.
+  // 함수이름: _openInformationPage
+  // 함수역할: 현재 설정 초안의 글자 배율을 안내 페이지에 전달하며 새 경로를 연다.
+  // 매개변수: page (Widget): 표시할 안내 페이지.
+  // 반환값: 없음. 시스템 배율을 사용자 설정으로 보정한다.
   void _openInformationPage(Widget page) {
     final systemScale =
         MediaQueryData.fromView(View.of(context)).textScaler.scale(16) / 16;
@@ -496,7 +506,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     );
   }
 
-  // 함수역할: 세 단계 검색 선택을 초안에만 반영하며 저장은 기존 저장 버튼에 맡긴다.
+  // 함수이름: _buildMedicationSearchSlider
+  // 함수역할: 속도 우선·보통·정확도 우선의 세 검색 모드를 초안에만 반영하는 선택기를 만든다.
+  // 매개변수: text (_SettingText): 현재 언어 문구.
+  // 반환값: 저장 중 비활성화되는 검색 모드 슬라이더와 라벨.
   Widget _buildMedicationSearchSlider(_SettingText text) {
     final title = text.isEnglish ? 'Medication search' : '약품 검색';
     final options = [
@@ -507,6 +520,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     final selected = options.indexWhere(
       (option) => option.$1 == _draft.medicationSearchMode,
     );
+    // 함수이름: select
+    // 함수역할: 선택한 검색 모드 코드를 설정 초안에 적용한다.
+    // 매개변수: index (int): options의 유효한 0~2 위치.
+    // 반환값: 없음. 실제 저장은 별도 저장 명령이 담당한다.
     void select(int index) =>
         _setDraft(_draft.copyWith(medicationSearchMode: options[index].$1));
 
@@ -584,9 +601,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     );
   }
 
-  // 함수이름: _selectNotificationPrivacy
-  // 함수역할: 공통 선택창에서 확정한 공개 범위만 초안에 반영한다.
-  // 매개변수: 없음. 반환값: 선택창 종료 완료. 실제 저장은 저장 버튼에서 처리한다.
+  // Function Name: _selectNotificationPrivacy
+  // Description: Applies only a confirmed notification-privacy choice to the draft; persistence remains the save button's responsibility.
+  // Parameters: None.
+  // Returns: Future completing when the option sheet closes.
   Future<void> _selectNotificationPrivacy() async {
     final text = _SettingText(_language);
     final selected = await _showSettingOptions(
@@ -606,10 +624,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     _setDraft(_draft.copyWith(notificationDetailMode: selected));
   }
 
-  // 함수이름: _showSettingOptions
-  // 함수역할: 현재 글씨 배율의 선택창을 열고 선택값을 반환하며, 취소는 null로 반환한다.
-  // 매개변수: preferenceKey는 항목 키, title·description은 문구, selectedValue·options는 선택 상태.
-  // 반환값: 선택한 저장 값 또는 null. 이 함수에서는 설정을 저장하지 않는다.
+  // Function Name: _showSettingOptions
+  // Description: Opens a text-scale-aware options sheet without persisting settings.
+  // Parameters: preferenceKey: option identity; title/description: copy; selectedValue: draft selection; options: available values.
+  // Returns: Future resolving to the selected stored value, or null on cancellation.
   Future<String?> _showSettingOptions({
     required String preferenceKey,
     required String title,
@@ -707,9 +725,14 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   }
 
   // 함수이름: _buildSettingChoice
-  // 함수역할: 현재 선택값을 보여주는 목록 행을 만들고 확정한 값만 전달한다.
-  // 매개변수: 항목 키·제목, 선택값·선택지와 onSelected 초안 변경 콜백.
-  // 반환값: 복약 설정과 같은 형식의 선택 행.
+  // 함수역할: 현재 선택값의 표시명을 보여주고 선택창에서 확정한 값만 초안에 전달한다.
+  // 매개변수:
+  // - preferenceKey (String): 행 식별 키와 초기 이동 대상 판별에 사용할 설정 이름.
+  // - title (String): 행과 선택창 제목.
+  // - selectedValue (String): 현재 선택값. options 안에 일치하는 값이 있어야 한다.
+  // - options (List<_SettingOption>): 표시명과 저장값을 가진 선택지.
+  // - onSelected (ValueChanged<String>): 화면이 유지된 상태에서 확정된 값만 받을 초안 변경 콜백.
+  // 반환값: 초기 이동 대상이면 스크롤용 키를 감싼 설정 행. 일치하는 선택지가 없으면 firstWhere의 StateError가 발생한다.
   Widget _buildSettingChoice({
     required String preferenceKey,
     required String title,
@@ -1061,13 +1084,19 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     _showSettingsOverview();
   }
 
-  // 함수역할: 편집값을 마지막 저장값과 비교한다. 반환값: 미저장 변경 여부.
+  // 함수이름: _hasUnsavedChanges
+  // 함수역할: 기기별 환경설정까지 포함한 초안과 마지막 저장값을 비교한다.
+  // 매개변수: 없음.
+  // 반환값: 저장되지 않은 변경이 있으면 true.
   bool get _hasUnsavedChanges => !mapEquals(
     _draft.toJson(includeDevicePreferences: true),
     _savedSetting.toJson(includeDevicePreferences: true),
   );
 
-  // 함수역할: 저장·변경 취소·계속 편집 중 하나를 선택한다. 반환값: 나가기 허용 여부.
+  // Function Name: _confirmSettingExit
+  // Description: Asks whether to save, discard or continue editing and only permits exit once a choice leaves no unsaved changes.
+  // Parameters: None.
+  // Returns: Future<bool>; cancellation, failed save or disposal returns false.
   Future<bool> _confirmSettingExit() async {
     setState(() => _isConfirmingExit = true);
     final english = isEnglishLanguage(_language);
@@ -1129,41 +1158,36 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     setState(() => _selectedSection = _SettingSection.overview);
   }
 
-  // 함수이름: _fontSize
-  // 함수역할: 초안의 글씨 크기를 설정 화면의 small·medium·large 선택값으로 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: String: 글씨 크기 선택값.
+  // Function Name: _fontSize
+  // Description: Exposes the draft text size as a small/medium/large choice.
+  // Parameters: None.
+  // Returns: The selectable size string.
   String get _fontSize => _draft.fontSizeOption;
 
-  // 함수이름: _readingSpeed
-  // 함수역할: 초안의 읽기 배속을 설정 화면의 slow·medium·fast 선택값으로 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: String: 읽기 속도 선택값.
+  // Function Name: _readingSpeed
+  // Description: Exposes the draft speech speed as a slow/medium/fast choice.
+  // Parameters: None.
+  // Returns: The selectable speed string.
   String get _readingSpeed => _draft.readingSpeedOption;
 
-  // 함수이름: _language
-  // 함수역할: 초안에서 선택한 표시 언어 코드를 제공해 저장 전에도 화면 문구에 반영한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: String: ko 또는 en.
+  // Function Name: _language
+  // Description: Uses the draft display language so edits affect this screen before saving.
+  // Parameters: None.
+  // Returns: The resolved ko or en language code.
   String get _language => _draft.language;
 
-  // 함수이름: _setDraft
-  // 함수역할: 편집 중인 설정 초안을 교체하고 화면을 다시 그린다.
-  // 매개변수:
-  // - draft (UserSetting): 변경을 반영한 새 초안.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // Function Name: _setDraft
+  // Description: Replaces the editable settings draft and rebuilds its preview.
+  // Parameters: draft (UserSetting): updated draft.
+  // Returns: None.
   void _setDraft(UserSetting draft) {
     setState(() => _draft = draft);
   }
 
-  // 함수이름: _editableCopy
-  // 함수역할: 글씨 크기와 읽기 속도를 화면이 고를 수 있는 단계 값으로 맞춘 사본을 만든다. 저장값과 초안을 같은 기준으로 비교해, 편집하지 않은 화면이 변경된 것으로 판정되지 않게 한다.
-  // 매개변수:
-  // - setting (UserSetting): 초기 설정 또는 저장 결과.
-  // 반환값: UserSetting: 편집·비교에 사용할 설정 사본.
+  // Function Name: _editableCopy
+  // Description: Normalizes text size and speech speed to selectable steps for both editing and saved-value comparison, avoiding false dirty state.
+  // Parameters: setting (UserSetting): initial or saved settings.
+  // Returns: An editable normalized copy.
   UserSetting _editableCopy(UserSetting setting) => setting.copyWith(
     fontSize: UserSetting.fontSizeFromOption(setting.fontSizeOption),
     readingSpeed: UserSetting.readingSpeedFromOption(
@@ -1171,11 +1195,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     ),
   );
 
-  // 함수이름: _selectLanguageMode
-  // 함수역할: 선택한 언어 모드를 즉시 현재 설정 화면의 표시 언어에 반영한다.
-  // 매개변수:
-  // - languageMode (String): 기기 언어 따르기 또는 명시 언어 선택 값.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // Function Name: _selectLanguageMode
+  // Description: Applies the chosen language mode immediately to this settings preview.
+  // Parameters: languageMode (String): device-following or explicit language choice.
+  // Returns: None.
   void _selectLanguageMode(String languageMode) {
     _setDraft(
       _draft.copyWith(
@@ -1185,11 +1208,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     );
   }
 
-  // 함수이름: _selectDefaultMedicationTime
-  // 함수역할: 기존 복약 알림과 같은 시간 선택기를 사용해 신규 일정 기본 시각을 바꾼다.
-  // 매개변수:
-  // - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _selectDefaultMedicationTime
+  // Description: Uses the shared reminder time picker to edit the default time for new schedules.
+  // Parameters: slotKey (String): morning, lunch, evening or bedtime slot.
+  // Returns: Future completing after the draft time selection.
   Future<void> _selectDefaultMedicationTime(String slotKey) async {
     final currentValue = _draft.defaultTimeForSlot(slotKey);
     final initialTime = _parseTime(currentValue);
@@ -1228,11 +1250,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     );
   }
 
-  // 함수이름: _selectReadingSpeed
-  // 함수역할: 재생 중인 미리보기를 중지한 뒤 새 읽기 속도를 선택한다.
-  // 매개변수:
-  // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _selectReadingSpeed
+  // Description: Stops any active speech preview before applying a new draft reading speed.
+  // Parameters: value (String): selected speed step.
+  // Returns: Future completing after playback stops and the draft changes.
   Future<void> _selectReadingSpeed(String value) async {
     await _stopVoicePreview();
     if (!mounted) {
@@ -1243,11 +1264,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     );
   }
 
-  // 함수이름: _toggleVoicePreview
-  // 함수역할: 현재 설정된 언어와 읽기 속도로 예시 문장을 재생하거나 중지한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _toggleVoicePreview
+  // Description: Starts or stops the sample sentence using the draft language and reading speed.
+  // Parameters: None.
+  // Returns: Future completing after the playback request or stop.
   Future<void> _toggleVoicePreview() async {
     if (_isPreviewSpeaking) {
       await _stopVoicePreview();
@@ -1344,11 +1364,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     setState(() => _isPreviewSpeaking = false);
   }
 
-  // 함수이름: _handleSaveRequested
-  // 함수역할: 설정 저장 요청을 한 번만 실행하고 실패 시 버튼 상태를 복구한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _handleSaveRequested
+  // Description: Serializes saves, updates the saved comparison baseline without overwriting draft choices, and distinguishes server synchronization from device-only saving; restores the button after failure while mounted.
+  // Parameters: None.
+  // Returns: Future completing after persistence and feedback.
   Future<void> _handleSaveRequested() async {
     if (_isSaving) {
       return;
@@ -1541,12 +1560,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   }
 }
 
-// 함수이름: _accountDeletionFailureMessage
-// 함수역할: 계정 삭제 실패를 종류별로 현재 설정 화면의 언어에 맞는 안내로 바꾼다. 재로그인 요구와 서버 삭제 실패가 화면 언어와 다른 언어로 보이지 않게 한다.
-// 매개변수:
-// - error (Object): 계정 삭제 콜백이 던진 실패.
-// - text (_SettingText): 현재 화면 언어의 표시 문구.
-// 반환값: String: 스낵바에 표시할 안내 문구.
+// Function Name: _accountDeletionFailureMessage
+// Description: Maps account-deletion failures to the current screen language, distinguishing reauthentication from server deletion failure.
+// Parameters: error (Object): callback failure; text (_SettingText): current-language copy.
+// Returns: The localized snackbar explanation.
 String _accountDeletionFailureMessage(Object error, _SettingText text) {
   if (error is AuthenticationStateError) {
     return error.messageFor(text.isEnglish);
@@ -1759,15 +1776,10 @@ class _AccountWelcomePanel extends StatelessWidget {
   }
 }
 
-// 클래스명: _SettingsMenuTile
-// 역할: 설정 분류의 아이콘·설명·이동 명령을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 설정 분류의 아이콘·설명·이동 명령 위젯을 구성한다.
-// 속성:
-// - tileKey (Key): 위젯을 구분하고 상태를 유지할 식별 키.
-// - icon (IconData): 기본 또는 선택 상태에서 표시할 아이콘.
-// - title (String): 화면·구역·항목에 표시할 제목.
-// - summary (String): 화면에 반영할 작업 결과 또는 요약·추천 데이터.
+// Class Name: _SettingsMenuTile
+// Role: Settings category navigation row.
+// Responsibilities: Combines an icon, category title and summary with the destination action.
+// Attributes: tileKey: identity; icon/title/summary: category content; onTap: navigation command.
 class _SettingsMenuTile extends StatelessWidget {
   final Key tileKey;
   final IconData icon;
@@ -1792,11 +1804,10 @@ class _SettingsMenuTile extends StatelessWidget {
     required this.onTap,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 설정 분류의 아이콘·설명·이동 명령 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 설정 분류의 아이콘·설명·이동 명령에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays the settings category icon, title and current summary with navigation affordance.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return Semantics(
@@ -1968,10 +1979,10 @@ class _MfaEnrollmentDialog extends StatefulWidget {
   State<_MfaEnrollmentDialog> createState() => _MfaEnrollmentDialogState();
 }
 
-// Class Name: _MfaEnrollmentDialogState
-// Role: Manages state for phone-number entry and SMS multi-factor enrollment.
-// Responsibilities:
-// - Coordinates updates and interactions for phone-number entry and SMS multi-factor enrollment.
+// 클래스명: _MfaEnrollmentDialogState
+// 역할: 전화번호와 문자 코드를 이용한 다중 인증 등록 상태.
+// 주요 책임: 국가번호·인증번호 입력을 인증 제어기에 전달하고 입력 자원을 해제한다.
+// 속성: _phoneController/_codeController (TextEditingController): 전화번호·문자 코드 입력.
 class _MfaEnrollmentDialogState extends State<_MfaEnrollmentDialog> {
   final _phoneController = TextEditingController(text: '+82');
   final _codeController = TextEditingController();
@@ -1988,11 +1999,10 @@ class _MfaEnrollmentDialogState extends State<_MfaEnrollmentDialog> {
     super.dispose();
   }
 
-  // Function Name: build
-  // Description: Renders phone-number entry and SMS multi-factor enrollment from the current configuration and state.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for phone-number entry and SMS multi-factor enrollment.
+  // 함수이름: build
+  // 함수역할: 전화번호 입력 또는 문자 인증번호 확인 단계를 인증 제어기의 진행·오류 상태에 맞춰 표시한다.
+  // 매개변수: context (BuildContext): 테마·대화상자 문맥.
+  // 반환값: 문자 다중 인증 등록 폼.
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -2090,13 +2100,10 @@ class _MfaEnrollmentDialogState extends State<_MfaEnrollmentDialog> {
   }
 }
 
-// 클래스명: _SettingSaveFooter
-// 역할: 설정 변경사항 저장 명령을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 설정 변경사항 저장 명령 위젯을 구성한다.
-// 속성:
-// - isSaving (bool): 해당 저장·분석·복약 갱신 요청이 진행 중인지 여부.
-// - onSaveRequested (Future<void> Function()): 검증한 약품과 복약 정보를 저장할 콜백.
+// Class Name: _SettingSaveFooter
+// Role: Draft-settings save footer.
+// Responsibilities: Shows save progress and delegates persistence to the owning screen.
+// Attributes: isSaving: request in progress; onSaveRequested: settings persistence callback; text: save label.
 class _SettingSaveFooter extends StatelessWidget {
   final _SettingText text;
   final bool isSaving;
@@ -2115,11 +2122,10 @@ class _SettingSaveFooter extends StatelessWidget {
     required this.onSaveRequested,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 설정 변경사항 저장 명령 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 설정 변경사항 저장 명령에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays the settings-save action and progress state.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -2230,9 +2236,10 @@ class _DefaultMedicationTimePanel extends StatelessWidget {
   }
 }
 
-// 클래스명: _PreviewPanel
-// 역할: 중첩 카드 없이 현재 글씨 크기의 예시와 음성 재생·중지 명령을 제공한다.
-// 속성: text는 언어 문구, fontSize는 초안 크기, isSpeaking은 재생 상태, 콜백은 재생 전환.
+// Class Name: _PreviewPanel
+// Role: A text-size preview with speech playback controls.
+// Responsibilities: Shows the draft size without nested preview cards and exposes play/stop state.
+// Attributes: text (_SettingText): labels; fontSize (String): draft size; isSpeaking (bool): playback; onVoicePreviewRequested (VoidCallback): playback toggle.
 class _PreviewPanel extends StatelessWidget {
   final _SettingText text;
   final String fontSize;
@@ -2240,7 +2247,9 @@ class _PreviewPanel extends StatelessWidget {
   final VoidCallback onVoicePreviewRequested;
 
   // 함수이름: _PreviewPanel
-  // 함수역할: 미리보기 문구·글씨 크기·재생 상태·전환 콜백을 받는다. 반환값: 미리보기 위젯.
+  // 함수역할: 미리보기 문구·글씨 크기와 재생 상태·전환 콜백을 받는다.
+  // 매개변수: text (_SettingText): 문구; fontSize (String): 크기; isSpeaking (bool): 재생 여부; onVoicePreviewRequested (VoidCallback): 재생 전환.
+  // 반환값: 새 _PreviewPanel.
   const _PreviewPanel({
     required this.text,
     required this.fontSize,
@@ -2248,9 +2257,10 @@ class _PreviewPanel extends StatelessWidget {
     required this.onVoicePreviewRequested,
   });
 
-  // 함수이름: build
-  // 함수역할: context의 접근성 배율과 초안 글씨 크기로 예시를 표시한다.
-  // 반환값: 예시 문장과 재생 버튼을 담은 단일 미리보기 영역.
+  // Function Name: build
+  // Description: Displays sample text at the selected draft size and a speech play/stop action.
+  // Parameters: context (BuildContext): Accessibility scaling and theme.
+  // Returns: Single preview Container.
   @override
   Widget build(BuildContext context) {
     final textSize = switch (fontSize) {
@@ -2349,11 +2359,10 @@ class _SettingText {
   // 반환값: 입력 설정이 반영된 _SettingText 인스턴스.
   const _SettingText(this.language);
 
-  // 함수이름: isEnglish
-  // 함수역할: 언어 코드가 앱 공통 기준으로 영어인지 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: isEnglish
+  // Description: Uses the shared English-language rule for settings text.
+  // Parameters: None.
+  // Returns: True for an English language code.
   bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: back
@@ -2381,11 +2390,10 @@ class _SettingText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get displayAndVoiceTitle => isEnglish ? 'Display & Voice' : '화면 및 음성';
-  // 함수이름: fontSizeTitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "글씨크기" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: fontSizeTitle
+  // Description: Labels the text-size preference.
+  // Parameters: None.
+  // Returns: The localized text-size title.
   String get fontSizeTitle => isEnglish ? 'Text Size' : '글자 크기';
   // 함수이름: readingSpeedTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "읽기속도" 문구를 제공한다.
@@ -2497,18 +2505,16 @@ class _SettingText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get medicationNotificationsDescription =>
       isEnglish ? 'Your scheduled medication times' : '내 복용 시간 알림';
-  // 함수이름: caregiverNotificationsTitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "보호자 알림" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: caregiverNotificationsTitle
+  // Description: Labels caregiver notification preferences.
+  // Parameters: None.
+  // Returns: The localized caregiver-notification title.
   String get caregiverNotificationsTitle =>
       isEnglish ? 'Caregiver alerts' : '보호자 알림';
-  // 함수이름: caregiverNotificationsDescription
-  // 함수역할: 보호자 알림의 수신 대상을 간단히 설명한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: caregiverNotificationsDescription
+  // Description: Explains who receives caregiver notifications.
+  // Parameters: None.
+  // Returns: The localized recipient explanation.
   String get caregiverNotificationsDescription =>
       isEnglish ? 'Linked patients\' medication status' : '연동된 환자의 복약 상태';
   // 함수이름: chatNotificationsTitle
@@ -2867,66 +2873,77 @@ class _SettingText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get deleteAccountFailed =>
       isEnglish ? 'Could not delete account data.' : '계정 데이터를 삭제하지 못했습니다.';
-  // 함수이름: smsMfaTitle
-  // 함수역할: 문자 2단계 인증 영역 제목을 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  // Function Name: smsMfaTitle
+  // Description: Labels the SMS two-step verification section.
+  // Parameters: None.
+  // Returns: The localized SMS MFA title.
   String get smsMfaTitle =>
       isEnglish ? 'SMS two-step verification' : '문자 2단계 인증';
   // 함수이름: smsMfaEnrolled
   // 함수역할: 문자 2단계 인증이 등록된 상태 안내를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
   String get smsMfaEnrolled =>
       isEnglish ? 'SMS two-step verification is on.' : '문자 2단계 인증이 켜져 있습니다.';
-  // 함수이름: smsMfaAvailable
-  // 함수역할: 문자 2단계 인증을 켤 수 있는 상태 안내를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  // Function Name: smsMfaAvailable
+  // Description: Explains that SMS two-step verification can be enabled for this account.
+  // Parameters: None.
+  // Returns: The localized availability message.
   String get smsMfaAvailable => isEnglish
       ? 'Protect this account with a verified phone number.'
       : '확인된 휴대폰 번호로 계정을 한 번 더 보호합니다.';
-  // 함수이름: smsMfaUnavailable
-  // 함수역할: 문자 2단계 인증을 쓸 수 없는 계정 안내를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  // Function Name: smsMfaUnavailable
+  // Description: Explains that this account cannot use SMS two-step verification.
+  // Parameters: None.
+  // Returns: The localized unavailability message.
   String get smsMfaUnavailable => isEnglish
       ? 'Available for verified email or Google accounts.'
       : '이메일 인증을 마친 계정이나 Google 계정에서 사용할 수 있습니다.';
-  // 함수이름: smsMfaEnable
-  // 함수역할: 문자 2단계 인증 켜기 버튼·창 제목을 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  // Function Name: smsMfaEnable
+  // Description: Names the SMS two-step verification enrollment action and dialog.
+  // Parameters: None.
+  // Returns: The localized enable/enroll label.
   String get smsMfaEnable =>
       isEnglish ? 'Turn on SMS verification' : '문자 인증 켜기';
-  // 함수이름: smsMfaVerifyPhone
-  // 함수역할: 인증번호 입력 단계의 창 제목을 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  // Function Name: smsMfaVerifyPhone
+  // Description: Titles the phone-verification code step.
+  // Parameters: None.
+  // Returns: The localized verification-step title.
   String get smsMfaVerifyPhone => isEnglish ? 'Verify phone' : '휴대폰 번호 확인';
-  // 함수이름: smsMfaCodeLabel
-  // 함수역할: 문자 인증번호 입력란 이름을 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  // Function Name: smsMfaCodeLabel
+  // Description: Labels the SMS verification-code input.
+  // Parameters: None.
+  // Returns: The localized code-field label.
   String get smsMfaCodeLabel =>
       isEnglish ? 'Six-digit SMS code' : '문자로 받은 6자리 인증번호';
   // 함수이름: smsMfaPhoneLabel
   // 함수역할: 국가번호를 포함한 휴대폰 번호 입력란 이름을 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
   String get smsMfaPhoneLabel =>
       isEnglish ? 'Phone number with country code' : '국가번호를 포함한 휴대폰 번호';
-  // 함수이름: smsMfaVerify
-  // 함수역할: 인증번호 확인 버튼 문구를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  // Function Name: smsMfaVerify
+  // Description: Labels submission of the entered verification code.
+  // Parameters: None.
+  // Returns: The localized verify action.
   String get smsMfaVerify => isEnglish ? 'Verify' : '확인';
-  // 함수이름: smsMfaSendCode
-  // 함수역할: 인증번호 보내기 버튼 문구를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  // Function Name: smsMfaSendCode
+  // Description: Labels the request to send an SMS verification code.
+  // Parameters: None.
+  // Returns: The localized send-code action.
   String get smsMfaSendCode => isEnglish ? 'Send code' : '인증번호 보내기';
 }
 
-// 함수이름: buildSmsMfaEnrollmentDialogForTesting
-// 함수역할: 출시 빌드에서 꺼져 있는 문자 2단계 인증 창을 테스트에서 직접 띄울 수 있게 만든다.
-// 매개변수:
-// - control (AuthenticationControl): 인증번호 요청·확인과 오류를 제공할 인증 컨트롤.
-// - language (String): 창 문구 언어 코드.
-// 반환값: 문자 2단계 인증 등록 창 위젯.
+// Function Name: buildSmsMfaEnrollmentDialogForTesting
+// Description: Exposes the enrollment dialog directly to tests even when SMS MFA is disabled in release configuration.
+// Parameters: control (AuthenticationControl): code request/verification and errors; language (String): dialog language.
+// Returns: The SMS MFA enrollment dialog widget.
 @visibleForTesting
 Widget buildSmsMfaEnrollmentDialogForTesting({
   required AuthenticationControl control,
   required String language,
 }) => _MfaEnrollmentDialog(control: control, text: _SettingText(language));
 
-// 함수이름: buildSmsMfaSettingsPanelForTesting
-// 함수역할: 출시 빌드에서 꺼져 있는 문자 2단계 인증 설정 영역을 테스트에서 직접 표시할 수 있게 만든다.
-// 매개변수:
-// - enabled (bool): 이미 등록됐는지 여부.
-// - available (bool): 이 계정에서 등록할 수 있는지 여부.
-// - language (String): 문구 언어 코드.
-// 반환값: 문자 2단계 인증 설정 영역 위젯.
+// Function Name: buildSmsMfaSettingsPanelForTesting
+// Description: Exposes the SMS MFA settings section directly to tests independently of the release feature switch.
+// Parameters: enabled (bool): already enrolled; available (bool): account may enroll; language (String): labels.
+// Returns: The SMS MFA settings panel.
 @visibleForTesting
 Widget buildSmsMfaSettingsPanelForTesting({
   required bool enabled,

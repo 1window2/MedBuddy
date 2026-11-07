@@ -12,14 +12,17 @@
 
 import asyncio
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
 from controls.manage_linked_chat_control import ManageLinkedChat
 from controls.process_caregiver_alert_outbox_control import ProcessCaregiverAlertOutbox
-from controls.process_chat_notifications_control import ProcessChatNotifications
+from controls.process_chat_notifications_control import Claim, ProcessChatNotifications
 from controls.queue_missed_dose_alerts_control import QueueMissedDoseAlerts
 from entities.chat_notification_job_entity import ChatNotificationJob
 from entities.device_push_token_entity import _DevicePushToken
@@ -53,6 +56,8 @@ async def _wait_until(condition: Callable[[], bool], timeout: float = 3.0) -> No
 # Class Name: _BrokenSession
 # Role: A session whose work and whose cleanup both fail, as after a connection lost in the
 #   middle of a rollback.
+# Responsibilities:
+# - Fail every requested session operation so worker cleanup failures cannot mask recovery behavior.
 # Attributes:
 # - None.
 class _BrokenSession:
@@ -66,7 +71,8 @@ class _BrokenSession:
     def __getattr__(self, name: str) -> Callable[..., None]:
         # Function Name: fail
         # Description: Raises for any use of the session.
-        # Parameters: Ignored.
+        # Parameters: _args (tuple[object, ...]) and _kwargs (dict[str, object])
+        # accept and ignore any session method arguments.
         # Returns: Never returns.
         def fail(*_args: object, **_kwargs: object) -> None:
             raise RuntimeError(f"connection lost during {name}")
@@ -76,6 +82,8 @@ class _BrokenSession:
 
 # Class Name: _FailingCycles
 # Role: Replacement for a worker's synchronous cycle that counts its calls and always raises.
+# Responsibilities:
+# - Increment the cycle count before injecting failure to verify the worker continues polling.
 # Attributes:
 # - calls (int): Number of cycles started.
 class _FailingCycles:
@@ -181,7 +189,7 @@ async def test_outbox_worker_waits_its_interval_after_a_failing_cycle() -> None:
 # - None.
 @pytest.mark.anyio
 async def test_outbox_worker_starts_one_task_and_stop_waits_for_it(
-    fk_session_factory,
+    fk_session_factory: sessionmaker[Session],
 ) -> None:
     worker = CaregiverAlertOutboxWorker(
         fk_session_factory, RecordingPushBoundary, interval_seconds=3600,
@@ -205,14 +213,14 @@ async def test_outbox_worker_starts_one_task_and_stop_waits_for_it(
 # - fk_session_factory (sessionmaker[Session]): Factory on an empty in-memory database.
 # Returns:
 # - None.
-def test_outbox_worker_delivers_when_queueing_fails(fk_session_factory) -> None:
+def test_outbox_worker_delivers_when_queueing_fails(fk_session_factory: sessionmaker[Session]) -> None:
     opened = []
 
     # Function Name: open_session
     # Description: Opens a real session and keeps it so the test can check it was released.
     # Parameters: None.
     # Returns: Session.
-    def open_session():
+    def open_session() -> Session:
         opened.append(fk_session_factory())
         return opened[-1]
 
@@ -240,7 +248,7 @@ def test_outbox_worker_delivers_when_queueing_fails(fk_session_factory) -> None:
 # - fk_session_factory (sessionmaker[Session]): Factory on an empty in-memory database.
 # Returns:
 # - None.
-def test_outbox_worker_queues_again_after_delivery_failed(fk_session_factory) -> None:
+def test_outbox_worker_queues_again_after_delivery_failed(fk_session_factory: sessionmaker[Session]) -> None:
     worker = CaregiverAlertOutboxWorker(fk_session_factory, RecordingPushBoundary, 3600)
 
     with patch.object(QueueMissedDoseAlerts, "queueDue", return_value=0) as queue_due, patch.object(
@@ -260,6 +268,8 @@ def test_outbox_worker_queues_again_after_delivery_failed(fk_session_factory) ->
 
 # Class Name: _CountingMaintenance
 # Role: Maintenance service double that counts its runs and can fail them.
+# Responsibilities:
+# - Count maintenance runs and either return fixed totals or raise the configured exception.
 # Attributes:
 # - runs (int): Number of runOnce calls.
 # - error (Exception | None): Raised by every run when set.
@@ -301,7 +311,7 @@ class _CountingMaintenance:
 @pytest.mark.anyio
 @pytest.mark.parametrize("session_fails", (False, True))
 async def test_maintenance_runner_keeps_running_after_failing_cycles(
-    monkeypatch, fk_session_factory, session_fails,
+    monkeypatch: pytest.MonkeyPatch, fk_session_factory: sessionmaker[Session], session_fails: bool,
 ) -> None:
     monkeypatch.setattr(
         data_maintenance.settings, "PERIODIC_MAINTENANCE_INTERVAL_SECONDS", 0.01,
@@ -312,7 +322,7 @@ async def test_maintenance_runner_keeps_running_after_failing_cycles(
     # Description: Counts the cycle and either fails or opens a real session.
     # Parameters: None.
     # Returns: Session.
-    def open_session():
+    def open_session() -> Session:
         cycles["count"] += 1
         if session_fails:
             raise RuntimeError("database is unavailable")
@@ -340,7 +350,7 @@ async def test_maintenance_runner_keeps_running_after_failing_cycles(
 # - None.
 @pytest.mark.anyio
 async def test_maintenance_runner_starts_one_task_and_stop_ends_the_wait(
-    fk_session_factory,
+    fk_session_factory: sessionmaker[Session],
 ) -> None:
     service = _CountingMaintenance()
     runner = PeriodicDataMaintenanceRunner(fk_session_factory, service)
@@ -359,6 +369,8 @@ async def test_maintenance_runner_starts_one_task_and_stop_ends_the_wait(
 
 # Class Name: _CountingChatProcessor
 # Role: Chat job processor double that counts polls and can fail them.
+# Responsibilities:
+# - Count chat-job polls and either return the scripted completion count or raise the configured exception.
 # Attributes:
 # - polls (int): Number of run_once calls.
 # - error (Exception | None): Raised by every poll when set.
@@ -398,7 +410,7 @@ class _CountingChatProcessor:
 # - None.
 @pytest.mark.anyio
 @pytest.mark.parametrize("error", (None, RuntimeError("poll failed")))
-async def test_chat_worker_lifecycle_survives_a_failing_poll(error) -> None:
+async def test_chat_worker_lifecycle_survives_a_failing_poll(error: Exception | None) -> None:
     processor = _CountingChatProcessor(error)
     worker = ChatNotificationWorker(processor)
 
@@ -423,7 +435,7 @@ async def test_chat_worker_lifecycle_survives_a_failing_poll(error) -> None:
 # Returns:
 # - Iterator yielding (engine, session factory, message id of the queued job).
 @pytest.fixture
-def chat_database(tmp_path):
+def chat_database(tmp_path: Path) -> Iterator[tuple[Engine, sessionmaker[Session], int]]:
     engine = make_engine(tmp_path)
     sessions = make_session_factory(engine)
     with sessions() as db:
@@ -455,7 +467,7 @@ def chat_database(tmp_path):
 # - boundary (RecordingPushBoundary): Push double shared by every delivery.
 # Returns:
 # - ProcessChatNotifications.
-def _chat_processor(sessions, boundary: RecordingPushBoundary) -> ProcessChatNotifications:
+def _chat_processor(sessions: sessionmaker[Session], boundary: RecordingPushBoundary) -> ProcessChatNotifications:
     return ProcessChatNotifications(
         sessions,
         lambda: boundary,
@@ -472,7 +484,7 @@ def _chat_processor(sessions, boundary: RecordingPushBoundary) -> ProcessChatNot
 # - message_id (int): Primary key of the job.
 # Returns:
 # - (status, attempts, last_error).
-def _job_state(sessions, message_id: int) -> tuple[str, int, str | None]:
+def _job_state(sessions: sessionmaker[Session], message_id: int) -> tuple[str, int, str | None]:
     with sessions() as db:
         job = db.get(ChatNotificationJob, message_id)
         return str(job.status), int(job.attempts), job.last_error
@@ -488,7 +500,7 @@ def _job_state(sessions, message_id: int) -> tuple[str, int, str | None]:
 # - None.
 @pytest.mark.anyio
 async def test_chat_push_is_sent_with_the_job_claimed_and_no_connection_held(
-    chat_database,
+    chat_database: tuple[Engine, sessionmaker[Session], int],
 ) -> None:
     engine, sessions, message_id = chat_database
     seen_at_send: list[tuple[int, tuple[str, int, str | None]]] = []
@@ -515,7 +527,7 @@ async def test_chat_push_is_sent_with_the_job_claimed_and_no_connection_held(
 # - None.
 @pytest.mark.anyio
 async def test_delivered_chat_job_is_not_requeued_when_its_completion_write_fails(
-    chat_database,
+    chat_database: tuple[Engine, sessionmaker[Session], int],
 ) -> None:
     _engine, sessions, message_id = chat_database
     boundary = RecordingPushBoundary()
@@ -527,7 +539,7 @@ async def test_delivered_chat_job_is_not_requeued_when_its_completion_write_fail
     # Description: Fails the first state write and delegates the following ones.
     # Parameters: claim - lease; status - requested state; error - diagnostic.
     # Returns: None.
-    def finish_failing_once(claim, status, error=None) -> None:
+    def finish_failing_once(claim: Claim, status: str, error: str | None = None) -> None:
         finish_statuses.append(status)
         if len(finish_statuses) == 1:
             raise RuntimeError("database is unavailable")
@@ -553,7 +565,7 @@ async def test_delivered_chat_job_is_not_requeued_when_its_completion_write_fail
 # - None.
 @pytest.mark.anyio
 async def test_delivered_chat_job_keeps_its_lease_when_no_state_can_be_written(
-    chat_database,
+    chat_database: tuple[Engine, sessionmaker[Session], int],
 ) -> None:
     _engine, sessions, message_id = chat_database
     boundary = RecordingPushBoundary()
@@ -580,7 +592,7 @@ async def test_delivered_chat_job_keeps_its_lease_when_no_state_can_be_written(
 # Returns:
 # - None.
 @pytest.mark.anyio
-async def test_chat_job_whose_push_failed_goes_back_to_the_queue(chat_database) -> None:
+async def test_chat_job_whose_push_failed_goes_back_to_the_queue(chat_database: tuple[Engine, sessionmaker[Session], int]) -> None:
     _engine, sessions, message_id = chat_database
     boundary = RecordingPushBoundary(raises=RuntimeError("push provider is down"))
 

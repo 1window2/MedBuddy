@@ -1,7 +1,17 @@
+// 파일명: hospital_department_sheet.dart
+// 역할: 진료과·증상 검색과 이름순 색인 탐색을 제공한다.
+
 part of 'check_nearby_pharmacy_ui_boundary.dart';
 
-// 진료과를 이름순으로 묶고 오른쪽 초성으로 이동한다. 이동만으로 조회 조건을 바꾸지는 않는다.
+// 클래스명: _HospitalDepartmentSheet
+// 역할: 진료과를 검색하거나 초성 색인으로 고르는 화면.
+// 주요 책임: 선택 결과를 포함 화면의 콜백 또는 경로 결과로 전달한다.
+// 속성: selected (String?): 현재 코드; english (bool): 언어; closeLabel (String): 닫기; embedded (bool): 포함 화면 여부; onSelected (ValueChanged<String>?): 선택 처리.
 class _HospitalDepartmentSheet extends StatefulWidget {
+  // 함수이름: _HospitalDepartmentSheet
+  // 함수역할: 선택 진료과·언어와 독립 또는 포함 화면의 결과 전달 방식을 설정한다.
+  // 매개변수: selected (String?): 코드; english (bool): 언어; closeLabel (String): 닫기; embedded (bool): 포함 여부; onSelected (ValueChanged<String>?): 선택.
+  // 반환값: 새 _HospitalDepartmentSheet.
   const _HospitalDepartmentSheet({
     required this.selected,
     required this.english,
@@ -16,11 +26,19 @@ class _HospitalDepartmentSheet extends StatefulWidget {
   final bool embedded;
   final ValueChanged<String>? onSelected;
 
+  // 함수이름: createState
+  // 함수역할: 검색어와 진료과 색인 스크롤 상태를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 새 _HospitalDepartmentSheetState.
   @override
   State<_HospitalDepartmentSheet> createState() =>
       _HospitalDepartmentSheetState();
 }
 
+// Class Name: _HospitalDepartmentSheetState
+// Role: Supports department search and initial-letter navigation at large text sizes.
+// Responsibilities: Groups localized names, keeps anchors for real row heights and handles embedded layouts.
+// Attributes: _query (TextEditingController): search; _scrollController/_indexController (ScrollController): lists; _groups (Map<String,List<String>>): initials; _anchors (Map<String,GlobalKey>): targets; _activeIndex (String?): selection.
 class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
   final _query = TextEditingController();
   final _scrollController = ScrollController();
@@ -29,12 +47,19 @@ class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
   late final Map<String, GlobalKey> _anchors;
   String? _activeIndex;
 
+  // 함수이름: _label
+  // 함수역할: 알려진 진료과 코드의 현재 언어 이름을 읽는다.
+  // 매개변수: code (String): _hospitalDepartments에 있는 코드.
+  // 반환값: 진료과 이름; 알 수 없는 코드는 허용하지 않는다.
   String _label(String code) {
     final label = _hospitalDepartments[code]!;
     return widget.english ? label.$2 : label.$1;
   }
 
-  // 한글 음절의 초성을 구하고 영어 화면에서는 첫 알파벳을 사용한다.
+  // 함수이름: _initial
+  // 함수역할: 한국어 음절이면 초성을 계산하고 그 외에는 첫 글자를 대문자로 만든다.
+  // 매개변수: label (String): 비어 있지 않은 진료과 이름.
+  // 반환값: 색인에 사용할 첫 글자.
   String _initial(String label) {
     final syllable = label.runes.first - 0xac00;
     if (!widget.english && syllable >= 0 && syllable <= 11171) {
@@ -43,6 +68,10 @@ class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
     return label[0].toUpperCase();
   }
 
+  // 함수이름: initState
+  // 함수역할: 전체 항목을 제외한 진료과를 표시 이름순으로 정렬하고 초성별 그룹과 스크롤 앵커를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 없음.
   @override
   void initState() {
     super.initState();
@@ -56,6 +85,10 @@ class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
     _anchors = {for (final initial in _groups.keys) initial: GlobalKey()};
   }
 
+  // 함수이름: dispose
+  // 함수역할: 검색 입력과 본문·색인 스크롤 제어기를 해제한다.
+  // 매개변수: 없음.
+  // 반환값: 없음.
   @override
   void dispose() {
     _query.dispose();
@@ -64,7 +97,10 @@ class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
     super.dispose();
   }
 
-  // 모든 과목을 배치해 큰 글씨로 행 높이가 달라져도 정확한 그룹 위치로 이동한다.
+  // 함수이름: _jumpTo
+  // 함수역할: 대상 그룹이 배치되었으면 실제 높이를 기준으로 해당 초성 위치까지 이동한다.
+  // 매개변수: initial (String): 그룹 초성.
+  // 반환값: 없음. 앵커가 없으면 무시한다.
   void _jumpTo(String initial) {
     final target = _anchors[initial]?.currentContext;
     if (target == null) return;
@@ -77,6 +113,10 @@ class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
     );
   }
 
+  // 함수이름: _option
+  // 함수역할: 선택 상태와 진료과 이름을 표시하고 콜백이 있으면 호출하며 없으면 코드로 경로를 닫는다.
+  // 매개변수: code (String): 유효한 진료과 코드.
+  // 반환값: 선택 가능한 ListTile.
   Widget _option(String code) => ListTile(
     key: ValueKey('hospital-department-option-$code'),
     selected: widget.selected == code,
@@ -99,6 +139,10 @@ class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
         : Navigator.pop(context, code),
   );
 
+  // Function Name: build
+  // Description: Shows search results or initial-grouped departments with scroll access to both list and index.
+  // Parameters: context (BuildContext): Viewport and keyboard constraints.
+  // Returns: Department picker sized for embedded, keyboard-open or standalone presentation.
   @override
   Widget build(BuildContext context) {
     final searching = _query.text.trim().isNotEmpty;

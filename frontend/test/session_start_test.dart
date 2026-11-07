@@ -17,13 +17,23 @@ import 'support/fake_controls.dart';
 import 'support/fake_notification_service.dart';
 
 // Class Name: _EmptyCheckSchedule
-// Role: Schedule control that answers every read with an empty list, without a request.
+// Role: Keep startup schedule reads local and empty.
+// Responsibilities: Return no current-day or reminder-window medications without backend access.
+// Attributes: No additional state; inherited client configuration is unused by these reads.
 class _EmptyCheckSchedule extends CheckSchedule {
+  // Function Name: requestTodayMedicationSchedule
+  // Description: Supply an empty schedule while testing startup without authentication.
+  // Parameters: None.
+  // Returns: Future<List<MedicationSchedule>> resolving to an empty list.
   @override
   Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
     return const [];
   }
 
+  // Function Name: requestMedicationScheduleWindow
+  // Description: Avoid network requests when startup prepares the future reminder window.
+  // Parameters: days (int) is accepted but does not affect the empty fixture.
+  // Returns: Future<List<MedicationSchedule>> resolving to an empty list.
   @override
   Future<List<MedicationSchedule>> requestMedicationScheduleWindow({
     int days = 14,
@@ -50,6 +60,10 @@ MedBuddyViewModel _viewModel() => MedBuddyViewModel(
 void main() {
 // An app that starts without a session (offline, or the server not answering yet) must keep the
 // account stored on the device: caregiver alerts that arrive later are shown only for it.
+// Function Name: starting without a session keeps the stored account
+// Description: Start the application after sign-out with a remembered inbox owner and verify startup does not erase that owner before authentication recovers.
+// Parameters: tester (WidgetTester) mounts and settles the app.
+// Returns: Future<void>; the active-user preference remains usr_stored.
 testWidgets('starting without a session keeps the stored account', (tester) async {
   final authenticationControl = AuthenticationControl.development();
   addTearDown(authenticationControl.dispose);

@@ -374,8 +374,8 @@ void main() {
       );
 
       expect(
-        _resolveBoth(plain).$2,
-        'Schedule response could not be verified.',
+        _resolveBoth(plain),
+        ('Schedule response could not be verified.', _genericKo),
       );
       expect(_resolveBoth(nested), (_busyEn, _busyKo));
     });
@@ -457,8 +457,9 @@ void main() {
 
     // Function Name: test callback
     // Description:
-    // - Expected behavior: a StateError without a marker is shown verbatim, and any other
-    //   unclassified error gives the generic guidance.
+    // - Expected behavior: a StateError without a marker is shown verbatim, except that English
+    //   developer text gives the Korean UI the generic guidance; any other unclassified error
+    //   gives the generic guidance.
     // Parameters:
     // - None.
     // Returns:
@@ -466,7 +467,7 @@ void main() {
     test('the verbatim StateError tail and the generic fallback are unchanged', () {
       expect(
         _resolveBoth(StateError('Schedule lookup failed.')),
-        ('Schedule lookup failed.', 'Schedule lookup failed.'),
+        ('Schedule lookup failed.', _genericKo),
       );
       expect(
         _resolveBoth(StateError('약품 정보를 불러오지 못했습니다.')),

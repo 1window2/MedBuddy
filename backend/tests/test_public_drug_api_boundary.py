@@ -65,13 +65,12 @@ async def test_small_api_search_medication_uses_basic_catalog_contract(
     ]
 
 
-# Function Name: test_small_api_search_medication_propagates_failure
-# Description:
-# - Keeps an unavailable interactive basic-drug search distinct from a successful empty result.
-# Parameters:
-# - monkeypatch (pytest.MonkeyPatch): Pytest replacement fixture restoring patched collaborators
-#   afterward.
-# Returns:
+# 함수이름: test_small_api_search_medication_propagates_failure
+# 함수역할:
+# - 기본 약품 검색 장애가 성공한 빈 결과로 바뀌지 않고 호출자에게 전파되는지 검증한다.
+# 매개변수:
+# - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
+# 반환값:
 # - None.
 @pytest.mark.anyio
 async def test_small_api_search_medication_propagates_failure(
@@ -247,6 +246,8 @@ async def test_catalog_retry_bypasses_interactive_failure_cache(
     # Responsibilities:
     # - Checks the first-page request, counts attempts, and returns 503 once followed by
     #   200.
+    # Attributes:
+    # - None.
     class _Client:
         # Function Name: get
         # Description:

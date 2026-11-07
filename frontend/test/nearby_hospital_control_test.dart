@@ -1,4 +1,5 @@
-// 병원 조회 조건, 공통 표시 모델, 약국과 분리된 즐겨찾기를 검증한다.
+// 파일명: nearby_hospital_control_test.dart
+// 역할: 병원 조회 조건, 공통 표시 모델, 약국과 분리된 즐겨찾기를 검증한다.
 import 'dart:async';
 import 'dart:convert';
 
@@ -13,33 +14,80 @@ import 'package:medbuddy_frontend/services/device_location_service.dart';
 import 'package:medbuddy_frontend/services/pharmacy_favorite_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// 클래스명: _Location
+// 역할: 위치 조회 완료 시점을 직접 제어하는 병원 검색 테스트 대역.
+// 주요 책임:
+// - GPS 대기 중 진료과 변경과 요청 상태를 재현하고 설정 이동은 실제 실행하지 않는다.
+// 속성:
+// - result (Completer<DeviceCoordinate>): 테스트가 좌표 또는 오류로 완료할 위치 응답.
 class _Location implements DeviceLocationBoundary {
   final Completer<DeviceCoordinate> result = Completer();
+  // 함수이름: requestCurrentCoordinate
+  // 함수역할:
+  // - 테스트가 준비한 위치 응답 Future를 그대로 반환하여 GPS 대기 상태를 유지한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<DeviceCoordinate>; result에 지정한 좌표 또는 오류로 완료한다.
   @override
   Future<DeviceCoordinate> requestCurrentCoordinate() => result.future;
+  // 함수이름: openApplicationSettings
+  // 함수역할:
+  // - 실제 앱 설정을 열지 않고 설정 이동 성공을 모의한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<bool>; true로 완료한다.
   @override
   Future<bool> openApplicationSettings() async => true;
+  // 함수이름: openDeviceLocationSettings
+  // 함수역할:
+  // - 실제 기기 위치 설정을 열지 않고 설정 이동 성공을 모의한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<bool>; true로 완료한다.
   @override
   Future<bool> openDeviceLocationSettings() async => true;
 }
 
+// Explicit 5km map-area fixture; unlike a device-location search, it must not auto-expand.
 const _area = NearbyCareSearchArea(
   center: DeviceCoordinate(latitude: 37.55, longitude: 126.92),
   radiusKm: 5,
   isMapArea: true,
 );
 
-// 실제 외부 병원 API를 호출하지 않고 모바일 응답 계약만 검사한다.
+// 함수이름: _response
+// 함수역할:
+// - 병원 data 필드와 최신 카탈로그 표시를 가진 JSON 응답을 만들며 잘못된 data 형태도 그대로 인코딩한다.
+// 매개변수:
+// - data (Object?): 기본 빈 목록; 정상 병원 목록 또는 파싱 실패 검증용 문자열 등 JSON으로 인코딩 가능한 값.
+// 반환값:
+// - http.Response; UTF-8 JSON HTTP 200 응답. JSON으로 인코딩할 수 없는 값은 인코딩 오류가 난다.
 http.Response _response({Object? data = const []}) => http.Response(
   jsonEncode({'data': data, 'catalog_is_stale': false}),
   200,
   headers: {'content-type': 'application/json; charset=utf-8'},
 );
 
+// Function Name: main
+// Description:
+// - Initialize the widget binding and register hospital request, expansion, calendar, cancellation, favorites, and error-contract tests.
+// Parameters:
+// - None.
+// Returns:
+// - void; no return value.
 void main() {
-  // 지역 표본의 한계를 실제 조회 제한과 별개로 읽고 구버전 응답도 허용한다.
   for (final scope in [null, false, true]) {
     for (final truncated in [false, true]) {
+      // Function Name: region scope $scope is independent of truncation $truncated
+      // Description:
+      // - Decode region_scope_uncertain independently from search_truncated; an omitted region flag behaves as false even for truncated results.
+      // Parameters:
+      // - None.
+      // Returns:
+      // - Future<void>; completes after the asynchronous checks.
       test(
         'region scope $scope is independent of truncation $truncated',
         () async {
@@ -66,8 +114,14 @@ void main() {
     }
   }
 
-  // 300m부터 결과가 있는 첫 범위에서 멈추고, 끝까지 비어 있어도 2km까지만 조회한다.
   for (final foundAt in <double?>[.3, .5, 1, 2, null]) {
+    // Function Name: empty nearby search widens until $foundAt
+    // Description:
+    // - Expand empty device-location searches through 0.3, 0.5, 1, and 2km until a hospital is found or the limit is reached, preserving department, coordinates, and time and reporting whether expansion occurred.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes after the asynchronous checks.
     test('empty nearby search widens until $foundAt', () async {
       final requests = <Uri>[];
       final location = _Location()..result.complete(_area.center);
@@ -108,7 +162,7 @@ void main() {
       );
       expect(result.searchArea!.radiusKm, expected.last);
       expect(result.searchArea!.isMapArea, isFalse);
-      // 화면은 반경 비교 대신 이 값으로 자동 확대 안내를 결정한다.
+      // The UI uses this flag, not radius comparisons, to explain automatic expansion.
       expect(result.searchRadiusExpanded, expected.length > 1);
       expect(
         requests.every(
@@ -123,7 +177,13 @@ void main() {
     });
   }
 
-  // 직접 고른 지도는 좁더라도 자동으로 확장하지 않는다.
+  // Function Name: empty manually selected 300m area is preserved
+  // Description:
+  // - An explicitly chosen 300m map area stays unchanged after an empty result: perform one request and do not mark automatic expansion.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('empty manually selected 300m area is preserved', () async {
     var calls = 0;
     final area = NearbyCareSearchArea(
@@ -144,10 +204,25 @@ void main() {
     expect(result.searchRadiusExpanded, isFalse);
   });
 
-  // 주말·공휴일 조건을 달력상 평일에 조회한 경우만 날짜 변경 대상으로 본다.
+  // Function Name: weekend search on a confirmed weekday is the only date mismatch
+  // Description:
+  // - Treat weekend/holiday mode as a date mismatch only on a weekday confirmed not to be a holiday; exclude weekends, holiday/unknown calendar states, and every other search mode.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - void; no return value.
   test('weekend search on a confirmed weekday is the only date mismatch', () {
     final tuesday = DateTime(2026, 9, 29);
     final saturday = DateTime(2026, 10, 3);
+    // Function Name: mismatch
+    // Description:
+    // - Evaluate the hospital weekend-date guard for a supplied search mode and calendar classification.
+    // Parameters:
+    // - mode (NearbyCareSearchMode): search condition being checked.
+    // - date (DateTime): target date whose weekday is evaluated.
+    // - status (String): holiday status, including not_applicable, known fallback states, or unknown.
+    // Returns:
+    // - bool; whether the weekend/holiday search targets a confirmed non-holiday weekday.
     bool mismatch(NearbyCareSearchMode mode, DateTime date, String status) =>
         CheckNearbyHospital.isWeekendSearchOnWeekday(
           searchMode: mode,
@@ -166,7 +241,7 @@ void main() {
       ),
       isTrue,
     );
-    // 주말, 공휴일로 확인되었거나 달력을 확인하지 못한 평일, 다른 조회 조건은 제외한다.
+    // Exclude weekends, known holidays, unverified weekdays, and other search modes.
     expect(
       mismatch(NearbyCareSearchMode.weekendHoliday, saturday, 'not_applicable'),
       isFalse,
@@ -199,7 +274,13 @@ void main() {
     }
   });
 
-  // 위치 대체 상태와 중심을 유지해 보호자의 실제 위치로 오인하지 않게 한다.
+  // Function Name: automatic expansion preserves fallback source
+  // Description:
+  // - When fallback-location results remain empty, expansion reaches 2km without losing the original center or isFallback provenance.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('automatic expansion preserves fallback source', () async {
     final control = CheckNearbyHospital(
       client: MockClient((_) async => _response()),
@@ -217,8 +298,14 @@ void main() {
     expect(result.searchArea!.center, _area.center);
   });
 
-  // 운영 판정 장애와 날짜 조건 불일치를 거리 부족으로 오인하지 않는다.
   for (final unknown in [true, false]) {
+    // Function Name: calendar condition prevents expansion: unknown=$unknown
+    // Description:
+    // - Do not widen an empty 300m search when calendar status is unknown for open-at-time, or when weekend/holiday mode targets a confirmed weekday.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes after the asynchronous checks.
     test('calendar condition prevents expansion: unknown=$unknown', () async {
       var calls = 0;
       final control = CheckNearbyHospital(
@@ -245,7 +332,13 @@ void main() {
     });
   }
 
-  // 확장 도중 장애도 정상 빈 결과로 숨기지 않고 추가 요청을 멈춘다.
+  // Function Name: expansion failure is propagated without further requests
+  // Description:
+  // - If the first radius expansion receives HTTP 503, propagate StateError after exactly two requests and do not try further radii.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('expansion failure is propagated without further requests', () async {
     var calls = 0;
     final control = CheckNearbyHospital(
@@ -264,8 +357,14 @@ void main() {
     expect(calls, 2);
   });
 
-  // 화면 종료 또는 새 검색이 시작되면 이전 응답이 다음 반경 요청을 만들지 않는다.
   for (final dispose in [true, false]) {
+    // Function Name: obsolete search does not expand: dispose=$dispose
+    // Description:
+    // - A delayed empty response must not trigger expansion after disposal or after a newer explicit-area search supersedes it.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes after the asynchronous checks.
     test('obsolete search does not expand: dispose=$dispose', () async {
       final gate = Completer<http.Response>();
       var calls = 0;
@@ -291,7 +390,13 @@ void main() {
     });
   }
 
-  // 진료과목과 운영 조건은 독립적으로 서버에 전달되어야 한다.
+  // Function Name: hospital request combines department, operating filter and map area
+  // Description:
+  // - Combine specialty, late-hours mode, and map bounds in the hospital endpoint request, preserving hospital metadata and unknown opening status without assigning pharmacy-only designation flags.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test(
     'hospital request combines department, operating filter and map area',
     () async {
@@ -336,7 +441,13 @@ void main() {
     },
   );
 
-  // 과목 선택 해제 후에는 이전 과목 조건이 남지 않아야 한다.
+  // Function Name: all departments omits department from request
+  // Description:
+  // - Selecting all departments omits the department query parameter entirely from an explicit-area hospital request.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('all departments omits department from request', () async {
     final control = CheckNearbyHospital(
       client: MockClient((request) async {
@@ -348,7 +459,13 @@ void main() {
     control.dispose();
   });
 
-  // GPS를 기다리는 동안 조건이 바뀌어도 각 요청은 시작 시점의 조건을 유지한다.
+  // Function Name: department is captured before awaiting location
+  // Description:
+  // - Capture the department when the search starts so changing it during GPS lookup cannot alter that pending search request.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('department is captured before awaiting location', () async {
     final location = _Location();
     final control = CheckNearbyHospital(
@@ -366,7 +483,13 @@ void main() {
     control.dispose();
   });
 
-  // 실패 응답과 잘못된 목록은 정상적인 빈 검색 결과로 바꾸지 않는다.
+  // Function Name: malformed response and service errors are propagated
+  // Description:
+  // - Reject both a non-list data field and an HTTP 503 response as StateError rather than returning a successful empty hospital list.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('malformed response and service errors are propagated', () async {
     for (final response in [
       _response(data: 'invalid'),
@@ -383,7 +506,13 @@ void main() {
     }
   });
 
-  // 같은 사용자·같은 식별자라도 병원과 약국의 즐겨찾기는 서로 영향을 주지 않는다.
+  // 함수이름: hospital favorites preserve existing pharmacy favorites
+  // 함수역할:
+  // - 병원 즐겨찾기를 저장해도 기존 약국 즐겨찾기를 보존하고, 같은 병원 저장값이 다른 사용자의 목록에 섞이지 않는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   test('hospital favorites preserve existing pharmacy favorites', () async {
     SharedPreferences.setMockInitialValues({
       'medbuddy.favorite_pharmacy_ids.patient': ['C1'],
@@ -406,22 +535,21 @@ void main() {
     );
   });
 
-  // Function Name: test callback
+  // Function Name: nearby request failures keep their message, status and cause
   // Description:
-  // - Expected behavior: the shared nearby request wraps a connection error, reports a rejected status
-  //   with its detail, and passes a malformed-body StateError through unwrapped.
+  // - Preserve transport causes and server status/detail in ApiRequestException, while a malformed successful response remains a distinct StateError.
   // Parameters:
   // - None.
   // Returns:
-  // - Future<void>; completes after the three failures are checked and fails the test on mismatch.
+  // - Future<void>; completes after the asynchronous checks.
   test('nearby request failures keep their message, status and cause', () async {
     // Function Name: search
     // Description:
-    // - Runs one explicit-area hospital search against a stubbed transport.
+    // - Run one explicit-area hospital search against the supplied transport and capture its thrown error; fail the test if the search succeeds.
     // Parameters:
-    // - handler (MockClientHandler): Stubbed HTTP response or failure.
+    // - handler (MockClientHandler): response or transport failure used by the mock HTTP client.
     // Returns:
-    // - Future that completes with the error thrown by the search.
+    // - Future<Object?>; resolves to the caught error object; unexpected success raises a test failure.
     Future<Object?> search(MockClientHandler handler) async {
       final control = CheckNearbyHospital(client: MockClient(handler));
       addTearDown(control.dispose);

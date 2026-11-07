@@ -2,8 +2,8 @@
 
 Flutter client for the MedBuddy Android beta source and local demo.
 
-Current app version: **0.2.5+26**. Active development line:
-**`beta/v0.2.5`**.
+Current app version: **1.0.0+27**. Active development line (1.0.0 release
+candidate): **`beta/v1.0.0`**.
 
 ## Role
 
@@ -159,6 +159,27 @@ flutter pub get --enforce-lockfile
 flutter analyze --no-pub
 flutter test --no-pub
 ```
+
+## Android APK Distribution
+
+The Android CI and signed-release workflows build two standalone APKs:
+
+- `app-arm64-v8a-release.apk`: ARM 64-bit Android devices.
+- `app-armeabi-v7a-release.apk`: ARM 32-bit Android devices.
+
+Install only the APK matching the device's supported ABI; these are not parts
+that must be installed together. Both builds retain the same application ID,
+version name, version code, and release signing identity. The workflows build
+each target separately instead of using `--split-per-abi`, because the pinned
+Flutter SDK adds an ABI offset to the version code with that flag. Keeping the
+normal version code avoids blocking later updates from the universal APK or
+Play bundle distribution. A published update must still use an increased build
+number and the compatible signing certificate.
+
+Each APK's native libraries and Flutter engine are checked against its one
+expected ABI. Signed releases verify both APK signatures and upload separate
+ARM 32-bit and ARM 64-bit artifacts with checksums. The Play AAB build is
+unchanged, and the Naver Map and on-device OCR features remain included.
 
 ## Quality Assurance
 

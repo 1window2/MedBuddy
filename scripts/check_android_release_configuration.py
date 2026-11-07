@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 
 BACKEND_PROBE_FILES = ("backend-health.json", "backend-ready.json", "backend-catalogs.json")
 # The only ref that may build without Firebase App Check (temporary off-Play beta exception).
-OFF_PLAY_EXCEPTION_REF = "refs/heads/beta/v0.2.5"
+OFF_PLAY_EXCEPTION_REF = "refs/heads/beta/v1.0.0"
 
 
 # Class Name: AndroidReleasePolicy
@@ -57,7 +57,7 @@ class AndroidReleasePolicy:
         if environment["GITHUB_REF"] != OFF_PLAY_EXCEPTION_REF and not required:
             raise ValueError(
                 "Release builds require Firebase App Check. "
-                "The off-Play exception is restricted to beta/v0.2.5."
+                "The off-Play exception is restricted to beta/v1.0.0."
             )
         return cls(required, distribution)
 
@@ -97,8 +97,13 @@ class BackendReleaseConfiguration:
     # Returns: Validated HTTPS origin; raises ValueError with a credential-free diagnostic.
     @property
     def origin(self) -> str:
+        # The build embeds the value with only its outer whitespace trimmed, so nothing inside
+        # it may be dropped or reinterpreted by the URL parser.
+        candidate = self.api_base_url.strip()
+        if any(character.isspace() or not character.isprintable() for character in candidate):
+            raise ValueError("MEDBUDDY_API_BASE_URL must not contain whitespace or control characters.")
         try:
-            parsed = urlsplit(self.api_base_url.strip())
+            parsed = urlsplit(candidate)
         except ValueError:
             raise ValueError("MEDBUDDY_API_BASE_URL is malformed.") from None
         if (

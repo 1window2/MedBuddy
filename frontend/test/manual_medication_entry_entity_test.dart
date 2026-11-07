@@ -138,6 +138,14 @@ void main() {
   // 반환값:
   // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
   test('직접 등록한 복용 주기는 횟수 문구에 함께 담긴다', () {
+    // Function Name: entry
+    // Description:
+    // - Creates a fixed 28-day manual course while varying dose-day wording and selected regular slots.
+    // Parameters:
+    // - doseDays (String): Stored cycle description.
+    // - slots (List<String>): Regular slot selection.
+    // Returns:
+    // - ManualMedicationEntry: One tablet per intake, from 2026-10-12 through 2026-11-08.
     ManualMedicationEntry entry(String doseDays, List<String> slots) =>
         ManualMedicationEntry(
           medicationName: '주기약',

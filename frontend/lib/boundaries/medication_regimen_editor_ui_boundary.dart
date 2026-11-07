@@ -1,3 +1,6 @@
+// 파일명: medication_regimen_editor_ui_boundary.dart
+// 역할: 기존 복용 기록을 보존하며 약 정보 수정·복용 중단·처방 교체를 확인하고 요청한다.
+
 import 'package:flutter/material.dart';
 
 import '../controls/check_saved_medication_control.dart';
@@ -15,7 +18,10 @@ import '../widgets/medbuddy_page_header.dart';
 import '../widgets/medication_dosing_mode_selector.dart';
 import '../widgets/medication_entry_fields.dart';
 
-// 기존 기록을 지우지 않는 처방 변경을 입력하고 적용일과 변경 내용을 최종 확인한다.
+// 클래스명: MedicationRegimenEditorUI
+// 역할: 저장된 약의 처방 변경을 적용일과 함께 입력받는다.
+// 주요 책임: 변경 내용을 확인하고 저장은 주입된 명령에 맡긴다.
+// 속성: medication (MedicationDetail): 기존 약; action (MedicationRegimenAction): 변경 유형; isEnglish (bool): 언어; clock (DateTime Function()? ): 시계; onSubmit (Future<MedicationRegimenResult> Function(MedicationRegimenChange)): 저장.
 class MedicationRegimenEditorUI extends StatefulWidget {
   final MedicationDetail medication;
   final MedicationRegimenAction action;
@@ -24,6 +30,10 @@ class MedicationRegimenEditorUI extends StatefulWidget {
   final Future<MedicationRegimenResult> Function(MedicationRegimenChange)
   onSubmit;
 
+  // 함수이름: MedicationRegimenEditorUI
+  // 함수역할: 기존 약, 변경 유형과 결과를 반환할 저장 명령을 받는다.
+  // 매개변수: key (Key?): 키; medication (MedicationDetail): 약; action (MedicationRegimenAction): 유형; onSubmit: 저장 함수; isEnglish (bool): 영어 여부; clock (DateTime Function()? ): 시계.
+  // 반환값: 새 MedicationRegimenEditorUI.
   const MedicationRegimenEditorUI({
     super.key,
     required this.medication,
@@ -33,11 +43,19 @@ class MedicationRegimenEditorUI extends StatefulWidget {
     this.clock,
   });
 
+  // 함수이름: createState
+  // 함수역할: 입력 검증과 동일 요청 재시도를 관리할 상태를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 새 _MedicationRegimenEditorUIState.
   @override
   State<MedicationRegimenEditorUI> createState() =>
       _MedicationRegimenEditorUIState();
 }
 
+// Class Name: _MedicationRegimenEditorUIState
+// Role: Validates regimen edits and preserves an uncertain request for identical retry.
+// Responsibilities: Checks Korean effective dates and course limits, blocks conflicted changes and keeps original dosage wording when unchanged.
+// Attributes: _pendingChange (MedicationRegimenChange?): retry payload; _mustReload/_busy (bool): locks; _effectiveDate/_endDate (DateTime): dates; _name/_dosage (TextEditingController): inputs.
 class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
   final _form = GlobalKey<FormState>();
   late final TextEditingController _name;
@@ -56,27 +74,58 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
   MedicationRegimenChange? _pendingChange;
   String? _error;
 
+  // 함수이름: _english
+  // 함수역할: 현재 화면의 언어 설정을 읽는다.
+  // 매개변수: 없음.
+  // 반환값: 영어이면 true.
   bool get _english => widget.isEnglish;
+  // 함수이름: _stopping
+  // 함수역할: 현재 작업이 복용 중단인지 구분한다.
+  // 매개변수: 없음.
+  // 반환값: 중단 작업이면 true.
   bool get _stopping => widget.action == MedicationRegimenAction.stop;
+  // 함수이름: _locked
+  // 함수역할: 진행 중·응답 미확인·새로고침 필요 상태에서 입력을 잠근다.
+  // 매개변수: 없음.
+  // 반환값: 입력 변경을 막아야 하면 true.
   bool get _locked => _busy || _pendingChange != null || _mustReload;
+  // 함수이름: _title
+  // 함수역할: 수정·중단·교체 작업에 맞는 화면 제목을 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 현재 언어의 작업 제목.
   String get _title => switch (widget.action) {
     MedicationRegimenAction.edit => _text('약 정보 수정', 'Edit medication'),
     MedicationRegimenAction.stop => _text('복용 중단', 'Stop medication'),
     MedicationRegimenAction.replace => _text('처방 교체', 'Replace medication'),
   };
+  // 함수이름: _dateLabel
+  // 함수역할: 변경 종류에 맞게 적용일의 의미를 표시한다.
+  // 매개변수: 없음.
+  // 반환값: 변경 시작일·중단일·복용 시작일 라벨.
   String get _dateLabel => switch (widget.action) {
     MedicationRegimenAction.edit => _text('변경 시작일', 'Change start date'),
     MedicationRegimenAction.stop => _text('복용 중단일', 'Stop date'),
     MedicationRegimenAction.replace => _text('복용 시작일', 'Medication start date'),
   };
+  // 함수이름: _text
+  // 함수역할: 화면 언어에 맞는 문구를 선택한다.
+  // 매개변수: ko/en (String): 한국어·영어 문구.
+  // 반환값: 선택한 문구.
   String _text(String ko, String en) => _english ? en : ko;
 
-  // 기기 시간대와 무관하게 복용 이력·서버와 같은 한국 날짜를 사용한다.
+  // 함수이름: _today
+  // 함수역할: 주입 시계 또는 시스템 시각을 한국 날짜로 변환한다.
+  // 매개변수: 없음.
+  // 반환값: 한국 연·월·일을 가진 로컬 자정 DateTime.
   DateTime get _today {
     final day = MedicationHistoryDates.today((widget.clock ?? DateTime.now)());
     return DateTime(day.year, day.month, day.day);
   }
 
+  // 함수이름: initState
+  // 함수역할: 표준 단위만 분리하고 기존 처방의 기간·주기·시간대를 입력에 옮긴다. 처방 교체는 용량과 시간대를 새로 입력하게 한다.
+  // 매개변수: 없음.
+  // 반환값: 없음.
   @override
   void initState() {
     super.initState();
@@ -140,6 +189,10 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
           ).toSet();
   }
 
+  // 함수이름: dispose
+  // 함수역할: 약명과 용량 입력 제어기를 해제한다.
+  // 매개변수: 없음.
+  // 반환값: 없음.
   @override
   void dispose() {
     _name.dispose();
@@ -147,6 +200,10 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
     super.dispose();
   }
 
+  // 함수이름: build
+  // 함수역할: 변경 유형별 입력과 확인 버튼을 구성하고 진행·충돌·재시도 잠금을 반영한다.
+  // 매개변수: context (BuildContext): 표시와 복귀 위치.
+  // 반환값: 입력 폼을 포함한 PopScope.
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -419,6 +476,10 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
     );
   }
 
+  // 함수이름: _courseStart
+  // 함수역할: 처방 교체는 새 적용일, 정보 수정은 원래 시작일을 복용 기간 기준으로 삼는다.
+  // 매개변수: 없음.
+  // 반환값: 시각이 제거된 복용 시작 날짜.
   DateTime get _courseStart {
     final start = widget.action == MedicationRegimenAction.replace
         ? _effectiveDate
@@ -426,8 +487,16 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
     return DateTime(start.year, start.month, start.day);
   }
 
+  // 함수이름: _courseDays
+  // 함수역할: 시작일과 종료일 양쪽을 포함해 복용 기간을 계산한다.
+  // 매개변수: 없음.
+  // 반환값: 복용 일수 int; 허용 범위 검증은 저장 시 수행한다.
   int get _courseDays => inclusiveMedicationCourseDays(_courseStart, _endDate);
 
+  // 함수이름: _doseText
+  // 함수역할: 용량 입력이 바뀌지 않은 정보 수정에서는 원문을 보존하고, 변경 시 수량과 단위를 합친다.
+  // 매개변수: 없음.
+  // 반환값: 저장용 용량 문자열.
   String get _doseText {
     // 다른 항목만 수정할 때 원래 복용량의 공백·표현을 불필요하게 바꾸지 않는다.
     if (widget.action == MedicationRegimenAction.edit &&
@@ -438,6 +507,10 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
     return '${_dosage.text.trim()}${_dosageUnit ?? ''}';
   }
 
+  // 함수이름: _unitLabel
+  // 함수역할: 영어 화면에서 지원하는 저장 단위만 표시용으로 번역한다.
+  // 매개변수: value (String): 저장 단위.
+  // 반환값: 번역된 단위; 미지원 단위 또는 한국어이면 원문.
   String _unitLabel(String value) => !_english
       ? value
       : switch (value) {
@@ -448,6 +521,10 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
           _ => value,
         };
 
+  // 함수이름: _validateDose
+  // 함수역할: 필수값을 검사하고 표준 단위 입력은 유한한 양수이며 10000 이하인지 확인한다.
+  // 매개변수: value (String?): 용량 입력.
+  // 반환값: 오류 문구 또는 유효하면 null; 단위 미분리 원문은 필수값만 검사한다.
   String? _validateDose(String? value) {
     final required = _required(value);
     if (required != null) return required;
@@ -458,6 +535,10 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
         : null;
   }
 
+  // 함수이름: _buildPeriodFields
+  // 함수역할: 원래 시작일은 읽기 전용으로, 교체 시작일과 종료일은 잠금 상태에 따라 편집 가능하게 표시한다.
+  // 매개변수: 없음.
+  // 반환값: 기간 입력과 총 복용 일수 위젯.
   Widget _buildPeriodFields() {
     final replacing = widget.action == MedicationRegimenAction.replace;
     return MedicationEntryPeriodFields(
@@ -482,6 +563,10 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
     );
   }
 
+  // Function Name: _pickEndDate
+  // Description: Restricts end-date selection to the effective/course start and maximum course duration, reporting impossible ranges before opening the picker.
+  // Parameters: None.
+  // Returns: Future<void>; cancellation, disposal or a newly locked form leaves the date unchanged.
   Future<void> _pickEndDate() async {
     if (_locked) return;
     final first = _effectiveDate.isAfter(_courseStart)
@@ -491,8 +576,8 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
     if (first.isAfter(last)) {
       setState(
         () => _error = _text(
-          '기존 복용 시작일부터 3650일을 넘길 수 없습니다. 새 처방이면 처방 교체를 이용해 주세요.',
-          'The original course cannot exceed 3650 days. Use replacement for a new prescription.',
+          '기존 복용 시작일부터 $maxMedicationCourseDays일을 넘길 수 없습니다. 새 처방이면 처방 교체를 이용해 주세요.',
+          'The original course cannot exceed $maxMedicationCourseDays days. Use replacement for a new prescription.',
         ),
       );
       return;
@@ -516,11 +601,18 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
     }
   }
 
+  // 함수이름: _required
+  // 함수역할: 값이 없거나 공백뿐이면 필수 입력 오류를 만든다.
+  // 매개변수: value (String?): 입력값.
+  // 반환값: 현재 언어의 오류 또는 유효하면 null.
   String? _required(String? value) => value == null || value.trim().isEmpty
       ? _text('필수 항목입니다.', 'Required.')
       : null;
 
-  // 확인창의 복용 주기 문구. 저장 문구("주 1회, 1일 2회")는 한국어라 영어 화면에서는 같은 뜻으로 바꿔 보여준다.
+  // Function Name: _frequencySummary
+  // Description: Formats the selected dose cycle/count for confirmation without changing the Korean storage representation.
+  // Parameters: None.
+  // Returns: Localized frequency summary.
   String get _frequencySummary {
     final count = _slots.length;
     if (!_english) return composeDoseFrequency(_doseDays, count);
@@ -529,14 +621,22 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
     return count <= 1 ? _doseDaysLabel(_doseDays) : '${_doseDaysLabel(_doseDays)}, $perDay';
   }
 
+  // Function Name: _doseDaysLabel
+  // Description: Translates supported dose-cycle labels and parsed custom intervals while preserving unknown instructions.
+  // Parameters: value (String): stored cycle.
+  // Returns: Localized label or the unchanged value.
   String _doseDaysLabel(String value) => switch (value) {
     '' => _text('매일', 'Daily'),
     '격일' => _text('격일', 'Every other day'),
     '주 1회' => _text('주 1회', 'Weekly'),
     '월 1회' => _text('월 1회', 'Once a month'),
-    _ => value,
+    _ => _english ? englishDoseIntervalLabel(value) ?? value : value,
   };
 
+  // Function Name: _pickEffectiveDate
+  // Description: Picks an effective date from Korean today through the allowed start horizon and clamps replacement-course end dates.
+  // Parameters: None.
+  // Returns: Future<void>; cancelled or stale selections are ignored.
   Future<void> _pickEffectiveDate() async {
     if (_locked) return;
     final today = _today;
@@ -560,6 +660,10 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
     }
   }
 
+  // Function Name: _submit
+  // Description: Validates and confirms a new change or retries the exact pending payload. Network uncertainty preserves it; conflict, missing access or cancellation requires reloading.
+  // Parameters: None.
+  // Returns: Future<void>; success closes with MedicationRegimenResult, failures remain visible and thrown submit errors become network failures.
   Future<void> _submit() async {
     if (_busy || _mustReload) return;
     FocusScope.of(context).unfocus();
@@ -589,8 +693,8 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
         if (!isValidMedicationCourseDays(_courseDays)) {
           setState(
             () => _error = _text(
-              '복용 기간은 1~3650일로 선택해 주세요.',
-              'Choose a course of 1 to 3650 days.',
+              '복용 기간은 1~$maxMedicationCourseDays일로 선택해 주세요.',
+              'Choose a course of 1 to $maxMedicationCourseDays days.',
             ),
           );
           return;
@@ -698,6 +802,10 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
   }
 }
 
+// 함수이름: regimenActionLabel
+// 함수역할: 수정·중단·교체 메뉴에서 동작의 의미를 언어별로 표시한다.
+// 매개변수: action (MedicationRegimenAction): 작업; english (bool): 영어 여부.
+// 반환값: 현재 언어의 작업 라벨.
 String regimenActionLabel(MedicationRegimenAction action, bool english) =>
     switch (action) {
       MedicationRegimenAction.edit => english ? 'Edit information' : '정보 수정',

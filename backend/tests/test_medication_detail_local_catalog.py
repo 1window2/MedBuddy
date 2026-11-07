@@ -30,6 +30,8 @@ from entities.medication_detail_entity import (  # noqa: E402
 #   warnings, and the official image URL.
 # - Preserves the product code when building details from the local basic-drug catalog.
 # - Preserves the product code in a nonempty cached approval-detail response.
+# Attributes:
+# - None.
 class MedicationDetailLocalCatalogTest(unittest.TestCase):
     # Function Name: test_raw_approval_item_with_alternate_keys_is_normalized
     # Description:

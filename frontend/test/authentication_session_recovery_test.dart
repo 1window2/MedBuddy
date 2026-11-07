@@ -17,8 +17,9 @@ import 'package:medbuddy_frontend/services/api_config.dart';
 import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
 
 // Class Name: _SessionControl
-// Role: Emulate a session that recovers on its third retry without network calls.
-// Attributes: retryable tracks recovery state; calls counts retry requests.
+// Role: Emulate recovery on the third backend-session retry.
+// Responsibilities: Expose retry eligibility, count attempts and notify the authentication screen without network requests.
+// Attributes: retryable (bool) tracks eligibility; calls (int) counts retry attempts.
 class _SessionControl extends ChangeNotifier implements AuthenticationControl {
   bool retryable = true;
   int calls = 0;
@@ -38,9 +39,10 @@ class _SessionControl extends ChangeNotifier implements AuthenticationControl {
   // Description: Skip initialization in this fake. Parameters: none. Returns: false.
   @override
   bool get isInitializing => false;
-  // Function Name: retryBackendSession
-  // Description: Count retries and notify recovery on attempt three.
-  // Parameters: none. Returns: completion after listeners are notified.
+  // 함수이름: retryBackendSession
+  // 함수역할: 재시도 횟수를 늘리고 세 번째 호출에서 복구된 것으로 바꾼 뒤 매 호출마다 화면에 통지한다.
+  // 매개변수: 없음.
+  // 반환값: Future<void>. 네트워크 요청 없이 retryable과 calls를 갱신한다.
   @override
   Future<void> retryBackendSession() async {
     calls++;
@@ -50,9 +52,10 @@ class _SessionControl extends ChangeNotifier implements AuthenticationControl {
     notifyListeners();
   }
 
-  // Function Name: noSuchMethod
-  // Description: Supply unused authentication state for the screen fixture.
-  // Parameters: invocation identifies the member. Returns: false flags or null.
+  // 함수이름: noSuchMethod
+  // 함수역할: 이 화면 대역에서 구현하지 않은 인증 상태를 제공한다. 오류·인증 단계 플래그는 false이고 나머지 멤버는 null이다.
+  // 매개변수: invocation (Invocation)은 접근한 멤버의 이름과 호출 정보이다.
+  // 반환값: dynamic. 지원한 상태 플래그이면 false, 그 외에는 null.
   @override
   dynamic noSuchMethod(Invocation invocation) {
     if (const {
@@ -69,9 +72,9 @@ class _SessionControl extends ChangeNotifier implements AuthenticationControl {
 }
 
 // Class Name: _Firebase
-// Role: Stand in for the Firebase SDK with one signed-in user and a controllable token stream.
-// Attributes: user is the signed-in identity; signedOut and signOuts record provider sign-out;
-//   tokenChanges feeds the control's token listener.
+// Role: Provide one scripted Firebase identity and a synchronous token-change stream.
+// Responsibilities: Expose the identity until sign-out, count sign-outs and let tests publish token changes.
+// Attributes: user is the _FirebaseUser; tokenChanges is the broadcast controller; signedOut and signOuts record provider state.
 class _Firebase extends Fake implements FirebaseAuth {
   final _FirebaseUser user = _FirebaseUser();
   final tokenChanges = StreamController<User?>.broadcast(sync: true);
@@ -98,9 +101,9 @@ class _Firebase extends Fake implements FirebaseAuth {
 }
 
 // Class Name: _FirebaseUser
-// Role: Emulate a verified Firebase user whose token and reload calls can fail on demand.
-// Attributes: tokenFailure and reloadFailure are thrown by the next calls; tokenGate delays the
-//   token; tokenReads and reloads count SDK calls.
+// Role: Emulate a verified identity with controllable token and reload outcomes.
+// Responsibilities: Count SDK calls, optionally hold token completion, and repeatedly raise configured failures until changed.
+// Attributes: uid/token identify the account and credential; tokenFailure/reloadFailure script errors; tokenGate delays token reads; tokenReads/reloads count calls.
 class _FirebaseUser extends Fake implements User {
   @override
   String uid = 'session-fixture';
@@ -111,21 +114,42 @@ class _FirebaseUser extends Fake implements User {
   int tokenReads = 0;
   int reloads = 0;
 
+  // Function Name: email
+  // Description: Supply the fixture's verified-account email without an SDK lookup.
+  // Parameters: None.
+  // Returns: String, session@example.test.
   @override
   String get email => 'session@example.test';
+  // Function Name: isAnonymous
+  // Description: Keep the fixture on the named-account authentication path.
+  // Parameters: None.
+  // Returns: bool, always false.
   @override
   bool get isAnonymous => false;
+  // Function Name: emailVerified
+  // Description: Bypass the email-verification gate for session-recovery scenarios.
+  // Parameters: None.
+  // Returns: bool, always true.
   @override
   bool get emailVerified => true;
+  // Function Name: providerData
+  // Description: Provide no linked-provider metadata for the scripted user.
+  // Parameters: None.
+  // Returns: An empty List<UserInfo>.
   @override
   List<UserInfo> get providerData => const [];
+  // Function Name: multiFactor
+  // Description: Simulate a provider that does not permit multi-factor access.
+  // Parameters: None.
+  // Returns: Never returns a MultiFactor; throws FirebaseAuthException with operation-not-allowed.
   @override
   MultiFactor get multiFactor =>
       throw FirebaseAuthException(code: 'operation-not-allowed');
 
   // Function Name: getIdToken
-  // Description: Return the scripted token or throw the scripted SDK failure.
-  // Parameters: forceRefresh is ignored. Returns: the token.
+  // Description: Count token reads, await the optional gate, then return the configured token or raise the configured failure.
+  // Parameters: forceRefresh (bool) is accepted but does not change this scripted result.
+  // Returns: Future<String?>; tokenGate can keep it pending and tokenFailure completes it with an error.
   @override
   Future<String?> getIdToken([bool forceRefresh = false]) async {
     tokenReads++;
@@ -147,9 +171,9 @@ class _FirebaseUser extends Fake implements User {
 }
 
 // Class Name: _SignedInFixture
-// Role: Hold a control whose backend session was established through a scripted transport.
-// Attributes: respond answers the next session request; requests counts them and requestedUrls
-//   records where they went.
+// Role: Assemble authentication and transport fakes for first-handshake and established-session cases.
+// Responsibilities: Record session requests, script their responses, assert initial authentication and release listeners.
+// Attributes: firebase supplies the identity; control is the AuthenticationControl; respond scripts HTTP responses; requests and requestedUrls track transport use.
 class _SignedInFixture {
   final firebase = _Firebase();
   late final AuthenticationControl control;
@@ -214,8 +238,10 @@ FutureOr<http.Response> Function() _status(int statusCode) =>
 // Description: Build the SDK failure for a Firebase code. Parameters: code. Returns: the exception.
 FirebaseAuthException _sdk(String code) => FirebaseAuthException(code: code);
 
-// 함수이름: main
-// 함수역할: 세션 복구 회귀 테스트를 등록한다. 매개변수: 없음. 반환값: 없음.
+// Function Name: main
+// Description: Register backend-verdict, SDK-failure, token-event, overlapping-request and authentication-screen recovery regressions.
+// Parameters: None.
+// Returns: None; assertions execute in the registered tests.
 void main() {
   // Server answers and transport failures after a session was established. "kept" means the
   // session, the Firebase identity, and the error-free state all survive the failed re-sync.
@@ -273,9 +299,10 @@ void main() {
     'unexpected failure': () => throw StateError('unexpected'),
   };
   for (final entry in refusedServerAnswers.entries) {
-    // Function Name: refused server answer test
-    // Description: Verify a server verdict ends the session without a provider sign-out.
-    // Parameters: none. Returns: completed assertions.
+    // Function Name: server verdict ends the session
+    // Description: Verify nonretryable HTTP answers, invalid session payloads and unexpected synchronization failures clear backend authentication without signing the provider out.
+    // Parameters: None; captures entry for the scripted failure case.
+    // Returns: Future<void>; asserts an error, disabled automatic retry and zero Firebase sign-outs.
     test('server verdict ends the session: ${entry.key}', () async {
       final fixture = _SignedInFixture();
       addTearDown(fixture.dispose);
@@ -681,9 +708,10 @@ void main() {
     expect(fixture.control.errorMessage, contains('expired'));
   });
 
-  // Function Name: automatic recovery test
-  // Description: Verify retry backoff and termination after successful recovery.
-  // Parameters: tester controls the widget and clock. Returns: completed assertions.
+  // 함수이름: auth screen recovers with backoff without a retry-button tap
+  // 함수역할: 사용자의 재시도 버튼 입력 없이 최초 호출, 5초 후 두 번째 호출, 15초 후 세 번째 호출로 복구되고 이후 타이머가 멈추는지 검증한다.
+  // 매개변수: tester (WidgetTester)는 인증 화면과 가상 시간을 제어한다.
+  // 반환값: Future<void>. 복구 후 3분을 더 진행해도 재시도 횟수는 3이어야 한다.
   testWidgets('auth screen recovers with backoff without a retry-button tap', (
     tester,
   ) async {

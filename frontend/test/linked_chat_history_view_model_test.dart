@@ -13,15 +13,26 @@ import 'package:medbuddy_frontend/services/api_response_parser.dart';
 import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 import 'package:medbuddy_frontend/viewmodels/linked_chat_history_view_model.dart';
 
-// Function Name: main
-// Description: Registers deterministic state-machine tests without real sockets or accounts.
-// Parameters: None. Returns: None.
+// 함수이름: main
+// 함수역할:
+// - 독립 채팅 이력 모델의 읽음·삭제 병합, 지연 응답, 페이지 복구와 생명주기 취소를 실제 소켓 없이 검사하는 사례를 등록한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - void; 반환값 없음.
 void main() {
   for (final event in [
     {'link_id': 99, 'reader_hash': 'peer'},
     {'link_id': 17, 'reader_hash': 'self'},
     {'link_id': 17, 'reader_hash': 'peer', 'read_at': 'invalid'},
   ]) {
+    // 함수이름: ignored early read event cannot affect a later message: $event
+    // 함수역할:
+    // - 다른 연동·본인 읽음·잘못된 읽음 시각 이벤트는 메시지보다 먼저 와도 무시되어 이후 메시지에 읽음 표시를 붙이지 않는지 검증한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - void; 기대 결과와 다르면 테스트가 실패한다.
     test('ignored early read event cannot affect a later message: $event', () {
       final fixture = _HistoryFixture();
       addTearDown(fixture.dispose);
@@ -37,6 +48,13 @@ void main() {
   }
 
   for (final delivery in ['history', 'send', 'realtime']) {
+    // 함수이름: early read receipt survives delayed $delivery
+    // 함수역할:
+    // - 메시지보다 먼저 받은 상대 읽음 경계는 낮은 후속 경계로 되돌아가지 않고 이력·전송·실시간 경로의 늦은 메시지에 적용되며, 다른 메시지는 읽음 처리하지 않는지 검증한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
     test('early read receipt survives delayed $delivery', () async {
       final fixture = _HistoryFixture();
       addTearDown(fixture.dispose);
@@ -82,7 +100,13 @@ void main() {
     });
   }
 
-  // Enforces transport dependency inversion and rejects widget/navigation/facade coupling.
+  // Function Name: history owner remains an independent presentation-free library
+  // Description:
+  // - Keep the history model an independent library using the transport interface, without widget boundaries, material/navigation imports, the app facade, or the concrete socket service.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - void; assertion failures fail the case.
   test('history owner remains an independent presentation-free library', () {
     final source = File(
       'lib/viewmodels/linked_chat_history_view_model.dart',
@@ -99,7 +123,13 @@ void main() {
     expect(source, isNot(contains('LinkedChatRealtimeService')));
   });
 
-  // Verifies immutable snapshots and monotonic receipt/hiding/tombstone evidence.
+  // Function Name: late history cannot undo read receipts or message deletion
+  // Description:
+  // - Preserve immutable message snapshots and monotonic read/deletion evidence when stale history returns; hiding removes only the selected message and global deletion retains its tombstone.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test('late history cannot undo read receipts or message deletion', () async {
     final fixture = _HistoryFixture();
     addTearDown(fixture.dispose);
@@ -136,7 +166,13 @@ void main() {
     ]);
   });
 
-  // Verifies repeated foreground/reconnect signals share one request and one follow-up.
+  // Function Name: history requests coalesce with one catch-up after an in-flight read
+  // Description:
+  // - Coalesce overlapping ordinary and catch-up refreshes onto the same future, then perform exactly one queued catch-up and merge both pages.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test(
     'history requests coalesce with one catch-up after an in-flight read',
     () async {
@@ -164,7 +200,13 @@ void main() {
     },
   );
 
-  // Verifies recovery traverses every missed page rather than just the latest fifty messages.
+  // Function Name: reconnect recovers missed pages back to the last known message
+  // Description:
+  // - Reconnect recovery walks every full page back to the last known message, restoring all 102 messages instead of stopping at the latest fifty.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test(
     'reconnect recovers missed pages back to the last known message',
     () async {
@@ -187,7 +229,13 @@ void main() {
     },
   );
 
-  // Verifies a departed session cannot publish, start another page, or close caller-owned adapters.
+  // Function Name: disposal invalidates in-flight recovery and queued catch-up
+  // Description:
+  // - After model disposal, late recovery and queued catch-up cannot publish, request further pages, or close borrowed adapters; subsequent calls remain inert.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test('disposal invalidates in-flight recovery and queued catch-up', () async {
     final fixture = _HistoryFixture();
     addTearDown(fixture.dispose);
@@ -218,7 +266,13 @@ void main() {
     expect(fixture.model.messages.length, 1);
   });
 
-  // Verifies an older page and concurrent realtime messages retain a single stable unread boundary.
+  // Function Name: older pagination is serialized and preserves realtime unread evidence
+  // Description:
+  // - Serialize older-page requests while preserving realtime arrivals and the original unread boundary; failed pagination remains retryable and an empty recovery page ends pagination.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test(
     'older pagination is serialized and preserves realtime unread evidence',
     () async {
@@ -255,7 +309,13 @@ void main() {
     },
   );
 
-  // Verifies late older-page completion cannot publish into a disposed owner.
+  // Function Name: disposal cancels publication of a pending older page
+  // Description:
+  // - An older page completing after disposal cannot replace the previously loaded oldest message.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test('disposal cancels publication of a pending older page', () async {
     final fixture = _HistoryFixture();
     addTearDown(fixture.dispose);
@@ -270,6 +330,13 @@ void main() {
     expect(fixture.model.messages.first.messageId, 51);
   });
 
+  // 함수이름: slow notification cleanup cannot block the next read receipt
+  // 함수역할:
+  // - 알림 정리 onRead 콜백이 지연되어도 다음 상대 메시지의 읽음 요청을 막지 않고 두 읽음 경계를 순서대로 전송하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   test(
     'slow notification cleanup cannot block the next read receipt',
     () async {
@@ -288,7 +355,13 @@ void main() {
     },
   );
 
-  // Verifies acknowledgements require both visibility and latest position, and drain one newer message.
+  // Function Name: read acknowledgement is gated, coalesced and drains newer incoming messages
+  // Description:
+  // - Read acknowledgements require visibility at the latest position, coalesce duplicate attempts, and drain a newer incoming message once the pending receipt finishes.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test(
     'read acknowledgement is gated, coalesced and drains newer incoming messages',
     () async {
@@ -316,7 +389,13 @@ void main() {
     },
   );
 
-  // Verifies failed receipts remain retryable and a late successful receipt never drains after disposal.
+  // Function Name: read failures retry but disposed receipt completion cannot start another read
+  // Description:
+  // - A failed read boundary can retry, but disposal before that retry finishes prevents acknowledgement of a newer incoming message.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test(
     'read failures retry but disposed receipt completion cannot start another read',
     () async {
@@ -339,7 +418,13 @@ void main() {
     },
   );
 
-  // Verifies explicit link mismatches, malformed payloads and foreign send results cannot alter state.
+  // Function Name: foreign conversation events and results are ignored
+  // Description:
+  // - Ignore foreign-link sends, realtime messages, deletion and read events, plus malformed message payloads, without altering the current conversation.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test('foreign conversation events and results are ignored', () async {
     final fixture = _HistoryFixture();
     addTearDown(fixture.dispose);
@@ -369,7 +454,13 @@ void main() {
     expect(fixture.deletedSelections, isEmpty);
   });
 
-  // Uses the widget-test fake clock to prove reconnect noise does not postpone polling.
+  // Function Name: fallback cadence survives reconnect noise and stops in background
+  // Description:
+  // - Repeated reconnect signals do not postpone fallback polling; backgrounding stops polls and transport, foregrounding refreshes, and a connected transport suppresses fallback polls.
+  // Parameters:
+  // - tester (WidgetTester): advances the fake clock and drains lifecycle and polling work.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets(
     'fallback cadence survives reconnect noise and stops in background',
     (tester) async {
@@ -402,6 +493,13 @@ void main() {
   // Verifies a removed or forbidden link ends the 12 s poll and the reconnect loop, while a
   // resume still tries once and a successful read resumes realtime delivery.
   for (final status in [403, 404]) {
+    // Function Name: a $status history answer stops polling and the transport
+    // Description:
+    // - A terminal link-rejection response stops polling and transport while preserving loaded messages; resume retries once, and a successful explicit refresh restores transport and polling.
+    // Parameters:
+    // - tester (WidgetTester): advances the fake clock and drains lifecycle and polling work.
+    // Returns:
+    // - Future<void>; completes after the asynchronous assertions.
     testWidgets('a $status history answer stops polling and the transport', (
       tester,
     ) async {
@@ -447,7 +545,13 @@ void main() {
     });
   }
 
-  // Verifies other failures (offline, 5xx) keep the existing retry cadence.
+  // Function Name: a server error keeps the fallback poll running
+  // Description:
+  // - HTTP 503 leaves the link nonterminal and preserves fallback polling cadence without stopping the transport.
+  // Parameters:
+  // - tester (WidgetTester): advances the fake clock and drains lifecycle and polling work.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('a server error keeps the fallback poll running', (tester) async {
     final fixture = _HistoryFixture();
     addTearDown(fixture.dispose);
@@ -463,7 +567,13 @@ void main() {
     fixture.disposeModel();
   });
 
-  // Verifies a page with a skipped unparseable row still counts as full for both paging paths.
+  // Function Name: a full server page with a skipped row still pages backwards
+  // Description:
+  // - Use server rowCount rather than parsed-message count to continue older pagination when malformed rows were skipped, then stop on a truly short page.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test('a full server page with a skipped row still pages backwards', () async {
     final fixture = _HistoryFixture();
     addTearDown(fixture.dispose);
@@ -492,14 +602,26 @@ void main() {
 }
 
 // Function Name: _message
-// Description: Creates a synthetic message with explicit account/link identity.
-// Parameters: id: Message ID; sender/linkId: Scope fields. Returns: A parsed message entity.
+// Description:
+// - Parse a deterministic message payload with explicit sender and conversation scope.
+// Parameters:
+// - id (int): message ID and text suffix.
+// - sender (String): sender account, default self.
+// - linkId (int): conversation ID, default 17.
+// Returns:
+// - ChatMessage; parsed test payload with fixed UTC creation time.
 ChatMessage _message(int id, {String sender = 'self', int linkId = 17}) =>
     ChatMessage.fromJson(_wireMessage(id, sender: sender, linkId: linkId));
 
 // Function Name: _wireMessage
-// Description: Creates a non-sensitive server message payload.
-// Parameters: id: Message ID; sender/linkId: Scope fields. Returns: API-shaped data.
+// Description:
+// - Build a server-shaped message without personal content at the fixed test timestamp.
+// Parameters:
+// - id (int): message ID and suffix of client ID/body.
+// - sender (String): sender account, default self.
+// - linkId (int): conversation scope, default 17.
+// Returns:
+// - Map<String, dynamic>; wire payload accepted by ChatMessage.fromJson.
 Map<String, dynamic> _wireMessage(
   int id, {
   String sender = 'self',
@@ -514,16 +636,27 @@ Map<String, dynamic> _wireMessage(
 };
 
 // Function Name: _page
-// Description: Creates a contiguous synthetic history page.
-// Parameters: first/last: Inclusive message bounds. Returns: Ordered messages.
+// Description:
+// - Build a contiguous ascending history page with inclusive message-ID bounds.
+// Parameters:
+// - first (int): first message ID.
+// - last (int): last message ID; less than first produces an empty page.
+// Returns:
+// - List<ChatMessage>; generated messages in ascending ID order.
 List<ChatMessage> _page(int first, int last) => [
   for (var id = first; id <= last; id++) _message(id),
 ];
 
-// Class Name: _HistoryFixture
-// Role: Owns model and fake adapters while exposing controllable presentation ports.
-// Responsibilities: Inject visibility/scroll state and cleanly dispose model and borrowed resources.
-// Attributes: visible/atLatest: Presentation predicates; control/realtime: Deterministic adapters.
+// 클래스명: _HistoryFixture
+// 역할: 이력 모델과 가짜 조회·실시간 포트를 함께 소유하는 테스트 fixture.
+// 주요 책임:
+// - 화면 표시·최신 위치 조건 및 읽음 후처리를 주입하고 모델과 대역의 해제 시점을 분리한다.
+// 속성:
+// - control (_HistoryControl), realtime (_HistoryRealtime): 조회·실시간 대역.
+// - deletedSelections (List<List<int>>): 삭제 시 선택 해제할 ID 목록 기록.
+// - model (LinkedChatHistoryViewModel): 연동 17·self 계정의 이력 모델.
+// - visible, atLatest (bool): 읽음 처리에 전달할 화면 표시·최신 위치 상태.
+// - _modelDisposed (bool): 모델 중복 해제 방지 플래그.
 class _HistoryFixture {
   final control = _HistoryControl();
   final realtime = _HistoryRealtime();
@@ -533,9 +666,13 @@ class _HistoryFixture {
   bool atLatest = false;
   bool _modelDisposed = false;
 
-  // Function Name: _HistoryFixture
-  // Description: Connects a conversation model to independent test presentation ports.
-  // Parameters: None. Returns: An isolated history fixture.
+  // 함수이름: _HistoryFixture
+  // 함수역할:
+  // - 현재 표시 상태를 읽는 콜백과 삭제 기록 수집기를 이력 모델에 연결하고 선택적인 읽음 후처리를 주입한다.
+  // 매개변수:
+  // - onRead (Future<void> Function(int)?): 읽음 경계 처리 후 실행할 비동기 후처리로, null이면 생략한다.
+  // 반환값:
+  // - _HistoryFixture; 아직 초기 조회를 시작하지 않은 독립 이력 fixture.
   _HistoryFixture({Future<void> Function(int)? onRead}) {
     model = LinkedChatHistoryViewModel(
       linkId: 17,
@@ -552,8 +689,12 @@ class _HistoryFixture {
   }
 
   // Function Name: disposeModel
-  // Description: Ends the conversation lifetime without ending caller-owned adapter lifetimes.
-  // Parameters: None. Returns: None.
+  // Description:
+  // - Dispose the model once while leaving fixture-owned adapters available for ownership assertions.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - void; no return value.
   void disposeModel() {
     if (_modelDisposed) return;
     _modelDisposed = true;
@@ -561,8 +702,12 @@ class _HistoryFixture {
   }
 
   // Function Name: dispose
-  // Description: Cancels all fixture resources after asynchronous completions settle.
-  // Parameters: None. Returns: Completion of borrowed transport disposal.
+  // Description:
+  // - Dispose the model, close realtime streams, and then dispose the HTTP control.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after fixture-owned resources are released.
   Future<void> dispose() async {
     disposeModel();
     await realtime.dispose();
@@ -571,9 +716,16 @@ class _HistoryFixture {
 }
 
 // Class Name: _HistoryControl
-// Role: Provides explicit completion gates and records authenticated history/read requests.
-// Responsibilities: Supply deterministic pages, unread boundaries, and receipt outcomes.
-// Attributes: historyHandler/readHandler: Optional completion/failure ports; request lists: Observed calls.
+// Role: History adapter exposing controllable pages and read acknowledgements.
+// Responsibilities:
+// - Record request boundaries and receipt IDs while allowing delayed or failed responses.
+// Attributes:
+// - history (List<ChatMessage>): default page when no handler is installed.
+// - unread (ChatUnreadSummary): configured initial unread boundary and count.
+// - historyHandler (Future<List<ChatMessage>> Function(int?)?): optional page resolver.
+// - readHandler (Future<void> Function(int)?): optional receipt completion/failure handler.
+// - historyBoundaries (List<int?>), readIds (List<int>): requested page and read boundaries.
+// - disposed (bool): whether control disposal was invoked.
 class _HistoryControl extends ManageLinkedChat {
   List<ChatMessage> history = [];
   ChatUnreadSummary unread = const ChatUnreadSummary(count: 0);
@@ -584,8 +736,12 @@ class _HistoryControl extends ManageLinkedChat {
   bool disposed = false;
 
   // Function Name: _HistoryControl
-  // Description: Prevents external HTTP use while retaining the production control contract.
-  // Parameters: None. Returns: A controllable adapter.
+  // Description:
+  // - Create the history adapter for self using an inert HTTP client.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - _HistoryControl; empty observations and a zero-count unread summary.
   _HistoryControl()
     : super(
         userHash: 'self',
@@ -593,9 +749,13 @@ class _HistoryControl extends ManageLinkedChat {
       );
 
   // Function Name: requestHistory
-  // Description: Records a page boundary and uses the selected completion/failure handler.
-  // Parameters: linkId: Conversation; beforeMessageId: Older-page boundary; limit: Page size.
-  // Returns: Selected synthetic history page.
+  // Description:
+  // - Record the older-page boundary and resolve through the handler when provided, otherwise return the default page.
+  // Parameters:
+  // - linkId (int), limit (int): accepted conversation and page-size inputs, unused by this fake.
+  // - beforeMessageId (int?): boundary recorded and passed to historyHandler; null denotes the latest page.
+  // Returns:
+  // - Future<List<ChatMessage>>; configured page or handler result/error.
   @override
   Future<List<ChatMessage>> requestHistory({
     required int linkId,
@@ -607,15 +767,24 @@ class _HistoryControl extends ManageLinkedChat {
   }
 
   // Function Name: requestUnreadSummary
-  // Description: Supplies a stable synthetic pre-read boundary.
-  // Parameters: linkId: Conversation. Returns: Current summary.
+  // Description:
+  // - Return the configured unread summary without mutating history.
+  // Parameters:
+  // - linkId (int): accepted conversation ID, unused by the fake.
+  // Returns:
+  // - Future<ChatUnreadSummary>; current unread fixture.
   @override
   Future<ChatUnreadSummary> requestUnreadSummary({required int linkId}) async =>
       unread;
 
   // Function Name: markRead
-  // Description: Records a receipt and optionally waits/fails under test control.
-  // Parameters: linkId: Conversation; throughMessageId: Read boundary. Returns: Receipt completion.
+  // Description:
+  // - Record the requested read boundary and await the optional test-controlled handler.
+  // Parameters:
+  // - linkId (int): accepted conversation ID, unused by this fake.
+  // - throughMessageId (int): incoming-message boundary to record and pass to readHandler.
+  // Returns:
+  // - Future<void>; completes immediately without a handler, otherwise with its completion or error.
   @override
   Future<void> markRead({
     required int linkId,
@@ -626,8 +795,12 @@ class _HistoryControl extends ManageLinkedChat {
   }
 
   // Function Name: dispose
-  // Description: Records disposal to verify borrowed-resource ownership.
-  // Parameters: None. Returns: None.
+  // Description:
+  // - Mark the control disposed and delegate inherited resource cleanup.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - void; no return value.
   @override
   void dispose() {
     disposed = true;
@@ -636,9 +809,14 @@ class _HistoryControl extends ManageLinkedChat {
 }
 
 // Class Name: _HistoryRealtime
-// Role: Emits transport state without creating sockets or timers.
-// Responsibilities: Record foreground/background ownership and expose deterministic streams.
-// Attributes: _events/_states: Event ports; starts/stops/disposed: Lifecycle observations.
+// Role: Socket-free implementation of the chat session transport.
+// Responsibilities:
+// - Expose broadcast event/state streams and record lifecycle operations without creating timers.
+// Attributes:
+// - _events (StreamController<Map<String, dynamic>>): broadcast message events.
+// - _states (StreamController<LinkedChatConnectionState>): broadcast connection states.
+// - starts, stops (int): lifecycle call counts.
+// - disposed (bool): guards repeated stream closure.
 class _HistoryRealtime implements LinkedChatSessionTransport {
   final _events = StreamController<Map<String, dynamic>>.broadcast();
   final _states = StreamController<LinkedChatConnectionState>.broadcast();
@@ -647,46 +825,74 @@ class _HistoryRealtime implements LinkedChatSessionTransport {
   bool disposed = false;
 
   // Function Name: _HistoryRealtime
-  // Description: Implements only the transport contract, with no HTTP or socket dependencies.
-  // Parameters: None. Returns: A socket-free service.
+  // Description:
+  // - Construct a transport with independent broadcast streams and zero lifecycle counts.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - _HistoryRealtime; no network or scheduled work.
   _HistoryRealtime();
 
   // Function Name: events
-  // Description: Exposes the fake message stream.
-  // Parameters: None. Returns: Borrowed event stream.
+  // Description:
+  // - Expose the controlled realtime message stream.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Stream<Map<String, dynamic>>; broadcast events owned by this fixture.
   @override
   Stream<Map<String, dynamic>> get events => _events.stream;
 
   // Function Name: states
-  // Description: Exposes manually controlled connection states.
-  // Parameters: None. Returns: Borrowed state stream.
+  // Description:
+  // - Expose the manually driven connection-state stream.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Stream<LinkedChatConnectionState>; broadcast state changes.
   @override
   Stream<LinkedChatConnectionState> get states => _states.stream;
 
   // Function Name: emitState
-  // Description: Sends a connection state at the test-selected time.
-  // Parameters: state: Connection state. Returns: None.
+  // Description:
+  // - Publish one connection state through the fake stream.
+  // Parameters:
+  // - state (LinkedChatConnectionState): state emitted at the chosen test time.
+  // Returns:
+  // - void; no return value.
   void emitState(LinkedChatConnectionState state) => _states.add(state);
 
   // Function Name: start
-  // Description: Records transport start without implicit connection events.
-  // Parameters: None. Returns: Completed start.
+  // Description:
+  // - Count transport activation without automatically emitting a connected state.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after incrementing starts.
   @override
   Future<void> start() async {
     starts++;
   }
 
   // Function Name: stop
-  // Description: Records background transport stop.
-  // Parameters: None. Returns: Completed stop.
+  // Description:
+  // - Count transport suspension without emitting an implicit state.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after incrementing stops.
   @override
   Future<void> stop() async {
     stops++;
   }
 
   // Function Name: dispose
-  // Description: Closes fixture-owned stream/client resources once.
-  // Parameters: None. Returns: Disposal completion.
+  // Description:
+  // - Close both broadcast controllers once; subsequent disposal returns without repeating closure.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after stream closure.
   @override
   Future<void> dispose() async {
     if (disposed) return;

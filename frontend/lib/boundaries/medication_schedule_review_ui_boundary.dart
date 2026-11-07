@@ -15,13 +15,10 @@ import '../theme/medbuddy_theme.dart';
 // 파일명: medication_schedule_review_ui_boundary.dart
 // 역할: 저장 전 여러 약의 복약 일정 비교·수정·검증을 제공한다.
 
-// 함수이름: showMedicationScheduleReview
-// 함수역할: 선택한 알약 후보의 복약 일정 하나 이상을 저장 전에 한 화면에서 검토하게 한다. 사용자가 취소하면 null, 확인하면 정규화된 일정 목록을 반환한다.
-// 매개변수:
-// - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-// - initialSchedules (List<MedicationSchedule>): 검토·표시·시간대 분류에 사용할 복약 일정 목록.
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-// 반환값: Future<List<MedicationSchedule>?>: 확정한 복약 일정 목록; 입력이 없거나 취소하면 null.
+// Function Name: showMedicationScheduleReview
+// Description: Reviews one or more candidate schedules before saving and returns normalized confirmed entries.
+// Parameters: context (BuildContext): route host; initialSchedules (List<MedicationSchedule>): review candidates; userSetting (UserSetting): language/display settings.
+// Returns: Future<List<MedicationSchedule>?>: confirmed schedules, or null for empty input or cancellation.
 Future<List<MedicationSchedule>?> showMedicationScheduleReview({
   required BuildContext context,
   required List<MedicationSchedule> initialSchedules,
@@ -126,6 +123,28 @@ class _MedicationScheduleReviewSheetState
     extends State<_MedicationScheduleReviewSheet> {
   late List<MedicationSchedule> _schedules;
   String _validationMessage = '';
+  bool _isEditing = false;
+  bool _isClosing = false;
+
+  // 함수이름: _canAct
+  // 함수역할: 검토 화면이 현재 경로이고 편집·종료가 진행 중이 아닌지 확인한다.
+  // 매개변수: 없음.
+  // 반환값: 화면이 살아 있고 새 동작을 시작할 수 있으면 true.
+  bool get _canAct =>
+      mounted &&
+      !_isEditing &&
+      !_isClosing &&
+      ModalRoute.of(context)?.isCurrent == true;
+
+  // 함수이름: _closeReview
+  // 함수역할: 동작 가능한 검토 화면만 한 번 닫고 선택 일정을 호출자에게 돌려준다.
+  // 매개변수: result (List<MedicationSchedule>?): 확정 목록; 생략하면 취소.
+  // 반환값: 없음. 경로 결과는 목록 또는 null.
+  void _closeReview([List<MedicationSchedule>? result]) {
+    if (!_canAct) return;
+    _isClosing = true;
+    Navigator.pop(context, result);
+  }
 
   // 함수이름: initState
   // 함수역할: 호출자가 전달한 일정을 별도 수정 가능한 목록으로 복사한다.
@@ -163,7 +182,7 @@ class _MedicationScheduleReviewSheetState
                   // 매개변수:
                   // - 없음.
                   // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => _closeReview(),
                   icon: const Icon(Icons.close),
                 ),
                 const SizedBox(width: 4),
@@ -252,36 +271,39 @@ class _MedicationScheduleReviewSheetState
   }
 
   // 함수이름: _editSchedule
-  // 함수역할: 선택한 약의 편집 창 결과를 같은 위치에 반영하고 이전 검증 안내를 지운다.
-  // 매개변수:
-  // - index (int): 대상 약품·사진·행의 0부터 시작하는 목록 위치.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // 함수역할: 중복 편집을 막고 선택한 일정 편집창의 결과를 반영한다. 취소·화면 종료는 무시하며 예외 시에도 편집 잠금을 해제한다.
+  // 매개변수: index (int): _schedules 안의 편집할 유효한 위치.
+  // 반환값: 편집창 처리가 끝나면 완료되는 Future<void>.
   Future<void> _editSchedule(int index) async {
-    final updatedSchedule = await showMedicationScheduleEditor(
-      context: context,
-      medicationSchedule: _schedules[index],
-      userSetting: widget.userSetting,
-    );
-    if (!mounted || updatedSchedule == null) {
-      return;
+    if (!_canAct) return;
+    _isEditing = true;
+    try {
+      final updatedSchedule = await showMedicationScheduleEditor(
+        context: context,
+        medicationSchedule: _schedules[index],
+        userSetting: widget.userSetting,
+      );
+      if (!mounted || updatedSchedule == null) return;
+      // 함수이름: _editSchedule.setState callback
+      // 함수역할: 여러 약의 복용 일정 비교와 저장 전 확인의 입력·요청 상태를 `_schedules[index] = updatedSchedule; _validationMessage = ''`로 갱신한다.
+      // 매개변수:
+      // - 없음.
+      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+      setState(() {
+        _schedules[index] = updatedSchedule;
+        _validationMessage = '';
+      });
+    } finally {
+      _isEditing = false;
     }
-    // 함수이름: _editSchedule.setState callback
-    // 함수역할: 여러 약의 복용 일정 비교와 저장 전 확인의 입력·요청 상태를 `_schedules[index] = updatedSchedule; _validationMessage = ''`로 갱신한다.
-    // 매개변수:
-    // - 없음.
-    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-    setState(() {
-      _schedules[index] = updatedSchedule;
-      _validationMessage = '';
-    });
   }
 
   // 함수이름: _confirmReview
-  // 함수역할: 누락되거나 서로 맞지 않는 일정이 있으면 해당 약의 수정 창을 열고 유효한 목록만 반환한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // 함수역할: 동작 가능한 검토 화면에서 모든 일정을 검증하고, 미완성 항목은 안내 후 편집창을 연다.
+  // 매개변수: 없음.
+  // 반환값: 모두 유효하면 수정 불가 목록을 경로 결과로 반환하며 닫는 Future<void>.
   Future<void> _confirmReview() async {
+    if (!_canAct) return;
     final invalidIndex = _schedules.indexWhere(
       // 함수이름: _confirmReview.indexWhere callback
       // 함수역할: 여러 약의 복용 일정 비교와 저장 전 확인에 대해 `!_isScheduleComplete(schedule)` 조건으로 컬렉션 항목을 판별한다.
@@ -308,19 +330,14 @@ class _MedicationScheduleReviewSheetState
       return;
     }
 
-    Navigator.pop(context, List<MedicationSchedule>.unmodifiable(_schedules));
+    _closeReview(List<MedicationSchedule>.unmodifiable(_schedules));
   }
 }
 
-// 클래스명: _MedicationScheduleReviewCard
-// 역할: 약 한 건의 복용 기간·용량·시간대와 수정 명령을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 약 한 건의 복용 기간·용량·시간대와 수정 명령 위젯을 구성한다.
-// 속성:
-// - index (int): 대상 약품·사진·행의 0부터 시작하는 목록 위치.
-// - medicationSchedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-// - onEditRequested (VoidCallback): 선택한 약품 일정·입력란의 편집을 여는 콜백.
+// Class Name: _MedicationScheduleReviewCard
+// Role: One medication schedule for pre-save review.
+// Responsibilities: Summarizes duration, dosage and slots and delegates editing to the parent.
+// Attributes: index: candidate position; medicationSchedule: draft; userSetting: display settings; onEditRequested: open editor.
 class _MedicationScheduleReviewCard extends StatelessWidget {
   final int index;
   final MedicationSchedule medicationSchedule;
@@ -342,11 +359,10 @@ class _MedicationScheduleReviewCard extends StatelessWidget {
     required this.onEditRequested,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 약 한 건의 복용 기간·용량·시간대와 수정 명령 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 약 한 건의 복용 기간·용량·시간대와 수정 명령에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays one candidate's period, dosage and slot summaries with its edit action.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final text = _MedicationScheduleReviewText(userSetting.language);
@@ -437,14 +453,10 @@ class _MedicationScheduleReviewCard extends StatelessWidget {
   }
 }
 
-// 클래스명: _ScheduleSummaryRow
-// 역할: 검토용 복약 항목의 라벨과 요약 값을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 검토용 복약 항목의 라벨과 요약 값 위젯을 구성한다.
-// 속성:
-// - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-// - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-// - emptyValue (String): 값이나 약품 정보를 제공할 수 없을 때 사용할 대체 문구.
+// Class Name: _ScheduleSummaryRow
+// Role: A labeled schedule-summary value.
+// Responsibilities: Shows a readable summary with a fallback for missing content.
+// Attributes: label (String): field name; value (String): summary; emptyValue (String): missing fallback.
 class _ScheduleSummaryRow extends StatelessWidget {
   final String label;
   final String value;
@@ -463,11 +475,10 @@ class _ScheduleSummaryRow extends StatelessWidget {
     required this.emptyValue,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 검토용 복약 항목의 라벨과 요약 값 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 검토용 복약 항목의 라벨과 요약 값에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Pairs a schedule field label with its value or missing-content fallback.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final displayValue = value.trim().isEmpty ? emptyValue : value.trim();
@@ -509,27 +520,23 @@ class _ScheduleSummaryRow extends StatelessWidget {
   }
 }
 
-// 클래스명: _ScheduleValidationNotice
-// 역할: 저장 전 수정이 필요한 복약 정보 안내를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 저장 전 수정이 필요한 복약 정보 안내 위젯을 구성한다.
-// 속성:
-// - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
+// Class Name: _ScheduleValidationNotice
+// Role: Pre-save schedule validation notice.
+// Responsibilities: Explains the information requiring correction before confirmation.
+// Attributes: message (String): validation explanation.
 class _ScheduleValidationNotice extends StatelessWidget {
   final String message;
 
-  // 함수이름: _ScheduleValidationNotice
-  // 함수역할: 저장 전 수정이 필요한 복약 정보 안내에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-  // 반환값: 입력 설정이 반영된 _ScheduleValidationNotice 인스턴스.
+  // Function Name: _ScheduleValidationNotice
+  // Description: Stores a schedule-validation explanation.
+  // Parameters: message (String): correction required before saving.
+  // Returns: A _ScheduleValidationNotice.
   const _ScheduleValidationNotice({required this.message});
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 저장 전 수정이 필요한 복약 정보 안내 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 저장 전 수정이 필요한 복약 정보 안내에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays the schedule validation explanation in the review flow.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -586,11 +593,9 @@ class _MedicationScheduleEditorDialog extends StatefulWidget {
 }
 
 // 클래스명: _MedicationScheduleEditorDialogState
-// 역할: 단일 약품의 기간·용량·횟수·시간대 수정의 화면 상태를 관리한다.
-// 주요 책임:
-// - 복용 횟수에 맞는 기본 시간대 집합으로 교체하고 시간대 검증 오류를 지운다.
-// - 시간대 선택을 변경하고 선택 수로 복용 횟수와 빈 선택 오류를 갱신한다.
-// - 기존 시작일도 선택 범위에 포함하도록 달력을 열어 확정 날짜를 반영한다.
+// 역할: 한 약품의 기간·용량·주기·시간대 편집 상태.
+// 주요 책임: 입력과 시간대 조합을 검증하고 현재 대화상자에서 확정·취소를 한 번만 처리한다.
+// 속성: _formKey (GlobalKey<FormState>): 검증; _nameController/_dosageController/_daysController (TextEditingController): 입력; _startDate (DateTime): 시작; _selectedSlotKeys (Set<String>): 시간대; _asNeeded/_isClosing (bool): 복용·종료 상태.
 class _MedicationScheduleEditorDialogState
     extends State<_MedicationScheduleEditorDialog> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
@@ -604,6 +609,24 @@ class _MedicationScheduleEditorDialogState
   late bool _asNeeded;
   late Set<String> _selectedSlotKeys;
   bool _showSlotValidationError = false;
+  bool _isClosing = false;
+
+  // 함수이름: _canAct
+  // 함수역할: 편집 대화상자가 살아 있는 현재 경로이며 아직 닫히지 않았는지 확인한다.
+  // 매개변수: 없음.
+  // 반환값: 확정·취소를 처리할 수 있으면 true.
+  bool get _canAct =>
+      mounted && !_isClosing && ModalRoute.of(context)?.isCurrent == true;
+
+  // 함수이름: _closeEditor
+  // 함수역할: 확정·취소 결과를 한 번만 전달하고 종료 중 추가 요청은 무시한다.
+  // 매개변수: result (MedicationSchedule?): 수정 일정; 생략하면 취소.
+  // 반환값: 없음. 경로 결과는 일정 또는 null.
+  void _closeEditor([MedicationSchedule? result]) {
+    if (!_canAct) return;
+    _isClosing = true;
+    Navigator.pop(context, result);
+  }
 
   // 함수이름: initState
   // 함수역할: 약명·용량·일수를 입력란에 넣고 1~4회 범위의 횟수와 시간대를 일치시킨다.
@@ -851,7 +874,7 @@ class _MedicationScheduleEditorDialogState
           // 매개변수:
           // - 없음.
           // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => _closeEditor(),
           child: Text(text.cancel),
         ),
         FilledButton(
@@ -904,11 +927,10 @@ class _MedicationScheduleEditorDialogState
     });
   }
 
-  // 함수이름: _selectStartDate
-  // 함수역할: 기존 시작일도 선택 범위에 포함하도록 달력을 열어 확정 날짜를 반영한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _selectStartDate
+  // Description: Opens a date picker whose allowed range includes the existing start date and applies a confirmed choice.
+  // Parameters: None.
+  // Returns: Future completing after selection or cancellation.
   Future<void> _selectStartDate() async {
     final standardFirstDate = earliestMedicationStartDate();
     final standardLastDate = latestMedicationStartDate(DateTime.now());
@@ -935,11 +957,10 @@ class _MedicationScheduleEditorDialogState
     setState(() => _startDate = selectedDate);
   }
 
-  // 함수이름: _validateDuration
-  // 함수역할: 복용 기간이 1일부터 공통 최대 복용 일수까지의 정수인지 검증한다.
-  // 매개변수:
-  // - value (String?): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-  // 반환값: 검증·상태 안내 문구. 안내가 필요하지 않으면 null.
+  // Function Name: _validateDuration
+  // Description: Requires an integer duration from one day through the shared maximum dose-day limit.
+  // Parameters: value (String?): entered duration.
+  // Returns: Localized validation error, or null when valid.
   String? _validateDuration(String? value) {
     final days = int.tryParse(value?.trim() ?? '');
     if (!isValidMedicationCourseDays(days)) {
@@ -956,6 +977,7 @@ class _MedicationScheduleEditorDialogState
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   void _submit() {
+    if (!_canAct) return;
     final hasValidSlots =
         _asNeeded ||
         (_selectedSlotKeys.isNotEmpty &&
@@ -973,8 +995,7 @@ class _MedicationScheduleEditorDialogState
       return;
     }
 
-    Navigator.pop(
-      context,
+    _closeEditor(
       widget.medicationSchedule.copyWith(
         medicationName: _nameController.text.trim(),
         prescriptionDate: _startDate,
@@ -1060,12 +1081,10 @@ bool _isScheduleComplete(MedicationSchedule schedule) {
               schedule.slotKeys.length == frequency));
 }
 
-// 클래스명: _MedicationScheduleReviewText
-// 역할: 저장 전 여러 약의 복약 일정 비교·수정·검증에 쓰는 한국어·영어 문구를 담당한다.
-// 주요 책임:
-// - 저장 전 여러 약의 복약 일정 비교·수정·검증에 쓰는 한국어·영어 문구의 언어를 선택하고 안내에 필요한 값을 문구에 반영한다.
-// 속성:
-// - language (String): 화면 문구를 선택할 언어 코드.
+// Class Name: _MedicationScheduleReviewText
+// Role: Localized schedule review and editor copy.
+// Responsibilities: Labels periods, dose cycles and slots and supplies validation feedback before saving.
+// Attributes: language (String): selected language code.
 class _MedicationScheduleReviewText {
   final String language;
 
@@ -1076,11 +1095,10 @@ class _MedicationScheduleReviewText {
   // 반환값: 입력 설정이 반영된 _MedicationScheduleReviewText 인스턴스.
   const _MedicationScheduleReviewText(this.language);
 
-  // 함수이름: isEnglish
-  // 함수역할: 공통 언어 판정으로 언어 코드가 영어인지 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: isEnglish
+  // Description: Uses the shared language rule for review labels.
+  // Parameters: None.
+  // Returns: True for an English language code.
   bool get isEnglish => isEnglishLanguage(language);
   // 함수이름: reviewTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "복약 정보 확인" 문구를 제공한다.
@@ -1154,23 +1172,21 @@ class _MedicationScheduleReviewText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get dailyFrequency => isEnglish ? 'Times per day' : '1일 복용 횟수';
-  // 함수이름: doseDays
-  // 함수역할: 현재 언어에 맞춰 "복용 주기" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: doseDays
+  // Description: Labels the medication's dosing cycle.
+  // Parameters: None.
+  // Returns: The localized cycle heading.
   String get doseDays => isEnglish ? 'Dose days' : '복용 주기';
-  // 함수이름: doseDaysValue
-  // 함수역할: 복용 주기 선택지를 현재 언어의 문구로 바꾼다. 선택지에 없는 지시는 저장된 그대로 보여 준다.
-  // 매개변수:
-  // - doseDays (String): 복용하는 날의 지시. 빈 문자열은 매일 복용.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: doseDaysValue
+  // Description: Localizes known dose-cycle choices while preserving an unrecognized stored instruction verbatim.
+  // Parameters: doseDays (String): cycle instruction; empty means daily.
+  // Returns: The localized choice or original instruction.
   String doseDaysValue(String doseDays) => switch (doseDays) {
     '' => isEnglish ? 'Every day' : '매일',
     '격일' => isEnglish ? 'Every other day' : '격일',
     '주 1회' => isEnglish ? 'Once a week' : '주 1회',
     '월 1회' => isEnglish ? 'Once a month' : '월 1회',
-    _ => doseDays,
+    _ => isEnglish ? englishDoseIntervalLabel(doseDays) ?? doseDays : doseDays,
   };
   // 함수이름: duration
   // 함수역할: 현재 언어와 입력값에 맞춰 "복용 기간(일)" 문구를 제공한다.
@@ -1184,11 +1200,10 @@ class _MedicationScheduleReviewText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get scheduleSlots => isEnglish ? 'Medication times' : '복용 시간대';
-  // 함수이름: invalidDuration
-  // 함수역할: 현재 언어와 입력값에 맞춰 "복용 기간은 1일부터 3650일 사이로 입력해주세요." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: invalidDuration
+  // Description: Explains the allowed duration interval using the shared maximum dose-day limit.
+  // Parameters: None.
+  // Returns: The localized duration-validation message.
   String get invalidDuration => isEnglish
       ? 'Enter a duration between 1 and $maxMedicationCourseDays days.'
       : '복용 기간은 1일부터 $maxMedicationCourseDays일 사이로 입력해주세요.';
@@ -1252,11 +1267,10 @@ class _MedicationScheduleReviewText {
       ? 'Select $frequency medication time(s).'
       : '1일 $frequency회에 맞게 복용 시간대를 $frequency개 선택해주세요.';
 
-  // 함수이름: slotLabel
-  // 함수역할: 현재 언어와 입력값에 맞춰 "취침 전" 문구를 제공한다.
-  // 매개변수:
-  // - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: slotLabel
+  // Description: Formats the selected dose-slot key as a localized label.
+  // Parameters: slotKey (String): dose-slot identifier.
+  // Returns: The slot label.
   String slotLabel(String slotKey) {
     return medicationSlotLabel(slotKey, isEnglish: isEnglish);
   }

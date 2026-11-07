@@ -8,7 +8,6 @@ import 'controls/check_caregiver_medication_control.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:home_widget/home_widget.dart';
 
@@ -47,7 +46,7 @@ import 'viewmodels/medbuddy_feature_updates.dart';
 import 'views/home_screen.dart';
 
 // Function Name: main
-// Description: Initializes Flutter and portrait orientation, attempts map and background setup, starts authentication and language state, runs the app, and then initializes notifications with reported bootstrap failures.
+// Description: Initializes Flutter and background setup, starts authentication and language state, runs the app, then starts the map SDK after the first frame and initializes notifications with reported bootstrap failures.
 // Parameters:
 // - None.
 // Returns:
@@ -55,21 +54,7 @@ import 'views/home_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   registerMedBuddyPushBackgroundHandler();
-  await SystemChrome.setPreferredOrientations(const [
-    DeviceOrientation.portraitUp,
-  ]);
-  try {
-    await initializeNaverMap();
-  } catch (error, stackTrace) {
-    FlutterError.reportError(
-      FlutterErrorDetails(
-        exception: error,
-        stack: stackTrace,
-        library: 'MedBuddy bootstrap',
-        context: ErrorDescription('initializing Naver Map'),
-      ),
-    );
-  }
+  // Portrait is fixed by the activity's android:screenOrientation, so startup does not wait for a platform call to repeat it.
   try {
     installDoseHomeWidgetReaders();
     await CaregiverNotificationBackgroundScheduler.initialize();
@@ -90,6 +75,12 @@ Future<void> main() async {
     MedBuddyApp(
       authenticationControl: authenticationControl,
       appLanguageControl: appLanguageControl,
+    ),
+  );
+  // Loading the map library before the first frame delayed every launch; map screens await the same attempt.
+  unawaited(
+    WidgetsBinding.instance.endOfFrame.then(
+      (_) => naverMapStartup.ensureInitialized(),
     ),
   );
   try {
@@ -261,18 +252,30 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
 
   Uri? _pendingWidgetUri;
 
+  // 함수이름: _synchronizeNotificationLanguage
+  // 함수역할: 앱에서 선택한 언어를 알림 서비스에 비동기로 전달한다.
+  // 매개변수: 없음. _appLanguageControl의 현재 언어를 사용한다.
+  // 반환값: void. 알림 언어 갱신의 완료를 기다리지 않는다.
   void _synchronizeNotificationLanguage() {
     unawaited(
       NotificationService.instance.updateLanguage(_appLanguageControl.language),
     );
   }
 
+  // 함수이름: didChangeLocales
+  // 함수역할: 기기 언어 변경 시 로그인 계정의 언어 동기화를 요청한다.
+  // 매개변수: locales(List<Locale>?)는 Flutter가 전달한 기기 언어 목록이다.
+  // 반환값: void. 실제 언어 결정은 설정 동기화 경로에 맡긴다.
   // 기기 언어 이벤트에서만 동기화를 요청해 설정 알림이 다시 저장을 유발하지 않게 한다.
   @override
   void didChangeLocales(List<Locale>? locales) {
     unawaited(_synchronizeSessionLanguage());
   }
 
+  // 함수이름: _openHomeWidget
+  // 함수역할: 위젯의 일정 링크를 해석하고 보호자 링크의 계정·유효성을 검증한다.
+  // 매개변수: uri(Uri?)는 위젯에서 전달한 일정 또는 환자 일정 주소다.
+  // 반환값: Future<void>. 로그인 전 환자 링크는 보류하며 만료·다른 계정 링크는 무시한다.
   Future<void> _openHomeWidget(Uri? uri) async {
     if (!mounted || uri?.scheme != 'medbuddy-widget') {
       return;
@@ -359,6 +362,10 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
     final generation = _settingsGeneration;
     final viewModel = _settingsViewModel;
     final push = _pushNotificationService;
+    // 함수이름: isCurrent
+    // 함수역할: 로그아웃 정리 시작 시의 계정과 화면 모델이 아직 유효한지 검사한다.
+    // 매개변수: 없음. 정리 시작 시 캡처한 세션·설정 세대를 비교한다.
+    // 반환값: bool. 계정이나 설정 세대가 바뀌면 false다.
     bool isCurrent() =>
         mounted &&
         session != null &&
@@ -386,6 +393,10 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
       // 로컬 정리가 실패하면 로그아웃이 중단되어 계정은 로그인 상태로 남는다. 앞에서 멈춘 푸시와 복용 기록
       // 전송 작업을 되살려, 로그인한 채로 푸시(보호자 미복용 알림 포함)를 받지 못하는 상태가 되지 않게 한다.
       // 한 복원 단계가 실패해도 다른 복원은 시도한다. 다른 세션으로 바뀌면 즉시 중단한다.
+      // 함수이름: restore
+      // 함수역할: 같은 로그인 세션에 한해 취소된 로그아웃의 복원 단계 하나를 실행한다.
+      // 매개변수: action(Future<void> Function())은 복원 작업이다.
+      // 반환값: Future<void>. 실패를 삼켜 나머지 복원 단계도 시도할 수 있게 한다.
       Future<void> restore(Future<void> Function() action) async {
         if (!isCurrent()) return;
         try {
@@ -603,6 +614,10 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
     }
   }
 
+  // 함수이름: _notifyEmailVerificationCompleted
+  // 함수역할: 대기 중이던 이메일의 인증이 완료되면 같은 계정에 성공 안내를 표시한다.
+  // 매개변수: 없음. 인증 상태와 _pendingEmailVerification을 비교한다.
+  // 반환값: void. 계정이 바뀌거나 인증이 끝나지 않았으면 안내하지 않는다.
   // 인증 화면이 사라져도 성공 안내가 보이도록 새 홈 화면이 그려진 뒤 한 번만 표시한다.
   void _notifyEmailVerificationCompleted() {
     final control = _authenticationControl;
@@ -895,6 +910,10 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
 
   final Set<String> _caregiverActionsInFlight = {};
 
+  // 함수이름: _handleCaregiverActionWhenReady
+  // 함수역할: 화면 이동 준비가 끝난 뒤 보호자 알림 동작을 실행한다.
+  // 매개변수: selection(MedicationNotificationSelection)은 선택한 알림과 동작이다.
+  // 반환값: void. 내비게이터가 없으면 다음 프레임까지 보류한다.
   void _handleCaregiverActionWhenReady(
     MedicationNotificationSelection selection,
   ) {
@@ -907,6 +926,10 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
     unawaited(_performCaregiverAction(selection));
   }
 
+  // Function Name: _performCaregiverAction
+  // Description: Executes a caregiver reminder/check request once per in-flight event and reports its result to the same signed-in session.
+  // Parameters: selection (MedicationNotificationSelection) identifies the alert and requested action.
+  // Returns: Future<void>. Invalid actions are ignored; uncertain failures offer a retry using the same event.
   Future<void> _performCaregiverAction(
     MedicationNotificationSelection selection,
   ) async {
@@ -920,7 +943,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
         .read<MedBuddyViewModel>()
         .userSetting
         .language;
-    final english = language == 'en';
+    final english = isEnglishLanguage(language);
     var success = false;
     try {
       final action = switch (selection.action) {
@@ -1446,6 +1469,10 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
     }
   }
 
+  // 함수이름: _isCurrentSettingsSession
+  // 함수역할: 설정 응답이 현재 계정과 화면 모델의 세대에 속하는지 검사한다.
+  // 매개변수: viewModel(MedBuddyViewModel)은 요청 모델, generation(int)은 요청 시의 세대다.
+  // 반환값: bool. 오래된 모델·세대이거나 계정이 다르면 false다.
   // 같은 계정의 토큰 갱신은 유지하되 계정 전환·로그아웃·재로그인 이전 응답은 차단한다.
   bool _isCurrentSettingsSession(MedBuddyViewModel viewModel, int generation) =>
       mounted &&
@@ -1454,6 +1481,10 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
       _settingsUserHash != null &&
       _authenticationControl.session?.userHash == _settingsUserHash;
 
+  // 함수이름: _synchronizeSessionLanguage
+  // 함수역할: 기기 언어를 현재 계정의 설정에 반영하고 앱 전체 언어 모드를 맞춘다.
+  // 매개변수: retryRemoteLookup(bool)은 서버 설정 조회를 다시 시도할지 정한다.
+  // 반환값: Future<void>. 오래된 세션의 결과는 버리고 실패는 FlutterError로 보고한다.
   Future<void> _synchronizeSessionLanguage({
     bool retryRemoteLookup = false,
   }) async {

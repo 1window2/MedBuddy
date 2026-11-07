@@ -41,14 +41,19 @@ _CLIENT_CLOCK_SKEW = timedelta(seconds=60)
 # 속성: db: 요청 세션, policy: 일정 규칙, saved: 기존 저장 약 응답 어댑터.
 class ManageMedicationCare:
     # 함수이름: __init__
-    # 함수역할: 요청 세션과 기존 정책·저장 약 어댑터를 공유한다.
-    # 매개변수: db: 세션. 반환값: 없음.
+    # 함수역할: 돌봄 기록에 사용할 세션·복약 기간 정책·저장 약품 제어기를 구성하고 완료 이벤트 대기 목록을 초기화한다.
+    # 매개변수: db (Session)는 변경 작업에 사용할 세션이다.
+    # 반환값: 없음.
     def __init__(self, db: Session) -> None:
         self.db = db
         self.policy = MedicationCoursePolicy()
         self.saved = CheckSavedMedication(db)
         self._completion_events: list[dict[str, int]] = []
 
+    # 함수이름: consumeCompletionEvents
+    # 함수역할: 성공적으로 저장된 필요시 복용 알림 목록을 넘기고 내부 대기 목록을 비운다.
+    # 매개변수: 없음.
+    # 반환값: 이벤트 ID를 담은 dict 목록. 같은 목록은 다음 호출에서 다시 반환하지 않는다.
     def consumeCompletionEvents(self) -> list[dict[str, int]]:
         """커밋된 필요시 알림만 응답 후 즉시 전송 경계에 넘긴다."""
         events, self._completion_events = self._completion_events, []
@@ -74,8 +79,9 @@ class ManageMedicationCare:
         return owner
 
     # 함수이름: _medication
-    # 함수역할: 소유권을 포함해 약을 잠가 두 변경의 검증·저장이 교차하지 않도록 한다.
-    # 매개변수: owner: 환자, medication_id: 약 식별자. 반환값: 저장 약 또는 404.
+    # 함수역할: 환자 소유 약품을 행 잠금으로 읽고 세션의 기존 상태를 새로 고친다.
+    # 매개변수: owner (str)는 소유 환자, medication_id (int)는 대상 약품 ID이다.
+    # 반환값: _SavedMedication. 소유 범위에 약품이 없으면 HTTP 404이며 잠금은 호출자의 트랜잭션에 속한다.
     def _medication(self, owner: str, medication_id: int) -> _SavedMedication:
         row = self.db.query(_SavedMedication).filter(
             _SavedMedication.patient_hash == owner, _SavedMedication.id == medication_id,
@@ -85,15 +91,17 @@ class ManageMedicationCare:
         return row
 
     # 함수이름: _fingerprint
-    # 함수역할: 경로와 검증된 본문을 해시하여 작업 ID의 다른 용도 재사용을 거부한다.
-    # 매개변수: target: 대상 경로, payload: 본문. 반환값: SHA-256 서명.
+    # 함수역할: 대상과 정렬된 JSON 요청을 SHA-256으로 해시하여 같은 작업 ID의 요청 변경을 판별할 서명을 만든다.
+    # 매개변수: target (str)는 작업 대상, payload (dict[str, object])는 요청 내용이다.
+    # 반환값: str 16진수 요청 서명.
     @staticmethod
     def _fingerprint(target: str, payload: dict[str, object]) -> str:
         return hashlib.sha256(json.dumps([target, payload], sort_keys=True, default=str).encode()).hexdigest()
 
     # 함수이름: _replay
-    # 함수역할: 이미 성공한 동일 작업의 응답을 돌려주고 다른 요청이면 충돌 처리한다.
-    # 매개변수: owner: 환자, operation_id: UUID, fingerprint: 서명. 반환값: 기존 응답 또는 None.
+    # 함수역할: 기존 작업 영수증을 조회하여 같은 요청의 저장 응답을 재사용한다.
+    # 매개변수: owner (str)는 환자, operation_id (UUID)는 작업 ID, fingerprint (str)는 현재 요청 서명이다.
+    # 반환값: dict[str, object] 저장 응답 또는 미존재 시 None. 요청이 다르면 409, 삭제로 응답이 비식별화됐으면 410이다.
     def _replay(self, owner: str, operation_id: UUID, fingerprint: str) -> dict[str, object] | None:
         receipt = self.db.query(_MedicationCareOperation).filter_by(patient_hash=owner, operation_id=str(operation_id)).first()
         if receipt is None:
@@ -106,8 +114,9 @@ class ManageMedicationCare:
 
     # 함수이름: _commit
     # 함수역할: 변경 결과와 재전송 영수증을 함께 커밋한다.
-    # 매개변수: owner: 환자, operation_id: UUID, fingerprint: 서명, response: 응답.
-    # 반환값: 성공 응답.
+    # 매개변수: owner (str)는 환자, operation_id (UUID)는 재전송 키, fingerprint (str)는 요청 서명, response (dict)는 응답이다.
+    #   medication_id (int)는 원본 약, replacement_medication_id (int | None)는 대체 약으로 삭제 시 응답 정리에 사용한다.
+    # 반환값: 저장된 성공 응답. commit 오류는 호출자로 전달한다.
     def _commit(
         self, owner: str, operation_id: UUID, fingerprint: str, response: dict[str, object],
         *, medication_id: int, replacement_medication_id: int | None = None,
@@ -209,8 +218,9 @@ class ManageMedicationCare:
             raise
 
     # 함수이름: _replacement
-    # 함수역할: 변경 필드만 복사한 새 스냅샷을 만들고 새 이름에 이전 약의 설명을 붙이지 않는다.
-    # 매개변수: old: 이전 약, request: 변경, owner: 환자. 반환값: 아직 커밋하지 않은 새 약.
+    # 함수역할: 기존 약품에서 복약 변경 스냅샷을 만들고 변경된 처방 날짜·활성 기간을 검증한다. 약 이름 변경 시 기존 품목 설명·이미지·AI 안내를 제거한다.
+    # 매개변수: old (_SavedMedication)는 원본, request (RegimenChangeRequest)는 변경 내용과 적용일, owner (str)는 소유 환자이다.
+    # 반환값: _SavedMedication 미저장 대체 행. 저장 개수 한도는 409, 유효하지 않은 새 과정은 422이다.
     def _replacement(self, old: _SavedMedication, request: RegimenChangeRequest, owner: str) -> _SavedMedication:
         if self.saved.medication_repository.count_by_patient(owner) >= settings.SAVED_MEDICATION_MAX_PER_ACCOUNT:
             raise HTTPException(409, SAVED_MEDICATION_LIMIT_DETAIL)
@@ -245,8 +255,9 @@ class ManageMedicationCare:
         return result
 
     # 함수이름: _validate_range
-    # 함수역할: 기록 조회·수정을 오늘 포함 최근 90일, 한 번에 31일로 제한한다.
-    # 매개변수: start/end: 포함 날짜. 반환값: 없음, 잘못된 범위는 422.
+    # 함수역할: 오늘까지 최근 90일 안에서 시작·종료 순서와 최대 31일의 조회 기간을 검증한다.
+    # 매개변수: start (date)는 포함 시작일, end (date)는 포함 종료일이다.
+    # 반환값: 없음. 잘못된 범위는 HTTP 422로 거절한다.
     @staticmethod
     def _validate_range(start: date, end: date) -> None:
         today = application_today()
@@ -262,6 +273,10 @@ class ManageMedicationCare:
         owner = self._scope(principal, patient_hash, write=False)
         return self._history_for_patient(owner, start, end)
 
+    # 함수이름: history_share_context
+    # 함수역할: 권한 확인된 환자의 이력을 정기·필요시와 taken·skipped·unrecorded 건수로 요약하며 복약률로 해석하지 않는다.
+    # 매개변수: patient_hash (str)는 호출자가 활성 연동으로 검증한 환자, start·end (date)는 포함 조회 범위다.
+    # 반환값: 기간·건수 dict. 허용 범위를 벗어나면 HTTP 422, DB 오류는 전달한다.
     def history_share_context(self, patient_hash: str, start: date, end: date) -> dict[str, object]:
         """호출자가 활성 연동으로 권한을 확인한 환자의 이력을 건수로만 요약한다."""
         self._validate_range(start, end)
@@ -283,6 +298,10 @@ class ManageMedicationCare:
             "as_needed_taken_count": prn_taken,
         }
 
+    # 함수이름: _history_for_patient
+    # 함수역할: 실제 기록을 우선하고 예정된 정기 복용일의 빈 슬롯을 보충해 날짜 내림차순 이력을 만든다.
+    # 매개변수: owner (str)는 권한 확인된 환자, start·end (date)는 검증된 포함 조회 범위다.
+    # 반환값: 이력 항목·저장 약·기간 dict. 삭제된 약의 기록은 제외하며 필요시 약의 미기록 일정을 생성하지 않는다.
     def _history_for_patient(self, owner: str, start: date, end: date) -> dict[str, object]:
         """권한과 기간 검증을 마친 조회·공유에 동일한 이력 항목을 제공한다."""
         medications = self.saved.medication_repository.list_by_patient(owner)
@@ -332,10 +351,10 @@ class ManageMedicationCare:
         }
         return {**data, "item_name": med.item_name, "dosing_mode": medication_dosing_mode(med)}
 
-    # 함수이름: update_history
-    # 함수역할: 버전과 날짜·시간대·실제 시각을 검증한 뒤 사용자 보고 및 수정 이력을 저장한다.
-    # 매개변수: principal: 주체, medication_id/day/slot: 대상, request: 정정 요청.
-    # 반환값: 갱신한 기록. 필요시 복용은 UUID별 독립 기록을 사용한다.
+    # Function Name: update_history
+    # Description: Apply an idempotent, revision-checked scheduled or PRN dose correction, preserving audit history; only today's newly completed doses can enqueue alerts.
+    # Parameters: principal authenticates the writer; medication_id, day and slot select the record; request (DoseHistoryUpdate) supplies patient scope, operation/revision, status, actual time and reason.
+    # Returns: dict[str, object] saved or replayed response. Invalid dates/slots raise 422, revision/integrity conflicts 409, database contention 503; failures roll back.
     def update_history(self, principal: AuthenticatedPrincipal, medication_id: int, day: date, slot: str, request: DoseHistoryUpdate) -> dict[str, object]:
         self._completion_events = []
         try:

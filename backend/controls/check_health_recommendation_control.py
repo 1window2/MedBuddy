@@ -43,29 +43,15 @@ def _accept_current_access() -> None:
     return None
 
 
-# 클래스명: CheckHealthRecommendation
-# 역할:
-# - 오늘 복용 중인 약을 모아 건강 관리 안내를 생성하고 환자별 캐시를 관리한다.
-# 주요 책임:
-# - 환자 또는 보호자 권한 범위의 현재 복용 약을 조회한다.
-# - 같은 약 조합의 추천 결과가 있으면 로컬 캐시를 재사용한다.
-# - 캐시가 없으면 현재 복용 약 조합을 AI 추천 생성기로 전달한다.
-# 속성:
-# - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
-# - medication_repository (SavedMedicationRepository): 환자 소유 저장 약품 스냅샷 저장소.
-# - llm_service (LLMService): 활성 약품 요약으로 건강 관리 안내를 생성하는 서비스.
-# - course_policy (MedicationCoursePolicy): 약 복용 시작·종료·활성 날짜의 공통 판정 정책.
+# Class Name: CheckHealthRecommendation
+# Role: Generate and cache health guidance for the patient's current medication course.
+# Responsibilities: Load active medications, reuse recommendations for unchanged combinations, and request new guidance from the LLM.
+# Attributes: db and medication_repository read patient data; llm_service generates guidance; course_policy determines active dates.
 class CheckHealthRecommendation:
-    # Function Name: __init__
-    # Description:
-    # - Binds the request session, active-course policy, medication repository and guidance service.
-    # Parameters:
-    # - db (Session): Caller-owned session used sequentially throughout the request.
-    # - llm_service (LLMService | None): Injected guidance generator or the default LLM boundary.
-    # - course_policy (MedicationCoursePolicy | None): Shared active-course date policy.
-    # - medication_repository (SavedMedicationRepository | None): Patient-owned medication lookup.
-    # Returns:
-    # - None.
+    # 함수이름: __init__
+    # 함수역할: 복약 조회와 추천 생성에 사용할 의존성을 보관하고 생략된 의존성은 기본 구현으로 구성한다.
+    # 매개변수: db (Session)는 조회 세션, llm_service (LLMService | None)는 생성기, course_policy (MedicationCoursePolicy | None)는 기간 정책, medication_repository (SavedMedicationRepository | None)는 약품 저장소이다.
+    # 반환값: 없음.
     def __init__(
         self,
         db: Session,
@@ -467,14 +453,10 @@ class CheckHealthRecommendation:
                 type(exc).__name__,
             )
 
-    # 함수이름: _get_active_medications
-    # 함수역할:
-    # - 환자 소유 저장 약 중 지정일에 복용 기간이 유효한 약만 선택한다.
-    # 매개변수:
-    # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
-    # - today (date): 복용 기간 판정에 사용할 애플리케이션 현지 날짜.
-    # 반환값:
-    # - 지정일의 활성 복약 행 목록.
+    # Function Name: _get_active_medications
+    # Description: Read schedule columns and retain medications active on the requested date.
+    # Parameters: patient_hash (str) identifies the owner; today (date) is the course-policy reference date.
+    # Returns: list[_SavedMedication] of active schedule snapshots; database errors propagate.
     def _get_active_medications(
         self,
         patient_hash: str,

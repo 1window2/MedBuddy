@@ -64,16 +64,21 @@ Future<User?> _restoreBackgroundFirebaseUser() async {
   }
 }
 
-// 클래스명: BackgroundTaskDeps
-// 역할: 백그라운드 작업이 쓰는 인증·저장소·위젯·알림·감시 호출을 묶는다.
-// 주요 책임: 기본 구현은 실제 서비스를 호출하고, 테스트는 이 클래스를 대체해 작업 종류별 흐름을 검증한다.
+// Class Name: BackgroundTaskDeps
+// Role: Groups the authentication, persistence, widget, reminder and monitoring boundaries used by background tasks.
+// Responsibilities: Provide production defaults while allowing tests to override individual task effects.
+// Attributes: No instance fields; methods resolve the shared runtime services when invoked.
 class BackgroundTaskDeps {
+  // Function Name: BackgroundTaskDeps
+  // Description: Creates the stateless production dependency bundle for background dispatch.
+  // Parameters: None.
+  // Returns: A reusable dependency bundle without starting services.
   const BackgroundTaskDeps();
 
-  // 함수이름: openClient
-  // 함수역할: 서버 요청에 필요한 인증을 복원하고 API 클라이언트를 만든다. 통신이 필요한 작업만 호출한다.
-  // 매개변수: 없음.
-  // 반환값: 호출자가 닫아야 하는 클라이언트. Firebase 로그인 사용자를 복원하지 못하면 null.
+  // Function Name: openClient
+  // Description: Restores Firebase identity when required before creating authenticated HTTP transport.
+  // Parameters: None.
+  // Returns: A caller-owned client, or null when no Firebase user can be restored; initialization/token errors propagate.
   Future<http.Client?> openClient() async {
     if (AuthConfig.mode == AuthenticationMode.firebase) {
       await FirebaseRuntimeService.initialize();
@@ -86,32 +91,37 @@ class BackgroundTaskDeps {
     return AuthenticatedApiClient();
   }
 
-  // 함수이름: openDoseStore
-  // 함수역할: 앱과 백그라운드 작업이 공유하는 복용 기록 저장소를 연다. 반환값: 열린 저장소.
+  // Function Name: openDoseStore
+  // Description: Opens the dose outbox shared by foreground and background work.
+  // Parameters: None.
+  // Returns: The persistent store Future; storage failures propagate.
   Future<DoseOutboxStore> openDoseStore() => DoseOutboxStore.open();
 
-  // 함수이름: doseNeedsNetwork
-  // 함수역할: 복용 기록 작업에 통신이 필요한지 기기 안에서만 확인한다.
-  // 매개변수: owner - 작업을 등록한 계정. 반환값: 전송할 기록이나 새로 읽을 위젯 일정이 있으면 true.
+  // Function Name: doseNeedsNetwork
+  // Description: Checks local widget/outbox state to decide whether this owner needs network work.
+  // Parameters: owner: Account that scheduled the task.
+  // Returns: Whether pending records or stale widget schedules require a network refresh.
   Future<bool> doseNeedsNetwork(String owner) =>
       DoseHomeWidget.needsNetworkRefresh(owner);
 
-  // 함수이름: refreshDoseWidget
-  // 함수역할: 위젯 클릭 기록과 위젯 표시를 갱신한다. sync와 client를 넘기면 이미 전송을 마친 그 서비스와
-  //   통신 수단을 다시 쓰고, 넘기지 않으면 기기 안의 상태만으로 갱신한다.
-  // 매개변수: sync - 전송을 마친 동기화 서비스, client - 그 서비스의 통신 수단. 반환값: 완료 Future.
+  // Function Name: refreshDoseWidget
+  // Description: Refreshes widget actions and display using local state or an already prepared synchronization context.
+  // Parameters: sync: Optional service that already drained work; client: Its optional transport.
+  // Returns: Completion of widget refresh; errors propagate to the task dispatcher.
   Future<void> refreshDoseWidget({DoseSyncService? sync, http.Client? client}) =>
       DoseHomeWidget.refreshInBackground(sync: sync, client: client);
 
-  // 함수이름: initializeNotifications
-  // 함수역할: 로컬 알림을 예약·표시할 수 있게 알림 서비스를 준비한다. 반환값: 완료 Future.
+  // Function Name: initializeNotifications
+  // Description: Initializes the local notification service before reminder or caregiver work.
+  // Parameters: None.
+  // Returns: Notification-service initialization completion.
   Future<void> initializeNotifications() =>
       NotificationService.instance.initialize();
 
-  // 함수이름: refreshReminders
-  // 함수역할: 서버 일정과 설정으로 환자의 날짜별 복약 알림을 다시 맞춘다.
-  // 매개변수: patientHash - 환자 계정, baseUrl - API 주소, client - 인증된 통신 수단.
-  // 반환값: 모든 시간대를 맞췄으면 true, 다시 시도해야 하면 false.
+  // Function Name: refreshReminders
+  // Description: Reconciles dated medication reminders using account-scoped server settings and schedules.
+  // Parameters: patientHash: Patient owner; baseUrl: API root; client: Authenticated caller-owned transport.
+  // Returns: The synchronizer result, with its temporary dependencies disposed even on failure.
   Future<bool> refreshReminders({
     required String patientHash,
     required String baseUrl,
@@ -129,10 +139,10 @@ class BackgroundTaskDeps {
     }
   }
 
-  // 함수이름: checkCaregiverAlerts
-  // 함수역할: 저장된 앱 언어로 보호자 감시를 한 번 실행한다. 권한 창은 띄우지 않는다.
-  // 매개변수: caregiverHash - 보호자 계정, baseUrl - API 주소, client - 인증된 통신 수단.
-  // 반환값: 확인이 정상 완료됐으면 true.
+  // Function Name: checkCaregiverAlerts
+  // Description: Runs one caregiver monitoring pass in the saved app language without requesting permission.
+  // Parameters: caregiverHash: Owner; baseUrl: API root; client: Authenticated transport.
+  // Returns: Whether monitoring completed; the temporary monitor is always disposed.
   Future<bool> checkCaregiverAlerts({
     required String caregiverHash,
     required String baseUrl,
@@ -166,16 +176,10 @@ class BackgroundTaskDeps {
   }
 }
 
-// 함수이름: runBackgroundTask
-// 함수역할: 백그라운드 작업 종류에 따라 복용 기록 전송, 복약 알림 갱신, 보호자 감시 중 하나를 실행하고
-//   사용한 통신 수단을 닫는다. 복용 기록 작업은 보낼 기록도 새로 읽을 일정도 없으면 인증과 통신을
-//   준비하지 않고 끝낸다.
-// 매개변수:
-// - taskName (String): 스케줄러가 전달한 백그라운드 작업 이름
-// - inputData (Map<String, dynamic>?): 작업에 저장된 API 주소와 환자·보호자 범위
-// - deps (BackgroundTaskDeps): 작업이 쓰는 서비스 호출 묶음
-// 반환값:
-// - 작업 성공·무시 여부는 true, 인증 또는 실행 실패는 false로 완료하는 Future.
+// Function Name: runBackgroundTask
+// Description: Dispatches dose synchronization, reminder refresh or caregiver monitoring and closes any acquired client.
+// Parameters: taskName: Scheduler job; inputData: Optional endpoint/owner scope; deps: Injectable task boundaries.
+// Returns: True for ignored/completed work or blocked dose items needing user action; false for authentication/execution failure or remaining retryable doses.
 Future<bool> runBackgroundTask(
   String taskName,
   Map<String, dynamic>? inputData,
@@ -256,12 +260,10 @@ Future<bool> runBackgroundTask(
   }
 }
 
-// 함수이름: caregiverNotificationCallbackDispatcher
-// 함수역할: Android가 앱을 깨운 경우 보호자 상태 또는 환자 복약 알림 일정을 갱신한다.
-// 매개변수:
-// - 없음.
-// 반환값:
-// - 없음.
+// Function Name: caregiverNotificationCallbackDispatcher
+// Description: Installs a background task callback and reconnects widget readers in the worker isolate.
+// Parameters: None.
+// Returns: None; Workmanager receives each task's asynchronous completion result.
 @pragma('vm:entry-point')
 void caregiverNotificationCallbackDispatcher() {
   Workmanager().executeTask(/* 함수이름: executeTask 콜백
@@ -279,9 +281,9 @@ void caregiverNotificationCallbackDispatcher() {
 }
 
 // 클래스명: CaregiverNotificationBackgroundScheduler
-// 역할: Android의 보호자 알림 확인 주기 작업을 관리한다.
-// 주요 책임:
-// - 지원 플랫폼에서 dispatcher를 등록하고 사용자 교체 시 이전 태그 작업을 취소한 뒤 네트워크 조건의 15분 주기 작업을 유지한다.
+// 역할: Android 보호자 감시 작업의 등록과 해제를 관리한다.
+// 주요 책임: dispatcher를 준비하고 계정 교체 시 이전 태그를 취소한 뒤 연결 조건의 주기 작업을 유지한다.
+// 속성: 인스턴스 상태 없음; 플랫폼 조건과 파일 수준 작업 이름·태그 및 Workmanager를 사용한다.
 class CaregiverNotificationBackgroundScheduler {
   // 함수이름: CaregiverNotificationBackgroundScheduler._
   // 함수역할: 보호자 감시 작업의 정적 등록·해제 API만 사용하도록 외부 생성을 막는다.

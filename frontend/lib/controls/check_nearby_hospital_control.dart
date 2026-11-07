@@ -1,8 +1,14 @@
+// 파일명: check_nearby_hospital_control.dart
+// 역할: 진료과 조건과 빈 결과의 반경 확대를 공통 주변 의료기관 검색에 연결한다.
 // 병원 검색의 진료과목 조건을 공통 위치·지도 조회 흐름에 연결한다.
 import '../services/api_config.dart';
 import '../entities/nearby_care_entity.dart';
 import 'check_nearby_care_control.dart';
 
+// Class Name: CheckNearbyHospital
+// Role: Adds hospital departments and bounded automatic radius expansion to shared nearby search.
+// Responsibilities: Keep one search's center/date stable and stop expansion after new queries, disposal, calendar limitations, or results.
+// Attributes: department (String?): Selected department; defaultRadiusKm/_expandedRadiiKm: Search radii; _searchGeneration/_disposed: Stale-work guards.
 class CheckNearbyHospital extends CheckNearbyCare {
   static const defaultRadiusKm = .3;
   static const _expandedRadiiKm = [.5, 1.0, 2.0];
@@ -10,6 +16,10 @@ class CheckNearbyHospital extends CheckNearbyCare {
   int _searchGeneration = 0;
   bool _disposed = false;
 
+  // 함수이름: CheckNearbyHospital
+  // 함수역할: 선택한 진료과와 위치·HTTP·외부 열기 의존성을 공통 검색 컨트롤에 연결한다.
+  // 매개변수: department (String?): 진료과 필터; locationBoundary/client/uriLauncher/clipboardWriter: 부모 컨트롤에 전달할 선택적 의존성.
+  // 반환값: 병원 검색 컨트롤. 생성만으로 위치 권한이나 검색을 요청하지 않는다.
   CheckNearbyHospital({
     this.department,
     super.locationBoundary,
@@ -18,13 +28,18 @@ class CheckNearbyHospital extends CheckNearbyCare {
     super.clipboardWriter,
   });
 
+  // 함수이름: nearbySearchUrl
+  // 함수역할: 공통 주변 검색이 사용할 병원 전용 API 주소를 제공한다.
+  // 매개변수: 없음.
+  // 반환값: ApiConfig의 /nearby 병원 주소.
   @override
   String get nearbySearchUrl => ApiConfig.hospitalUrl('/nearby');
 
-  // 함수이름: isWeekendSearchOnWeekday
-  // 함수역할: 공휴일 달력이 평일로 확인한 날짜에 주말·공휴일 조건을 조회했는지 판정한다. 이 경우 반경을 넓혀도 결과가 없으므로 화면은 날짜 변경을 안내한다.
-  // 매개변수: searchMode: 조회 조건, targetDateTime: 조회 날짜, holidayScheduleStatus: 서버가 알린 공휴일 달력 상태.
-  // 반환값: 세 조건이 모두 맞으면 true.
+  // Function Name: isWeekendSearchOnWeekday
+  // Description: Identifies weekend/holiday searches on a weekday the server confirms is not a holiday, so radius expansion cannot help.
+  // Parameters: searchMode (NearbyCareSearchMode) - filter; targetDateTime (DateTime) - queried date;
+  // - holidayScheduleStatus (String): Server holiday-calendar status.
+  // Returns: True only for weekendHoliday mode, Monday-Friday, and holidayScheduleNotApplicable.
   static bool isWeekendSearchOnWeekday({
     required NearbyCareSearchMode searchMode,
     required DateTime targetDateTime,
@@ -37,6 +52,10 @@ class CheckNearbyHospital extends CheckNearbyCare {
   }
 
   // 전체 진료과목은 조건을 보내지 않고, 선택한 과목만 서버에서 필터링한다.
+  // 함수이름: additionalSearchParameters
+  // 함수역할: 진료과 선택이 비어 있지 않을 때만 서버 필터를 추가한다.
+  // 매개변수: 없음.
+  // 반환값: department 한 항목 또는 빈 맵. 진료과 문자열을 별도로 trim하지 않는다.
   @override
   Map<String, String> get additionalSearchParameters => {
     if (department != null && department!.isNotEmpty) 'department': department!,
@@ -52,6 +71,10 @@ class CheckNearbyHospital extends CheckNearbyCare {
   }) => super.requestSearchArea(radiusKm: radiusKm);
 
   // 빈 위치 검색만 같은 중심·날짜·조건으로 넓힌다. 수동 지도 범위는 변경하지 않는다.
+  // Function Name: requestNearbyCareSearch
+  // Description: Expands empty device-centered searches through configured radii while preserving date/mode; manual map areas and stale searches are not expanded.
+  // Parameters: searchMode (NearbyCareSearchMode): Opening-hours filter; targetDateTime (DateTime?): Reference time; maxDistanceKm (double): Initial radius; searchArea (NearbyCareSearchArea?): Explicit scope.
+  // Returns: Latest result marked when expanded; disposed calls and underlying lookup failures throw. The 20-second check prevents further expansion, not cancellation of a running request.
   @override
   Future<NearbyCareSearchResult> requestNearbyCareSearch({
     NearbyCareSearchMode searchMode = NearbyCareSearchMode.openAtTime,
@@ -110,6 +133,10 @@ class CheckNearbyHospital extends CheckNearbyCare {
   }
 
   // 화면을 닫은 뒤 완료된 응답이 추가 반경 조회를 시작하지 않게 한다.
+  // 함수이름: dispose
+  // 함수역할: 검색 세대를 변경하고 종료 상태를 표시해 늦은 응답이 추가 반경 조회를 시작하지 못하게 한다.
+  // 매개변수: 없음.
+  // 반환값: 없음. 부모 컨트롤의 자원 정리를 함께 실행한다.
   @override
   void dispose() {
     _disposed = true;

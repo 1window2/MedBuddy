@@ -3,26 +3,28 @@
 import 'package:flutter/material.dart';
 import '../theme/medbuddy_theme.dart';
 
-// 클래스명: HomeLinkedPatientHint
-// 역할: 홈 일정을 연동된 환자 기준으로 바꾸는 설정으로 안내한다. 홈이 스크롤 없이 한 화면에
-//   들어가도록 배경·테두리 없이 제목과 짧은 설명 두 줄 높이만 차지하고, 누르는 영역은 48dp를
-//   유지한다. 큰 글씨에서는 줄바꿈으로 높이를 늘린다.
+// Class Name: HomeLinkedPatientHint
+// Role: Show a home-screen entry to linked-patient schedules.
+// Responsibilities: Present localized navigation copy and forward taps to the caller.
+// Attributes: isEnglish (bool): locale; onTap (VoidCallback): navigation action.
 class HomeLinkedPatientHint extends StatelessWidget {
   final bool isEnglish;
   final VoidCallback onTap;
 
-  // 함수이름: HomeLinkedPatientHint
-  // 함수역할: 안내 문구 언어와 눌렀을 때 열 화면 동작을 받는다.
-  // 매개변수: isEnglish: 영어 문구 여부, onTap: 설정 화면을 여는 동작. 반환값: 없음.
+  // Function Name: HomeLinkedPatientHint
+  // Description: Configure the linked-patient navigation hint.
+  // Parameters: key (Key?): widget identity; isEnglish (bool): locale; onTap (VoidCallback): selection handler.
+  // Returns: HomeLinkedPatientHint: configured widget.
   const HomeLinkedPatientHint({
     super.key,
     required this.isEnglish,
     required this.onTap,
   });
 
-  // 함수이름: build
-  // 함수역할: 아이콘·제목·설명·화살표를 한 행에 놓은 48dp 이상의 누를 수 있는 행을 만든다.
-  // 매개변수: context: 위젯 트리 위치. 반환값: 안내 행 위젯.
+  // Function Name: build
+  // Description: Build the accessible tap target with localized title, supporting text and navigation icon.
+  // Parameters: context (BuildContext): widget build context.
+  // Returns: Widget: linked-patient navigation row.
   @override
   Widget build(BuildContext context) {
     return Material(

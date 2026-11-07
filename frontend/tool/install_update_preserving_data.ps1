@@ -22,10 +22,10 @@ $androidSdkRoot = Split-Path -Parent (Split-Path -Parent $adb)
 # - Resolves an Android command from PATH or from the SDK that supplied adb.
 # - Selects the newest installed build-tools version without changing PATH.
 # Parameters:
-# - Name: Tool basename without the .bat suffix.
-# - SdkRoot: Android SDK root inferred from the selected adb executable.
+# - Name (string): Tool basename without the .bat suffix.
+# - SdkRoot (string): Android SDK root inferred from the selected adb executable.
 # Returns:
-# - Absolute path to the requested Android SDK tool.
+# - string: Absolute tool path; throws when no matching installed tool is found.
 function Resolve-AndroidSdkTool {
     param(
         [Parameter(Mandatory = $true)]
@@ -75,9 +75,9 @@ $apkSigner = Resolve-AndroidSdkTool -Name 'apksigner' -SdkRoot $androidSdkRoot
 # - Extracts the first signer SHA-256 certificate digest from apksigner output.
 # - Accepts both legacy "Signer #1" and current "V2 Signer" labels.
 # Parameters:
-# - Apk: Absolute path to an APK that must pass apksigner verification.
+# - Apk (string): Absolute path to an APK that must pass apksigner verification.
 # Returns:
-# - Lowercase SHA-256 digest without separators.
+# - string: Lowercase SHA-256 digest without separators; throws on failed verification or missing digest.
 function Get-ApkCertificateDigest {
     param(
         [Parameter(Mandatory = $true)]

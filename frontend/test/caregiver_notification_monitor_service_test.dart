@@ -33,6 +33,13 @@ typedef _AlertRecord = ({
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  // 함수이름: test callback
+  // 함수역할:
+  // - 새 필요시 기록만 알리고 초기·재조회·정정·재활성화·지난 날짜는 제외하며 전달 실패한 새 기록은 다음 검사에서 재시도하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('필요시 복용은 새 기록마다 알리고 재조회·정정·재활성화는 중복 알리지 않는다', () async {
     SharedPreferences.setMockInitialValues({});
     var keys = <String>['old'];
@@ -118,6 +125,13 @@ void main() {
     expect(alerts, hasLength(3));
   });
 
+  // 함수이름: test callback
+  // 함수역할:
+  // - 서버가 완료 알림을 맡는 구성에서는 새 필요시 기록을 읽어도 로컬 알림 콜백을 호출하지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('서버 푸시 모드에서는 필요시 복용 로컬 알림을 중복 생성하지 않는다', () async {
     SharedPreferences.setMockInitialValues({});
     var keys = <String>[];
@@ -985,11 +999,17 @@ void main() {
   // 역할: 이 기기에서 만들 알림이 있을 때만 주기적으로 확인하고, 서버가 푸시로 모두 전달하는 구성에서는
   //   연동 상태를 한 번 확인한 뒤 멈추는지, 그리고 멈춤·재개가 확인을 잃지 않는지 검증한다.
   group('주기 확인', () {
-    // 함수이름: pollingMonitor
-    // 함수역할: 확인 횟수를 세고 실패를 재현할 수 있는 15초 주기 감시기를 만든다.
-    // 매개변수: monitorCompletionTransitions - 완료 변화 감시 여부, onCheck - 확인마다 호출되어 실패를
-    //   던질 수 있는 함수, statusChanges - 보호자 연동 유무 변경 기록, alerts - 가로챈 알림 기록.
-    // 반환값: 미복용 마감 감시가 꺼진 감시기.
+    // Function Name: pollingMonitor
+    // Description:
+    // - Creates a 15-second polling monitor with controllable link reads and optional observation sinks.
+    // Parameters:
+    // - monitorCompletionTransitions (bool): Whether local completion transitions are monitored.
+    // - onCheck (void Function()): Called on each link read; may throw to simulate failure.
+    // - statusChanges (List<bool>?): Optional sink for caregiver-link state changes.
+    // - alerts (List<_AlertRecord>?): Optional sink for delivered alert arguments.
+    // - schedules (List<MedicationSchedule> Function()? ): Optional changing schedule supplier; defaults to one incomplete morning dose.
+    // Returns:
+    // - CaregiverNotificationMonitorService with missed-deadline checks disabled.
     CaregiverNotificationMonitorService pollingMonitor({
       required bool monitorCompletionTransitions,
       required void Function() onCheck,
@@ -1042,9 +1062,13 @@ void main() {
       );
     }
 
-    // 함수이름: 서버 전달 구성 테스트
-    // 함수역할: 완료·미복용 감시가 모두 꺼져 있으면 시작할 때 연동 상태를 한 번만 확인하고 타이머를 두지 않으며,
-    //   멈춤과 재개도 새 확인을 만들지 않는지 검증한다.
+    // Function Name: testWidgets callback
+    // Description:
+    // - Checks that server-only delivery performs one initial link read, does not poll or resume-poll, but still allows an explicit read without local alerts.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     testWidgets('서버가 알림을 전달하는 구성은 연동 상태를 한 번 확인하고 주기 확인을 하지 않는다', (
       tester,
     ) async {
@@ -1084,9 +1108,13 @@ void main() {
       // 여기서 dispose하지 않는다. 남은 타이머가 있으면 테스트 틀이 본문이 끝날 때 실패로 알린다.
     });
 
-    // 함수이름: 첫 확인 실패 테스트
-    // 함수역할: 주기 확인이 필요 없는 구성이라도 연동 상태 확인이 성공할 때까지는 간격을 늘리며 다시 시도하고,
-    //   성공한 뒤에 멈추는지 검증한다.
+    // Function Name: testWidgets callback
+    // Description:
+    // - Retries failed initial link checks after 30 then 60 seconds and stops scheduling after the first success.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     testWidgets('연동 상태 확인이 실패하면 성공할 때까지만 다시 시도한다', (tester) async {
       var checks = 0;
       var failing = true;
@@ -1119,9 +1147,13 @@ void main() {
       // 여기서 dispose하지 않는다. 남은 타이머가 있으면 테스트 틀이 본문이 끝날 때 실패로 알린다.
     });
 
-    // 함수이름: 멈춤과 재개 테스트
-    // 함수역할: 기기에서 완료 알림을 만드는 구성은 주기적으로 확인하고, 멈춘 동안에는 확인하지 않으며,
-    //   재개하면 바로 한 번 확인해 그동안의 완료를 알리고 주기를 이어 가는지 검증한다.
+    // Function Name: testWidgets callback
+    // Description:
+    // - Pauses periodic checks, detects a completion immediately on resume and resumes polling without duplicate checks from repeated resume calls.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     testWidgets('멈춘 동안에는 확인하지 않고 재개하면 바로 확인한 뒤 주기를 이어 간다', (tester) async {
       var checks = 0;
       var completed = false;

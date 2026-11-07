@@ -29,13 +29,10 @@ def application_today() -> date:
     return application_now().date()
 
 
-# 함수이름: seconds_until_next_application_day
-# 함수역할:
-# - 서비스 시간대의 다음 자정까지 남은 초를 반환한다. 하루 단위 한도가 풀리는 시각을 Retry-After로 알릴 때 쓴다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 1 이상의 남은 초
+# Function Name: seconds_until_next_application_day
+# Description: Computes the remaining whole seconds to the next application-zone midnight for daily-quota Retry-After responses.
+# Parameters: None; reads the application clock.
+# Returns: Positive seconds (int), clamped to at least 1.
 def seconds_until_next_application_day() -> int:
     now = application_now()
     midnight = datetime.combine(

@@ -31,9 +31,10 @@ from entities.user_account_entity import _UserAccount, utc_now  # noqa: F401
 # - saved_medication_id (Integer): 해당 복용 기록이 참조하는 저장 약 행 식별자.
 # - patient_hash (String): 작업 대상 환자의 데이터 소유 범위 식별자.
 # - schedule_date (Date): 복용 완료 상태가 적용되는 일정 날짜.
-# - slot_key (String): morning, lunch, evening, bedtime 중 복용 시간대 키.
+# - slot_key (String): 정기 복용 시간대 키 또는 필요시 복용 사건을 구분하는 as_needed:<UUID> 키.
 # - completed (Boolean): 해당 복용 시간대의 복용 완료 여부.
 # - completed_at (DateTime): 기록된 경우 복용 완료 시각.
+# - report_status, actual_taken_at, recorded_at, reason, revision: 사용자 보고 상태·실제 복용 시각·기록 시각·정정 사유·충돌 검사용 버전.
 class _MedicationCompletion(Base):
     __tablename__ = "medication_completions"
     __table_args__ = (

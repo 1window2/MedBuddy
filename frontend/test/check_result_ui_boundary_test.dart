@@ -1,4 +1,5 @@
-// 분석 결과의 2×2 표와 저장 동작을 실제 날짜·네트워크에 의존하지 않고 검증한다.
+// 파일명: check_result_ui_boundary_test.dart
+// 역할: 분석 결과의 2×2 표와 저장 동작을 실제 날짜·네트워크에 의존하지 않고 검증한다.
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -12,6 +13,14 @@ import 'package:medbuddy_frontend/entities/prescription_change_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 
+// 함수이름: medication
+// 함수역할:
+// - 정기/필요시 복용과 시작일 누락을 선택할 수 있는 분석 결과 약을 만든다.
+// 매개변수:
+// - asNeeded(bool): 필요시 복용 여부; 기본 false.
+// - missing(bool): true이면 처방 시작일을 null로 설정.
+// 반환값:
+// - AnalyzedMedication: 1정·2회·5일 일정과 비어 있는 상세정보.
 AnalyzedMedication medication({bool asNeeded = false, bool missing = false}) =>
     AnalyzedMedication(
       schedule: MedicationSchedule(
@@ -31,6 +40,18 @@ AnalyzedMedication medication({bool asNeeded = false, bool missing = false}) =>
       ),
     );
 
+// Function Name: screen
+// Description:
+// - Mounts analysis results with configurable saving, comparison loading, motion and locale state, using deterministic fixture defaults.
+// Parameters:
+// - english (bool), scale (double): UI language and text scale.
+// - items (List<AnalyzedMedication>?): Rows; defaults to regular and as-needed fixtures.
+// - saved (Set<int>), saving (int?), savingAll (bool): Completed indexes and current save state.
+// - save (Future<bool> Function(AnalyzedMedication, int)?), saveAll (Future<bool> Function()? ): Individual and bulk callbacks; default to success.
+// - radar (PrescriptionChangeRadar?), radarLoading (bool): Comparison data and loading state.
+// - reduceMotion (bool): Disables animations through MediaQuery.
+// Returns:
+// - Widget: A themed MaterialApp with fixed save-feedback text and an inert close action.
 Widget screen({
   bool english = false,
   double scale = 1,
@@ -74,8 +95,22 @@ Widget screen({
   ),
 );
 
+// 함수이름: main
+// 함수역할:
+// - 요약·접이식 분석 결과·저장 상태 변경과 화면 크기별 배치 사례를 등록한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - 없음; 등록된 사례와 준비·정리 훅은 테스트 프레임워크에서 실행한다.
 void main() {
   for (final scale in [1.0, 2.0]) {
+    // 함수이름: 여러 줄 약명의 헤더 높이
+    // 함수역할:
+    // - 두 글씨 배율에서 약명 1·2·4줄이 헤더 안에 들어가며 헤더가 증가하고 저장·펼치기 버튼이 겹치지 않는지 확인한다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets('result header grows for multiline names scale=$scale', (
       tester,
     ) async {
@@ -137,6 +172,14 @@ void main() {
     of: find.byKey(const Key('analysis-result-list')),
     matching: find.byType(Scrollable),
   );
+  // 함수이름: expand
+  // 함수역할:
+  // - 대상 펼치기 버튼이 눌릴 때까지 결과 목록을 최대 30회 스크롤한 뒤 누른다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면 제어기.
+  // - index(int): 펼칠 약의 인덱스.
+  // 반환값:
+  // - Future<void>: 펼치기 전환 완료; 버튼을 찾지 못하면 검증 실패.
   Future<void> expand(WidgetTester tester, int index) async {
     final toggle = find.byKey(Key('result-medication-toggle-$index'));
     for (
@@ -152,6 +195,13 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // 함수이름: 즉시 요약과 결과 조작
+  // 함수역할:
+  // - 인트로 없이 요약을 보이고 첫 행을 즉시 접고 펼칠 수 있으며 스크롤·저장 상태 재구성 후에도 요약을 고정하는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('summary is immediately visible and results are interactive', (
     tester,
   ) async {
@@ -180,6 +230,13 @@ void main() {
     expect(intro, findsNothing);
   });
 
+  // 함수이름: 처음 접힌 결과 목록
+  // 함수역할:
+  // - 결과 안내 문구를 표시하고 두 약의 상세 표는 초기 화면에서 숨기며 선택적 미리보기 캡처 시 오류가 없는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('compact result previews and rounded shared header', (
     tester,
   ) async {
@@ -208,6 +265,13 @@ void main() {
   });
 
   for (final english in [false, true]) {
+    // 함수이름: 가로 화면의 목록과 저장 접근
+    // 함수역할:
+    // - 두 언어·2배 글씨의 640x360 화면에서 목록 높이를 확보하고 전체 저장과 첫 약 펼치기를 조작할 수 있는지 확인한다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets(
       'landscape keeps results and save action usable english=$english',
       (tester) async {
@@ -232,6 +296,13 @@ void main() {
     );
   }
 
+  // 함수이름: 동작 줄이기와 즉시 종료
+  // 함수역할:
+  // - 애니메이션 설정과 무관하게 인트로를 만들지 않고 화면 제거 후 시간을 진행해도 예외가 없는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('summary is immediate with either motion preference', (
     tester,
   ) async {
@@ -245,6 +316,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: 저장 재구성 후 펼침 상태
+  // 함수역할:
+  // - 첫 약을 펼친 채 저장 완료 상태로 재구성해도 열린 표를 유지하고 사용자가 다시 접을 수 있는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('expanded results retain their state across save rebuilds', (
     tester,
   ) async {
@@ -267,6 +345,13 @@ void main() {
     expect(find.byKey(const Key('result-medication-summary-0')), findsNothing);
   });
 
+  // Function Name: expanded row survives comparison failure
+  // Description:
+  // - Removes the comparison-loading placeholder without a radar result and verifies the first row stays open while the second stays closed.
+  // Parameters:
+  // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   testWidgets('expanded results stay open when the radar request fails', (
     tester,
   ) async {
@@ -292,6 +377,13 @@ void main() {
     expect(find.byKey(const Key('result-medication-summary-1')), findsNothing);
   });
 
+  // 함수이름: 비교 요약과 저장 인덱스
+  // 함수역할:
+  // - 처방 비교 요약이 앞에 있어도 첫 약 저장 콜백에는 인덱스 0을 전달하고 상태 메시지를 표시하는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('comparison summary does not shift medication save indexes', (
     tester,
   ) async {
@@ -318,6 +410,13 @@ void main() {
     expect(find.text('시험 저장 결과'), findsOneWidget);
     await tester.pump(const Duration(seconds: 3));
   });
+  // 함수이름: setUpAll
+  // 함수역할:
+  // - 선택적 테스트 글꼴 파일이 있으면 텍스트·아이콘 글꼴을 로드하고 없으면 기본 환경을 유지한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 글꼴 준비 완료; 로드 오류는 전달된다.
   setUpAll(() async {
     final font = Platform.environment['MEDBUDDY_TEST_FONT'];
     if (font == null) return;
@@ -332,6 +431,13 @@ void main() {
 
   for (final english in [false, true]) {
     for (final large in [false, true]) {
+      // 함수이름: 정기·필요시 결과 표의 배치
+      // 함수역할:
+      // - 언어와 화면/글씨 조합에서 두 열의 표, 원래 날짜·시간대·잘리지 않는 이름을 확인하고 필요시 문구와 저장 버튼이 겹치지 않는지 검증한다.
+      // 매개변수:
+      // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+      // 반환값:
+      // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
       testWidgets('result table english=$english large=$large', (tester) async {
         tester.view.physicalSize = Size(large ? 320 : 390, large ? 568 : 844);
         tester.view.devicePixelRatio = 1;
@@ -394,6 +500,13 @@ void main() {
     }
   }
 
+  // 함수이름: 저장 완료 행과 개별 인덱스
+  // 함수역할:
+  // - 이미 저장한 첫 행의 저장을 막고 두 번째 필요시 약만 인덱스 1로 전달하며 완료 안내를 표시하는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets(
     'individual save keeps its index and saved rows cannot save again',
     (tester) async {
@@ -423,6 +536,13 @@ void main() {
     },
   );
 
+  // 함수이름: 저장 중 잠금과 실패 재시도
+  // 함수역할:
+  // - 저장 중 전체·해당 행 저장을 막으며 전체 저장 실패 후 성공 안내 없이 상태 메시지를 표시하고 버튼을 다시 활성화하는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets(
     'saving disables all commands and failures leave retry available',
     (tester) async {
@@ -471,6 +591,13 @@ void main() {
     },
   );
 
+  // 함수이름: 누락 날짜와 비일일 주기
+  // 함수역할:
+  // - 시작일을 현재 날짜로 추정하지 않고 정보 없음으로 표시하며 격일 문구는 그대로 유지하는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets(
     'missing start dates stay unknown and non-daily cycles stay visible',
     (tester) async {

@@ -22,16 +22,19 @@ import 'support/dose_sync_harness.dart';
 import 'support/fake_notification_service.dart';
 import 'support/json_http.dart';
 
+// Fixed patient and dose day shared by the outbox and direct-endpoint fixtures.
 const _owner = 'patient-a';
 const _day = '2026-09-21';
 final _now = DateTime.utc(2026, 9, 21, 3); // 12:00 on the dose day (UTC+9)
 
+// One stored medication with independently selectable morning and evening doses.
 const _twoSlotMedication = MedicationSchedule(
   medicationID: '91',
   medicationName: '테스트정',
   dosage: '1정',
   scheduleSlotKeys: ['morning', 'evening'],
 );
+// A second medication used to distinguish evening-only selections from the first drug.
 const _eveningMedication = MedicationSchedule(
   medicationID: '92',
   medicationName: '저녁정',
@@ -40,9 +43,14 @@ const _eveningMedication = MedicationSchedule(
 );
 
 // Function Name: _selected
-// Description: Builds one selected medication with the slots the patient ticked.
-// Parameters: id - medication ID; name - display name; slots - selected slot keys.
-// Returns: The selection entry.
+// Description:
+// - Build one medication selection with exactly the slots chosen by the patient.
+// Parameters:
+// - id (int): server medication ID.
+// - name (String): display name retained in the planned request.
+// - slots (List<String>): selected slot keys, including an empty list for no-schedule cases.
+// Returns:
+// - ChatMedicationContext; selected medication without additional slot inference.
 ChatMedicationContext _selected(int id, String name, List<String> slots) =>
     ChatMedicationContext(
       medicationId: id,
@@ -51,8 +59,12 @@ ChatMedicationContext _selected(int id, String name, List<String> slots) =>
     );
 
 // Function Name: _viewModel
-// Description: Creates a session view model that reaches no server and no notification plugin.
-// Parameters: owner - account of the view model. Returns: The view model.
+// Description:
+// - Create a session view model with a recording notification service and a mock client returning 404.
+// Parameters:
+// - owner (String): patient account, defaulting to patient-a; other values exercise account isolation.
+// Returns:
+// - MedBuddyViewModel; no live server or notification plugin is used.
 MedBuddyViewModel _viewModel([String owner = _owner]) => MedBuddyViewModel(
   patientHash: owner,
   apiClient: MockClient(
@@ -62,14 +74,22 @@ MedBuddyViewModel _viewModel([String owner = _owner]) => MedBuddyViewModel(
 );
 
 // Class Name: _ChatControl
-// Role: Chat adapter fake for the direct-endpoint fallback and the server slot contexts.
-// Attributes: takenRequestIds/takenSlots - recorded fallback writes; failures - number of
-//   leading fallback writes that fail; contexts - server slot contexts; contextRequests -
-//   number of server context reads.
+// Role: Direct-recording adapter with configurable server schedule contexts.
+// Responsibilities:
+// - Record fallback request IDs and slots, fail a chosen number of leading writes, and return a deterministic confirmation.
+// Attributes:
+// - takenRequestIds, takenSlots (List<String>): fallback write identifiers and slots in call order.
+// - failures (int): remaining writes that throw StateError.
+// - contexts (List<ChatScheduleContext>): configured server schedule response.
+// - contextRequests (int): number of context reads.
 class _ChatControl extends ManageLinkedChat {
   // Function Name: _ChatControl
-  // Description: Creates the fake for the patient account without a reachable server.
-  // Parameters: None. Returns: The chat fake.
+  // Description:
+  // - Initialize the chat fake for patient-a using an inert mock client.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - _ChatControl; empty logs and contexts with no requested failures.
   _ChatControl()
     : super(
         userHash: _owner,
@@ -83,8 +103,12 @@ class _ChatControl extends ManageLinkedChat {
   int contextRequests = 0;
 
   // Function Name: requestScheduleContexts
-  // Description: Returns the configured server slot contexts and counts the read.
-  // Parameters: linkId - conversation (unused). Returns: The contexts.
+  // Description:
+  // - Count the read and return the configured server schedule contexts.
+  // Parameters:
+  // - linkId (int): accepted conversation scope, unused by this fake.
+  // Returns:
+  // - Future<List<ChatScheduleContext>>; the contexts list unchanged.
   @override
   Future<List<ChatScheduleContext>> requestScheduleContexts({
     required int linkId,
@@ -94,9 +118,16 @@ class _ChatControl extends ManageLinkedChat {
   }
 
   // Function Name: recordMedicationTaken
-  // Description: Records the request and fails while `failures` is positive.
-  // Parameters: linkId, clientMessageId, scheduleDate, slotKey, medicationIds - the request.
-  // Returns: A confirmation message and the morning dose as completed; throws while failing.
+  // Description:
+  // - Record request identity and slot, throw while failures remain, otherwise return a message and a fixed completed morning schedule.
+  // Parameters:
+  // - linkId (int): conversation ID copied to the returned message.
+  // - clientMessageId (String): recorded request identity and returned message ID.
+  // - scheduleDate (String): accepted dose date, unused by the fixed response.
+  // - slotKey (String): slot appended to the write log.
+  // - medicationIds (List<int>): accepted selection, unused by the fixed response.
+  // Returns:
+  // - Future<ChatMedicationTakenResult>; deterministic confirmation after failures reach zero; earlier attempts throw StateError.
   @override
   Future<ChatMedicationTakenResult> recordMedicationTaken({
     required int linkId,
@@ -133,9 +164,13 @@ class _ChatControl extends ManageLinkedChat {
 }
 
 // Function Name: _recorder
-// Description: Creates a recorder for link 17 whose fallback request IDs count up from 1.
-// Parameters: control - chat fake; user - signed-in account of the chat.
-// Returns: The recorder.
+// Description:
+// - Create a link-17 recorder whose direct-send request IDs increment deterministically.
+// Parameters:
+// - control (_ChatControl): server-context and direct-recording fake.
+// - user (String): active chat account, default patient-a.
+// Returns:
+// - LinkedChatDoseRecorder; fallback IDs start at request_1.
 LinkedChatDoseRecorder _recorder(_ChatControl control, {String user = _owner}) {
   var next = 0;
   return LinkedChatDoseRecorder(
@@ -146,6 +181,7 @@ LinkedChatDoseRecorder _recorder(_ChatControl control, {String user = _owner}) {
   );
 }
 
+// Explicit morning selection used to compare direct API writes and durable outbox writes.
 const _morningRequest = ChatDoseRequest(
   scheduleDate: _day,
   slotKey: 'morning',
@@ -154,13 +190,19 @@ const _morningRequest = ChatDoseRequest(
 );
 
 // Class Name: _FailsAfterStoringSyncService
-// Role: Production dose-sync service that reports a failure after the operation was stored,
-//   the way a failing refresh after the insert would.
-// Attributes: failNext - whether the next record call throws after storing.
+// Role: Dose-sync service that simulates failure after a successful local insert.
+// Responsibilities:
+// - Use production storage first, then throw once to test recognition of an already-recorded operation.
+// Attributes:
+// - failNext (bool): initially true; cleared when the first post-insert exception is thrown.
 class _FailsAfterStoringSyncService extends DoseSyncService {
   // Function Name: _FailsAfterStoringSyncService
-  // Description: Builds the service on the given store with the fixed test clock.
-  // Parameters: store - open outbox store. Returns: The service.
+  // Description:
+  // - Bind production dose synchronization to the supplied store, fixed patient clock, and a transport returning 503.
+  // Parameters:
+  // - store (DoseOutboxStore): open local outbox used by the service.
+  // Returns:
+  // - _FailsAfterStoringSyncService; first completed record call is configured to throw after storage.
   _FailsAfterStoringSyncService(DoseOutboxStore store)
     : super(
         owner: _owner,
@@ -172,8 +214,17 @@ class _FailsAfterStoringSyncService extends DoseSyncService {
   bool failNext = true;
 
   // Function Name: record
-  // Description: Stores the operation with the production code, then throws once.
-  // Parameters: Same as DoseSyncService.record. Returns: The production result when not failing.
+  // Description:
+  // - Forward all recording inputs to production storage, then throw once after the insert; subsequent calls return its result.
+  // Parameters:
+  // - medicationIds (List<int>): medications to record.
+  // - slotKey (String): target scheduled slot.
+  // - completed (bool): requested completion state.
+  // - scheduleDate (String?): explicit dose date, or the service default when null.
+  // - linkId (int?): optional linked conversation.
+  // - medicationNames (List<String>): display names retained with the operation, default empty.
+  // Returns:
+  // - Future<bool>; production storage result after the injected failure; the first completed write throws StateError.
   @override
   Future<bool> record({
     required List<int> medicationIds,
@@ -200,9 +251,20 @@ class _FailsAfterStoringSyncService extends DoseSyncService {
 }
 
 // Function Name: main
-// Description: Registers the planning and recording tests.
-// Parameters: None. Returns: None.
+// Description:
+// - Register dose planning, local outbox persistence/recovery, and direct-endpoint fallback tests.
+// Parameters:
+// - None.
+// Returns:
+// - void; no return value.
 void main() {
+  // Function Name: plan
+  // Description:
+  // - Build a four-slot context fixture from cached medications and register selection-validation tests, including local nonnumeric IDs.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - void; no return value.
   group('plan', () {
     final contexts = LinkedChatDoseRecorder.contextsFromDoseCache(const [
       _twoSlotMedication,
@@ -215,7 +277,13 @@ void main() {
       ),
     ], _day);
 
-    // The cache mapping keeps slot membership and drops entries without a numeric ID.
+    // Function Name: the dose cache becomes four dated slot contexts
+    // Description:
+    // - Map the cache into four dated slots, retaining slot membership and total counts while excluding nonnumeric local entries from selectable medications.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - void; assertion failures fail the case.
     test('the dose cache becomes four dated slot contexts', () {
       expect(contexts.map((context) => context.slotKey), [
         'morning',
@@ -234,7 +302,13 @@ void main() {
       ]);
     });
 
-    // One request per selected slot; only the ticked slots of a multi-slot medication.
+    // Function Name: a selection becomes one request per selected slot in slot order
+    // Description:
+    // - Group selected medications into one request per slot in canonical slot order, with stable ID signatures and display names retained.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - void; assertion failures fail the case.
     test('a selection becomes one request per selected slot in slot order', () {
       final plan = LinkedChatDoseRecorder.plan(
         [
@@ -253,7 +327,13 @@ void main() {
       expect(plan.requests.last.medicationNames, ['저녁정', '테스트정']);
     });
 
-    // An as-needed medication has no slot; recording the rest would silently drop it.
+    // Function Name: a selection with an as-needed medication records nothing
+    // Description:
+    // - Reject an entire selection containing a PRN medication, whether alone or mixed with a scheduled medicine, instead of partially recording it.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - void; assertion failures fail the case.
     test('a selection with an as-needed medication records nothing', () {
       const asNeeded = ChatMedicationContext(
         medicationId: 93,
@@ -273,7 +353,13 @@ void main() {
       }
     });
 
-    // A multi-slot medication selected for the evening only is not recorded for the morning.
+    // Function Name: unselected slots of a selected medication are left out
+    // Description:
+    // - A medicine selected only for evening produces no request for its unselected morning slot.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - void; assertion failures fail the case.
     test('unselected slots of a selected medication are left out', () {
       final plan = LinkedChatDoseRecorder.plan(
         [
@@ -285,7 +371,13 @@ void main() {
       expect(plan.requests.single.signature, '$_day:evening:91');
     });
 
-    // Nothing is planned when any selected dose is no longer in the schedule of that day.
+    // Function Name: a stale selection is rejected as a whole
+    // Description:
+    // - Reject the complete selection when its date is missing or stale or a selected medicine has left the schedule; never create a partial request.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - void; assertion failures fail the case.
     test('a stale selection is rejected as a whole', () {
       final selection = [
         _selected(91, '테스트정', ['morning']),
@@ -311,7 +403,13 @@ void main() {
       );
     });
 
-    // A selection without any slot has nothing to confirm.
+    // Function Name: a selection without slots has no confirmable schedule
+    // Description:
+    // - An empty medication selection or a selected medication with no slots yields noSchedule rather than a confirmable plan.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - void; assertion failures fail the case.
     test('a selection without slots has no confirmable schedule', () {
       expect(
         LinkedChatDoseRecorder.plan(
@@ -328,9 +426,21 @@ void main() {
     });
   });
 
+  // Function Name: record through the outbox
+  // Description:
+  // - Register tests using production dose synchronization and an in-memory outbox for persistence, failure, retry, and account isolation.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - void; no return value.
   group('record through the outbox', () {
-    // The production path: one stored operation carrying the link, nothing sent to the chat
-    // endpoint, and the selection day taken from the same cache the plan is checked against.
+    // Function Name: a dose is stored once with the link and the selected day
+    // Description:
+    // - Record the selected evening dose once through the local outbox with its original date and link, without direct chat writes; project evening taken while leaving morning untaken.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes after the asynchronous assertions.
     test('a dose is stored once with the link and the selected day', () async {
       final viewModel = _viewModel();
       final harness = await attachTestDoseSync(viewModel, clock: () => _now);
@@ -369,7 +479,13 @@ void main() {
       await harness.close();
     });
 
-    // A failed local write throws so the screen keeps the selection; the retry stores it once.
+    // Function Name: a failed store write queues nothing and the retry queues once
+    // Description:
+    // - A SQLite insert rejection leaves no queued or pending operation; removing the failure and retrying creates exactly one stored dose.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes after the asynchronous assertions.
     test('a failed store write queues nothing and the retry queues once', () async {
       final viewModel = _viewModel();
       final harness = await attachTestDoseSync(viewModel, clock: () => _now);
@@ -394,8 +510,13 @@ void main() {
       await harness.close();
     });
 
-    // A failure reported after the operation was stored must not make a retry store it again:
-    // each stored operation becomes a dose record and a chat message on the server.
+    // Function Name: a failure after the insert counts as stored
+    // Description:
+    // - A service failure after insertion still counts as a successful local recording, leaving one morning operation with the conversation ID.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes after the asynchronous assertions.
     test('a failure after the insert counts as stored', () async {
       sqfliteFfiInit();
       final db = await databaseFactoryFfiNoIsolate.openDatabase(
@@ -425,8 +546,13 @@ void main() {
       expect(pending.single['link_id'], 17);
     });
 
-    // The outbox of another account is never written; the server decides for the signed-in
-    // account through the chat endpoint instead.
+    // Function Name: another account\'s outbox is not used
+    // Description:
+    // - Do not read or write another account's outbox or schedule; use server contexts and the direct recording fallback instead.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes after the asynchronous assertions.
     test('another account\'s outbox is not used', () async {
       final viewModel = _viewModel('other-account');
       final harness = await attachTestDoseSync(viewModel, clock: () => _now);
@@ -450,8 +576,13 @@ void main() {
       await harness.close();
     });
 
-    // An offline upload is retried by the outbox with the same operation ID; the chat never
-    // stores a second operation for it.
+    // Function Name: the outbox retries an upload with one operation ID
+    // Description:
+    // - A failed upload remains pending and retries with the same operation ID and link; a receipt clears it without creating another local operation.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes after the asynchronous assertions.
     test('the outbox retries an upload with one operation ID', () async {
       final viewModel = _viewModel();
       final harness = await attachTestDoseSync(viewModel, clock: () => _now);
@@ -487,8 +618,13 @@ void main() {
       await harness.close();
     });
 
-    // When the server list cannot be loaded the cached schedule is offered for selection,
-    // with the slot keys and without entries that have no server ID.
+    // Function Name: the cache supplies selectable medications
+    // Description:
+    // - Before seeding, cached selections are unavailable; afterward they retain numeric IDs, dosage, and slots while excluding local nonnumeric entries.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes after the asynchronous assertions.
     test('the cache supplies selectable medications', () async {
       final viewModel = _viewModel();
       final harness = await attachTestDoseSync(viewModel, clock: () => _now);
@@ -511,8 +647,21 @@ void main() {
     });
   });
 
+  // Function Name: record without an outbox
+  // Description:
+  // - Register fallback-recording tests without a local outbox, covering stable retry IDs, account-scoped schedule updates, and server dates.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - void; no return value.
   group('record without an outbox', () {
-    // The fallback keeps one request ID per dose until that request succeeded.
+    // Function Name: a failed request is retried with the same request ID
+    // Description:
+    // - Reuse one direct-request ID through two failures and successful retry; a later independent confirmation receives the next request ID.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes after the asynchronous assertions.
     test('a failed request is retried with the same request ID', () async {
       final control = _ChatControl()..failures = 2;
       final recorder = _recorder(control);
@@ -532,7 +681,13 @@ void main() {
       expect(control.takenRequestIds.last, 'request_2');
     });
 
-    // Server-confirmed schedules update the shared schedule only for the same account.
+    // Function Name: confirmed schedules reach only the same account\'s view model
+    // Description:
+    // - Apply server-confirmed schedules only to a view model for the recorder's account, leaving another account's schedule untouched.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes after the asynchronous assertions.
     test('confirmed schedules reach only the same account\'s view model', () async {
       final control = _ChatControl();
       final own = _viewModel();
@@ -550,7 +705,13 @@ void main() {
       );
     });
 
-    // Without a cache the selection day and the validation both come from the server.
+    // Function Name: the server contexts name the selection day
+    // Description:
+    // - Without a local view model, derive the selection day and contexts from the server response and report no cached medication selection.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes after the asynchronous assertions.
     test('the server contexts name the selection day', () async {
       final control = _ChatControl()
         ..contexts = const [

@@ -25,9 +25,13 @@ PharmacyChatFlow = tuple[
 ]
 
 
-# 함수이름: flow
-# 함수역할: 실제 데모 DB와 분리한 저장소·연동·공공 검색 대역을 준비한다.
-# 매개변수: tmp_path 격리된 파일 DB 디렉터리. 반환값: 검색·공유 시험에 필요한 의존성.
+# Function Name: flow
+# Description:
+# - Provide isolated file-backed storage, linked participants, and a public-search fake for search and sharing.
+# Parameters:
+# - tmp_path: Path; isolated temporary directory.
+# Returns:
+# - Iterator[PharmacyChatFlow]; dependencies cleaned up after the test.
 @pytest.fixture
 def flow(tmp_path: Path) -> Iterator[PharmacyChatFlow]:
     engine = create_engine(f"sqlite:///{tmp_path / 'pharmacy-chat.db'}")
@@ -143,9 +147,13 @@ async def test_catalog_entry_takes_precedence_over_search_cache(flow: PharmacyCh
     assert entry.weekly_hours == {"1": ("0800", "2300")}
 
 
-# 함수이름: test_cache_failure_does_not_hide_usable_search_results
-# 함수역할: 캐시 저장소 장애가 있어도 사용 가능한 공공 검색 결과는 반환한다.
-# 매개변수: flow 격리 흐름. 반환값: 없음.
+# Function Name: test_cache_failure_does_not_hide_usable_search_results
+# Description:
+# - Return usable public pharmacy search results even when cache storage fails.
+# Parameters:
+# - flow: PharmacyChatFlow; isolated search and sharing dependencies.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_cache_failure_does_not_hide_usable_search_results(flow: PharmacyChatFlow) -> None:
     _, _, control, _, _ = flow
@@ -154,9 +162,13 @@ async def test_cache_failure_does_not_hide_usable_search_results(flow: PharmacyC
     assert result.data[0].pharmacy_id == "public-pharmacy"
 
 
-# 함수이름: test_cache_commit_failure_rolls_back_partial_rows
-# 함수역할: 저장 도중 DB 오류가 나면 부분 캐시를 남기지 않고 다음 조회를 허용한다.
-# 매개변수: flow 격리 흐름. 반환값: 없음.
+# Function Name: test_cache_commit_failure_rolls_back_partial_rows
+# Description:
+# - Roll back partial cache rows after a commit failure and leave the session usable for the next lookup.
+# Parameters:
+# - flow: PharmacyChatFlow; isolated search and sharing dependencies.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_cache_commit_failure_rolls_back_partial_rows(flow: PharmacyChatFlow) -> None:
     db, repository, control, _, _ = flow

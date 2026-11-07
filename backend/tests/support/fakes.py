@@ -42,6 +42,8 @@ def _is_exception_class(value: object) -> bool:
 
 # Class Name: FakeGeminiResponse
 # Role: Response object returned by FakeGeminiClient.
+# Responsibilities:
+# - Expose scripted response text, including None, through the SDK-compatible text field.
 # Attributes:
 # - text (str | None): Body production reads from the SDK response; None models a blank answer.
 class FakeGeminiResponse:
@@ -58,6 +60,8 @@ class FakeGeminiResponse:
 
 # Class Name: _FakeGeminiAsyncModels
 # Role: The `client.aio.models` namespace of FakeGeminiClient.
+# Responsibilities:
+# - Forward asynchronous generation requests to the owning fake for recording and scripted responses.
 # Attributes:
 # - _client (FakeGeminiClient): Owner that records calls and holds the scripted answers.
 class _FakeGeminiAsyncModels:
@@ -84,6 +88,8 @@ class _FakeGeminiAsyncModels:
 
 # Class Name: _FakeGeminiAio
 # Role: The `client.aio` namespace of FakeGeminiClient.
+# Responsibilities:
+# - Expose the asynchronous models interface and record explicit client closure.
 # Attributes:
 # - models (_FakeGeminiAsyncModels): Async model interface.
 # - closed (bool): Whether aclose() was awaited.

@@ -35,13 +35,10 @@ class CheckTodayMedicationInfo:
         self.db = db
         self.check_schedule = check_schedule or CheckSchedule(db)
 
-    # Function Name: requestTodayMedicationInfo
-    # Description:
-    # - Reads today's schedule and converts it into medication/dose progress data.
-    # Parameters:
-    # - patient_hash (str | None): Patient ownership key used for the summary lookup.
-    # Returns:
-    # - API-compatible today medication summary response dictionary.
+    # 함수이름: requestTodayMedicationInfo
+    # 함수역할: 정규화한 환자의 오늘 일정을 조회하고 복용 진행률 요약을 구성한다.
+    # 매개변수: patient_hash (str | None)는 조회할 환자 범위이다.
+    # 반환값: dict[str, object] 일정·약품 수·복용 횟수 요약. 범위 검증과 조회 오류는 전파한다.
     def requestTodayMedicationInfo(
         self,
         patient_hash: str | None = None,
@@ -53,20 +50,20 @@ class CheckTodayMedicationInfo:
         schedules = self._read_schedule_items(schedule_response.get("data"))
         return self._summarize(resolved_patient_hash, schedules)
 
-    # 환자별 반복 조회 없이 동일한 일정·진행률 응답을 구성한다.
     # 함수이름: requestTodayMedicationInfoForPatients
-    # 함수역할: 허가된 여러 환자의 오늘 일정을 일괄 조회하고 요약한다.
-    # 매개변수: patient_hashes: 접근을 검증한 환자 목록. 반환값: 환자별 요약 응답.
+    # 함수역할: 여러 환자의 오늘 일정을 일괄 조회한 뒤 환자별 진행률을 계산한다.
+    # 매개변수: patient_hashes (list[str])는 조회할 환자 식별자 목록이다.
+    # 반환값: dict[str, dict[str, object]] 환자별 요약. 일괄 조회 오류는 전파한다.
     def requestTodayMedicationInfoForPatients(
         self, patient_hashes: list[str],
     ) -> dict[str, dict[str, object]]:
         schedules = self.check_schedule.requestTodayMedicationSchedulesForPatients(patient_hashes)
         return {owner: self._summarize(owner, items) for owner, items in schedules.items()}
 
-    # 단일 조회와 일괄 조회가 완료 횟수와 남은 횟수를 같은 규칙으로 계산한다.
     # 함수이름: _summarize
-    # 함수역할: 조회 없이 주어진 일정의 완료·남은 횟수를 계산한다.
-    # 매개변수: resolved_patient_hash: 환자, schedules: 일정 DTO 목록. 반환값: 요약 응답.
+    # 함수역할: 전달받은 일정에서 전체·완료 복용 횟수와 남은 횟수, 진행률을 계산한다.
+    # 매개변수: resolved_patient_hash (str)는 정규화된 환자 식별자, schedules (list[dict[str, Any]])는 해당 환자의 일정이다.
+    # 반환값: dict[str, object] 요약 응답. 일정이 없으면 진행률은 0이고 남은 횟수는 음수가 되지 않는다.
     def _summarize(
         self, resolved_patient_hash: str, schedules: list[dict[str, Any]],
     ) -> dict[str, object]:

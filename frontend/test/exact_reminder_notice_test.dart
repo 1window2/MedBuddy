@@ -45,6 +45,13 @@ Widget _host(
 // Parameters: None. Returns: None.
 void main() {
   // Nothing is shown, and no space is taken, on a device that already schedules exact alarms.
+  // Function Name: testWidgets callback
+  // Description:
+  // - Hides the notice when permission is already granted while still upgrading existing inexact reminders once.
+  // Parameters:
+  // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   testWidgets('the notice stays hidden while exact alarms are allowed', (tester) async {
     final service = RecordingNotificationService();
     await tester.pumpWidget(_host(service));
@@ -59,6 +66,13 @@ void main() {
   // Denied: the reason and one button are shown. The button opens the system screen; when the
   // user allowed the alarms there, the scheduled reminders are replaced and the notice goes away.
   for (final isEnglish in [false, true]) {
+    // Function Name: testWidgets callback
+    // Description:
+    // - Shows localized denied-permission guidance, requests permission once and hides the notice after one successful reschedule.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     testWidgets('allowing from the notice reschedules and hides it (english=$isEnglish)', (
       tester,
     ) async {
@@ -90,6 +104,13 @@ void main() {
 
   // The user may come back without allowing anything: the notice stays, nothing is rescheduled,
   // and the button can be used again.
+  // Function Name: testWidgets callback
+  // Description:
+  // - Keeps the action enabled after denial without rescheduling or hiding the notice.
+  // Parameters:
+  // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   testWidgets('declining keeps the notice usable', (tester) async {
     final service = RecordingNotificationService()..exactRemindersAllowed = false;
     await tester.pumpWidget(_host(service));
@@ -108,6 +129,13 @@ void main() {
   });
 
   // The permission can also be granted in the system settings while the app is in the background.
+  // Function Name: testWidgets callback
+  // Description:
+  // - Rechecks permission on resume and upgrades reminders once when permission was granted outside the app.
+  // Parameters:
+  // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   testWidgets('returning to the app with the permission granted hides the notice', (
     tester,
   ) async {
@@ -127,6 +155,13 @@ void main() {
 
   // Largest text setting on a small phone: the whole message and the button stay readable.
   for (final isEnglish in [false, true]) {
+    // Function Name: testWidgets callback
+    // Description:
+    // - Keeps the permission button reachable at 320px and double text scale in both languages without layout errors.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     testWidgets('the notice fits a 320 px screen at double text size (english=$isEnglish)', (
       tester,
     ) async {

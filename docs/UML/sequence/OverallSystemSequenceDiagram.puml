@@ -2,7 +2,7 @@
 skinparam defaultFontName Nanum Gothic
 scale max 16000*16000
 
-title beta/v0.2.4 전체 시스템 주요 동작 Sequence Diagram
+title beta/v1.0.0 전체 시스템 주요 동작 Sequence Diagram
 
 autonumber
 hide footbox
@@ -656,6 +656,10 @@ else 홈의 복용했어요 또는 알림의 바로 복용
     Patient -> UI : 본인 대상 시간대 복용 완료 선택
     UI -> ViewModel : requestMedicationSlotStatusUpdate(slotKey, true)
 end
+opt 화면 목록의 날짜가 오늘이 아님 (앱을 연 채 자정이 지남, 알림 동작은 제외)
+    ViewModel -> ViewModel : 기록하지 않고 오늘 일정을 다시 조회
+    ViewModel --> UI : "날짜가 바뀌어 오늘 일정을 다시 불러왔습니다.\n확인한 뒤 다시 눌러주세요." (이후 단계 없음)
+end
 ViewModel -> DoseSync : record(표시한 약 ID, 시간대, 원래 날짜, 복용 여부)
 DoseSync -> DoseStore : 요청 ID와 변경 내용 영속 저장
 note over Router,Database : SQLite saved_medications/chat_messages IDs are not reused after migration.\nPreviously deleted IDs cannot be reconstructed: review pending requests before rollout.\nOperation IDs are reused only for the original retry, never a new action.
@@ -942,7 +946,7 @@ UI -> FrontControl : LinkPatientCaregiver.requestPatientCaregiverLink(code)
 FrontControl -> ApiClient : POST /link/register
 ApiClient -> Router : 연결 등록 요청
 Router -> BackControl : LinkPatientCaregiver.requestPatientCaregiverLink()
-BackControl -> Database : 코드 유효기간, 사용 여부,\n자기 연결 및 기존 연결 검증\n신규·재활성 연결은 양쪽 활성 연결 한도 검사
+BackControl -> Database : 환자·보호자 계정을 같은 순서로 잠근 뒤 코드를 다시 읽음\n(동시 등록도 차례로 세어 환자당 한도 유지)\n코드 유효기간, 사용 여부,\n자기 연결 및 기존 연결 검증\n신규·재활성 연결은 양쪽 활성 연결 한도 검사
 
 alt 유효한 코드이며 연결 한도 충족 또는 이미 활성인 연결
     Database --> BackControl : 유효한 PatientLinkCode
@@ -1049,7 +1053,7 @@ opt 환자 또는 보호자가 활성 연결 해제
         FrontControl -> ApiClient : DELETE /link/{linkId}
         ApiClient -> Router : 연결 해제 요청
         Router -> BackControl : LinkPatientCaregiver.requestUnlink()
-        BackControl -> Database : 연결 비활성화, 관련 보호자 알림 설정과 대화 기록 삭제\n환자의 약과 복약 기록 유지
+        BackControl -> Database : 두 참여자 계정을 같은 순서로 잠근 뒤 연결 재확인\n연결 비활성화, 관련 보호자 알림 설정과 대화 기록 삭제\n환자의 사용하지 않은 연결 코드 모두 무효화\n환자의 약과 복약 기록 유지
         Database --> BackControl : commit된 해제 결과
         BackControl --> Router : 연결 해제 결과
         Router --> ApiClient : 연결 해제 응답
@@ -1495,7 +1499,7 @@ opt 환자가 시간대의 모든 약을 완료
     Router --> UI : 자동 완료 기록을 포함한 조회 가능한 이력
 end
 note over UI,FrontControl : 정상 실시간 연결·이력 조회 중에는 반복 조회하지 않는다.\n장애 중 현재 대화방만 12초 보완 조회하며 백그라운드에서 중지한다.\n복귀·재연결 시 마지막 확인 메시지까지 페이지를 이어 읽는다.
-note over UI,Router : The stream closes on token expiry (4440) or inactive link (4404).\nThe client refreshes credentials for 4440 and stops on 4404; 4429 backs off.\nA 4401 gets one token refresh before ending the session.
+note over UI,Router : While the link is revalidated (about once a minute) the server also re-verifies\nthe connection's ID token; a revoked session or disabled account closes with 4401.\nThe stream closes on token expiry (4440) or inactive link (4404).\nThe client refreshes credentials for 4440 and stops on 4404; 4429 backs off.\nA 4401 gets one token refresh before ending the session.
 opt 전송 실패 후 연결 확인 또는 이력 복구 중 접근 거절
     UI -> ChatHistory : 실패한 전송별 한 번 이력 갱신
     ChatHistory -> FrontControl : requestHistory(linkId)

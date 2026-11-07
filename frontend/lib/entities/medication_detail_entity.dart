@@ -60,6 +60,10 @@ class MedicationDetail {
   final int? supersededById;
   final List<String> scheduleSlotKeys;
 
+  // Function Name: isAsNeeded
+  // Description: Classifies as-needed dosing using mode, frequency, per-dose text and explicit slots.
+  // Parameters: None.
+  // Returns: Whether the shared regimen rule classifies this medication as as-needed.
   bool get isAsNeeded => isAsNeededRegimen(
     dosingMode: dosingMode,
     frequency: dailyFrequency,
@@ -89,6 +93,9 @@ class MedicationDetail {
   // - imageUrl (String): 약 상세·후보에 포함된 원격 이미지 주소
   // - localImagePath (String): 서버에 전송하지 않는 기기 전용 약 사진 경로
   // - aiGuide (String): 약 상세에 보존할 AI 안내 문구
+  // - manufacturer (String): 제조·수입사; dosingMode (String): 정기·필요시 복용 유형.
+  // - regimenRevision (int): 복용 계획 버전; stoppedOn/regimenEffectiveFrom (DateTime?): 중단일·변경 적용 시작일.
+  // - supersededById (int?): 후속 복용 계획의 약 ID; scheduleSlotKeys (List<String>): 명시적 복용 시간대.
   // 반환값:
   // - MedicationDetail: 초기화된 인스턴스.
   const MedicationDetail({
@@ -167,12 +174,10 @@ class MedicationDetail {
     );
   }
 
-  // Function Name: MedicationDetail.fromMedicationSchedule
-  // Description: Builds a detail fallback from a schedule's name, dosage, duration, and optional catalog fields while applying the trusted-image URL policy.
-  // Parameters:
-  // - schedule (MedicationSchedule): Medication course with name, dose, duration, and slots.
-  // Returns:
-  // - MedicationDetail: the initialized instance.
+  // 함수이름: MedicationDetail.fromMedicationSchedule
+  // 함수역할: 일정 정보로 상세 화면의 대체 약 정보를 구성하고 원격 이미지 허용 정책을 적용한다.
+  // 매개변수: schedule: 약 이름·용량·기간·선택 구간과 선택적 공공 상세 정보를 가진 일정.
+  // 반환값: 필요시 여부를 정규화한 MedicationDetail; 없는 상세 텍스트는 빈 값.
   factory MedicationDetail.fromMedicationSchedule(MedicationSchedule schedule) {
     return MedicationDetail(
       itemName: schedule.displayName,
@@ -210,6 +215,9 @@ class MedicationDetail {
   // - imageUrl (String?): 약 상세·후보에 포함된 원격 이미지 주소
   // - localImagePath (String?): 서버에 전송하지 않는 기기 전용 약 사진 경로
   // - aiGuide (String?): 약 상세에 보존할 AI 안내 문구
+  // - manufacturer (String?): 제조·수입사; dosingMode (String?): 정기·필요시 복용 유형.
+  // - regimenRevision (int?): 복용 계획 버전; stoppedOn/regimenEffectiveFrom (DateTime?): 중단일·변경 적용 시작일.
+  // - supersededById (int?): 후속 복용 계획의 약 ID; scheduleSlotKeys (List<String>?): 명시적 복용 시간대.
   // 반환값:
   // - MedicationDetail: 지정한 필드만 교체하고 나머지 값을 유지한 사본.
   MedicationDetail copyWith({
@@ -270,12 +278,10 @@ class MedicationDetail {
     );
   }
 
-  // Function Name: toSaveJson
-  // Description: Serializes patient-owned medication details for the save API, formats the prescription date, validates the remote image URL, and excludes the device-only photo path.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Map<String, dynamic>: Serializes patient-owned medication details for the save API, formats the prescription date, validates the remote image URL, and excludes the device-only photo path.
+  // 함수이름: toSaveJson
+  // 함수역할: 약 저장 요청 필드를 만들며 기기 전용 사진 경로를 제외한다.
+  // 매개변수: 없음.
+  // 반환값: 날짜·허용 이미지 URL을 정규화한 JSON 맵; 필요시 약의 정기 구간은 빈 목록.
   Map<String, dynamic> toSaveJson() {
     return {
       'patient_hash': patientHash,
@@ -298,7 +304,10 @@ class MedicationDetail {
     };
   }
 
-  // 서버 저장 요청과 달리 목록 캐시는 변경 이력 식별 정보도 보존한다.
+  // 함수이름: toJson
+  // 함수역할: 목록 캐시가 변경 이력 식별 정보까지 보존하도록 저장 요청 필드를 확장한다.
+  // 매개변수: 없음.
+  // 반환값: ID·등록일·리비전·중단일·적용일·교체 ID 등을 더한 JSON 맵; 기기 사진 경로는 포함하지 않는다.
   Map<String, dynamic> toJson() => {
     ...toSaveJson(),
     'id': id,
@@ -322,12 +331,10 @@ class MedicationDetail {
     return normalizedName.isEmpty ? '약품명 확인 필요' : normalizedName;
   }
 
-  // 함수이름: displayNameForLanguage
-  // 함수역할: 약 이름이 비어 있을 때 현재 앱 언어에 맞는 확인 문구를 반환한다.
-  // 매개변수:
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - String: 약 이름이 비어 있을 때 현재 앱 언어에 맞는 확인 문구를 반환한다.
+  // Function Name: displayNameForLanguage
+  // Description: Returns the original trimmed medication name or a localized review prompt.
+  // Parameters: language: App display language.
+  // Returns: The name without translation, or a fallback when blank.
   String displayNameForLanguage(String language) {
     final normalizedName = itemName.trim();
     if (normalizedName.isNotEmpty) {
@@ -336,12 +343,10 @@ class MedicationDetail {
     return isEnglishLanguage(language) ? 'Medication name needs review' : '약품명 확인 필요';
   }
 
-  // 함수이름: medicationEndDate
-  // 함수역할: 조제일(없으면 서버와 같이 등록일)과 양수 투약일을 기준으로 시작일을 포함한 복용 종료일을 계산하고 기간이 부족하면 null을 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - DateTime?: 조제일과 양수 투약일을 기준으로 시작일을 포함한 복용 종료일을 계산하고 기간이 부족하면 null을 제공한다.
+  // Function Name: medicationEndDate
+  // Description: Calculates the inclusive course end using prescription date, or creation date as fallback.
+  // Parameters: None.
+  // Returns: Start plus positive duration minus one calendar day, or null when start/duration is unavailable.
   DateTime? get medicationEndDate {
     final startDate = prescriptionDate ?? createdDate;
     final dayCount = medicationDayCountFromText(totalDays);
@@ -353,12 +358,10 @@ class MedicationDetail {
     return addCalendarDays(startDate, dayCount - 1);
   }
 
-  // 함수이름: nextDoseDayFrom
-  // 함수역할: 매일 복용하지 않는 약의 기준 날짜 이후 첫 복용일을 계산한다. 서버와 같이 조제일자, 없으면 등록일자를 복용 시작일로 본다.
-  // 매개변수:
-  // - referenceDate (DateTime): 달력 날짜 계산 또는 비교의 기준 시각
-  // 반환값:
-  // - DateTime?: 다음 복용일. 매일 복용하는 약이거나 시작일을 알 수 없거나 남은 복용일이 없으면 null.
+  // Function Name: nextDoseDayFrom
+  // Description: Finds the next non-daily dose on or after a reference date within the remaining course.
+  // Parameters: referenceDate: Calendar-date search boundary.
+  // Returns: A dose date bounded by duration and stop date, or null for as-needed, inactive, daily or undated courses.
   DateTime? nextDoseDayFrom(DateTime referenceDate) {
     if (isAsNeeded || !isActiveOn(referenceDate)) return null;
     final cycle = readDoseCycle(dailyFrequency);
@@ -432,12 +435,10 @@ class MedicationDetail {
         !normalizedReference.isAfter(endDate);
   }
 
-  // 함수이름: compactDosageGuideLinesForLanguage
-  // 함수역할: 약 상세 카드의 복용량, 횟수, 기간, 시점을 앱 언어에 맞게 구성한다.
-  // 매개변수:
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - List<String>: 약 상세 카드의 복용량, 횟수, 기간, 시점을 앱 언어에 맞게 구성한다.
+  // Function Name: compactDosageGuideLinesForLanguage
+  // Description: Builds compact localized dosage guidance without translating unsupported free-text instructions.
+  // Parameters: language: App display language.
+  // Returns: Nonempty lines for mode, dose, regular frequency, duration and recognized timing, or a no-information fallback.
   List<String> compactDosageGuideLinesForLanguage(String language) {
     final isEnglish = isEnglishLanguage(language);
     final lines = <String>[];
@@ -471,12 +472,10 @@ class MedicationDetail {
     return [isEnglish ? 'No dosage information' : '복용 정보 없음'];
   }
 
-  // 함수이름: voiceGuideTextForLanguage
-  // 함수역할: 서버 음성 안내를 사용할 수 없을 때 재생할 안내를 서버와 같은 형식으로 만든다. 약 이름·복용 방법·주의사항 중 내용이 있는 항목만 "항목명: 내용" 줄로 잇고, 세 항목이 모두 비어 서버가 안내를 만들지 못하는 경우에는 이름 확인 문구만 안내한다.
-  // 매개변수:
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - String: 줄바꿈으로 이은 음성 안내 문구.
+  // Function Name: voiceGuideTextForLanguage
+  // Description: Builds local speech fallback from nonempty name, usage and warning sections.
+  // Parameters: language: Language for section labels and missing-name guidance.
+  // Returns: Newline-separated labeled text; when all fields are empty, only a name-review prompt.
   String voiceGuideTextForLanguage(String language) {
     final labels = isEnglishLanguage(language)
         ? const ['Medication', 'How to take', 'Warning']
@@ -492,25 +491,18 @@ class MedicationDetail {
     return sections.join('\n');
   }
 
-  // 함수이름: _localizedDosageValue
-  // 함수역할: 저장 일정과 같은 공용 함수로 정·캡슐·포·방울 단위의 복용량을 표시 언어에 맞게 바꾸고 인식하지 못한 용량은 원문으로 보존한다.
-  // 매개변수:
-  // - value (String): 표시 언어로 바꿀 1회 복용량 원문
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - String: 표시 언어의 복용량 또는 앞뒤 공백을 지운 원문.
+  // Function Name: _localizedDosageValue
+  // Description: Localizes supported dose units through the shared schedule formatter.
+  // Parameters: value: Original per-dose amount; language: Display language.
+  // Returns: Localized units or trimmed original text when the unit is unsupported.
   static String _localizedDosageValue(String value, String language) {
     return localizedDoseAmountLabel(value, language);
   }
 
-  // 함수이름: _localizedFrequencyValue
-  // 함수역할: 영문 표시에서 "3회"·"1일 3회"·숫자만 있는 하루 횟수만 once daily 또는 times daily 문구로 바꾼다.
-  //   "2일 1회"·"주 1회"·"12시간마다"처럼 하루 횟수가 아닌 지시는 뜻이 바뀌지 않도록 원문 그대로 둔다.
-  // 매개변수:
-  // - value (String): 표시 언어로 바꿀 일일 복용 횟수 원문
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - String: 영문 하루 횟수 문구 또는 바꾸지 않은 원문.
+  // Function Name: _localizedFrequencyValue
+  // Description: Translates recognized daily frequencies into English without changing non-daily instructions.
+  // Parameters: value: Frequency text; language: Display language.
+  // Returns: An English daily-frequency label when recognized; otherwise the trimmed original.
   static String _localizedFrequencyValue(String value, String language) {
     final normalizedValue = value.trim();
     if (!isEnglishLanguage(language)) {
@@ -519,14 +511,10 @@ class MedicationDetail {
     return englishDailyFrequencyLabel(normalizedValue) ?? normalizedValue;
   }
 
-  // 함수이름: _localizedDurationValue
-  // 함수역할: 영문 표시에서 복용 기간을 저장 일정과 같이 서버 기준 일수(주는 7일, 개월은 30일)로 바꿔 day·days 문구로 보여 준다.
-  //   일수를 읽을 수 없는 기간은 원문 그대로 둔다.
-  // 매개변수:
-  // - value (String): 표시 언어로 바꿀 복용 기간 원문
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - String: 영문 복용 일수 문구 또는 바꾸지 않은 원문.
+  // Function Name: _localizedDurationValue
+  // Description: Formats recognized durations as English day counts using the shared duration parser.
+  // Parameters: value: Duration text; language: Display language.
+  // Returns: English day/days wording when recognized, otherwise trimmed original text; non-English keeps the original.
   static String _localizedDurationValue(String value, String language) {
     final normalizedValue = value.trim();
     if (!isEnglishLanguage(language)) {
@@ -536,13 +524,10 @@ class MedicationDetail {
         normalizedValue;
   }
 
-  // 함수이름: _localizedTiming
-  // 함수역할: 지원하는 식전·식후·공복·취침 전 문구만 영어로 변환하고 그 외 복용 시점은 그대로 유지한다.
-  // 매개변수:
-  // - timing (String): 식전·식후·공복 등 인식한 복용 시점
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - String: 지원하는 식전·식후·공복·취침 전 문구만 영어로 변환하고 그 외 복용 시점은 그대로 유지한다.
+  // Function Name: _localizedTiming
+  // Description: Translates only supported meal, fasting and bedtime timing labels.
+  // Parameters: timing: Recognized timing phrase; language: Display language.
+  // Returns: The matching English label or unchanged input.
   static String _localizedTiming(String timing, String language) {
     if (!isEnglishLanguage(language)) {
       return timing;

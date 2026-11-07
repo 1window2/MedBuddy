@@ -233,7 +233,7 @@ Owner prerequisites, to configure when enrollment resumes:
   and [App Check IAM reference](https://docs.cloud.google.com/iam/docs/roles-permissions/firebaseappcheck).
 - Configure Workload Identity Federation for the exact repository identity,
   `beta-android` environment and `release-android.yml` workflow, restricted to
-  `main` and `beta/v0.2.1` refs. Grant the scoped federated principal
+  `main` and the active release branch (`beta/v1.0.0`). Grant the scoped federated principal
   `roles/iam.workloadIdentityUser` on that service account, not a general
   repository-wide deployment grant. Set protected variables
   `GCP_APP_CHECK_WORKLOAD_IDENTITY_PROVIDER` and `GCP_APP_CHECK_SERVICE_ACCOUNT`.
@@ -243,8 +243,9 @@ Owner prerequisites, to configure when enrollment resumes:
   account's read-only IAM permissions.
 - Set `APP_CHECK_RELEASE_DISTRIBUTION` to `play` (default, Play-only licensing
   required) or `both` (Play and recognized direct installs). Protected `play`
-  builds produce and verify only an AAB. `both` additionally builds an APK, but
-  its upload/APK certificate must equal the Play app-signing certificate:
+  builds produce and verify only an AAB. `both` additionally builds separate
+  ARM 32-bit and ARM 64-bit APKs, but each upload/APK certificate must equal the
+  Play app-signing certificate:
   [Play recognition checks the delivered app and certificate](https://developer.android.com/google/play/integrity/verdicts#application-integrity-field).
   Registering a different upload certificate in Firebase cannot make that APK
   Play-recognized. Matching certificates still do not prove that this version
@@ -257,9 +258,14 @@ Owner prerequisites, to configure when enrollment resumes:
   before choosing these values; the script never changes the provider policy.
 
 The `medbuddy-android-<commit>` artifact contains the AAB and its checksum.
-The separate `medbuddy-android-apk-<commit>` artifact is uploaded only when the
-normalized policy permits a direct APK. This prevents an old or unverified APK
-from being included in a Play-only artifact. Off-Play beta builds keep the APK
+The separate `medbuddy-android-apk-arm32-<commit>` and
+`medbuddy-android-apk-arm64-<commit>` artifacts are uploaded only when the
+normalized policy permits direct APKs. They contain
+`app-armeabi-v7a-release.apk` and `app-arm64-v8a-release.apk`, respectively, each
+with its checksum. Install one matching the device's Android ABI, not both.
+Both keep the normal app version code; a new published update still needs a
+higher build number and a compatible signing certificate. This prevents an old
+or unverified APK from being included in a Play-only artifact. Off-Play beta builds keep the APKs
 with App Check disabled and the AAB with App Check enabled; their AAB is not
 publication-ready merely because compilation succeeds.
 
@@ -427,6 +433,44 @@ and plan for this one-time quota reset. Do not point old and new workers at
 different counter stores while both serve traffic. Monitor counter memory/OOM
 errors and increase capacity rather than enabling eviction or flushing counters.
 
+### Revocation check cache
+
+`compose.self-hosted.yml` sets `FIREBASE_REVOCATION_CACHE_SECONDS: "30"` next to
+`FIREBASE_CHECK_REVOKED_TOKENS`. Every request still checks the token's signature and
+expiry locally; the account lookup behind the revocation check (a Google round trip of
+about 0.25-0.35 s from Korea) is reused for 30 seconds per account. A revocation or
+disablement made in Firebase therefore applies within 30 seconds; an account deleted by
+this server is forgotten at once. The value is capped at 60 in the code, and 0 restores
+a lookup on every request. No migration is involved; recreate the backend container.
+
+### Medication search cache migration
+
+Revision `a9d3c5e71f24`, after `f7a2c9e4b610`, adds `medication_search_cache`: the
+public product fields (item number, name, manufacturer, allowed image address) that the
+medication search returned, with the time it last returned them. It holds no account,
+query or device data. A searched medication attached to a chat message is rebuilt from
+this table, and an item not returned by a search in the last 24 hours is refused, so
+the sending app cannot choose the name or picture shown to the other person. Rows older
+than a day are removed on each search. Apply it with the slot-check migration before
+starting the updated backend; a downgrade drops only this cache.
+
+### Slot-check action capability migration
+
+Revision `f7a2c9e4b610`, after `e6b4d2a9f031`, adds the non-null
+`device_push_tokens.supports_slot_check_actions` boolean with a false default.
+Back up the database and apply it before starting the updated backend; distribute
+the matching app afterward. Existing tokens keep ordinary OS notifications until
+a capable Android app registers again. Missing capability on old-client
+registration, or a non-Android platform, stores false; it is independent of the
+existing caregiver-alert action capability.
+
+Only eligible, current-day caregiver slot-check requests sent to capable Android
+tokens use data-only delivery and an app-rendered Taken action. Verify both token
+groups, active-account/date rejection, process-restart outbox recovery and
+idempotent dose sync. FCM delivery and locked/background device behavior still
+require device checks. A downgrade drops only this capability column, not dose
+records, but must be coordinated with stopping the backend that reads it.
+
 ### Medication receipt migration
 
 The same application update also includes Alembic revision `e6b4d2a9f031`, after
@@ -483,6 +527,38 @@ crop the photo to the medication list when the guard refuses ambiguous content. 
 unlabelled header information after a patient label until a medicine section is
 recognized. Server tests use synthetic text and mocked providers, not real patient
 data or a live Gemini request.
+
+### Data-only database role
+
+The Postgres role in `POSTGRES_USER` owns the schema and is a superuser. Only the
+migration needs that. The API, catalog bootstrap and catalog refresh can run as a
+role that reads and writes rows but cannot change the schema, the migration head or
+any role.
+
+1. Take the usual backup and rollback tags.
+2. Add both settings to `deploy/.env` (never print the file). The password must be
+   at least 16 characters; `openssl rand -hex 24` gives one.
+
+   ```text
+   MEDBUDDY_APP_DB_USER=medbuddy_app
+   MEDBUDDY_APP_DB_PASSWORD=<new random value>
+   ```
+
+3. Check the file without printing it:
+   `docker compose --env-file deploy/.env -f compose.self-hosted.yml config --quiet`.
+4. Deploy as usual. `database-migrate` runs `alembic upgrade head` and then
+   `scripts/provision_database_roles.py`. That script creates or updates the role,
+   grants `SELECT, INSERT, UPDATE, DELETE` on the tables and `USAGE, SELECT` on the
+   sequences, sets default privileges for tables that later migrations create, and
+   takes back write access to `alembic_version`. The other services then connect as
+   the new role.
+5. Verify as below. In addition, the role is not a superuser:
+   `SELECT rolsuper FROM pg_roles WHERE rolname = 'medbuddy_app'` gives `f`.
+
+To go back, remove both settings and deploy again. The services then use the owner
+role; the unused role can stay or be removed with `DROP OWNED BY medbuddy_app;
+DROP ROLE medbuddy_app;`. With neither setting present the script changes nothing.
+Setting only one of them makes the migration fail before any service restarts.
 
 ### Runtime readiness
 
@@ -592,8 +668,10 @@ docker compose --env-file deploy/.env -f compose.self-hosted.yml \
   exec -T backend alembic current
 ```
 
-The reported head must be `e6b4d2a9f031` for this source revision (after
-`c8d3e7a92104`, the medication care migration, and `ab29d71c4e60`, the settings
+The reported head must be `a9d3c5e71f24` for this source revision (after
+`f7a2c9e4b610`, the slot-check action capability, `e6b4d2a9f031`, the medication
+receipt migration, `c8d3e7a92104`, the medication
+care migration, and `ab29d71c4e60`, the settings
 revision migration). The
 v0.2.0 tail adds the shared pharmacy catalog (`8f2c6d4a1b90`), pharmacy schedule provenance and holiday
 cache (`b6d14f8c2a70`), and structured chat message/context columns

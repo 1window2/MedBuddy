@@ -8,9 +8,10 @@ import '../entities/dose_widget_state.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import 'check_caregiver_medication_control.dart';
 
-// 클래스명: CheckCaregiverHome
-// 역할: 기존 조회 Control을 재사용하고 계정·연동 범위 밖의 응답을 버린다.
-// 속성: userHash는 소유 계정, links는 보호자 역할의 활성 연동, snapshots는 오늘 현황이다.
+// Class Name: CheckCaregiverHome
+// Role: Maintains today's linked-patient progress for a caregiver's home screen.
+// Responsibilities: Filter active caregiver links, discard stale or cross-day responses, and publish loading and failure state.
+// Attributes: userHash identifies the owner; _links defines scope; _snapshots and _snapshotDay hold same-day results; _generation invalidates old requests.
 class CheckCaregiverHome extends ChangeNotifier {
   final String userHash;
   final CheckCaregiverMedication _control;
@@ -19,15 +20,25 @@ class CheckCaregiverHome extends ChangeNotifier {
   List<PatientCaregiverLink> _links = const [];
   Map<int, CaregiverMonitoringSnapshot> _snapshots = const {};
   bool _isLoading = false;
-  // 외부에서는 읽기만 하고 값은 이 객체만 바꾼다.
+  // Function Name: isLoading
+  // Description: Exposes the controller-owned progress flag without allowing external mutation.
+  // Parameters: None.
+  // Returns: Whether a home snapshot request is in progress.
   bool get isLoading => _isLoading;
   bool _hasError = false;
+  // Function Name: hasError
+  // Description: Distinguishes a failed home refresh from a successful empty result.
+  // Parameters: None.
+  // Returns: Whether the latest applicable refresh failed.
   bool get hasError => _hasError;
   bool _disposed = false;
   int _generation = 0;
   String? _snapshotDay;
 
-  // 현재 연동만 위젯에 전달하며 자정을 지난 응답은 오늘 일정으로 바꾸지 않는다.
+  // Function Name: widgetCache
+  // Description: Serializes only current links and withholds schedules after their snapshot day expires.
+  // Parameters: None.
+  // Returns: Widget cache containing the current day, failure flag, and linked patients; expired schedules are null.
   Map<String, dynamic> get widgetCache => {
     'date': doseWidgetDay(_clock()),
     'failed': _hasError,
@@ -44,8 +55,10 @@ class CheckCaregiverHome extends ChangeNotifier {
     ],
   };
 
-  // 함수역할: 계정과 기존 환자 조회 기능을 연결한다. 주입 Control은 호출자가 소유한다.
-  // clock은 자정 경계 시험용이며 기본값은 기기 현재 시각이다.
+  // Function Name: CheckCaregiverHome
+  // Description: Binds the home state to an account, caregiver query control and clock.
+  // Parameters: userHash: Owning account; control: Optional caller-owned query control; clock: Optional day-boundary clock, defaulting to DateTime.now.
+  // Returns: A controller that disposes only a query control it creates.
   CheckCaregiverHome({
     required this.userHash,
     CheckCaregiverMedication? control,
@@ -54,13 +67,22 @@ class CheckCaregiverHome extends ChangeNotifier {
        _ownsControl = control == null,
        _clock = clock ?? DateTime.now;
 
+  // 함수이름: links
+  // 함수역할: 홈 조회에 허용된 현재 보호자 연동을 외부 수정 불가 목록으로 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 활성 연동 목록의 읽기 전용 복사본.
   List<PatientCaregiverLink> get links => List.unmodifiable(_links);
-  // 위젯 캐시와 같이 자정을 지난 현황은 오늘 진행률로 보이지 않게 비워 둔다.
+  // Function Name: snapshotFor
+  // Description: Reads a patient's cached snapshot only while its recorded day is current.
+  // Parameters: linkId: Optional link identifier.
+  // Returns: The matching current-day snapshot, or null for missing or expired data.
   CaregiverMonitoringSnapshot? snapshotFor(int? linkId) =>
       _snapshotDay == doseWidgetDay(_clock()) ? _snapshots[linkId] : null;
 
-  // 함수역할: 활성 보호자 연동만 유지하고 해제되거나 바뀐 관계의 진행 중 응답을 무효화한다.
-  // 매개변수: 최신 연동 목록. 반환값: 없음.
+  // 함수이름: updateLinks
+  // 함수역할: 현재 계정의 유효한 보호자 연동만 유지한다. 연동 식별자가 바뀌면 진행 중 응답과 현황을 무효화한다.
+  // 매개변수: links: 서버에서 받은 최신 연동 목록.
+  // 반환값: 없음; 같은 목록이나 종료된 객체는 알리지 않고 나머지 변경은 구독자에게 알린다.
   void updateLinks(List<PatientCaregiverLink> links) {
     if (_disposed) return;
     final next = links
@@ -91,8 +113,10 @@ class CheckCaregiverHome extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 함수역할: 홈의 명시적 환자 일정 선택에 따라 허용된 환자의 현황을 조회한다.
-  // 반환값: 갱신 완료. 실패와 일정 0개는 구분하며 중복 요청은 합친다.
+  // Function Name: refresh
+  // Description: Loads linked-patient schedules, rejecting responses after disposal, scope changes or midnight.
+  // Parameters: None.
+  // Returns: A completion Future; busy, empty-scope and disposed calls return immediately, while applicable failures clear snapshots and set hasError.
   Future<void> refresh() async {
     if (_disposed || _isLoading || _links.isEmpty) return;
     final generation = _generation;
@@ -132,7 +156,10 @@ class CheckCaregiverHome extends ChangeNotifier {
     }
   }
 
-  // 함수역할: 화면/계정 수명이 끝나면 응답과 소유한 연결을 정리한다.
+  // 함수이름: dispose
+  // 함수역할: 세대 번호를 바꿔 진행 중 응답을 무효화하고 직접 생성한 조회 객체만 해제한다.
+  // 매개변수: 없음.
+  // 반환값: 없음; 주입된 조회 객체의 수명은 호출자가 관리한다.
   @override
   void dispose() {
     _disposed = true;

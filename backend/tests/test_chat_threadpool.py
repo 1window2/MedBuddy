@@ -14,16 +14,22 @@ from api import chat_router
 from services.chat_connection_manager import ChatConnectionManager
 
 
-# Function Name: test_rest_chat_operations_leave_event_loop_responsive
-# Description: Exercise each async write route, including ownership checks and dose refresh.
-#   The two message-creating routes must also consume the daily chat quota exactly once.
-# Parameters: operation - route and synchronous control operation under test.
-# Returns: None; fails if a DB call runs on the loop or prevents a loop callback.
+# 함수이름: test_rest_chat_operations_leave_event_loop_responsive
+# 함수역할:
+# - 채팅 쓰기 경로의 DB 작업이 이벤트 루프를 막지 않고 메시지 생성 경로가 일일 할당량을 한 번만 차감하는지 검증한다.
+# 매개변수:
+# - operation: str; 실행할 경로와 동기 제어 작업의 구분값.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("operation", ["send_message", "delete_messages", "mark_read", "record_medication_taken"])
 def test_rest_chat_operations_leave_event_loop_responsive(operation: str) -> None:
-    # Function Name: exercise
-    # Description: Run a route against blocking fakes and preserve async publication.
-    # Parameters: None. Returns: Completion of thread and response assertions.
+    # 함수이름: exercise
+    # 함수역할:
+    # - 블로킹 대역으로 경로를 실행하여 작업 스레드 분리와 비동기 이벤트 발행을 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - None.
     async def exercise() -> None:
         loop = asyncio.get_running_loop()
         loop_thread = threading.get_ident()
@@ -48,7 +54,7 @@ def test_rest_chat_operations_leave_event_loop_responsive(operation: str) -> Non
         chat = SimpleNamespace(db=object(), **{operation: partial(blocking, operation, result)})
         payload = SimpleNamespace(
             client_message_id="test_message", body="Hello", medication_id=None,
-            medication_ids=[1], message_ids=[1], scope="me", message_kind="text",
+            medication_ids=[1], medication_references=[], message_ids=[1], scope="me", message_kind="text",
             slot_key="morning", pharmacy_id=None, source_alert_id=None,
             history_start_date=None, history_end_date=None,
             schedule_date="2026-09-26", through_message_id=1,

@@ -19,14 +19,27 @@ import '../widgets/medication_entry_fields.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../widgets/keep_words_text.dart';
 
+// 클래스명: _HistoryShareDestination
+// 역할: 복약 기록을 공유할 목적지 구분.
+// 주요 책임: 외부 앱 텍스트 공유와 연동 채팅 공유를 구별한다.
+// 속성: external/chat: 두 공유 목적지 값.
 enum _HistoryShareDestination { external, chat }
 
+// 클래스명: _HistoryPeriod
+// 역할: 이력 집계 기간의 선택 모드.
+// 주요 책임: 주간·월간과 직접 지정 기간을 구별한다.
+// 속성: week/month/custom: 기간 모드 값.
 enum _HistoryPeriod { week, month, custom }
 
 // 클래스명: MedicationHistoryUI
-// 역할: 외부 탐색 화면에서 환자 범위·읽기 전용 권한·언어·갱신 콜백을 전달받는다.
+// 역할: 환자 범위와 읽기 권한을 전달받는 복약 이력 화면.
+// 주요 책임: 기간 조회·정정·공유를 연결하고 채팅에서 연 기간은 읽기 전용으로 표시한다.
+// 속성: patientHash/currentUserHash (String/String?): 조회·현재 계정; control/chatShareControl: 외부 소유 제어기; sharedRange (MedicationHistoryRange?): 공유 기간; readOnly/isActive (bool): 권한·가시성; recordChanges (Listenable?): 변경 신호; chatLinkId (int?): 공유 대상.
 class MedicationHistoryUI extends StatefulWidget {
-  // 함수역할: 이력 화면의 대상과 권한을 고정한다. control 주입 시 부모가 객체를 소유한다.
+  // 함수이름: MedicationHistoryUI
+  // 함수역할: 조회 환자·권한·공유 범위를 고정하고 주입한 제어기의 소유권은 부모에게 남긴다.
+  // 매개변수: key (Key?): 키; patientHash/currentUserHash (String/String?): 계정; readOnly/isEnglish/initiallyShowExport/showBackButton/isActive (bool): 화면 옵션; onChanged (FutureOr<void> Function()? ): 갱신; control/chatShareControl: 조회·공유 제어기; sharedRange (MedicationHistoryRange?): 범위; recordChanges (Listenable?): 변경; chatLinkId (int?): 대상; onChatShared (VoidCallback?): 완료 통지.
+  // 반환값: 새 MedicationHistoryUI.
   const MedicationHistoryUI({
     super.key,
     required this.patientHash,
@@ -41,6 +54,8 @@ class MedicationHistoryUI extends StatefulWidget {
     this.showBackButton = true,
     this.isActive = true,
     this.recordChanges,
+    this.chatLinkId,
+    this.onChatShared,
   });
 
   final String patientHash;
@@ -50,6 +65,9 @@ class MedicationHistoryUI extends StatefulWidget {
   final MedicationHistoryControl? control;
   final String? currentUserHash;
   final ShareMedicationHistory? chatShareControl;
+  // 채팅에서 들어오면 서버가 확인한 현재 연동만 공유 대상으로 표시한다.
+  final int? chatLinkId;
+  final VoidCallback? onChatShared;
   // 채팅에서 연 상세 화면은 공유 기간의 최신 자료만 읽기 전용으로 조회한다.
   final MedicationHistoryRange? sharedRange;
   // 기능 검색에서 공유를 선택해도 전송은 하지 않고 기존 기간·대상 확인창만 연다.
@@ -57,16 +75,21 @@ class MedicationHistoryUI extends StatefulWidget {
   final bool showBackButton;
   // 탭으로 유지되는 동안 숨겨지면 앱 복귀 때 서버 기록을 다시 읽지 않는다.
   final bool isActive;
-  // 다른 화면에서 서버에 복용 기록이 저장됐다는 신호. 보이는 동안 받으면 다시 읽는다.
+  // 다른 화면의 복용 기록 변경 신호. 숨겨져 있으면 탭 복귀 시 다시 읽는다.
   final Listenable? recordChanges;
 
-  // 함수역할: 조회·정정·내보내기 수명을 관리할 화면 상태를 만든다.
+  // 함수이름: createState
+  // 함수역할: 조회·정정·공유와 계정 변경을 관리할 상태를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 새 _MedicationHistoryUIState.
   @override
   State<MedicationHistoryUI> createState() => _MedicationHistoryUIState();
 }
 
 // 클래스명: _MedicationHistoryUIState
-// 역할: 기간 선택과 서버 결과를 표시하고 세션·화면 수명이 바뀐 뒤의 작업을 폐기한다.
+// 역할: 환자별 조회 범위와 비동기 작업의 수명을 관리한다.
+// 주요 책임: 세션·제어기 변경 후 결과를 폐기하고 기록 변경 신호를 대화상자 종료 뒤 재조회한다.
+// 속성: _control (MedicationHistoryControl): 조회; _range (MedicationHistoryRange): 범위; _ownsControl (bool): 소유권; _interactionActive/_exporting/_recordsChanged (bool): 작업·후속 조회; _period/_selectedDay: 기간·상세 날짜.
 class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     with WidgetsBindingObserver {
   static const _exportChannel = MethodChannel(medicationHistoryExportChannel);
@@ -75,6 +98,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   late MedicationHistoryRange _range;
   bool _ownsControl = false;
   ShareMedicationHistory? _chatShare;
+  // 함수이름: _readOnly
+  // 함수역할: 일반 읽기 전용 설정 또는 채팅 공유 범위로 열린 화면인지 확인한다.
+  // 매개변수: 없음.
+  // 반환값: 어느 조건이든 맞으면 true.
   bool get _readOnly => widget.readOnly || widget.sharedRange != null;
   bool _interactionActive = false;
   bool _exporting = false;
@@ -89,10 +116,16 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   final _chartExpanded = <_HistoryPeriod, bool>{};
   final _detailsExpanded = <_HistoryPeriod, bool>{};
 
-  // 함수역할: 현재 화면 언어에 해당하는 문구를 선택한다.
+  // 함수이름: tr
+  // 함수역할: 현재 이력 화면 언어에 맞는 문구를 선택한다.
+  // 매개변수: ko/en (String): 두 언어 문구.
+  // 반환값: 선택한 문구.
   String tr(String ko, String en) => widget.isEnglish ? en : ko;
 
-  // 함수역할: 앱 복귀 감시와 이번 주의 오늘까지 조회를 준비한다.
+  // Function Name: initState
+  // Description: Registers lifecycle and record-change listeners, then binds the initial patient controller.
+  // Parameters: None.
+  // Returns: No return value; controller mismatch errors from binding propagate.
   @override
   void initState() {
     super.initState();
@@ -101,7 +134,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     _bindControl();
   }
 
-  // 함수역할: 제어 객체의 환자·권한을 화면과 비교하고 첫 프레임 뒤 조회를 예약한다.
+  // Function Name: _bindControl
+  // Description: Validates injected controller identity/permissions, creates owned dependencies, resets dates and schedules an initial load.
+  // Parameters: None.
+  // Returns: No return value; throws ArgumentError for mismatched patient, sender or read-only scope.
   void _bindControl() {
     _ownsControl = widget.control == null;
     _control =
@@ -140,6 +176,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     _range = widget.sharedRange ?? _periodRange(_anchor, _period)!;
     _chartExpanded.clear();
     _detailsExpanded.clear();
+    _recordsChanged = false;
     final bound = _control;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && identical(bound, _control)) {
@@ -149,16 +186,25 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   }
 
   // 함수이름: _loadInitial
-  // 함수역할: 최초 조회가 성공하고 같은 계정 화면일 때만 요청된 내보내기 확인창을 연다.
+  // 함수역할: 최초 조회가 끝나고 같은 세션이며 공유 가능한 화면일 때 요청된 내보내기 확인창을 연다.
+  // 매개변수: bound (MedicationHistoryControl): 처음 연결한 조회 제어기.
+  // 반환값: 조회·선택적 공유 확인 완료 Future<void>.
   Future<void> _loadInitial(MedicationHistoryControl bound) async {
     await _reload();
-    if (!_isCurrent(bound) || !widget.initiallyShowExport || _readOnly) return;
+    if (!_isCurrent(bound) ||
+        !widget.initiallyShowExport ||
+        (_readOnly && widget.chatLinkId == null)) {
+      return;
+    }
     if (_control.snapshot != null) {
       await _export();
     }
   }
 
-  // 함수역할: 부모가 환자나 권한을 바꾸면 이전 자료·대화상자를 무효화하고 새 범위를 연결한다.
+  // 함수이름: didUpdateWidget
+  // 함수역할: 환자·권한·공유 대상이 바뀌면 이전 세션을 무효화하고 새 제어기를 연결하며 기록 변경 감시도 교체한다.
+  // 매개변수: oldWidget (MedicationHistoryUI): 이전 화면 설정.
+  // 반환값: 없음. 직접 소유한 이전 의존성만 해제한다.
   @override
   void didUpdateWidget(covariant MedicationHistoryUI oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -170,6 +216,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         oldWidget.readOnly != widget.readOnly ||
         oldWidget.currentUserHash != widget.currentUserHash ||
         oldWidget.chatShareControl != widget.chatShareControl ||
+        oldWidget.chatLinkId != widget.chatLinkId ||
         // 채팅 카드는 경로가 다시 그려질 때마다 같은 기간의 새 객체를 넘기므로 날짜로 비교한다.
         oldWidget.sharedRange?.start != widget.sharedRange?.start ||
         oldWidget.sharedRange?.end != widget.sharedRange?.end ||
@@ -180,30 +227,45 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
       _interactionActive = false;
       _exporting = false;
       _bindControl();
+    } else if (!oldWidget.isActive && widget.isActive) {
+      final bound = _control;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && identical(bound, _control)) _refreshVisibleHistory();
+      });
     }
   }
 
-  // 함수역할: 앱 복귀 때 세션을 확인하고 편집·공유 중이 아니면 서버 기록을 다시 읽는다.
+  // Function Name: didChangeAppLifecycleState
+  // Description: On visible-app resume, verifies the session and refreshes history without rebuilding the selected view.
+  // Parameters: state (AppLifecycleState): new application state.
+  // Returns: No return value; active interactions defer the refresh until they complete.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed || !widget.isActive) return;
+    if (state == AppLifecycleState.resumed) _refreshVisibleHistory();
+  }
+
+  // 함수이름: _refreshVisibleHistory
+  // 함수역할: 보이는 기록의 세션을 확인하고 진행 중인 작업과 겹치지 않게 갱신한다.
+  // 매개변수: 없음.
+  // 반환값: 없음. 조회·편집 중이면 종료 후 한 번 갱신하도록 표시한다.
+  void _refreshVisibleHistory() {
+    if (!widget.isActive) return;
     try {
       _control.ensureSession();
     } catch (_) {
       return;
     }
-    if (!_control.busy && !_interactionActive && !_exporting) {
-      // 탭은 계속 유지되므로 날짜가 바뀐 뒤 돌아오면 주간·월간을 오늘로 옮긴다.
-      final today = _control.today;
-      if (today != _lastSeenToday) {
-        _lastSeenToday = today;
-        if (_period != _HistoryPeriod.custom) _anchor = _selectedDay = today;
-      }
-      unawaited(_reload());
+    if (_control.busy || _interactionActive || _exporting) {
+      _recordsChanged = true;
+      return;
     }
+    unawaited(_reload());
   }
 
-  // 함수역할: 앱 수명 감시와 화면이 직접 소유한 제어 객체만 해제한다.
+  // Function Name: dispose
+  // Description: Removes lifecycle and record listeners and disposes only dependencies created by this screen.
+  // Parameters: None.
+  // Returns: No return value.
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -213,28 +275,37 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     super.dispose();
   }
 
-  // 함수역할: 선택 범위를 조회하고 실패 표시와 재시도 상태는 제어 객체에 맡긴다.
+  // Function Name: _load
+  // Description: Loads the selected range and coalesces record changes arriving during lookup into another refresh.
+  // Parameters: None.
+  // Returns: Future<void>; lookup errors stay in controller state instead of escaping.
   Future<void> _load() async {
+    final control = _control;
     _recordsChanged = false;
     try {
-      await _control.load(_range);
+      await control.load(_range, preserveSnapshot: true);
     } catch (_) {
-      // 서버·네트워크 오류는 제어 객체의 상태로 표시하고 이전 자료는 남기지 않는다.
+      // 갱신 중에는 같은 기간의 기록을 유지하되 조회 실패 후에는 이전 자료를 지운다.
     }
-    if (_recordsChanged && mounted) _onRecordsChanged();
+    if (mounted && identical(control, _control) && _recordsChanged) {
+      _onRecordsChanged();
+    }
   }
 
-  // 함수역할: 다른 화면에서 저장된 기록을 보이도록 다시 읽고, 조회·대화상자·공유 중이면 끝난 뒤로 미룬다.
+  // Function Name: _onRecordsChanged
+  // Description: Reloads visible valid-session history after a record change, deferring it while lookup, editing or export is active.
+  // Parameters: None.
+  // Returns: No return value; inactive views defer the read and invalidated views ignore the signal.
   void _onRecordsChanged() {
-    if (!widget.isActive || _control.sessionInvalidated) return;
-    if (_control.busy || _interactionActive || _exporting) {
-      _recordsChanged = true;
-      return;
-    }
-    unawaited(_load());
+    if (_control.sessionInvalidated) return;
+    _recordsChanged = true;
+    _refreshVisibleHistory();
   }
 
-  // 함수역할: 대화상자·공유가 끝나면 잠금을 풀고 그동안 바뀐 기록이 있으면 다시 읽는다.
+  // Function Name: _endInteraction
+  // Description: Unlocks a completed interaction only for the still-bound controller and processes any deferred record refresh.
+  // Parameters: control (MedicationHistoryControl): controller captured at interaction start.
+  // Returns: No return value; disposed/rebound screens are ignored.
   void _endInteraction(MedicationHistoryControl control) {
     if (!mounted || !identical(control, _control)) return;
     setState(() {
@@ -244,8 +315,18 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     if (_recordsChanged) _onRecordsChanged();
   }
 
-  // 함수역할: 지금 선택한 주·월·기간을 오늘 기준으로 다시 잘라 서버 기록을 읽는다.
+  // 함수이름: _reload
+  // 함수역할: 현재 주·월·지정 기간을 보관 한계에 맞추고 범위를 벗어난 상세 날짜를 끝날로 옮겨 다시 조회한다.
+  // 매개변수: 없음.
+  // 반환값: 조회 완료 Future<void>; 공유된 기간은 그대로 조회한다.
   Future<void> _reload() async {
+    final today = _control.today;
+    if (today != _lastSeenToday) {
+      _lastSeenToday = today;
+      if (widget.sharedRange == null && _period != _HistoryPeriod.custom) {
+        _anchor = _selectedDay = today;
+      }
+    }
     if (widget.sharedRange == null) {
       final earliest = MedicationHistoryDates.earliest(_control.today);
       final range = _period == _HistoryPeriod.custom
@@ -266,7 +347,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     await _load();
   }
 
-  // 보관 기간과 한국 기준 오늘로 잘라 실제 조회할 수 있는 주·월·사용자 기간을 계산한다.
+  // 함수이름: _periodRange
+  // 함수역할: 선택 모드의 기간을 한국 오늘과 보관 가능한 최초 날짜 사이로 자른다.
+  // 매개변수: anchor (DateTime): 주·월 기준일; period (_HistoryPeriod): 기간 모드.
+  // 반환값: 조회 가능한 MedicationHistoryRange 또는 교집합이 없으면 null.
   MedicationHistoryRange? _periodRange(DateTime anchor, _HistoryPeriod period) {
     final today = _control.today;
     final earliest = MedicationHistoryDates.earliest(today);
@@ -287,7 +371,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     return first.isAfter(last) ? null : MedicationHistoryRange(first, last);
   }
 
-  // 기간 전환은 서버 집계 범위만 바꾸고 상세 날짜가 그 범위 밖일 때 마지막 날로 옮긴다.
+  // 함수이름: _changePeriod
+  // 함수역할: 잠기지 않은 화면에서 기간 모드를 바꾸고 필요한 경우 상세 날짜를 보정한 뒤 조회한다.
+  // 매개변수: period (_HistoryPeriod): 모드; anchor (DateTime?): 기준일, 생략하면 상세 날짜.
+  // 반환값: 조회 완료 Future<void>; 허용 범위가 없으면 변경하지 않는다.
   Future<void> _changePeriod(_HistoryPeriod period, {DateTime? anchor}) async {
     if (_locked) return;
     final nextAnchor = anchor ?? _selectedDay;
@@ -306,7 +393,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     await _load();
   }
 
-  // 함수역할: 비동기 작업의 화면·제어 객체·세션이 아직 같은지 확인한다.
+  // 함수이름: _isCurrent
+  // 함수역할: 화면이 살아 있고 같은 제어기이며 세션 검증도 통과하는지 확인한다.
+  // 매개변수: control (MedicationHistoryControl): 작업 시작 시 제어기.
+  // 반환값: 모두 유효하면 true; 세션 확인 예외는 false.
   bool _isCurrent(MedicationHistoryControl control) {
     if (!mounted || !identical(control, _control)) return false;
     try {
@@ -317,7 +407,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     }
   }
 
-  // 함수역할: 현재 화면에 완료 또는 실패 안내를 읽을 수 있는 시간 동안 표시한다.
+  // 함수이름: _message
+  // 함수역할: 살아 있는 이력 화면의 전용 메시지 영역에 안내를 6초 동안 표시한다.
+  // 매개변수: message (String): 안내 문구.
+  // 반환값: 없음.
   void _message(String message) {
     if (!mounted) return;
     _messengerKey.currentState?.showSnackBar(
@@ -325,14 +418,20 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     );
   }
 
-  // 함수역할: 요청·대화상자·공유·세션 무효화 중인지 반환해 명령 중복을 막는다.
+  // 함수이름: _locked
+  // 함수역할: 조회·대화상자·공유 또는 세션 무효화로 새 명령이 제한되는지 확인한다.
+  // 매개변수: 없음.
+  // 반환값: 명령을 제한해야 하면 true.
   bool get _locked =>
       _control.busy ||
       _interactionActive ||
       _exporting ||
       _control.sessionInvalidated;
 
-  // 상세 날짜는 현재 조회 범위 안에서, 기간 제목은 최근 90일 안에서 선택한다.
+  // Function Name: _pickRange
+  // Description: Selects a detail date inside the loaded range or a period anchor inside the retention window, rejecting stale session results.
+  // Parameters: period (bool): whether selection also changes and reloads the aggregate period.
+  // Returns: Future<void>; cancellation preserves selection and the interaction lock is always released.
   Future<void> _pickRange({bool period = false}) async {
     if (_locked) return;
     final control = _control;
@@ -369,7 +468,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     }
   }
 
-  // 이미 조회한 기간 안에서 날짜만 바꾸며 선택한 날의 상세를 펼친다.
+  // 함수이름: _selectDay
+  // 함수역할: 조회 범위 안의 날짜를 선택하고 해당 기간의 상세 목록을 펼친다.
+  // 매개변수: day (DateTime): 선택 날짜.
+  // 반환값: Future<void>; 잠금 또는 범위 밖이면 변경하지 않는다.
   Future<void> _selectDay(DateTime day) async {
     if (_locked) return;
     if (!_range.contains(day)) return;
@@ -379,7 +481,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     });
   }
 
-  // 함수역할: 환자 본인에게만 기존 기록의 정정을 열고 서버 저장 확인 뒤 부모 화면을 갱신한다.
+  // Function Name: _edit
+  // Description: Opens record correction only for writable current-session history, reports confirmed saves and reloads final server state after the editor closes.
+  // Parameters: entry (MedicationHistoryEntry): existing report to correct.
+  // Returns: Future<void>; parent-refresh failure is reported separately from a successful save.
   Future<void> _edit(MedicationHistoryEntry entry) async {
     if (_locked || _readOnly) return;
     final control = _control;
@@ -418,7 +523,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     }
   }
 
-  // 함수역할: 선택 기간 요약과 민감정보 안내를 확인받아 텍스트 공유 창을 열며 전송 완료로 주장하지 않는다.
+  // 함수이름: _export
+  // 함수역할: 공유 기간·민감정보 안내·목적지를 확인받아 최신 기록을 공유한다. 외부 공유창 실행을 실제 전송 완료로 주장하지 않는다.
+  // 매개변수: 없음.
+  // 반환값: 공유·취소·오류 안내 후 잠금을 해제하는 Future<void>.
   Future<void> _export() async {
     if (_locked) return;
     final control = _control;
@@ -432,8 +540,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     // 외부 공유 본문은 길이 확인 때 만든 것을 그대로 보낸다.
     String? shareContent;
 
-    // 날짜 선택은 공유 창 안에서만 바꾸고 날짜별 기록 화면은 유지한다.
-    // 외부 공유는 31일씩 나눠 읽어 최근 90일 전체를 담을 수 있고, 채팅 공유는 서버가 한 번에 31일만 받는다.
+    // Function Name: rangeError
+    // Description: Validates export date order and the retention window using the current controller clock.
+    // Parameters: None.
+    // Returns: Null for a valid range or a localized date-validation message.
     String? rangeError() {
       if (exportRange.start.isAfter(exportRange.end)) {
         return tr(
@@ -455,6 +565,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
       }
     }
 
+    // 함수이름: chatRangeError
+    // 함수역할: 공통 날짜 검증 후 채팅의 최대 조회 일수도 확인한다.
+    // 매개변수: 없음.
+    // 반환값: 채팅 공유 가능하면 null, 아니면 기간 제한 안내.
     String? chatRangeError() {
       final error = rangeError();
       if (error != null) return error;
@@ -466,6 +580,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
           : null;
     }
 
+    // Function Name: pickExportDate
+    // Description: Edits only the export-dialog range, ignoring cancelled or stale session selections and always releasing the date-selection lock.
+    // Parameters: dialogContext (BuildContext): export dialog; updateDialog (StateSetter): dialog update; start (bool): start endpoint.
+    // Returns: Future<void>; the underlying history range is unchanged.
     Future<void> pickExportDate(
       BuildContext dialogContext,
       StateSetter updateDialog, {
@@ -509,7 +627,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
       }
     }
 
-    // 공유를 확인한 시점에 선택 기간과 접근 권한을 다시 확인한다.
+    // Function Name: prepareExport
+    // Description: Rechecks current access and reads fresh records before sharing, applying destination-specific date/text limits and closing only the active dialog on success.
+    // Parameters: dialogContext (BuildContext): export dialog; updateDialog (StateSetter): dialog update; destination (_HistoryShareDestination): target.
+    // Returns: Future<void>; failures stay in the dialog rather than claiming a completed export.
     Future<void> prepareExport(
       BuildContext dialogContext,
       StateSetter updateDialog,
@@ -750,9 +871,15 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
             share: _chatShare!,
             range: exportSnapshot.range,
             isEnglish: widget.isEnglish,
+            linkId: widget.chatLinkId,
           ),
         );
         if (sent != null && _isCurrent(control)) {
+          if (widget.chatLinkId != null) {
+            widget.onChatShared?.call();
+            if (mounted) Navigator.pop(context);
+            return;
+          }
           _message(
             tr('$sent 님과의 채팅에 공유했어요.', 'Shared in your chat with $sent.'),
           );
@@ -803,7 +930,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     }
   }
 
-  // 함수역할: 텍스트 공유 미지원일 때 별도 동의를 받은 경우에만 공유 본문을 클립보드에 복사한다.
+  // 함수이름: _offerClipboard
+  // 함수역할: 공유 미지원 시 민감정보 복사에 별도 동의를 받고 같은 세션에서만 클립보드에 쓴다.
+  // 매개변수: content (String): 공유 본문; control (MedicationHistoryControl): 세션 확인 대상.
+  // 반환값: 복사·취소 완료 Future<void>; 플랫폼 복사 오류는 호출자에게 전파한다.
   Future<void> _offerClipboard(
     String content,
     MedicationHistoryControl control,
@@ -840,7 +970,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     }
   }
 
-  // 함수역할: 큰 글씨에서도 스크롤 가능한 날짜·자가 보고 안내·상태·기록 목록을 렌더링한다.
+  // 함수이름: build
+  // 함수역할: 조회 제어기 변경을 구독하고 날짜 탐색·상태·기록 또는 공유 기간 화면을 구성한다.
+  // 매개변수: context (BuildContext): 표시 위치.
+  // 반환값: 스크롤 가능한 이력 화면의 AnimatedBuilder.
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: _control,
@@ -888,22 +1021,35 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
               children: [
                 if (!scrollHeader) header,
                 Expanded(
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 720),
-                      child: ListView(
-                        key: const Key('history-scroll'),
-                        padding: const EdgeInsets.all(16),
-                        children: [
-                          if (scrollHeader) header,
-                          if (widget.sharedRange != null)
-                            ..._sharedPeriodBody(snapshot)
-                          else
-                            ..._dashboard(snapshot),
-                        ],
+                  child: Stack(
+                    children: [
+                      Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 720),
+                          child: ListView(
+                            key: const Key('history-scroll'),
+                            padding: const EdgeInsets.all(16),
+                            children: [
+                              if (scrollHeader) header,
+                              if (widget.sharedRange != null)
+                                ..._sharedPeriodBody(snapshot)
+                              else
+                                ..._dashboard(snapshot),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
+                      if (_control.loading && snapshot != null)
+                        const Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: LinearProgressIndicator(
+                            key: Key('history-refresh-progress'),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ],
@@ -914,7 +1060,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     },
   );
 
-  // 주간·월간·사용자 지정 기간은 같은 서버 자료를 요약하고 상세는 선택한 하루만 보여준다.
+  // Function Name: _dashboard
+  // Description: Builds period tabs, collapsible charts and selected-day details from the current lookup snapshot.
+  // Parameters: snapshot (MedicationHistorySnapshot?): loaded period or null while unavailable.
+  // Returns: Ordered dashboard widgets, preserving each period tab expansion state.
   List<Widget> _dashboard(MedicationHistorySnapshot? snapshot) {
     final chartOpen = _chartExpanded[_period] ?? true;
     final detailsOpen = _detailsExpanded[_period] ?? true;
@@ -967,7 +1116,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         _periodNavigation(),
       const SizedBox(height: 12),
       // 수정 저장 뒤 다시 읽기 전까지는 자료도 오류도 없으므로 빈 화면 대신 진행을 표시한다.
-      if (_control.loading || (snapshot == null && _control.error == null))
+      if (snapshot == null && _control.error == null)
         const Padding(
           padding: EdgeInsets.all(32),
           child: Center(child: CircularProgressIndicator()),
@@ -1099,7 +1248,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     ];
   }
 
-  // 관련 영역을 그림자 없는 테두리로 구분한다.
+  // 함수이름: _sectionFrame
+  // 함수역할: 그림자 없는 테두리 안에 이력 구역을 배치하고 넘치는 내용을 자른다.
+  // 매개변수: key (String): 구역 식별자; child (Widget): 내용.
+  // 반환값: 구역 Container.
   Widget _sectionFrame({required String key, required Widget child}) =>
       Container(
         key: ValueKey(key),
@@ -1112,7 +1264,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         child: child,
       );
 
-  // 삼각형 버튼을 포함한 제목 전체를 누르면 해당 영역만 접거나 펼친다.
+  // 함수이름: _sectionHeading
+  // 함수역할: 구역 전체 제목을 접기·펼치기 명령으로 만들고 잠금 중에는 조작을 막는다.
+  // 매개변수: key/title (String): 식별자·제목; open (bool): 펼침 여부; onPressed (VoidCallback): 변경; trailing (String?): 보조 문구.
+  // 반환값: 펼침 상태를 접근성으로 제공하는 제목 행.
   Widget _sectionHeading({
     required String key,
     required String title,
@@ -1157,7 +1312,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     ),
   );
 
-  // 주·월의 이동 단위와 실제 조회 가능한 날짜 범위를 분리한다.
+  // 함수이름: _periodNavigation
+  // 함수역할: 현재 주·월의 표시 범위와 이동 가능 기간을 계산해 탐색 버튼을 배치한다.
+  // 매개변수: 없음.
+  // 반환값: 이전·다음 기간 탐색 위젯.
   Widget _periodNavigation() {
     final isMonth = _period == _HistoryPeriod.month;
     final previous = isMonth
@@ -1209,7 +1367,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     );
   }
 
-  // 상세 날짜 이동은 이미 읽은 기간 안에서만 허용한다.
+  // 함수이름: _dayNavigation
+  // 함수역할: 선택 날짜를 표시하고 조회 범위 안에서 전날·다음 날 상세로 이동하게 한다.
+  // 매개변수: 없음.
+  // 반환값: 상세 날짜 탐색 행.
   Widget _dayNavigation() => Row(
     key: const Key('history-date-navigation'),
     children: [
@@ -1243,7 +1404,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     ],
   );
 
-  // 시작·종료일은 선택 즉시 반영하므로 별도 조회 명령이나 중복 기간 표시는 두지 않는다.
+  // 함수이름: _customRangeControls
+  // 함수역할: 직접 지정 기간의 시작일·종료일 선택과 기간 안내를 표시한다.
+  // 매개변수: 없음.
+  // 반환값: 잠금 상태를 반영한 사용자 기간 입력 구역.
   Widget _customRangeControls() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
@@ -1290,7 +1454,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     ],
   );
 
-  // 유효한 날짜를 확정하면 한 번만 조회하고 취소·동일 날짜·세션 변경은 무시한다.
+  // Function Name: _pickCustomDate
+  // Description: Picks a custom range endpoint within retained days and reloads once only for a changed, valid selection in the same session.
+  // Parameters: start (bool): start endpoint rather than end endpoint.
+  // Returns: Future<void>; cancellation and stale results are ignored, then interaction state is released.
   Future<void> _pickCustomDate(bool start) async {
     if (_locked) return;
     final control = _control;
@@ -1340,7 +1507,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     }
   }
 
-  // 상세 요약은 선택한 하루의 기록만 세며 기간 전체 통계와 혼동하지 않는다.
+  // 함수이름: _dailySummary
+  // 함수역할: 선택한 하루의 복용·미복용·미기록 수를 세어 기간 전체 통계와 분리해 표시한다.
+  // 매개변수: snapshot (MedicationHistorySnapshot): 조회한 기간 자료.
+  // 반환값: 하루 요약 위젯.
   Widget _dailySummary(MedicationHistorySnapshot snapshot) {
     final entries = snapshot.items.where(
       (item) => item.scheduleDate == _selectedDay,
@@ -1373,7 +1543,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     );
   }
 
-  // 공유된 기간을 다른 날짜로 바꾸지 않고 날짜·시간대별 최신 기록을 보여준다.
+  // 함수이름: _sharedPeriodBody
+  // 함수역할: 채팅에서 공유된 기간의 조회 결과를 읽기 전용 요약과 날짜별 기록으로 표시한다.
+  // 매개변수: snapshot (MedicationHistorySnapshot?): 공유 기간 조회 자료.
+  // 반환값: 공유 기간 본문 위젯 목록.
   List<Widget> _sharedPeriodBody(MedicationHistorySnapshot? snapshot) {
     final days =
         snapshot?.items.map((entry) => entry.scheduleDate).toSet().toList()
@@ -1385,7 +1558,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         style: Theme.of(context).textTheme.titleMedium,
       ),
       const SizedBox(height: 8),
-      if (_control.loading)
+      if (_control.loading && snapshot == null)
         const LinearProgressIndicator()
       else if (_control.error != null) ...[
         Text(
@@ -1448,8 +1621,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     ];
   }
 
-  // 일정 화면과 같은 진행률·시간대 색상을 사용하되 실제 복용의 증명으로 표시하지 않는다.
-  // 필요시 복용은 정해진 횟수가 없으므로 일정 화면처럼 현황의 분모·분자에 넣지 않는다.
+  // Function Name: _progress
+  // Description: Displays period completion totals separately from as-needed reports.
+  // Parameters: snapshot (MedicationHistorySnapshot): aggregate records.
+  // Returns: Progress summary without treating as-needed reports as scheduled-dose denominator.
   Widget _progress(MedicationHistorySnapshot snapshot) {
     final scheduled = snapshot.items.where((item) => !item.isAsNeeded);
     final total = scheduled.length;
@@ -1501,7 +1676,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     );
   }
 
-  // 함수역할: 정기 시간대 순서 뒤에 필요시 복용을 두고 기록이 있는 시간대만 카드로 만든다.
+  // 함수이름: _slotCards
+  // 함수역할: 기록이 있는 시간대를 순서대로 묶어 각 시간대 카드로 변환한다.
+  // 매개변수: entries (Iterable<MedicationHistoryEntry>): 표시 대상 기록.
+  // 반환값: 시간대별 위젯 목록.
   List<Widget> _slotCards(Iterable<MedicationHistoryEntry> entries) {
     final cards = <Widget>[];
     for (final slot in [...medicationScheduleSlotKeys, 'as_needed']) {
@@ -1518,7 +1696,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     return cards;
   }
 
-  // 같은 시간대의 기록을 한 카드 안에 모으고 이력 화면에는 알림 조작을 노출하지 않는다.
+  // 함수이름: _slotCard
+  // 함수역할: 시간대 제목과 해당 기록 행을 묶어 표시한다.
+  // 매개변수: slot (String): 시간대 키; entries (List<MedicationHistoryEntry>): 해당 시간대 기록.
+  // 반환값: 시간대 카드.
   Widget _slotCard(String slot, List<MedicationHistoryEntry> entries) {
     final style = MedBuddySlotStyle.of(slot);
     final taken = entries
@@ -1589,7 +1770,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     );
   }
 
-  // 함수역할: 한 보고의 예정일·실제 시각·기록 시각·사유를 구분하고 허용된 경우 정정 명령을 제공한다.
+  // Function Name: _entryTile
+  // Description: Displays one self-reported record with status/time/reason and enables correction only when writable and unlocked.
+  // Parameters: entry (MedicationHistoryEntry): report to display.
+  // Returns: Record tile with wrapping text for larger fonts.
   Widget _entryTile(MedicationHistoryEntry entry) => Container(
     key: ValueKey('history-entry-${entry.key}'),
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1656,24 +1840,41 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   );
 }
 
-// 대화 상대와 기간을 확인한 뒤에만 전송하며 실패한 전송은 같은 요청으로 재시도한다.
+// 클래스명: _HistoryChatShareDialog
+// 역할: 기간과 수신자를 확인한 뒤 연동 채팅으로 기록을 공유한다.
+// 주요 책임: 현재 채팅에서 진입하면 해당 연동만 선택하고 전송 실패를 재시도한다.
+// 속성: history (MedicationHistoryControl): 세션; share (ShareMedicationHistory): 전송; range (MedicationHistoryRange): 기간; isEnglish (bool): 언어; linkId (int?): 고정 대상.
 class _HistoryChatShareDialog extends StatefulWidget {
+  // 함수이름: _HistoryChatShareDialog
+  // 함수역할: 조회 세션·공유 명령·기간과 선택적 고정 수신자를 연결한다.
+  // 매개변수: history (MedicationHistoryControl): 조회기; share (ShareMedicationHistory): 공유기; range (MedicationHistoryRange): 기간; isEnglish (bool): 언어; linkId (int?): 고정 연동.
+  // 반환값: 새 _HistoryChatShareDialog.
   const _HistoryChatShareDialog({
     required this.history,
     required this.share,
     required this.range,
     required this.isEnglish,
+    this.linkId,
   });
   final MedicationHistoryControl history;
   final ShareMedicationHistory share;
   final MedicationHistoryRange range;
   final bool isEnglish;
+  final int? linkId;
 
+  // 함수이름: createState
+  // 함수역할: 수신자 조회와 전송의 진행·실패 상태를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 새 _HistoryChatShareDialogState.
   @override
   State<_HistoryChatShareDialog> createState() =>
       _HistoryChatShareDialogState();
 }
 
+// 클래스명: _HistoryChatShareDialogState
+// 역할: 공유 가능한 수신자 선택과 전송 상태를 관리한다.
+// 주요 책임: 조회·전송 실패를 분리하고 성공 시 상대 이름으로 대화상자를 닫는다.
+// 속성: _recipients (List<PatientCaregiverLink>): 수신자; _selected (int?): 선택 ID; _loading/_sending/_loadFailed/_sendFailed (bool): 작업 상태.
 class _HistoryChatShareDialogState extends State<_HistoryChatShareDialog> {
   List<PatientCaregiverLink> _recipients = const [];
   int? _selected;
@@ -1681,14 +1882,26 @@ class _HistoryChatShareDialogState extends State<_HistoryChatShareDialog> {
   bool _sending = false;
   bool _loadFailed = false;
   bool _sendFailed = false;
+  // 함수이름: tr
+  // 함수역할: 공유 확인창의 언어에 맞는 문구를 선택한다.
+  // 매개변수: ko/en (String): 한국어·영어 문구.
+  // 반환값: 선택한 문구.
   String tr(String ko, String en) => widget.isEnglish ? en : ko;
 
+  // 함수이름: initState
+  // 함수역할: 공유 수신자를 비동기로 조회한다.
+  // 매개변수: 없음.
+  // 반환값: 없음.
   @override
   void initState() {
     super.initState();
     unawaited(_load());
   }
 
+  // 함수이름: _load
+  // 함수역할: 수신자를 다시 읽고 지정 연동이 있으면 그 대상만 남겨 자동 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 조회 완료 Future<void>; 오류는 재시도 상태로 표시하고 종료된 화면은 갱신하지 않는다.
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -1699,7 +1912,14 @@ class _HistoryChatShareDialogState extends State<_HistoryChatShareDialog> {
     try {
       final links = await widget.share.loadRecipients();
       if (!mounted) return;
-      setState(() => _recipients = links);
+      setState(() {
+        _recipients = widget.linkId == null
+            ? links
+            : links.where((link) => link.linkId == widget.linkId).toList();
+        if (widget.linkId != null && _recipients.length == 1) {
+          _selected = widget.linkId;
+        }
+      });
     } catch (_) {
       if (mounted) setState(() => _loadFailed = true);
     } finally {
@@ -1707,6 +1927,10 @@ class _HistoryChatShareDialogState extends State<_HistoryChatShareDialog> {
     }
   }
 
+  // 함수이름: _send
+  // 함수역할: 선택한 연동에 확정 기간을 전송하고 성공 시 상대 이름을 반환하며 창을 닫는다.
+  // 매개변수: 없음.
+  // 반환값: Future<void>; 선택 없음·작업 중은 무시하고 전송 오류는 창에 남긴다.
   Future<void> _send() async {
     final selected = _selected;
     if (selected == null || _sending || _loading) return;
@@ -1727,6 +1951,10 @@ class _HistoryChatShareDialogState extends State<_HistoryChatShareDialog> {
     }
   }
 
+  // 함수이름: build
+  // 함수역할: 유효한 세션에는 수신자·기간·전송 상태를, 무효화된 세션에는 종료 안내를 표시한다.
+  // 매개변수: context (BuildContext): 대화상자 위치.
+  // 반환값: 세션 변경을 구독하는 AnimatedBuilder.
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: widget.history,
@@ -1851,10 +2079,15 @@ class _HistoryChatShareDialogState extends State<_HistoryChatShareDialog> {
   );
 }
 
-// 클래스명: _MedicationHistoryEditor
-// 역할: 하나의 기존 기록을 정정하는 대화상자이다.
+// Class Name: _MedicationHistoryEditor
+// Role: A dialog correcting one existing self-reported medication event.
+// Responsibilities: Passes the original event and the same patient controller to state that validates and confirms corrections.
+// Attributes: control (MedicationHistoryControl): patient/session owner; entry (MedicationHistoryEntry): original event; isEnglish (bool): language.
 class _MedicationHistoryEditor extends StatefulWidget {
-  // 함수역할: 동일 환자 제어 객체와 선택 보고를 편집기에 전달한다.
+  // 함수이름: _MedicationHistoryEditor
+  // 함수역할: 동일 환자의 조회 제어기와 정정할 보고를 연결한다.
+  // 매개변수: control (MedicationHistoryControl): 조회기; entry (MedicationHistoryEntry): 원본; isEnglish (bool): 언어.
+  // 반환값: 새 _MedicationHistoryEditor.
   const _MedicationHistoryEditor({
     required this.control,
     required this.entry,
@@ -1864,14 +2097,19 @@ class _MedicationHistoryEditor extends StatefulWidget {
   final MedicationHistoryEntry entry;
   final bool isEnglish;
 
-  // 함수역할: 입력값·재시도 의도·충돌 상태를 보존할 편집 상태를 만든다.
+  // 함수이름: createState
+  // 함수역할: 정정 입력과 응답 미확인 요청을 보존할 상태를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 새 _MedicationHistoryEditorState.
   @override
   State<_MedicationHistoryEditor> createState() =>
       _MedicationHistoryEditorState();
 }
 
-// 클래스명: _MedicationHistoryEditorState
-// 역할: 실제 날짜·시각과 사유를 검증하고 응답 유실 때 같은 작업 ID를 재사용한다.
+// Class Name: _MedicationHistoryEditorState
+// Role: Validates corrections and preserves uncertain writes under the same operation ID.
+// Responsibilities: Distinguishes validation rejection from version conflict and prevents editing an unresolved write.
+// Attributes: _status (MedicationHistoryStatus): report; _actualDate/_actualTime: Korea wall time; _reason (TextEditingController): reason; _pending (MedicationHistoryChange?): fixed retry; _error (Object?): failure; _submitting/_conflict (bool): locks.
 class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
   late MedicationHistoryStatus _status;
   late DateTime _actualDate;
@@ -1882,13 +2120,25 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
   bool _submitting = false;
   bool _conflict = false;
 
-  // 함수역할: 편집기의 선택 언어 문구를 반환한다.
+  // 함수이름: tr
+  // 함수역할: 편집기의 언어에 맞는 문구를 선택한다.
+  // 매개변수: ko/en (String): 한국어·영어 문구.
+  // 반환값: 선택한 문구.
   String tr(String ko, String en) => widget.isEnglish ? en : ko;
-  // 함수역할: 확인·전송 또는 세션 무효화 중 저장을 차단할지 반환한다.
+  // 함수이름: _locked
+  // 함수역할: 정정 확인·전송 중이거나 세션이 무효화되었는지 확인한다.
+  // 매개변수: 없음.
+  // 반환값: 저장 동작을 막아야 하면 true.
   bool get _locked => _submitting || widget.control.sessionInvalidated;
-  // 함수역할: 미확인 전송 의도가 있으면 입력 변경도 막아 동일 내용 재시도를 보장한다.
+  // 함수이름: _fieldsLocked
+  // 함수역할: 응답 미확인 요청이나 버전 충돌을 포함해 입력 변경 금지 상태를 판단한다.
+  // 매개변수: 없음.
+  // 반환값: 입력 필드를 잠가야 하면 true.
   bool get _fieldsLocked => _locked || _pending != null || _conflict;
-  // 함수역할: 편집 가능한 입력 검증 오류만 지우며 미확인 전송·버전 충돌 오류는 보존한다.
+  // 함수이름: _clearEditableValidationError
+  // 함수역할: 입력 가능한 상태에서 형식·422 검증 오류만 지우고 미확인 전송·충돌 오류는 보존한다.
+  // 매개변수: 없음.
+  // 반환값: 없음.
   void _clearEditableValidationError() {
     final error = _error;
     if (!_fieldsLocked &&
@@ -1898,7 +2148,10 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
     }
   }
 
-  // 함수역할: 기존 보고의 상태·실제 시각·사유를 입력 초기값으로 보존한다.
+  // Function Name: initState
+  // Description: Seeds fields from the report, converting actual timestamps to Korean wall time and retaining its original reason.
+  // Parameters: None.
+  // Returns: No return value; absent timestamps use the scheduled day and current Korean time.
   @override
   void initState() {
     super.initState();
@@ -1919,14 +2172,20 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
     _reason = TextEditingController(text: entry.reason);
   }
 
-  // 함수역할: 사용자가 입력한 사유의 텍스트 제어기를 해제한다.
+  // 함수이름: dispose
+  // 함수역할: 사유 입력 제어기를 해제한다.
+  // 매개변수: 없음.
+  // 반환값: 없음.
   @override
   void dispose() {
     _reason.dispose();
     super.dispose();
   }
 
-  // 함수역할: 실제 복용 날짜를 최근 90일 안에서 고른다.
+  // Function Name: _pickActualDate
+  // Description: Picks an actual-taken date within retention and clears only editable validation errors after a changed valid selection.
+  // Parameters: None.
+  // Returns: Future<void>; cancellation, disposal or a locked editor keeps the original date.
   Future<void> _pickActualDate() async {
     if (_fieldsLocked) return;
     final selected = await showDatePicker(
@@ -1947,7 +2206,10 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
     });
   }
 
-  // 함수역할: 한국 시간 기준 실제 복용 시·분을 고르고 시각이 미래인지는 저장 전 검증한다.
+  // 함수이름: _pickTime
+  // 함수역할: 실제 복용 시·분을 한국 시간으로 선택하고 입력 가능한 변경만 반영한다.
+  // 매개변수: 없음.
+  // 반환값: 선택 완료 Future<void>; 미래 시각 검증은 저장 시 수행한다.
   Future<void> _pickTime() async {
     if (_fieldsLocked) return;
     final time = await showTimePicker(
@@ -1963,7 +2225,10 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
     });
   }
 
-  // 함수역할: 현재 입력을 새 작업 UUID로 고정하고 기존 예정일·이벤트 키는 보존한다.
+  // Function Name: _buildChange
+  // Description: Freezes the entered report under a new operation ID, preserving the original event and converting Korean taken time to an instant.
+  // Parameters: None.
+  // Returns: MedicationHistoryChange; taken time is omitted unless taken, and reason is retained only when skipped.
   MedicationHistoryChange _buildChange() => MedicationHistoryChange(
     entry: widget.entry,
     status: _status,
@@ -1980,7 +2245,10 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
         : '',
   );
 
-  // 함수역할: 입력 검증과 확인 후 저장하며 충돌은 새 조회, 응답 유실은 같은 의도 재시도로 안내한다.
+  // Function Name: _save
+  // Description: Validates and confirms a correction, then retries uncertain writes with the same operation ID. A 409 blocks edits; a 422 releases the payload for correction.
+  // Parameters: None.
+  // Returns: Future<void>; confirmed persistence closes with true, failures remain visible and the submission lock is always released.
   Future<void> _save() async {
     if (_locked || _conflict) return;
     setState(() {
@@ -2047,7 +2315,10 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
     }
   }
 
-  // 함수역할: 세 상태와 실제 날짜·시각·사유를 편집하고 세션 변경 시 민감한 내용을 숨긴다.
+  // Function Name: build
+  // Description: Shows editable status/time/reason fields or hides them behind a session-ended notice when authorization changes.
+  // Parameters: context (BuildContext): Dialog location.
+  // Returns: AnimatedBuilder respecting pending-write and conflict locks.
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: widget.control,
@@ -2239,7 +2510,10 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
   );
 }
 
-// 함수역할: 세션이 바뀌면 열려 있는 대화상자에서도 이전 환자의 내용을 숨긴다.
+// 함수이름: _sessionEndedDialog
+// 함수역할: 세션 변경으로 기록 내용을 더 표시할 수 없음을 알리고 닫기를 제공한다.
+// 매개변수: context (BuildContext): 현재 대화상자; english (bool): 영어 여부.
+// 반환값: 세션 종료 AlertDialog.
 Widget _sessionEndedDialog(BuildContext context, bool english) => AlertDialog(
   title: Text(english ? 'Session changed' : '로그인 정보 변경'),
   content: Text(_failureText(const MedicationHistorySessionChanged(), english)),
@@ -2251,16 +2525,25 @@ Widget _sessionEndedDialog(BuildContext context, bool english) => AlertDialog(
   ],
 );
 
-// 함수역할: 사용자 보고 상태에 대응하는 앱의 의미 색상을 반환한다.
+// 함수이름: _statusColor
+// 함수역할: 복용·미복용·미기록에 대응하는 의미 색상을 선택한다.
+// 매개변수: status (MedicationHistoryStatus): 보고 상태.
+// 반환값: 앱 테마 Color.
 Color _statusColor(MedicationHistoryStatus status) => switch (status) {
   MedicationHistoryStatus.taken => MedBuddyColors.primary,
   MedicationHistoryStatus.skipped => MedBuddyColors.reminderAccent,
   MedicationHistoryStatus.unrecorded => MedBuddyColors.textMuted,
 };
 
-// 함수역할: 내부 서버 응답을 그대로 노출하지 않고 권한·충돌·입력·연결 오류를 구분해 설명한다.
+// 함수이름: _failureText
+// 함수역할: 내부 응답을 그대로 노출하지 않고 세션·입력·권한·충돌·연결 실패를 구분해 안내한다.
+// 매개변수: failure (Object): 발생 오류; english (bool): 영어 여부.
+// 반환값: 안전한 사용자용 오류 문구.
 String _failureText(Object failure, bool english) {
-  // 함수역할: 오류 문구의 한국어·영어 표현 중 요청 언어를 선택한다.
+  // 함수이름: tr
+  // 함수역할: 오류 설명의 요청 언어를 선택한다.
+  // 매개변수: ko/en (String): 한국어·영어 문구.
+  // 반환값: english에 해당하는 문구.
   String tr(String ko, String en) => english ? en : ko;
   if (failure is MedicationHistorySessionChanged) {
     return tr(

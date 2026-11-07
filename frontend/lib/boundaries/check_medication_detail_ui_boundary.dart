@@ -57,13 +57,10 @@ class CheckMedicationDetailUI extends StatefulWidget {
       _CheckMedicationDetailUIState();
 }
 
-// 클래스명: _CheckMedicationDetailUIState
-// 역할: 효능·복용법·주의사항과 읽어주기 기능을 갖춘 약 상세의 화면 상태를 관리한다.
-// 주요 책임:
-// - 읽어주기를 시작하거나 중지하고 완료·오류 시 재생 상태를 해제한다.
-// - 앱이 백그라운드로 가면 읽어주기를 중지한다.
-// 속성:
-// - _isSpeaking (bool): 읽어주기가 현재 재생 중인지 여부.
+// Class Name: _CheckMedicationDetailUIState
+// Role: Medication details with lifecycle-aware voice playback.
+// Responsibilities: Starts or stops reading and clears playback on completion/error; stops audio when the app leaves the foreground.
+// Attributes: _requestVoiceGuide: playback controller; _ownsRequestVoiceGuide: disposal ownership; _isSpeaking: current playback indicator.
 class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI>
     with WidgetsBindingObserver {
   late final RequestVoiceGuide _requestVoiceGuide;
@@ -290,14 +287,10 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI>
   }
 }
 
-// 클래스명: _MedicationHeroCard
-// 역할: 약품 대표 이미지와 표시 이름을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 약품 대표 이미지와 표시 이름 위젯을 구성한다.
-// 속성:
-// - medicationDetail (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-// - displayName (String): 사용자에게 표시할 약품 또는 계정 이름.
-// - language (String): 화면 문구를 선택할 언어 코드.
+// Class Name: _MedicationHeroCard
+// Role: Medication identity header.
+// Responsibilities: Combines the representative image with the display name.
+// Attributes: medicationDetail: image source; displayName: visible name; language: localized image labels.
 class _MedicationHeroCard extends StatelessWidget {
   final MedicationDetail medicationDetail;
   final String displayName;
@@ -316,11 +309,10 @@ class _MedicationHeroCard extends StatelessWidget {
     required this.language,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 약품 대표 이미지와 표시 이름 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 약품 대표 이미지와 표시 이름에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays the medication image above its readable name in the detail header.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -370,14 +362,10 @@ class _MedicationHeroCard extends StatelessWidget {
   }
 }
 
-// 클래스명: _MedicationImageBox
-// 역할: 확대 가능한 로컬·네트워크 약 사진과 실패 대체 표시를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 확대 가능한 로컬·네트워크 약 사진과 실패 대체 표시 위젯을 구성한다.
-// 속성:
-// - medicationDetail (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-// - displayName (String): 사용자에게 표시할 약품 또는 계정 이름.
-// - language (String): 화면 문구를 선택할 언어 코드.
+// Class Name: _MedicationImageBox
+// Role: Expandable medication image.
+// Responsibilities: Chooses a local or safe remote image and provides a fallback when unavailable.
+// Attributes: medicationDetail: local/remote image paths; displayName: viewer title; language: viewer labels.
 class _MedicationImageBox extends StatelessWidget {
   final MedicationDetail medicationDetail;
   final String displayName;
@@ -396,11 +384,10 @@ class _MedicationImageBox extends StatelessWidget {
     required this.language,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 확대 가능한 로컬·네트워크 약 사진과 실패 대체 표시 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 확대 가능한 로컬·네트워크 약 사진과 실패 대체 표시에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Resolves a local image or validated remote URL, supplies failure artwork and opens the full image viewer when available.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final normalizedImageUrl = safeMedicationImageUrl(
@@ -501,14 +488,10 @@ class _MedicationImageBox extends StatelessWidget {
   }
 }
 
-// 클래스명: _DetailQuestionSection
-// 역할: 약 효능·복용법 질문 제목과 간추린 답변 목록을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 약 효능·복용법 질문 제목과 간추린 답변 목록 위젯을 구성한다.
-// 속성:
-// - title (String): 화면·구역·항목에 표시할 제목.
-// - values (List<String>): 표시·정리할 설명 또는 주의 문구 목록.
-// - noInformation (String): 값이나 약품 정보를 제공할 수 없을 때 사용할 대체 문구.
+// Class Name: _DetailQuestionSection
+// Role: A medication question and summarized answers.
+// Responsibilities: Shows the question, optional supporting text and each summarized answer with a missing-information fallback.
+// Attributes: title: question; subtitle: optional supporting copy; values: answers; noInformation: empty-answer text.
 class _DetailQuestionSection extends StatelessWidget {
   final String title;
   final String? subtitle;
@@ -530,11 +513,10 @@ class _DetailQuestionSection extends StatelessWidget {
     required this.noInformation,
   });
 
-  // 함수이름: build
-  // 함수역할: 질문과 선택 설명 아래 모든 답변을 순서대로 표시한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 약 효능·복용법 질문 제목과 간추린 답변 목록에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Summarizes and displays all supplied answers below the question and optional subtitle.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final visibleValues = values
@@ -592,11 +574,10 @@ class _DetailQuestionSection extends StatelessWidget {
 class _DetailValueTile extends StatelessWidget {
   final String value;
 
-  // 함수이름: _DetailValueTile
-  // 함수역할: 간추린 약품 정보 한 줄의 강조 표시에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-  // 반환값: 입력 설정이 반영된 _DetailValueTile 인스턴스.
+  // Function Name: _DetailValueTile
+  // Description: Stores one summarized medication fact for emphasized display.
+  // Parameters: value (String): summary to display.
+  // Returns: A _DetailValueTile.
   const _DetailValueTile({required this.value});
 
   // Function Name: build
@@ -747,14 +728,10 @@ class _MedicationChecklistCard extends StatelessWidget {
   }
 }
 
-// 클래스명: _DetailListCard
-// 역할: 제목과 빈 정보 대체 문구를 갖춘 약품 설명 목록을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 제목과 빈 정보 대체 문구를 갖춘 약품 설명 목록 위젯을 구성한다.
-// 속성:
-// - title (String): 화면·구역·항목에 표시할 제목.
-// - items (List<String>): 표시·정리할 설명 또는 주의 문구 목록.
-// - useInsetSurface (bool): 설명 목록을 내부 배경 면으로 감쌀지 여부.
+// Class Name: _DetailListCard
+// Role: A titled medication-information list.
+// Responsibilities: Preserves all supplied items and substitutes missing-information text for an empty list.
+// Attributes: title: section heading; items: information lines; useInsetSurface: inset background choice; noInformation: empty fallback.
 class _DetailListCard extends StatelessWidget {
   final String title;
   final List<String> items;
@@ -776,11 +753,10 @@ class _DetailListCard extends StatelessWidget {
     required this.noInformation,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 제목과 빈 정보 대체 문구를 갖춘 약품 설명 목록 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 제목과 빈 정보 대체 문구를 갖춘 약품 설명 목록에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Renders the title and each information line, using the empty fallback and optional inset surface.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final visibleItems = items.isEmpty ? [noInformation] : items;
@@ -926,13 +902,10 @@ List<String> _uniqueNonEmptyValues(List<String> values) {
   return uniqueValues.toList(growable: false);
 }
 
-// 클래스명: _TtsButton
-// 역할: 읽어주기 시작·중지 상태와 명령을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 읽어주기 시작·중지 상태와 명령 위젯을 구성한다.
-// 속성:
-// - isSpeaking (bool): 읽어주기가 현재 재생 중인지 여부.
-// - onPressed (Future<void> Function()): 해당 항목의 명시된 주 동작을 실행할 콜백.
+// Class Name: _TtsButton
+// Role: Start/stop control for spoken medication details.
+// Responsibilities: Reflects playback state through the icon and localized action label.
+// Attributes: isSpeaking: playback state; onPressed: asynchronous toggle; text: localized labels.
 class _TtsButton extends StatelessWidget {
   final bool isSpeaking;
   final Future<void> Function() onPressed;
@@ -951,11 +924,10 @@ class _TtsButton extends StatelessWidget {
     required this.text,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 읽어주기 시작·중지 상태와 명령 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 읽어주기 시작·중지 상태와 명령에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays a stop icon and label during playback, otherwise the read-aloud action.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return FilledButton.icon(
@@ -974,20 +946,17 @@ class _TtsButton extends StatelessWidget {
   }
 }
 
-// 클래스명: _MedicationDetailText
-// 역할: 약품 효능, 복용법, 주의사항 및 음성 안내에 쓰는 한국어·영어 문구를 담당한다.
-// 주요 책임:
-// - 약품 효능, 복용법, 주의사항 및 음성 안내에 쓰는 한국어·영어 문구의 언어를 선택하고 안내에 필요한 값을 문구에 반영한다.
-// 속성:
-// - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
+// Class Name: _MedicationDetailText
+// Role: Localized medication-detail and voice guidance text.
+// Responsibilities: Supplies section headings, missing-information and playback failure messages.
+// Attributes: isEnglish (bool): language selected by the shared rule.
 class _MedicationDetailText {
   final bool isEnglish;
 
-  // 함수이름: _MedicationDetailText
-  // 함수역할: 약품 효능, 복용법, 주의사항 및 음성 안내에 쓰는 한국어·영어 문구 선택에 사용할 언어를 보관한다.
-  // 매개변수:
-  // - language (String): 화면 문구를 선택할 언어 코드.
-  // 반환값: 입력 설정이 반영된 _MedicationDetailText 인스턴스.
+  // Function Name: _MedicationDetailText
+  // Description: Normalizes the language selection for medication details.
+  // Parameters: language (String): selected language code.
+  // Returns: A localized _MedicationDetailText.
   _MedicationDetailText(String language)
     : isEnglish = isEnglishLanguage(language);
 
@@ -1035,11 +1004,10 @@ class _MedicationDetailText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get risksAndSideEffects =>
       isEnglish ? 'Important warnings and side effects' : '주요 주의사항 및 부작용';
-  // 함수이름: checklist
-  // 함수역할: 현재 언어와 입력값에 맞춰 "간편한 확인 목록" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: checklist
+  // Description: Labels the compact medication checklist section.
+  // Parameters: None.
+  // Returns: The localized quick-checklist heading.
   String get checklist => isEnglish ? 'Quick checklist' : '간편한 확인 목록';
   // 함수이름: noInformation
   // 함수역할: 현재 언어와 입력값에 맞춰 "정보 없음" 문구를 제공한다.
@@ -1059,11 +1027,10 @@ class _MedicationDetailText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get readAloud => isEnglish ? 'Read aloud' : '큰 소리로 읽어주세요';
-  // 함수이름: readAloudFailed
-  // 함수역할: 현재 언어로 "음성 안내를 재생하지 못했습니다." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: readAloudFailed
+  // Description: Explains voice playback failure and suggests checking device volume before retrying.
+  // Parameters: None.
+  // Returns: The localized recovery message.
   String get readAloudFailed => isEnglish
       ? 'Could not play the voice guide. Check the device volume and try again.'
       : '음성 안내를 재생하지 못했습니다. 기기 소리를 확인한 뒤 다시 눌러 주세요.';

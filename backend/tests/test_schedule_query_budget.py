@@ -172,15 +172,13 @@ def test_slot_update_statements_stay_within_budget(
     assert len(inserts) == 1 and "medication_care_audits" in inserts[0], unchecked
 
 
-# Function Name: test_single_medication_update_statements_stay_within_budget
-# Description:
-# - Completing one medication in one slot loads the medication and the day once, also when
-#   seven other medications share the slot: at most three SELECTs and six statements
-#   (completion INSERT, one batched audit INSERT, medication status-date UPDATE).
-# Parameters:
-# - fk_engine (Engine): Foreign-key-enforcing test engine.
-# - fk_session_factory (sessionmaker[Session]): Factory bound to the test engine.
-# Returns:
+# 함수이름: test_single_medication_update_statements_stay_within_budget
+# 함수역할:
+# - 같은 슬롯에 약이 여러 개 있어도 단일 약 완료 갱신이 SELECT 3회·전체 SQL 6회 이내인지 검증한다.
+# 매개변수:
+# - fk_engine: Engine; 외래 키가 활성화된 격리 SQLite 데이터베이스.
+# - fk_session_factory: sessionmaker; 격리 데이터베이스의 세션을 생성한다.
+# 반환값:
 # - None.
 def test_single_medication_update_statements_stay_within_budget(
     fk_engine: Engine,

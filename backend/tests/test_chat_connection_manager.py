@@ -81,12 +81,12 @@ class _FakeWebSocket:
         self.closed_code = code
 
 
-# 클래스명: ChatConnectionManagerTest
-# 역할: 비동기 연결 관리자의 이벤트 수신 범위와 연결 거절 조건을 검증하는 테스트 모음이다.
-# 주요 책임:
-# - 개인 삭제 이벤트가 요청자 소켓에만 전달되고 연동 상대에게는 노출되지 않는지 검증한다.
-# - 사용자별 연결 상한을 넘는 소켓을 수락하지 않고 4429 코드로 종료하는지 검증한다.
-# - 호환 계약의 소켓 인증은 허용하지만 계약 불일치는 HTTP 409로 거절하는지 검증한다.
+# Class Name: ChatConnectionManagerTest
+# Role: Tests asynchronous chat socket delivery and admission rules.
+# Responsibilities:
+# - Check recipient scoping, connection limits, authentication contracts, and bounded delivery to slow peers.
+# Attributes:
+# - None; each test creates its own connection manager and sockets.
 class ChatConnectionManagerTest(unittest.IsolatedAsyncioTestCase):
     # Function Name: test_slow_recipient_does_not_delay_healthy_delivery
     # Description: Healthy recipients receive events while a stalled send times out;
@@ -99,10 +99,24 @@ class ChatConnectionManagerTest(unittest.IsolatedAsyncioTestCase):
         waiting = asyncio.Event()
         delivered = asyncio.Event()
 
+        # Function Name: stalled_send
+        # Description:
+        # - Holds transport delivery until cancellation without recording an event.
+        # Parameters:
+        # - event: dict[str, object]; outgoing event, deliberately not delivered.
+        # Returns:
+        # - None only if the event is released; normally cancelled.
         async def stalled_send(event: dict[str, object]) -> None:
             """Hold a transport send until cancellation, without recording delivery."""
             await waiting.wait()
 
+        # Function Name: healthy_send
+        # Description:
+        # - Records delivery and signals completion without waiting for the stalled peer.
+        # Parameters:
+        # - event: dict[str, object]; delivered event.
+        # Returns:
+        # - None.
         async def healthy_send(event: dict[str, object]) -> None:
             """Record delivery and signal the test without waiting for the slow peer."""
             healthy.events.append(event)
@@ -152,6 +166,13 @@ class ChatConnectionManagerTest(unittest.IsolatedAsyncioTestCase):
         first, rejected = _FakeWebSocket(), _FakeWebSocket()
         closing = asyncio.Event()
 
+        # Function Name: stalled_close
+        # Description:
+        # - Signals transport-close entry and waits indefinitely to exercise close cancellation.
+        # Parameters:
+        # - code: int; requested close code, unused.
+        # Returns:
+        # - Never normally returns; waits for cancellation.
         async def stalled_close(code: int = 1000) -> None:
             """Signal entry into the simulated transport close and wait for cancellation."""
             closing.set()

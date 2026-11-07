@@ -137,13 +137,10 @@ class PillIdentificationResponse(BaseModel):
     )
     has_more_candidates: bool = False
 
-    # Function Name: from_domain
-    # Description:
-    # - Selects no-match, confident or uncertain messaging and serializes candidates without relaxing confirmation.
-    # Parameters:
-    # - result (PillIdentificationResult): Single-pill domain result with mandatory confirmation.
-    # Returns:
-    # - Single-pill response whose success and confidence require nonempty candidates.
+    # 함수이름: from_domain
+    # 함수역할: 후보 유무·확신 수준에 맞는 안내를 고르고 후보·관찰 특징을 직렬화하되 확인 요구를 유지한다.
+    # 매개변수: result (PillIdentificationResult)는 단일 알약 식별 결과다.
+    # 반환값: PillIdentificationResponse. 후보가 없으면 success·is_confident는 False이고 requires_confirmation은 항상 True다.
     @classmethod
     def from_domain(
         cls,

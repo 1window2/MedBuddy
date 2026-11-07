@@ -1,3 +1,5 @@
+# 파일명: d19e7c4b2a60_preserve_deleted_resource_ids.py
+# 역할: SQLite 자원 ID 재사용을 막고 푸시 등록 세대를 저장한다.
 """삭제한 약·채팅의 SQLite ID와 푸시 재등록 세대를 보호한다."""
 
 from alembic import op
@@ -17,6 +19,10 @@ _TABLES = ("saved_medications", "chat_messages")
 # 과거 최고 발급 ID를 복구할 수는 없다.
 
 
+# 함수이름: _rebuild
+# 함수역할: SQLite 대상 테이블의 AUTOINCREMENT 설정이 다를 때만 재생성하고 전후 외래키 무결성을 확인한다.
+# 매개변수: autoincrement (bool)는 적용할 ID 발급 정책이다.
+# 반환값: None. 다른 DB는 변경하지 않으며 위험한 외래키 활성 연결·무결성 실패는 RuntimeError로 거절한다.
 def _rebuild(*, autoincrement: bool) -> None:
     connection = op.get_bind()
     if connection.dialect.name != "sqlite":
@@ -50,6 +56,10 @@ def _rebuild(*, autoincrement: bool) -> None:
         raise RuntimeError("SQLite foreign keys are invalid after ID migration.")
 
 
+# 함수이름: upgrade
+# 함수역할: 약·채팅 ID 재사용을 막고 누락된 푸시 등록 버전 열을 빈 기본값으로 추가한다.
+# 매개변수: 없음. Alembic 연결을 사용한다.
+# 반환값: None. 재생성 안전성 검증과 DDL 오류는 전달한다.
 def upgrade() -> None:
     _rebuild(autoincrement=True)
     columns = {column["name"] for column in sa.inspect(op.get_bind()).get_columns("device_push_tokens")}
@@ -60,6 +70,10 @@ def upgrade() -> None:
         ))
 
 
+# 함수이름: downgrade
+# 함수역할: SQLite AUTOINCREMENT 정책을 해제하고 존재하는 푸시 등록 버전 열을 제거한다.
+# 매개변수: 없음. Alembic 연결을 사용한다.
+# 반환값: None. ID 재사용 방지·등록 세대 정보가 사라지며 재생성 오류는 전달한다.
 def downgrade() -> None:
     _rebuild(autoincrement=False)
     columns = {column["name"] for column in sa.inspect(op.get_bind()).get_columns("device_push_tokens")}

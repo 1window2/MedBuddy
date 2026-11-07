@@ -1,5 +1,5 @@
 // File Name: medication_reminder_background_service_test.dart
-// Role: Verifies rolling reminder replenishment for long medication courses.
+// Role: Verify background reminder recovery, account ownership, completion filtering, and rolling dose-cycle windows.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/controls/app_language_control.dart';
@@ -10,14 +10,14 @@ import 'package:medbuddy_frontend/services/medication_reminder_background_servic
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Function Name: main
-// Description:
-// - Register regression cases for background reminder replenishment and date-specific medication
-//   content.
-// Parameters:
-// - None.
-// Returns:
-// - No value; the test framework executes the registered cases.
+// Description: Registers background-refresh regressions for offline recovery, sign-out ownership, rolling reminder windows, completed slots, and dose cycles.
+// Parameters: None.
+// Returns: void; the test framework executes the registered fixtures and cases.
 void main() {
+  // Function Name: offline refresh recovery test
+  // Description: Verifies that a failed schedule load leaves all native alarms untouched; after reconnection, refresh registers the active morning slot and cancels the other three.
+  // Parameters: None.
+  // Returns: Future<void>; fails if offline refresh changes alarms or the recovered registration/cancellation counts differ.
   test('offline refresh preserves native alarms and recovers after reconnect', () async {
     SharedPreferences.setMockInitialValues({});
     var offline = true;
@@ -54,6 +54,10 @@ void main() {
   // 로그아웃 때 이미 돌던 작업은 이전 계정의 알림을 다시 걸지 않는다. 확인 직전·직후 어느 쪽에서
   // 로그아웃해도 알림이 남지 않는다.
   for (final signOutAfter in [0, 1]) {
+    // Function Name: sign-out during refresh test
+    // Description: Revokes reminder ownership on the first or second check and verifies that synchronization completes with no old-account reminder left armed.
+    // Parameters: None; signOutAfter selects how many ownership checks succeed before sign-out.
+    // Returns: Future<void>; fails if synchronization reports failure or any slot remains armed.
     test('a worker running at sign-out leaves no reminder (checks before sign-out: $signOutAfter)', () async {
       SharedPreferences.setMockInitialValues({});
       final armed = <String>{};
@@ -82,13 +86,10 @@ void main() {
     });
   }
 
-  // Function Name: test callback
-  // Description:
-  // - Verify that background synchronization replenishes long-course reminders beyond fourteen days.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // Function Name: rolling long-course window test
+  // Description: Verifies that a forty-day course registers the first fourteen-day window, then replenishes a new fourteen-day window when the clock advances two weeks.
+  // Parameters: None.
+  // Returns: Future<void>; fails if either synchronization or the registered window's length and endpoints differ.
   test('백그라운드 동기화가 14일 이후의 장기 복약 알림을 보충한다', () async {
     SharedPreferences.setMockInitialValues({
       AppLanguageControl.preferenceKey: 'ko',
@@ -163,10 +164,8 @@ void main() {
       // Description:
       // - Acknowledge unrelated reminder cancellations without device access.
       // Parameters:
-      // - id (int): Identifier of the medication, message, or notification fixture. Accepted but not
-      //   consumed by this fixture.
-      // - slotKey (String): Dose slot such as morning, lunch, evening, or bedtime. Accepted but not consumed
-      //   by this fixture.
+      // - id (int): Notification ID; ignored by this no-op cancellation.
+      // - slotKey (String?): Optional dose slot; ignored by this no-op cancellation.
       // Returns:
       // - Future<void>; completes without side effects.
       cancelReminder: (id, {slotKey}) async {},
@@ -192,13 +191,10 @@ void main() {
     expect(registeredWindows.last.last, DateTime(2026, 8, 28));
   });
 
-  // Function Name: test callback
-  // Description:
-  // - Verify that disabled slots cancel only local reminders without changing server settings.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // Function Name: disabled reminder cancellation test
+  // Description: Supplies a disabled morning alarm and empty schedules; any registration fails the test, while successful refresh must cancel all four local slots.
+  // Parameters: None.
+  // Returns: Future<void>; fails if a reminder is registered, synchronization fails, or slot cancellation order differs.
   test('비활성화된 시간대는 서버 설정을 바꾸지 않고 로컬 알림만 취소한다', () async {
     SharedPreferences.setMockInitialValues({});
     final canceledSlots = <String>[];
@@ -262,9 +258,8 @@ void main() {
       // Description:
       // - Record the slot canceled by background synchronization of a disabled alarm.
       // Parameters:
-      // - id (int): Identifier of the medication, message, or notification fixture. Accepted but not
-      //   consumed by this fixture.
-      // - slotKey (String): Dose slot such as morning, lunch, evening, or bedtime.
+      // - id (int): Notification ID; ignored because this spy records only the slot.
+      // - slotKey (String?): Canceled slot; null is recorded as an empty string.
       // Returns:
       // - Future<void>; appends the canceled slot key.
       cancelReminder: (id, {slotKey}) async {
@@ -284,13 +279,10 @@ void main() {
     expect(canceledSlots, ['morning', 'lunch', 'evening', 'bedtime']);
   });
 
-  // Function Name: test callback
-  // Description:
-  // - Verify that the refresh registers every date on which any course of the slot is active.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // Function Name: overlapping course date union test
+  // Description: Verifies that two overlapping two-day courses produce one ordered three-day reminder window for their shared slot.
+  // Parameters: None.
+  // Returns: Future<void>; fails if synchronization fails or overlapping dates are duplicated or omitted.
   test('겹치는 복용 기간의 모든 날짜를 등록한다', () async {
     SharedPreferences.setMockInitialValues({});
     List<DateTime>? registeredDates;
@@ -356,10 +348,8 @@ void main() {
       // Description:
       // - Acknowledge unrelated reminder cancellations without device access.
       // Parameters:
-      // - id (int): Identifier of the medication, message, or notification fixture. Accepted but not
-      //   consumed by this fixture.
-      // - slotKey (String): Dose slot such as morning, lunch, evening, or bedtime. Accepted but not consumed
-      //   by this fixture.
+      // - id (int): Notification ID; ignored by this no-op cancellation.
+      // - slotKey (String?): Optional dose slot; ignored by this no-op cancellation.
       // Returns:
       // - Future<void>; completes without side effects.
       cancelReminder: (id, {slotKey}) async {},
@@ -386,6 +376,10 @@ void main() {
   // - The reminder-window response carries no completion records, so the refresh reads today's schedule
   //   to learn which slots are already taken. These cases pin both directions: a taken slot is not
   //   re-armed for today, and a slot that is not (or not provably) taken always keeps today's reminder.
+  // Function Name: completed-slot reminder test group
+  // Description: Registers cases distinguishing confirmed completion from missing, partial, failed, or previous-day schedule data when choosing today's reminder dates.
+  // Parameters: None.
+  // Returns: void; defines controlled-date fixtures and registers the completion-filter cases.
   group('today reminder for a completed slot', () {
     // An hour at which the device-local date and the server schedule day are both 2026-08-01, whatever
     // time zone the test machine uses.
@@ -399,9 +393,12 @@ void main() {
     late int todayReads;
 
     // Function Name: course
-    // Description: Builds a five-day course in the given slots with the given completion flags.
-    // Parameters: name - medication name; slots - slot keys; taken - completion flag per slot.
-    // Returns: The medication schedule fixture.
+    // Description: Builds a five-day course starting August 1 with configurable slots and completion flags.
+    // Parameters:
+    // - name (String): Synthetic medication label.
+    // - slots (List<String>): Dose slots included in the schedule.
+    // - taken (Map<String, bool>): Per-slot completion flags; defaults to no explicit flags.
+    // Returns: MedicationSchedule; the constructed fixture without backend access.
     MedicationSchedule course(
       String name,
       List<String> slots, {
@@ -415,11 +412,14 @@ void main() {
     );
 
     // Function Name: build
-    // Description: Creates the refresh service with enabled morning and evening alarms, a window
-    //   response without completion records, and the supplied today response.
-    // Parameters: loadToday - today's schedule loader, or null to omit it; evening - whether the
-    //   evening alarm is enabled; window - courses returned by the window read.
-    // Returns: The service under test.
+    // Description: Builds a controlled-clock refresh service with configurable morning/evening alarms and captures registrations, cancellations, and today's schedule-read count.
+    // Parameters:
+    // - loadToday (Future<List<MedicationSchedule>> Function()?):
+    //   Optional current-day loader; null omits it, and supplied loader failures reach the refresh service.
+    // - morning (bool): Whether the morning alarm is enabled; defaults to true.
+    // - evening (bool): Whether the evening alarm is enabled; defaults to true.
+    // - window (List<MedicationSchedule>?): Window response; null supplies two default five-day courses without completion flags.
+    // Returns: MedicationReminderRefreshService; isolated service using the group's recorded state.
     MedicationReminderRefreshService build({
       Future<List<MedicationSchedule>> Function()? loadToday,
       bool morning = true,
@@ -458,6 +458,10 @@ void main() {
       now: () => currentTime,
     );
 
+    // Function Name: setUp callback
+    // Description: Clears preferences and recorded reminder operations, resets today's read count, and chooses the controlled hour shared by local and server schedule dates.
+    // Parameters: None.
+    // Returns: void; initializes independent state for each completion-filter case.
     setUp(() {
       SharedPreferences.setMockInitialValues({});
       currentTime = DateTime(2026, 8, 1, sameDayHour);
@@ -467,8 +471,9 @@ void main() {
     });
 
     // Function Name: completed-slot test
-    // Description: A slot whose medications are all taken today is registered without today, while its
-    //   later dates and the other slot keep every date.
+    // Description: Verifies that a fully taken morning slot omits only today, retaining its four future dates while the untaken evening slot keeps all five.
+    // Parameters: None.
+    // Returns: Future<void>; fails if today's schedule is not read once or either slot's date window differs.
     test('slot taken before its reminder time is not registered for today', () async {
       final service = build(
         loadToday: () async => [
@@ -491,8 +496,9 @@ void main() {
     });
 
     // Function Name: partially-taken test
-    // Description: Today's reminder stays when any medication of the slot is still untaken, or when
-    //   the slot has no medication in today's response.
+    // Description: Verifies that a partly taken evening slot and a morning slot absent from today's response both retain today's reminder.
+    // Parameters: None.
+    // Returns: Future<void>; fails if synchronization fails or either slot loses today.
     test('partly taken or unknown slots keep the reminder for today', () async {
       final service = build(
         loadToday: () async => [
@@ -508,8 +514,9 @@ void main() {
     });
 
     // Function Name: day-change test
-    // Description: When the day changes while today's schedule is being read, the completion belongs
-    //   to yesterday and must not remove the new day's reminder.
+    // Description: Advances the day during the completion read and verifies that yesterday's taken flags do not remove the new day's morning or evening reminder.
+    // Parameters: None.
+    // Returns: Future<void>; fails if synchronization fails or either window skips the new day.
     test('completion read before midnight does not drop the next day', () async {
       final service = build(
         loadToday: () async {
@@ -532,8 +539,9 @@ void main() {
     });
 
     // Function Name: failed today read test
-    // Description: When today's schedule cannot be read the refresh reports failure for a retry and
-    //   registers nothing, so existing device reminders stay as they are.
+    // Description: Makes the completion loader throw and verifies that refresh reports failure for retry without registering or canceling any native reminder.
+    // Parameters: None.
+    // Returns: Future<void>; fails if the read error is reported as success or changes existing alarms.
     test('failed today read leaves reminders untouched and asks for a retry', () async {
       final service = build(
         loadToday: () async => throw StateError('network unavailable'),
@@ -546,7 +554,9 @@ void main() {
     });
 
     // Function Name: no reminder slot test
-    // Description: Today's schedule is not requested when no slot has a reminder to register.
+    // Description: Disables both configured alarms and verifies that refresh skips today's schedule read, registers nothing, and cancels all four local slots.
+    // Parameters: None.
+    // Returns: Future<void>; fails if a completion read or registration occurs, or cancellation order differs.
     test('today is not read when no slot has a reminder to register', () async {
       final service = build(
         loadToday: () async => const [],
@@ -561,8 +571,10 @@ void main() {
       expect(cancelled, ['morning', 'lunch', 'evening', 'bedtime']);
     });
 
-    // Function Name: shared rule test
-    // Description: The shared date rule removes only today and only when the slot is completed.
+    // Function Name: shared completion date rule test
+    // Description: Compares the same active course with and without today's completion flag; only the completed case drops today while preserving later dates.
+    // Parameters: None.
+    // Returns: void; fails if completion filtering removes future dates or leaves today's reminder.
     test('activeReminderDates drops only today for a completed slot', () {
       final schedules = [course('약-A', const ['morning'])];
       final now = DateTime(2026, 8, 3, 6);
@@ -582,8 +594,9 @@ void main() {
     });
   });
   // Function Name: unknown-duration test
-  // Description: A course without a readable duration never ends on the server, so its reminders
-  //   fill the 14-day window instead of today only; a dated course still stops at its last day.
+  // Description: Verifies that a course without a duration fills the fourteen-day reminder window while a finite course stops at its last active day.
+  // Parameters: None.
+  // Returns: void; fails if the unknown course is truncated or the finite course extends beyond its duration.
   test('a course of unknown duration is reminded through the whole window', () {
     final now = DateTime(2026, 8, 3, 6);
     final unknown = MedicationSchedule(
@@ -609,6 +622,10 @@ void main() {
   });
 
   // Dose days: a medication that is not taken every day is reminded on its dose days only.
+  // Function Name: dose-cycle test group
+  // Description: Registers weekly, mixed daily/weekly, and unspecified-cycle cases, including background refresh on a rest day.
+  // Parameters: None.
+  // Returns: void; creates shared synthetic courses and registers date-selection tests.
   group('dose days', () {
     final now = DateTime(2026, 8, 3, 6);
     final weekly = MedicationSchedule(
@@ -628,7 +645,9 @@ void main() {
     );
 
     // Function Name: weekly test
-    // Description: A weekly medication gets a reminder date every seventh day of the window.
+    // Description: Verifies seven-day spacing from both a dose day and a rest day, and confirms that a completion flag removes only today's weekly dose.
+    // Parameters: None.
+    // Returns: void; fails if the rolling window includes rest days or drops a future dose.
     test('a weekly medication is reminded every seventh day only', () {
       expect(
         MedicationReminderRefreshService.activeReminderDates([weekly], now: now),
@@ -654,8 +673,9 @@ void main() {
     });
 
     // Function Name: mixed-slot test
-    // Description: With a daily medication in the same slot every day keeps its reminder, and the
-    //   weekly medication is due only on its own dose days.
+    // Description: Verifies that a daily course keeps all fourteen shared-slot reminder dates while the weekly course is due on only its two cycle dates.
+    // Parameters: None.
+    // Returns: void; fails if combined dates or per-course due-day checks differ.
     test('a daily medication in the same slot keeps every day', () {
       final dates = MedicationReminderRefreshService.activeReminderDates(
         [weekly, daily],
@@ -670,7 +690,9 @@ void main() {
     });
 
     // Function Name: no-cycle test
-    // Description: A schedule without cycle fields is reminded every day of its course, as before.
+    // Description: Verifies that an unspecified dose cycle preserves daily reminders through the remaining three days of a five-day course.
+    // Parameters: None.
+    // Returns: void; fails if the returned dates skip a remaining course day or extend beyond the course.
     test('a schedule without a dose cycle behaves as before', () {
       final plain = MedicationSchedule(
         medicationName: '약-A',
@@ -684,9 +706,10 @@ void main() {
       );
     });
 
-    // Function Name: worker test
-    // Description: The background refresh registers a weekly-only slot on its dose days and does
-    //   not cancel it on a rest day, when today's schedule does not list the medication.
+    // Function Name: weekly rest-day worker test
+    // Description: Supplies an empty today response on a weekly rest day and verifies registration of the next two weekly dates while only the other slots are canceled.
+    // Parameters: None.
+    // Returns: Future<void>; fails if the weekly slot is canceled or its future reminder dates change.
     test('the worker keeps a weekly-only slot on a rest day', () async {
       SharedPreferences.setMockInitialValues({});
       final registered = <String, List<DateTime>>{};

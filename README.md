@@ -84,7 +84,7 @@
 
 ## Roadmap
 
-1. **v0.2.5 usability line and carried-over verification:** v0.2.4-beta is published as a limited off-Play pre-release; v0.2.5 makes existing features easier to find and prepares the app for the graduation exhibition (2026-11-26 to 11-27) and is to be finished by 2026-11-20. Remaining physical reboot/offline recovery, two-device caregiver/chat checks, and measured recognition validation are tracked in the [release TODO](docs/TODO.md).
+1. **1.0.0 release candidate and carried-over verification:** v0.2.5-beta is published as a limited off-Play pre-release; the 1.0.0 line on `beta/v1.0.0` finishes the items left open by the beta lines. Remaining physical reboot/offline recovery, two-device caregiver/chat checks, and measured recognition validation are tracked in the [release TODO](docs/TODO.md).
 2. **Android production verification:** Validate the dedicated
    FastAPI/PostgreSQL/Redis production host behind Cloudflare Tunnel, complete
    backup and restore rehearsal, and finish authenticated two-device, Wi-Fi,

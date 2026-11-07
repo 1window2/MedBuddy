@@ -4,16 +4,10 @@
 import 'json_value_reader.dart';
 import 'user_setting_entity.dart';
 
-// 클래스명: HealthRecommendation
-// 역할: 약 조합 기반 건강 관리 추천 내용을 보관한다.
-// 주요 책임:
-// - 백엔드 AI 추천 응답을 식사, 운동, 주의사항 필드로 정규화한다.
-// - 추천 생성에 사용된 약 이름 목록을 보관한다.
-// 속성:
-// - dietRecommendation (String): 복용 약 조합 기반 식사 추천
-// - exerciseRecommendation (String): 복용 약 조합 기반 운동 추천
-// - cautionItems (List<String>): 추천과 함께 표시할 주의 항목 목록
-// - medicationNames (List<String>): 알림·추천에 사용할 약 표시 이름 목록
+// Class Name: HealthRecommendation
+// Role: Hold health recommendations for a medication combination.
+// Responsibilities: Normalize response fields and retain the medication names used to generate guidance.
+// Attributes: dietRecommendation/exerciseRecommendation (String): guidance; cautionItems/medicationNames (List<String>): cautions and source medications.
 class HealthRecommendation {
   final String dietRecommendation;
   final String exerciseRecommendation;
@@ -36,13 +30,10 @@ class HealthRecommendation {
     this.medicationNames = const [],
   });
 
-  // 함수이름: HealthRecommendation.fromJson
-  // 함수역할: 식사·운동·주의 항목을 현재 및 구형 필드명에서 읽고 누락된 추천 문장은 요청 언어의 안내문으로 대체한다.
-  // 매개변수:
-  // - json (Map<String, dynamic>): 해당 모델의 서버 응답 또는 저장 JSON 객체
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - HealthRecommendation: 필드 검증과 기본값 처리를 거쳐 복원한 레코드.
+  // Function Name: HealthRecommendation.fromJson
+  // Description: Read current or legacy recommendation fields and substitute localized guidance when recommendation text is absent.
+  // Parameters: json (Map<String, dynamic>): recommendation data; language (String): fallback language.
+  // Returns: HealthRecommendation: normalized guidance and string lists.
   factory HealthRecommendation.fromJson(
     Map<String, dynamic> json, {
     String language = 'ko',

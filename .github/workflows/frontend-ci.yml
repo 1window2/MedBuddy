@@ -1,5 +1,6 @@
 # File Name: frontend-ci.yml
-# Role: Validates Flutter source, tests and the compile-only Android release build.
+# Role: Validates Flutter source, tests, the compile-only Android release build and the
+#   instrumented Android tests on an emulator.
 
 name: Flutter CI
 
@@ -84,17 +85,92 @@ jobs:
       run: cp android/app/google-services.json.example android/app/google-services.json
 
     - name: Android Release APK Build Test
-      run: flutter build apk --release --no-pub --target-platform android-arm,android-arm64
+      shell: bash
+      run: |
+        set -euo pipefail
+        for ABI in armeabi-v7a arm64-v8a; do
+          case "${ABI}" in
+            armeabi-v7a) TARGET=android-arm ;;
+            arm64-v8a) TARGET=android-arm64 ;;
+          esac
+          flutter build apk --release --no-pub --target-platform "${TARGET}"
+          mv build/app/outputs/flutter-apk/app-release.apk "build/app/outputs/flutter-apk/app-${ABI}-release.apk"
+        done
 
     - name: Verify APK native ABIs
       shell: bash
       run: |
         set -euo pipefail
-        APK="build/app/outputs/flutter-apk/app-release.apk"
-        APK_NATIVE_ABIS="$(unzip -Z1 "${APK}" 'lib/*' | cut -d/ -f2 | sort -u | paste -sd, -)"
-        APK_ENGINE_ABIS="$(unzip -Z1 "${APK}" 'lib/*/libflutter.so' | cut -d/ -f2 | sort -u | paste -sd, -)"
-        if [[ "${APK_NATIVE_ABIS}" != "arm64-v8a,armeabi-v7a" || "${APK_ENGINE_ABIS}" != "${APK_NATIVE_ABIS}" ]]; then
-          echo "Direct APK must contain exactly the arm64-v8a and armeabi-v7a native libraries (found: ${APK_NATIVE_ABIS}; engine: ${APK_ENGINE_ABIS})." >&2
-          exit 1
-        fi
-        ls -l "${APK}"
+        for ABI in armeabi-v7a arm64-v8a; do
+          APK="build/app/outputs/flutter-apk/app-${ABI}-release.apk"
+          APK_NATIVE_ABIS="$(unzip -Z1 "${APK}" 'lib/*' | cut -d/ -f2 | sort -u | paste -sd, -)"
+          APK_ENGINE_ABIS="$(unzip -Z1 "${APK}" 'lib/*/libflutter.so' | cut -d/ -f2 | sort -u | paste -sd, -)"
+          if [[ "${APK_NATIVE_ABIS}" != "${ABI}" || "${APK_ENGINE_ABIS}" != "${ABI}" ]]; then
+            echo "Direct APK must contain only ${ABI} native libraries and a matching Flutter engine (found: ${APK_NATIVE_ABIS}; engine: ${APK_ENGINE_ABIS})." >&2
+            exit 1
+          fi
+          ls -l "${APK}"
+        done
+
+  # The home-widget layout and refresh tests measure real Android fonts and alarms, so they
+  # run on an emulator. API 34 and the pixel_7 profile (420 dpi) match the local debug
+  # emulator the layout limits were measured on; without a profile the emulator is a 160 dpi
+  # screen, where pixel rounding moves the one-row widget by 2 px. The layout test reads
+  # targetCellWidth, which needs API 31 or later. Only the app module is tested: the plugin
+  # modules declare no instrumented tests and one of them cannot build its test manifest.
+  instrumented:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+    - name: Source Code Checkout
+      uses: actions/checkout@v7
+
+    - name: Java Setup (for Flutter)
+      uses: actions/setup-java@v6
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+        cache: 'gradle'
+        cache-dependency-path: |
+          frontend/android/*.gradle*
+          frontend/android/app/*.gradle*
+          frontend/android/gradle/wrapper/gradle-wrapper.properties
+          frontend/pubspec.lock
+
+    - name: Flutter Setup
+      uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      with:
+        flutter-version: '3.41.5'
+        channel: 'stable'
+        cache: true
+
+    - name: Package Get
+      run: flutter pub get --enforce-lockfile
+
+    - name: Prepare compile-only Firebase configuration
+      shell: bash
+      run: cp android/app/google-services.json.example android/app/google-services.json
+
+    - name: Enable KVM for the emulator
+      shell: bash
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+
+    - name: Run Android Instrumented Tests
+      uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+      with:
+        api-level: 34
+        arch: x86_64
+        target: google_apis
+        profile: pixel_7
+        emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect
+        disable-animations: true
+        working-directory: ./frontend/android
+        script: ./gradlew :app:connectedDebugAndroidTest -Ptarget-platform=android-x64

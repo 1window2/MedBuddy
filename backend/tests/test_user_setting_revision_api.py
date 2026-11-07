@@ -1,7 +1,11 @@
+# 파일명: test_user_setting_revision_api.py
+# 역할: 설정 HTTP 경로의 인증 계정 범위, 개정 전달과 충돌 후 최신 값 보존을 검증한다.
+
 """설정 API의 버전 전달, 충돌 응답, 인증된 계정 범위를 검증한다."""
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from api.dependencies import (
     get_authenticated_principal, get_authorization_control, get_manage_user_setting,
@@ -14,7 +18,14 @@ from entities.user_setting_entity import _UserSetting
 from support.db import seed_account
 
 
-def test_setting_http_revision_check_preserves_owner_and_latest_value(fk_db):
+# 함수이름: test_setting_http_revision_check_preserves_owner_and_latest_value
+# 함수역할:
+# - 설정 HTTP 요청은 인증된 계정만 수정하고 개정 충돌을 409로 반환하여 최신 알림 값을 보존하는지 확인한다.
+# 매개변수:
+# - fk_db: Session; 외래 키가 활성화된 격리 데이터베이스.
+# 반환값:
+# - None.
+def test_setting_http_revision_check_preserves_owner_and_latest_value(fk_db: Session) -> None:
     principal = AuthenticatedPrincipal(
         subject="synthetic-owner", issuer="test", user_hash="owner",
     )

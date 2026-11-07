@@ -101,6 +101,8 @@ class _FakeCatalogBoundary:
 # Role: Vision double that asynchronously fails the required image-quality stage.
 # Responsibilities:
 # - Yields once and raises a retake-photo quality error to exercise sibling-stage cancellation.
+# Attributes:
+# - None.
 class _FailingVisionBoundary:
     # Function Name: extractVisualFeatures
     # Description:
@@ -557,13 +559,12 @@ async def test_lone_candidate_below_the_score_floor_is_not_confident(
     assert result.is_confident is confident
 
 
-# Function Name: test_single_result_limit_still_checks_tied_runner_up
-# Description:
-# - Checks a tied runner-up before truncating to one result so the visible candidate remains
-#   nonconfident.
-# Parameters:
-# - None.
-# Returns:
+# 함수이름: test_single_result_limit_still_checks_tied_runner_up
+# 함수역할:
+# - 결과 상한이 1이어도 동점 후보 둘을 모두 반환하고 확신하지 않은 상태로 사용자 확인을 요구하는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
 # - None.
 @pytest.mark.anyio
 async def test_single_result_limit_still_checks_tied_runner_up() -> None:
@@ -695,6 +696,13 @@ async def test_cancelled_ranking_retains_shared_capacity_until_worker_exits() ->
     assert control.active_workers == 0
 
 
+# Function Name: test_result_rejects_invalid_candidate_truncation_contract
+# Description:
+# - Rejects candidate lists above the response limit and truncated flags on lists that do not fill that limit.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_result_rejects_invalid_candidate_truncation_contract() -> None:
     candidate = PillIdentificationCandidate(
         item_seq="1",

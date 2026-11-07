@@ -1,6 +1,5 @@
-// 파일명: dose_home_widget_service_test.dart
-// 역할: 위젯 발행과 백그라운드 갱신이 복용 기록을 잃지 않고 한 번만 전송하며, 보낼 기록도
-//   표시할 위젯도 없을 때에만 일을 건너뛰는지 검증한다.
+// File Name: dose_home_widget_service_test.dart
+// Role: Verifies durable widget actions, single-upload background refresh, idle-work skipping and account cleanup.
 // Real SQLite/crypto and the production DoseSyncService; the widget plugin, WorkManager and the
 //   notification plugin are replaced by recording substitutes. No production accounts or records.
 import 'dart:convert';
@@ -22,15 +21,19 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'support/json_http.dart';
 
-// 클래스명: _RecordingWidgetPlatform
-// 역할: 위젯 플러그인·알림·전송 예약·통신 준비 호출을 기록하는 대역.
-// 주요 책임: Android 위젯처럼 처리된 클릭을 목록에서 지우고, 테스트가 정한 위젯 유무와 실패를 재현한다.
-// 속성: journal 처리 전 클릭 목록, installed 위젯 유무, savedStates 발행한 상태,
-//   cancelledReminders 취소한 재알림, registered 전송 예약 계정, openedClients 직접 만든 통신 수단 수.
+// Class Name: _RecordingWidgetPlatform
+// Role: Records widget publication, journal consumption and background side effects.
+// Responsibilities: Simulates installation checks and cancellation failures while sharing the encrypted test store and HTTP client.
+// Attributes: store/client are shared resources; journal stores pending clicks; installed and failure flags control behavior. savedStates, scheduledUpdates, cancelledReminders and registered record calls; openedClients/cancelledScheduledUpdates count resource requests.
 class _RecordingWidgetPlatform extends DoseHomeWidgetPlatform {
-  // 함수이름: _RecordingWidgetPlatform
-  // 함수역할: 테스트 저장소와 통신 대역을 사용하는 기록용 플랫폼을 만든다.
-  // 매개변수: store - 암호화 테스트 저장소, client - 서비스가 직접 만들 통신 수단의 대역.
+  // Function Name: _RecordingWidgetPlatform
+  // Description:
+  // - Connects widget operations to the shared test store and client.
+  // Parameters:
+  // - store (DoseOutboxStore): Encrypted fixture store.
+  // - client (http.Client): Client returned by openClient; owned by test cleanup.
+  // Returns:
+  // - A recording platform with no published states.
   _RecordingWidgetPlatform(this.store, this.client);
 
   final DoseOutboxStore store;
@@ -47,19 +50,45 @@ class _RecordingWidgetPlatform extends DoseHomeWidgetPlatform {
   int openedClients = 0;
   int cancelledScheduledUpdates = 0;
 
+  // Function Name: supported
+  // Description:
+  // - Enables widget paths independently of the host OS.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - bool: Always true.
   @override
   bool get supported => true;
 
+  // Function Name: readJournal
+  // Description:
+  // - Reads pending platform clicks without consuming them.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<String?>: Current journal JSON.
   @override
   Future<String?> readJournal() async => journal;
 
+  // Function Name: saveState
+  // Description:
+  // - Decodes a published state and appends a separate map to the publication log.
+  // Parameters:
+  // - state (String): JSON object produced by the widget service.
+  // Returns:
+  // - Future<void>: Completes after recording; malformed JSON or a non-map fails.
   @override
   Future<void> saveState(String state) async {
     savedStates.add(Map<String, dynamic>.from(jsonDecode(state) as Map));
   }
 
-  // 함수이름: updateWidget
-  // 함수역할: Android 위젯과 같이 처리 완료로 표시된 클릭을 대기 목록에서 지운다.
+  // Function Name: updateWidget
+  // Description:
+  // - Removes journal clicks whose tokens appear in the last published handled list.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes journal reconciliation; requires at least one published state and valid journal JSON.
   @override
   Future<void> updateWidget() async {
     final handled = (savedStates.last['handled'] as List? ?? []).toSet();
@@ -69,21 +98,58 @@ class _RecordingWidgetPlatform extends DoseHomeWidgetPlatform {
     ]);
   }
 
+  // Function Name: scheduleUpdate
+  // Description:
+  // - Records the next requested widget refresh time without scheduling OS work.
+  // Parameters:
+  // - at (DateTime): Requested refresh time.
+  // Returns:
+  // - Future<void>: Completes after recording at.
   @override
   Future<void> scheduleUpdate(DateTime at) async => scheduledUpdates.add(at);
 
+  // Function Name: cancelScheduledUpdates
+  // Description:
+  // - Counts cancellation of future widget updates without contacting the platform.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes after incrementing the cancellation counter.
   @override
   Future<void> cancelScheduledUpdates() async => cancelledScheduledUpdates++;
 
+  // Function Name: hasInstalledWidget
+  // Description:
+  // - Returns the configured installation state or simulates a lookup failure.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<bool>: installed; throws StateError when failInstalledLookup is set.
   @override
   Future<bool> hasInstalledWidget() async {
     if (failInstalledLookup) throw StateError('widget lookup unavailable');
     return installed;
   }
 
+  // Function Name: openStore
+  // Description:
+  // - Returns the shared encrypted store without reopening it.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<DoseOutboxStore>: The constructor-supplied store.
   @override
   Future<DoseOutboxStore> openStore() async => store;
 
+  // Function Name: cancelReminder
+  // Description:
+  // - Records owner, slot and date only when simulated platform cancellation succeeds.
+  // Parameters:
+  // - owner (String): Reminder account.
+  // - slotKey (String): Completed dose slot.
+  // - date (DateTime): Reminder date.
+  // Returns:
+  // - Future<void>: Completes after recording, or throws StateError when failReminderCancel is set.
   @override
   Future<void> cancelReminder({
     required String owner,
@@ -94,9 +160,23 @@ class _RecordingWidgetPlatform extends DoseHomeWidgetPlatform {
     cancelledReminders.add((owner: owner, slotKey: slotKey, date: date));
   }
 
+  // Function Name: registerSync
+  // Description:
+  // - Records the account requesting background dose transmission.
+  // Parameters:
+  // - owner (String): Account to schedule.
+  // Returns:
+  // - Future<void>: Completes after appending owner.
   @override
   Future<void> registerSync(String owner) async => registered.add(owner);
 
+  // Function Name: openClient
+  // Description:
+  // - Counts service-owned client acquisition and returns the shared test client.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<http.Client>: The constructor-supplied client.
   @override
   Future<http.Client> openClient() async {
     openedClients++;
@@ -104,30 +184,71 @@ class _RecordingWidgetPlatform extends DoseHomeWidgetPlatform {
   }
 }
 
-// 클래스명: _RecordingWorkPlatform
-// 역할: WorkManager 호출 순서를 기록하고 저장소 열기 실패를 재현하는 대역.
-// 속성: calls 호출 순서, store 열어 줄 저장소(null이면 열기 실패).
+// Class Name: _RecordingWorkPlatform
+// Role: Captures background-work ordering and store-open failure.
+// Responsibilities: Records registration and cancellation calls; returns a configured store or fails when absent.
+// Attributes: store is the optional encrypted store; calls preserves operation order.
 class _RecordingWorkPlatform extends DoseSyncWorkPlatform {
-  // 함수이름: _RecordingWorkPlatform
-  // 함수역할: store를 돌려주거나, null이면 열기 실패를 내는 대역을 만든다.
+  // Function Name: _RecordingWorkPlatform
+  // Description:
+  // - Configures whether the worker can open dose storage.
+  // Parameters:
+  // - store (DoseOutboxStore?): Store to return; null simulates an unavailable store.
+  // Returns:
+  // - A recording work platform.
   _RecordingWorkPlatform(this.store);
 
   final DoseOutboxStore? store;
   final List<String> calls = [];
 
+  // Function Name: supported
+  // Description:
+  // - Enables the background-work path on the test host.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - bool: Always true.
   @override
   bool get supported => true;
 
+  // Function Name: registerOneOff
+  // Description:
+  // - Records a one-off transmission request with its account.
+  // Parameters:
+  // - owner (String): Account to schedule.
+  // Returns:
+  // - Future<void>: Completes after appending one-off:owner.
   @override
   Future<void> registerOneOff(String owner) async => calls.add('one-off:$owner');
 
+  // Function Name: registerPeriodic
+  // Description:
+  // - Records periodic transmission registration with its account.
+  // Parameters:
+  // - owner (String): Account to schedule.
+  // Returns:
+  // - Future<void>: Completes after appending periodic:owner.
   @override
   Future<void> registerPeriodic(String owner) async =>
       calls.add('periodic:$owner');
 
+  // Function Name: cancelAll
+  // Description:
+  // - Records cancellation before subsequent storage cleanup can run.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes after appending cancel.
   @override
   Future<void> cancelAll() async => calls.add('cancel');
 
+  // Function Name: openStore
+  // Description:
+  // - Records the open attempt and exposes the configured storage failure.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<DoseOutboxStore>: Shared store, or StateError when store is null.
   @override
   Future<DoseOutboxStore> openStore() async {
     calls.add('open');
@@ -135,9 +256,13 @@ class _RecordingWorkPlatform extends DoseSyncWorkPlatform {
   }
 }
 
-// 함수이름: main
-// 함수역할: 위젯 발행·백그라운드 갱신·전송 예약의 회귀 테스트를 등록한다.
-// 매개변수: 없음. 반환값: 없음.
+// Function Name: main
+// Description:
+// - Registers widget publication, background refresh, queued transmission and cleanup regressions using real SQLite and cryptography.
+// Parameters:
+// - None.
+// Returns:
+// - No value; the framework executes registered tests and lifecycle hooks.
 void main() {
   sqfliteFfiInit();
   const owner = 'patient-a';
@@ -154,13 +279,22 @@ void main() {
   late int snapshotStatus;
   late Duration uploadDelay;
 
-  // 함수이름: today
-  // 함수역할: 서비스가 쓰는 것과 같은 기준으로 오늘 복약 기준일을 계산한다. 반환값: YYYY-MM-DD.
+  // Function Name: today
+  // Description:
+  // - Uses the production widget day policy to derive today's dose date.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - String: Calendar day in YYYY-MM-DD form.
   String today() => doseWidgetDay(DateTime.now());
 
-  // 함수이름: medication
-  // 함수역할: 아침 한 번 복용하는 테스트 약 일정을 만든다.
-  // 매개변수: taken - 아침 복용 완료 여부. 반환값: 일정.
+  // Function Name: medication
+  // Description:
+  // - Creates the fixed private-name morning medication for server and cache fixtures.
+  // Parameters:
+  // - taken (bool): Morning completion state; defaults to false.
+  // Returns:
+  // - MedicationSchedule: Numeric ID 91 with an explicit morning slot.
   MedicationSchedule medication({bool taken = false}) => MedicationSchedule(
     medicationID: '91',
     medicationName: 'private medicine',
@@ -168,10 +302,15 @@ void main() {
     slotStatuses: {'morning': taken},
   );
 
-  // 함수이름: prepare
-  // 함수역할: 로그인한 계정에 일정 캐시와 이전에 발행한 위젯 상태를 만들어 둔다.
-  // 매개변수: date - 캐시 기준일(null이면 오늘), taken - 아침 완료 여부, config - 위젯 표시 설정.
-  // 반환값: 저장된 위젯 상태.
+  // Function Name: prepare
+  // Description:
+  // - Activates the fixture owner, saves a daily schedule and builds its persisted widget state.
+  // Parameters:
+  // - date (String?): Cache date; defaults to today.
+  // - taken (bool): Morning completion state.
+  // - config (Map<String, dynamic>): Widget-source and display options.
+  // Returns:
+  // - Future<DoseWidgetState>: Persisted widget state; fails if the store cannot produce one.
   Future<DoseWidgetState> prepare({
     String? date,
     bool taken = false,
@@ -189,9 +328,14 @@ void main() {
     ))!;
   }
 
-  // 함수이름: enqueue
-  // 함수역할: 앱에서 기록해 아직 전송하지 못한 아침 복용 요청을 대기열에 넣는다.
-  // 매개변수: id - 요청 ID, date - 복약 기준일(null이면 오늘). 반환값: 저장 완료 Future.
+  // Function Name: enqueue
+  // Description:
+  // - Adds an unsent morning completion including a private local-only medication name.
+  // Parameters:
+  // - id (String): Stable operation ID.
+  // - date (String?): Dose date; defaults to today.
+  // Returns:
+  // - Future<void>: Completes durable enqueue, propagating storage errors.
   Future<void> enqueue(String id, {String? date}) => store.enqueue(owner, {
     'operation_id': id,
     'schedule_date': date ?? today(),
@@ -201,10 +345,22 @@ void main() {
     'medication_names': ['private medicine'],
   });
 
-  // 함수이름: uploadedIds
-  // 함수역할: 서버가 받은 복용 기록 요청의 ID를 받은 순서대로 돌려준다.
+  // Function Name: uploadedIds
+  // Description:
+  // - Extracts operation identifiers in the order the mock server received uploads.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - List<Object?>: Uploaded operation_id values.
   List<Object?> uploadedIds() => [for (final u in uploads) u['operation_id']];
 
+  // Function Name: setUp
+  // Description:
+  // - Installs production readers, creates a fresh encrypted file-backed store, and configures recording HTTP and widget substitutes.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes fixture setup; unexpected HTTP routes return 500.
   setUp(() async {
     // Production installs the server readers at every entry point; the tests use the same wiring.
     installDoseHomeWidgetReaders();
@@ -276,6 +432,13 @@ void main() {
     DoseHomeWidget.platform = platform;
   });
 
+  // Function Name: tearDown
+  // Description:
+  // - Resets global widget/work platforms, closes shared clients and database, and removes the temporary directory.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes cleanup, propagating resource errors.
   tearDown(() async {
     DoseHomeWidget.resetForTest();
     DoseSyncBackgroundScheduler.platform = const DoseSyncWorkPlatform();
@@ -285,8 +448,13 @@ void main() {
   });
 
   group('주기 작업의 건너뛰기 조건', () {
-    // 함수이름: 할 일 없는 주기 작업 테스트
-    // 함수역할: 위젯도 전송 대기 기록도 없으면 통신·발행·작업 재등록을 전혀 하지 않는지 검증한다.
+    // Function Name: nothing pending and no widget: no request, no publish, no job
+    // Description:
+    // - With no installed widget and no queued work, verifies no network client, publication or follow-up job is created.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('nothing pending and no widget: no request, no publish, no job', () async {
       await prepare();
       platform.installed = false;
@@ -301,8 +469,13 @@ void main() {
       expect(await DoseHomeWidget.needsNetworkRefresh(owner), isFalse);
     });
 
-    // 함수이름: 위젯만 있는 주기 작업 테스트
-    // 함수역할: 오늘 일정이 이미 있으면 통신 없이 위젯만 한 번 다시 그리는지 검증한다.
+    // Function Name: widget with today\'s schedule: one local publish, no request
+    // Description:
+    // - With a current daily cache, publishes exactly one local state without opening a client or scheduling work.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('widget with today\'s schedule: one local publish, no request', () async {
       await prepare();
 
@@ -317,8 +490,13 @@ void main() {
       expect(await DoseHomeWidget.needsNetworkRefresh(owner), isFalse);
     });
 
-    // 함수이름: 날짜가 바뀐 위젯 테스트
-    // 함수역할: 위젯이 있고 오늘 일정이 없으면 서버 일정을 한 번만 읽어 발행하는지 검증한다.
+    // Function Name: widget without today\'s schedule: one read, two publishes
+    // Description:
+    // - With a stale daily cache, reads today's schedule once, publishes before and after recovery, and skips another read on the next refresh.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('widget without today\'s schedule: one read, two publishes', () async {
       await prepare(date: '2000-01-01');
       expect(await DoseHomeWidget.needsNetworkRefresh(owner), isTrue);
@@ -336,8 +514,13 @@ void main() {
       expect(scheduleReads, 1);
     });
 
-    // 함수이름: 위젯 없는 날짜 변경 테스트
-    // 함수역할: 표시할 위젯이 없으면 날짜가 바뀌어도 서버 일정을 읽지 않는지 검증한다.
+    // Function Name: no widget and no pending record: a stale schedule is not read
+    // Description:
+    // - With no widget and no queued work, leaves a stale cache alone without requesting or publishing a schedule.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('no widget and no pending record: a stale schedule is not read', () async {
       await prepare(date: '2000-01-01');
       platform.installed = false;
@@ -349,8 +532,13 @@ void main() {
       expect(await DoseHomeWidget.needsNetworkRefresh(owner), isFalse);
     });
 
-    // 함수이름: 위젯 확인 실패 테스트
-    // 함수역할: 위젯 유무를 확인하지 못하면 있는 것으로 보고 기존처럼 갱신하는지 검증한다.
+    // Function Name: an unknown widget state is treated as installed
+    // Description:
+    // - Treats installation lookup failure as potentially installed, requesting the stale schedule and publishing twice.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('an unknown widget state is treated as installed', () async {
       await prepare(date: '2000-01-01');
       platform.failInstalledLookup = true;
@@ -364,8 +552,13 @@ void main() {
   });
 
   group('전송 대기 기록', () {
-    // 함수이름: 주기 작업 전송 테스트
-    // 함수역할: 대기 기록을 한 번 전송하고 확인 응답의 일정으로 위젯을 갱신하며 일정은 다시 읽지 않는지 검증한다.
+    // Function Name: a pending record is uploaded once and the widget is refreshed
+    // Description:
+    // - Uploads one operation without its private medication_names field, publishes pending then acknowledged state, and does not repeat the upload or self-schedule.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('a pending record is uploaded once and the widget is refreshed', () async {
       await prepare();
       await enqueue('op-1');
@@ -389,8 +582,13 @@ void main() {
       expect(uploadedIds(), ['op-1']);
     });
 
-    // 함수이름: 위젯 없는 전송 테스트
-    // 함수역할: 위젯이 없어도 주기 작업이 대기 기록을 전송하는지 검증한다.
+    // Function Name: a pending record is uploaded even without a widget
+    // Description:
+    // - Uploads the pending operation even without an installed widget, emptying the queue without a schedule read.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('a pending record is uploaded even without a widget', () async {
       await prepare();
       await enqueue('op-1');
@@ -404,8 +602,13 @@ void main() {
       expect(scheduleReads, 0);
     });
 
-    // 함수이름: 전송 실패 테스트
-    // 함수역할: 서버가 받지 못한 기록을 지우지 않고 대기 상태로 표시하며 발행 횟수가 늘지 않는지 검증한다.
+    // Function Name: a failed upload keeps the record and still publishes once more
+    // Description:
+    // - On a 503 upload response, retains the same operation, refreshes the stale schedule and publishes the pending state twice in total.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('a failed upload keeps the record and still publishes once more', () async {
       await prepare(date: '2000-01-01');
       await enqueue('op-1', date: '2000-01-01');
@@ -423,8 +626,13 @@ void main() {
       expect(platform.savedStates.last['status'], contains('전송 대기 1건'));
     });
 
-    // 함수이름: 중복 전송 방지 테스트
-    // 함수역할: 앱의 전송과 주기 작업이 겹쳐도 같은 기록을 한 번만 보내는지 검증한다.
+    // Function Name: the app and the periodic worker never upload one record twice
+    // Description:
+    // - Runs foreground drain and periodic refresh concurrently, then refreshes again, verifying the durable lease permits only one upload.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('the app and the periodic worker never upload one record twice', () async {
       await prepare();
       await enqueue('op-1');
@@ -446,8 +654,13 @@ void main() {
       expect(await store.pending(owner), isEmpty);
     });
 
-    // 함수이름: 거부된 기록 테스트
-    // 함수역할: 서버가 거부해 보류된 기록만 남았으면 주기 작업이 통신을 준비하지 않는지 검증한다.
+    // Function Name: a rejected record does not wake the network every period
+    // Description:
+    // - After a 409 blocks the operation, skips further client acquisition and uploads while publishing the user-action-required status.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('a rejected record does not wake the network every period', () async {
       await prepare();
       await enqueue('op-1');
@@ -469,8 +682,13 @@ void main() {
   });
 
   group('호출자가 준비한 동기화 서비스', () {
-    // 함수이름: 전달받은 서비스 재사용 테스트
-    // 함수역할: 호출자가 전송까지 마친 서비스를 넘기면 다시 전송하거나 닫지 않고 그 통신 수단을 쓰는지 검증한다.
+    // Function Name: a caller-provided service is reused, not drained or disposed
+    // Description:
+    // - Reuses a caller's already-drained service and client without repeating its failed upload or disposing it; only fetches the needed schedule.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('a caller-provided service is reused, not drained or disposed', () async {
       await prepare(date: '2000-01-01');
       await enqueue('op-1', date: '2000-01-01');
@@ -495,8 +713,13 @@ void main() {
       expect(sync.pendingCount, 1);
     });
 
-    // 함수이름: 전달받은 서비스의 계정 불일치 테스트
-    // 함수역할: 다른 계정의 서비스를 넘겨도 현재 계정의 기록을 그 서비스로 보내지 않는지 검증한다.
+    // Function Name: a service of another account is never used for this account
+    // Description:
+    // - Rejects a caller-supplied service for another account without uploading or removing the current owner's pending record.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('a service of another account is never used for this account', () async {
       await prepare();
       await enqueue('op-1');
@@ -515,8 +738,13 @@ void main() {
   });
 
   group('위젯에서 누른 버튼', () {
-    // 함수이름: journalFor
-    // 함수역할: 위젯에 표시된 버튼을 눌렀을 때 Android가 먼저 저장하는 클릭 목록을 만든다.
+    // Function Name: journalFor
+    // Description:
+    // - Encodes one native widget click using the visible action and token.
+    // Parameters:
+    // - state (DoseWidgetState): Previously displayed widget state.
+    // Returns:
+    // - String: JSON journal containing the action, token and widget ID 1.
     String journalFor(DoseWidgetState state) => jsonEncode([
       {
         'action': state.view['action'],
@@ -525,8 +753,13 @@ void main() {
       },
     ]);
 
-    // 함수이름: 위젯 복용 기록 테스트
-    // 함수역할: 위젯의 복용 버튼이 대기열에 저장된 뒤 전송되고, 전송 작업 예약은 발행이 한 번만 하는지 검증한다.
+    // Function Name: a widget tap is stored, uploaded once and acknowledged
+    // Description:
+    // - Consumes a widget take token once, uploads its matching date and slot, clears the journal and publishes acknowledged state without rereading today's schedule.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('a widget tap is stored, uploaded once and acknowledged', () async {
       final shown = await prepare();
       expect(shown.view['action'], 'take');
@@ -549,8 +782,13 @@ void main() {
       expect(await store.pending(owner), isEmpty);
     });
 
-    // 함수이름: 오프라인 위젯 복용 기록 테스트
-    // 함수역할: 연결이 없어도 위젯의 복용 기록이 대기열에 남고 위젯에 전송 대기로 표시되는지 검증한다.
+    // Function Name: an offline widget tap stays queued and is shown as pending
+    // Description:
+    // - Keeps an offline widget action durably pending and visibly completed, schedules retry once, then uploads that same token after connectivity returns.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('an offline widget tap stays queued and is shown as pending', () async {
       final shown = await prepare();
       platform.journal = journalFor(shown);
@@ -574,8 +812,13 @@ void main() {
       expect(await store.pending(owner), isEmpty);
     });
 
-    // 함수이름: 호출자 서비스와 위젯 클릭 테스트
-    // 함수역할: 호출자가 전송을 마친 뒤에 남아 있던 위젯 클릭도 같은 갱신에서 전송하는지 검증한다.
+    // Function Name: a tap found after the caller drained is still uploaded
+    // Description:
+    // - Finds and uploads a journal action even after the caller's service already drained, reusing its client and refreshing its pending count.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('a tap found after the caller drained is still uploaded', () async {
       final shown = await prepare();
       final sync = DoseSyncService(
@@ -594,8 +837,13 @@ void main() {
       expect(platform.openedClients, 0);
     });
 
-    // 함수이름: 위젯 새로고침 버튼 테스트
-    // 함수역할: 위젯의 새로고침 요청은 오늘 일정이 있어도 서버에서 다시 읽는지 검증한다.
+    // Function Name: a refresh requested by the widget always reads the server
+    // Description:
+    // - An explicit widget refresh rereads today's schedule despite a current cache, with two publications and no dose upload.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('a refresh requested by the widget always reads the server', () async {
       await prepare();
 
@@ -610,8 +858,13 @@ void main() {
   group('환자 조회 위젯', () {
     const patients = {'source': 'patients'};
 
-    // 함수이름: 환자 일정 조회 테스트
-    // 함수역할: 환자 조회 결과가 없을 때만 한 번 읽어 발행하고, 오늘 결과가 있으면 다시 읽지 않는지 검증한다.
+    // Function Name: patient snapshots are read once per day by the periodic worker
+    // Description:
+    // - Reads linked-patient data once for periodic refreshes on the cached day, preserves the alias, and rereads on an explicit widget request.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('patient snapshots are read once per day by the periodic worker', () async {
       await prepare(config: patients);
       expect(await DoseHomeWidget.needsNetworkRefresh(owner), isTrue);
@@ -632,8 +885,13 @@ void main() {
       expect(snapshotReads, 2);
     });
 
-    // 함수이름: 환자 일정 조회 실패 테스트
-    // 함수역할: 조회 실패를 위젯에 표시하고 다음 주기 작업에서 다시 시도하는지 검증한다.
+    // Function Name: a failed patient read is shown and retried next period
+    // Description:
+    // - Shows patient-read failure and keeps network refresh necessary, then retries successfully on the next period.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('a failed patient read is shown and retried next period', () async {
       await prepare(config: patients);
       snapshotStatus = 503;
@@ -652,9 +910,13 @@ void main() {
   });
 
   group('완료한 시간대의 재알림 취소', () {
-    // 함수이름: 재알림 취소 반복 방지 테스트
-    // 함수역할: 같은 완료 상태를 다시 발행해도 재알림을 한 번만 취소하고, 복용을 취소했다가 다시 완료하면
-    //   다시 취소하는지 검증한다.
+    // Function Name: a completed slot is cancelled once, and again after an undo
+    // Description:
+    // - Cancels a completed slot's reminder only once across repeated publications, but allows a new cancellation after undo and recompletion.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('a completed slot is cancelled once, and again after an undo', () async {
       await prepare(taken: true);
 
@@ -678,8 +940,13 @@ void main() {
       expect(platform.cancelledReminders, hasLength(2));
     });
 
-    // 함수이름: 재알림 취소 실패 재시도 테스트
-    // 함수역할: 취소가 실패해도 위젯 발행은 끝나고 다음 발행에서 다시 취소를 시도하는지 검증한다.
+    // Function Name: a failed cancellation is retried by the next publish
+    // Description:
+    // - Allows publication and next-update scheduling despite reminder-cancel failure, then retries cancellation on the next publish.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('a failed cancellation is retried by the next publish', () async {
       await prepare(taken: true);
       platform.failReminderCancel = true;
@@ -698,8 +965,13 @@ void main() {
   });
 
   group('전송 작업 예약', () {
-    // 함수이름: 전송 작업 등록 테스트
-    // 함수역할: 일회성 작업과 주기 작업을 계정별로 한 번씩 등록하는지 검증한다.
+    // Function Name: register schedules the one-off and the periodic task
+    // Description:
+    // - Registers one-off work before periodic work, each exactly once for the account.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('register schedules the one-off and the periodic task', () async {
       final work = _RecordingWorkPlatform(store);
       DoseSyncBackgroundScheduler.platform = work;
@@ -709,8 +981,13 @@ void main() {
       expect(work.calls, ['one-off:$owner', 'periodic:$owner']);
     });
 
-    // 함수이름: 로그아웃 중단 테스트
-    // 함수역할: 로그아웃 때 작업을 취소하고 저장소의 활성 계정을 해제하되 대기 기록은 남기는지 검증한다.
+    // Function Name: suspend cancels the workers and deactivates the account
+    // Description:
+    // - Cancels workers before opening the store, deactivates the owner and preserves its pending operation.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('suspend cancels the workers and deactivates the account', () async {
       await prepare();
       await enqueue('op-1');
@@ -724,8 +1001,13 @@ void main() {
       expect(await store.pending(owner), hasLength(1));
     });
 
-    // 함수이름: 저장소 실패 시 중단 테스트
-    // 함수역할: 저장소를 열지 못해도 작업은 먼저 취소하고 그 오류를 호출자에게 전달하는지 검증한다.
+    // Function Name: suspend cancels the workers even when the store cannot open
+    // Description:
+    // - Cancels workers before a failed store open and propagates the storage error.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('suspend cancels the workers even when the store cannot open', () async {
       final work = _RecordingWorkPlatform(null);
       DoseSyncBackgroundScheduler.platform = work;
@@ -736,8 +1018,13 @@ void main() {
     });
   });
 
-  // 함수이름: 로그아웃 위젯 정리 테스트
-  // 함수역할: 로그아웃 때 위젯 표시를 비우고 처리하지 못한 클릭을 처리 완료로 표시하는지 검증한다.
+  // Function Name: clear blanks the widget and discards unhandled taps
+  // Description:
+  // - Clears scheduled updates, publishes only handled stale clicks and the default language, then empties the journal.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   test('clear blanks the widget and discards unhandled taps', () async {
     SharedPreferences.setMockInitialValues({});
     platform.journal = jsonEncode([
@@ -754,8 +1041,13 @@ void main() {
     expect(platform.journal, '[]');
   });
 
-  // 함수이름: 로그아웃 위젯 언어 테스트
-  // 함수역할: 영어를 쓰던 사용자가 로그아웃해도 위젯의 로그인 안내가 영어로 남는지 검증한다.
+  // Function Name: clear keeps the app language for the sign-in prompt
+  // Description:
+  // - Preserves the persisted English app language in the cleared widget's sign-in state.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   test('clear keeps the app language for the sign-in prompt', () async {
     SharedPreferences.setMockInitialValues({'medbuddy_app_language': 'en'});
 

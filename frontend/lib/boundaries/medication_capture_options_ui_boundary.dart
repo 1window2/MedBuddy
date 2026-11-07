@@ -12,23 +12,25 @@ import '../theme/medbuddy_theme.dart';
 // 역할: 약 정보 분석 작업과 처방전 이미지 출처 선택을 제공한다.
 
 // 클래스명: MedicationCaptureTask
-// 역할: 처방전 분석·알약 식별·직접 입력 작업 구분을 담당한다.
-// 주요 책임:
-// - 처방전·한 장의 여러 알약·개별 알약·직접 입력을 구분한다.
+// 역할: 약 등록 메뉴에서 선택하는 알약 식별·직접 입력 작업.
+// 주요 책임: 한 사진의 여러 알약·알약별 사진·직접 등록을 구분한다.
+// 속성: multiplePills/individualPills/manual: 작업 값. 처방전 출처는 별도 열거형을 사용한다.
 enum MedicationCaptureTask {
   multiplePills,
   individualPills,
   manual,
 }
 
-// 열거형명: PillCaptureMode
-// 역할: 알약 화면에서 한 장의 여러 알약과 알약별 앞뒷면 입력 방식을 구분한다.
+// 클래스명: PillCaptureMode
+// 역할: 알약 사진 입력 방식 구분.
+// 주요 책임: 한 사진의 여러 알약과 알약별 앞뒷면 촬영 흐름을 구별한다.
+// 속성: singlePhoto/individualPhotos: 입력 모드.
 enum PillCaptureMode { singlePhoto, individualPhotos }
 
 // 클래스명: PrescriptionImageSource
-// 역할: 처방전의 카메라·갤러리 입력 출처를 담당한다.
-// 주요 책임:
-// - 처방전의 카메라·갤러리 입력 출처에서 지원하는 선택지를 열거하고 구분한다: camera, gallery.
+// 역할: 처방전 사진을 가져올 출처.
+// 주요 책임: 가이드 카메라 촬영과 갤러리 선택 흐름을 구분한다.
+// 속성: camera/gallery: 출처 값.
 enum PrescriptionImageSource { camera, gallery }
 
 // 함수이름: showMedicationCaptureTaskOptions
@@ -49,7 +51,10 @@ Future<void> showMedicationCaptureTaskOptions({
 }) {
   final text = _MedicationCaptureText(userSetting.language);
   var opening = false;
-  // 선택 창이나 다음 화면을 여는 동안 다른 항목을 함께 열지 않는다.
+  // Function Name: open
+  // Description: Serializes registration choices while a picker or destination is open and releases the lock even if the action fails.
+  // Parameters: action (Future<void> Function()): selected workflow.
+  // Returns: Future<void>; repeated requests are ignored and action failures propagate.
   Future<void> open(Future<void> Function() action) async {
     if (opening) return;
     opening = true;
@@ -126,6 +131,10 @@ Future<void> showMedicationCaptureTaskOptions({
   );
 }
 
+// 함수이름: showPillCaptureModeOptions
+// 함수역할: 한 사진의 여러 알약 또는 알약별 촬영 방식을 선택받으며 첫 선택만 반환한다.
+// 매개변수: context (BuildContext): 하단 메뉴 위치; isEnglish (bool): 언어.
+// 반환값: 선택한 MedicationCaptureTask 또는 취소 시 null인 Future.
 Future<MedicationCaptureTask?> showPillCaptureModeOptions(
   BuildContext context,
   bool isEnglish,
@@ -223,11 +232,10 @@ class _MedicationCaptureText {
   // 반환값: 입력 설정이 반영된 _MedicationCaptureText 인스턴스.
   const _MedicationCaptureText(this.language);
 
-  // 함수이름: isEnglish
-  // 함수역할: 공통 언어 판정으로 언어 코드가 영어인지 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: isEnglish
+  // Description: Uses the shared English-language rule for medication-input choices.
+  // Parameters: None.
+  // Returns: True for an English language code.
   bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: prescriptionTask

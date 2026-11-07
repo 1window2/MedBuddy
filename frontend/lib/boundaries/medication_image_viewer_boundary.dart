@@ -9,12 +9,10 @@ import '../entities/medication_image_url_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
-// 클래스명: MedicationImageViewer
-// 역할: 사용 가능한 약품 사진의 확대 보기 진입을 담당한다.
-// 주요 책임:
-// - 저장된 로컬 사진과 신뢰할 수 있는 네트워크 사진을 동일한 화면에서 처리한다.
-// - 사진이 없거나 파일이 사라진 경우 확대 화면을 열지 않는다.
-// - 닫기 버튼과 접근성 의미 라벨을 한국어·영어 설정에 맞게 제공한다.
+// Class Name: MedicationImageViewer
+// Role: A static entry point for zooming a usable medication image.
+// Responsibilities: Checks local-file availability or trusted remote sources before opening localized full-screen viewing.
+// Attributes: No instance fields; the private constructor prevents public instantiation.
 class MedicationImageViewer {
   // 함수이름: MedicationImageViewer._
   // 함수역할: 정적 대화상자 도우미가 외부에서 인스턴스화되지 않도록 제한한다.
@@ -23,15 +21,10 @@ class MedicationImageViewer {
   // 반환값: 입력 설정이 반영된 MedicationImageViewer 인스턴스.
   const MedicationImageViewer._();
 
-  // 함수이름: show
-  // 함수역할: 사용할 수 있는 약품 사진이 있을 때 전체 화면 확대 뷰어를 연다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // - medicationName (String): 사용자에게 표시할 약품 또는 계정 이름.
-  // - imageUrl (String): 검증 후 사용할 약품 이미지 네트워크 URL.
-  // - localImagePath (String): 사진 미리보기 또는 확대에 사용할 로컬 파일 경로.
-  // - language (String): 화면 문구를 선택할 언어 코드.
-  // 반환값: 성공하면 true, 실패하거나 요청을 수행하지 못하면 false로 완료되는 Future.
+  // Function Name: show
+  // Description: Opens a full-screen zoomable medication photo only when a usable local or safe remote source exists.
+  // Parameters: context: navigation host; medicationName: viewer title; imageUrl: remote URL; localImagePath: optional local source; language: labels.
+  // Returns: Future<bool>: false without a usable source, true after showing and closing the viewer.
   static Future<bool> show(
     BuildContext context, {
     required String medicationName,
@@ -70,15 +63,10 @@ class MedicationImageViewer {
   }
 }
 
-// 클래스명: _MedicationImageViewerDialog
-// 역할: 로컬·네트워크 약품 사진의 확대·이동·닫기를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 로컬·네트워크 약품 사진의 확대·이동·닫기 위젯을 구성한다.
-// 속성:
-// - medicationName (String): 사용자에게 표시할 약품 또는 계정 이름.
-// - source (_MedicationImageSource): 카메라·갤러리 또는 기존 이미지 입력 출처.
-// - closeLabel (String): 아이콘의 동작을 설명할 도움말·접근성 문구.
-// - imageLabel (String): 스크린 리더가 읽을 콘텐츠 또는 이미지 설명.
+// Class Name: _MedicationImageViewerDialog
+// Role: Zoomable and pannable medication photo dialog.
+// Responsibilities: Displays the resolved local/remote source with an accessible image label and close control.
+// Attributes: medicationName: title; source (_MedicationImageSource): resolved image; closeLabel/imageLabel: accessible descriptions.
 class _MedicationImageViewerDialog extends StatelessWidget {
   final String medicationName;
   final _MedicationImageSource source;
@@ -100,11 +88,10 @@ class _MedicationImageViewerDialog extends StatelessWidget {
     required this.imageLabel,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 로컬·네트워크 약품 사진의 확대·이동·닫기 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 로컬·네트워크 약품 사진의 확대·이동·닫기에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays the resolved medication photo in an interactive full-screen viewer with close and load-failure states.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return Material(

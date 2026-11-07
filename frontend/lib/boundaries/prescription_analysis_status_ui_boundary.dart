@@ -208,15 +208,10 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
     );
   }
 
-  // 함수이름: _buildActionButton
-  // 함수역할: 아이콘 간격과 좌우 여백을 줄이고, 매우 큰 글씨에서는 높이를 늘려 복구 명령을 모두 표시한다.
-  // 매개변수:
-  // - key (Key): 복구 버튼 식별 키.
-  // - isPrimary (bool): 주요 명령 강조 여부.
-  // - onPressed (VoidCallback): 선택한 복구 동작.
-  // - icon (IconData): 명령을 나타내는 아이콘.
-  // - label (String): 생략 없이 표시할 명령 이름.
-  // 반환값: 최소 터치 높이를 보장하는 복구 버튼.
+  // Function Name: _buildActionButton
+  // Description: Keeps recovery-action labels complete at large text sizes by reducing spacing and allowing additional button height.
+  // Parameters: key: button identity; isPrimary: emphasis; onPressed: recovery action; icon: command symbol; label: full command text.
+  // Returns: A recovery button retaining its minimum touch height.
   Widget _buildActionButton({
     required Key key,
     required bool isPrimary,
@@ -282,27 +277,23 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
   }
 }
 
-// 클래스명: _FailureReasonPanel
-// 역할: 처방 분석 실패의 가능한 원인 목록을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 처방 분석 실패의 가능한 원인 목록 위젯을 구성한다.
-// 속성:
-// - text (_StatusText): 해당 화면 구역의 언어별 표시 문구.
+// Class Name: _FailureReasonPanel
+// Role: Possible prescription-analysis failure causes.
+// Responsibilities: Presents localized reasons that can guide another capture attempt.
+// Attributes: text (_StatusText): failure-reason copy.
 class _FailureReasonPanel extends StatelessWidget {
   final _StatusText text;
 
-  // 함수이름: _FailureReasonPanel
-  // 함수역할: 처방 분석 실패의 가능한 원인 목록에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - text (_StatusText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 입력 설정이 반영된 _FailureReasonPanel 인스턴스.
+  // Function Name: _FailureReasonPanel
+  // Description: Supplies the localized set of possible failure reasons.
+  // Parameters: text (_StatusText): failure guidance.
+  // Returns: A _FailureReasonPanel.
   const _FailureReasonPanel({required this.text});
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 처방 분석 실패의 가능한 원인 목록 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 처방 분석 실패의 가능한 원인 목록에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Lists possible causes of prescription-analysis failure.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -335,27 +326,23 @@ class _FailureReasonPanel extends StatelessWidget {
   }
 }
 
-// 클래스명: _FailureReasonItem
-// 역할: 분석 실패 원인 한 항목을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 분석 실패 원인 한 항목 위젯을 구성한다.
-// 속성:
-// - reason (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
+// Class Name: _FailureReasonItem
+// Role: One possible analysis-failure reason.
+// Responsibilities: Displays a readable reason within the recovery guidance list.
+// Attributes: reason (String): cause to explain.
 class _FailureReasonItem extends StatelessWidget {
   final String reason;
 
-  // 함수이름: _FailureReasonItem
-  // 함수역할: 분석 실패 원인 한 항목에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - reason (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-  // 반환값: 입력 설정이 반영된 _FailureReasonItem 인스턴스.
+  // Function Name: _FailureReasonItem
+  // Description: Stores one possible reason for failed analysis.
+  // Parameters: reason (String): failure cause.
+  // Returns: A _FailureReasonItem.
   const _FailureReasonItem({required this.reason});
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 분석 실패 원인 한 항목 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 분석 실패 원인 한 항목에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays one failure reason as a guidance-list item.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -399,11 +386,10 @@ class _StatusText {
   // 반환값: 입력 설정이 반영된 _StatusText 인스턴스.
   const _StatusText(this.language);
 
-  // 함수이름: isEnglish
-  // 함수역할: 공통 언어 판별 규칙으로 언어 코드가 영어인지 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: isEnglish
+  // Description: Uses the shared English-language rule for analysis status and recovery copy.
+  // Parameters: None.
+  // Returns: True for an English language code.
   bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: failureTitle

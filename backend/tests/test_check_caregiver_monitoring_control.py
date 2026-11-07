@@ -3,6 +3,8 @@
 
 from datetime import datetime
 
+from sqlalchemy.orm import Session
+
 from controls.check_caregiver_monitoring_control import CheckCaregiverMonitoring
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 
@@ -138,10 +140,10 @@ class _TodayMedicationControlStub:
 # 함수역할:
 # - 연동·알림 설정을 각각 한 번 조회하고 알림이 활성인 환자만 일정을 조회하며 별칭과 비활성 환자의 빈 일정을 보존하는지 검증한다.
 # 매개변수:
-# - 없음.
+# - fk_db (Session): 외래 키 검사가 활성화된 시험용 DB 세션.
 # 반환값:
 # - 없음 (None).
-def test_monitoring_snapshot_batches_links_settings_and_active_schedules(fk_db) -> None:
+def test_monitoring_snapshot_batches_links_settings_and_active_schedules(fk_db: Session) -> None:
     """활성 환자 전체를 한 번 조회하고 필요한 일정만 포함하는지 검증한다."""
     links = [
         _PatientCaregiverLink(
@@ -187,7 +189,14 @@ def test_monitoring_snapshot_batches_links_settings_and_active_schedules(fk_db) 
     assert patients[1]["today_medication_info"]["schedules"] == []
 
 
-def test_home_snapshot_includes_disabled_patients_without_medication_details(fk_db) -> None:
+# 함수이름: test_home_snapshot_includes_disabled_patients_without_medication_details
+# 함수역할:
+# - 홈 일괄 조회는 알림 비활성 환자의 일정도 포함하되 설정을 일괄 조회하고 저장 약품 상세는 반환하지 않는지 확인한다.
+# 매개변수:
+# - fk_db: Session; 외래 키가 활성화된 격리 데이터베이스.
+# 반환값:
+# - None.
+def test_home_snapshot_includes_disabled_patients_without_medication_details(fk_db: Session) -> None:
     """홈 일괄 조회는 알림 비활성 환자도 포함하되 저장 약 상세는 조회하지 않는다."""
     links = [
         _PatientCaregiverLink(id=i, patient_hash=patient,

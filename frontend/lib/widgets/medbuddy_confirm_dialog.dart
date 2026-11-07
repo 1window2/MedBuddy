@@ -5,25 +5,10 @@ import 'package:flutter/material.dart';
 
 import '../theme/medbuddy_theme.dart';
 
-// 함수이름: showMedBuddyConfirmDialog
-// 함수역할:
-// - 제목(선택)과 안내 문구, 취소 TextButton과 확인 FilledButton으로 이루어진 확인 대화상자를 연다.
-// - 취소를 누르면 false, 확인을 누르면 true로 대화상자를 닫는다.
-// 매개변수:
-// - context (BuildContext): 대화상자를 띄울 위젯 트리 위치.
-// - title (String?): 대화상자 제목; null이면 제목 없이 안내 문구만 표시한다.
-// - message (String): 대화상자 본문 안내 문구.
-// - cancelLabel (String): 취소 버튼 문구.
-// - confirmLabel (String): 확인 버튼 문구.
-// - dialogKey (Key?): AlertDialog에 붙일 위젯 키.
-// - cancelKey (Key?): 취소 버튼에 붙일 위젯 키.
-// - confirmKey (Key?): 확인 버튼에 붙일 위젯 키.
-// - destructive (bool): true이면 확인 버튼을 위험 색(MedBuddyColors.danger)으로 채운다.
-// - cancelForeground (Color?): 취소 버튼 글자색; null이면 테마 기본값을 쓴다.
-// - barrierDismissible (bool): 바깥을 눌러 대화상자를 닫을 수 있는지 여부.
-// - scrollable (bool): 긴 안내 문구를 대화상자 안에서 스크롤할지 여부.
-// 반환값:
-// - Future<bool>: 확인을 누르면 true, 취소하거나 바깥을 눌러 닫으면 false.
+// Function Name: showMedBuddyConfirmDialog
+// Description: Show a standard confirmation dialog; treat cancellation, back navigation and barrier dismissal as false.
+// Parameters: context (BuildContext): navigator context; title (String?): heading; message/cancelLabel/confirmLabel (String): content and labels; dialogKey/cancelKey/confirmKey (Key?): widget IDs; destructive (bool): danger confirmation color; cancelForeground (Color?): cancel text color; barrierDismissible (bool): outside-tap dismissal; scrollable (bool): scroll dialog content.
+// Returns: Future<bool>: true only when confirmed.
 Future<bool> showMedBuddyConfirmDialog(
   BuildContext context, {
   String? title,

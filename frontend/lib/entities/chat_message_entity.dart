@@ -2,15 +2,15 @@
 // 역할: 환자·보호자 채팅 메시지와 읽음 상태를 표현한다.
 
 import 'json_value_reader.dart';
+import 'chat_medication_reference_entity.dart';
+export 'chat_medication_reference_entity.dart';
 import 'medication_history_entity.dart';
 import 'medication_schedule_entity.dart';
 
 // 클래스명: ChatMessageKind
-// 역할: 일반 대화와 복약·약국 맥락 메시지의 유형을 구분한다.
-// 주요 책임:
-// - 서버 전송 이름을 매핑하고 알 수 없는 새 유형은 일반 대화로 표시한다.
-// 비고:
-// - 파일명: chat_message_entity.dart
+// 역할: 일반 대화와 복약·장소·기록 공유 메시지의 유형을 구분한다.
+// 주요 책임: 서버 전송 이름을 매핑하고 알 수 없는 유형은 일반 대화로 처리한다.
+// 속성: text 및 복약 확인·완료·부족·불편·약국·병원·복약 기록 공유 값; wireName (String): 전송 이름.
 enum ChatMessageKind {
   text,
   slotCheckRequest,
@@ -86,6 +86,10 @@ class ChatMedicationContext {
   final List<String> scheduleSlotKeys;
   final String dosingMode;
 
+  // 함수이름: isAsNeeded
+  // 함수역할: 공유 약이 정해진 시간표 없이 필요할 때 복용하는 방식인지 확인한다.
+  // 매개변수: 없음.
+  // 반환값: dosingMode가 as_needed이면 true.
   bool get isAsNeeded => dosingMode == 'as_needed';
 
   // 함수이름: ChatMedicationContext
@@ -96,6 +100,7 @@ class ChatMedicationContext {
   // - imageUrl (String): 약 상세·후보에 포함된 원격 이미지 주소
   // - dosagePerTime (String): 단위를 포함한 1회 복용량
   // - scheduleSlotKeys (List<String>): 명시적으로 선택한 복약 시간대 키 목록
+  // - dosingMode (String): scheduled 정기 복용 또는 as_needed 필요시 복용 유형.
   // 반환값:
   // - ChatMedicationContext: 초기화된 인스턴스.
   const ChatMedicationContext({
@@ -107,7 +112,10 @@ class ChatMedicationContext {
     this.dosingMode = 'scheduled',
   });
 
-  // 선택한 시간대만 바꾸며 약의 표시 정보는 유지한다.
+  // 함수이름: withScheduleSlots
+  // 함수역할: 약 표시 정보는 유지하면서 공유할 정기 복용 구간만 바꾼다.
+  // 매개변수: slots: 새로 선택한 구간 목록.
+  // 반환값: 새 문맥 객체; 필요시 약은 항상 빈 구간, 정기 약은 수정 불가 목록을 사용한다.
   ChatMedicationContext withScheduleSlots(List<String> slots) =>
       ChatMedicationContext(
         medicationId: medicationId,
@@ -165,12 +173,10 @@ class ChatMedicationContext {
     );
   }
 
-  // 함수이름: _readScheduleSlotKeys
-  // 함수역할: 시간대 배열을 정규화하고 아침·점심·저녁·취침 전 키만 중복 없이 남긴다.
-  // 매개변수:
-  // - value (dynamic): 반환 타입의 값으로 해석할 변환 전 응답 필드
-  // 반환값:
-  // - List<String>: 시간대 배열을 정규화하고 아침·점심·저녁·취침 전 키만 중복 없이 남긴다.
+  // Function Name: _readScheduleSlotKeys
+  // Description: Normalizes a slot array and retains only unique supported medication slots.
+  // Parameters: value: Untrusted JSON field.
+  // Returns: A fixed-length list of supported lowercase keys, or an empty list for non-list input.
   static List<String> _readScheduleSlotKeys(dynamic value) {
     if (value is! List) {
       return const [];
@@ -192,18 +198,10 @@ class ChatMedicationContext {
   }
 }
 
-// 클래스명: ChatScheduleContext
-// 역할: 채팅에 첨부된 한 복약 시간대의 진행률과 약 목록을 표현한다.
-// 주요 책임:
-// - 지원 시간대를 검증하고 알림 시각·완료 개수·확인 요청 가능 여부를 보존한다.
-// 속성:
-// - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키
-// - alarmTime (String): 시간대 알림의 표시용 시각
-// - alarmEnabled (bool): 해당 시간대 알림 활성 여부
-// - completedCount (int): 공유 시간대에서 완료된 약 항목 수
-// - totalCount (int): 진행률 또는 집계의 전체 대상 수
-// - canRequestCheck (bool): 해당 시간대의 복약 확인 요청 가능 여부
-// - medications (List<ChatMedicationContext>): 공유 복약 시간대에 포함된 약 문맥 목록
+// Class Name: ChatScheduleContext
+// Role: Represents one medication slot shared in chat at a particular schedule date.
+// Responsibilities: Carry alarm settings, progress counts, check eligibility and medication context without treating the snapshot as live state.
+// Attributes: scheduleDate/slotKey identify the slot; alarmTime/alarmEnabled describe its reminder; counts, canRequestCheck and medications describe the shared snapshot.
 class ChatScheduleContext {
   final String scheduleDate;
   final String slotKey;
@@ -224,6 +222,7 @@ class ChatScheduleContext {
   // - totalCount (int): 진행률 또는 집계의 전체 대상 수
   // - canRequestCheck (bool): 해당 시간대의 복약 확인 요청 가능 여부
   // - medications (List<ChatMedicationContext>): 공유 복약 시간대에 포함된 약 문맥 목록
+  // - scheduleDate (String): 공유 일정의 날짜; 구형 날짜 없는 문맥은 빈 문자열.
   // 반환값:
   // - ChatScheduleContext: 초기화된 인스턴스.
   const ChatScheduleContext({
@@ -237,12 +236,10 @@ class ChatScheduleContext {
     required this.medications,
   });
 
-  // 함수이름: ChatScheduleContext.fromJson
-  // 함수역할: 지원되는 시간대 키를 요구하고 완료 수·알림 설정과 첨부 약 목록을 채팅 카드 정보로 변환한다.
-  // 매개변수:
-  // - json (Map<String, dynamic>): 해당 모델의 서버 응답 또는 저장 JSON 객체
-  // 반환값:
-  // - ChatScheduleContext: 필드 검증과 기본값 처리를 거쳐 복원한 레코드.
+  // Function Name: ChatScheduleContext.fromJson
+  // Description: Parses a shared slot and its medication attachments, requiring a supported slot key.
+  // Parameters: json: Server or stored chat context.
+  // Returns: A schedule context with default counts/flags; unsupported slots and invalid nested medication data throw.
   factory ChatScheduleContext.fromJson(Map<String, dynamic> json) {
     final slotKey = readJsonText(json['slot_key']).toLowerCase();
     if (!medicationScheduleSlotKeys.contains(slotKey)) {
@@ -277,25 +274,20 @@ class ChatScheduleContext {
   }
 }
 
-// 클래스명: ChatPharmacyContext
-// 역할: 채팅으로 공유한 약국의 연락처와 길찾기 좌표를 보존한다.
-// 주요 책임:
-// - 필수 약국 ID·이름을 검증하고 영업시간과 출처 갱신 시각을 함께 전달한다.
-// 속성:
-// - pharmacyId (String): 공공데이터 또는 서버의 약국 식별자
-// - name (String): 표시하거나 길찾기에 사용할 약국 이름
-// - address (String): 복사하거나 표시할 약국 주소
-// - telephone (String): 약국 전화번호 원문
-// - latitude (double): WGS84 위도(도 단위)
-// - longitude (double): WGS84 경도(도 단위)
-// - sourceUpdatedAt (DateTime?): 원본 약국 자료의 갱신 시각
-// 병원·약국 카드의 연락처와 길찾기 데이터는 같은 계약을 사용한다.
+// 클래스명: ChatPlaceOperatingSnapshot
+// 역할: 공유 당시 의료 장소의 운영 상태와 확인 시각을 보관한다.
+// 주요 책임: 현재 운영 여부와 구분되는 시점 스냅샷을 표현하고 파싱 시 UTC 확인 시각과 상태 코드를 검증한다.
+// 속성: status: 운영 상태; asOf: 확인 시각; opensAt/closesAt: 선택적 시작·종료 시각.
 class ChatPlaceOperatingSnapshot {
   final String status;
   final DateTime asOf;
   final DateTime? opensAt;
   final DateTime? closesAt;
 
+  // 함수이름: ChatPlaceOperatingSnapshot
+  // 함수역할: 공유 당시 운영 상태와 그 상태를 확인한 시각을 보관한다.
+  // 매개변수: status: 상태 코드; asOf: 확인 시각; opensAt/closesAt: 선택적 운영 시작·종료 시각.
+  // 반환값: 스냅샷 객체; 직접 생성 시 상태나 시각을 검증하지 않는다.
   const ChatPlaceOperatingSnapshot({
     required this.status,
     required this.asOf,
@@ -303,8 +295,16 @@ class ChatPlaceOperatingSnapshot {
     this.closesAt,
   });
 
+  // 함수이름: tryParse
+  // 함수역할: 공유 운영 정보를 읽되 UTC로 해석 가능한 확인 시각을 필수로 요구한다.
+  // 매개변수: value: 운영 정보 JSON 후보.
+  // 반환값: 스냅샷 또는 구조·확인 시각 오류 시 null; 알 수 없는 상태는 unknown으로 바꾼다.
   static ChatPlaceOperatingSnapshot? tryParse(Object? value) {
     if (value is! Map) return null;
+    // 함수이름: instant
+    // 함수역할: 날짜 문자열을 읽고 명시적 시간대가 있어 UTC로 해석된 값만 허용한다.
+    // 매개변수: raw: JSON 시각 필드.
+    // 반환값: UTC DateTime 또는 파싱 실패·로컬 시각이면 null.
     DateTime? instant(Object? raw) {
       final parsed = DateTime.tryParse(readJsonText(raw));
       return parsed?.isUtc == true ? parsed : null;
@@ -329,6 +329,10 @@ class ChatPlaceOperatingSnapshot {
   }
 }
 
+// 클래스명: ChatPlaceContext
+// 역할: 채팅으로 공유한 의료 장소의 공통 표시 정보를 보관한다.
+// 주요 책임: 이름·연락처·좌표와 공유 당시 자료 갱신 및 운영 상태를 함께 전달한다.
+// 속성: name/address/telephone: 표시 정보; latitude/longitude: 좌표; sourceUpdatedAt/operatingSnapshot: 선택적 출처 시각과 상태.
 abstract class ChatPlaceContext {
   final String name;
   final String address;
@@ -338,6 +342,10 @@ abstract class ChatPlaceContext {
   final DateTime? sourceUpdatedAt;
   final ChatPlaceOperatingSnapshot? operatingSnapshot;
 
+  // 함수이름: ChatPlaceContext
+  // 함수역할: 공유 장소의 표시 정보와 선택적 운영 스냅샷을 초기화한다.
+  // 매개변수: name/address/telephone: 장소 정보; latitude/longitude: 좌표; sourceUpdatedAt/operatingSnapshot: 원본 갱신 시각과 운영 정보.
+  // 반환값: 공통 장소 문맥; 좌표 및 필수 문자열 검증은 수행하지 않는다.
   const ChatPlaceContext({
     required this.name,
     required this.address,
@@ -349,6 +357,10 @@ abstract class ChatPlaceContext {
   });
 }
 
+// Class Name: ChatPharmacyContext
+// Role: Identifies a pharmacy attachment while retaining shared place details.
+// Responsibilities: Keep the pharmacy ID separate from display/contact and historical operating information.
+// Attributes: pharmacyId: Provider identifier; inherited fields contain location, source update time and an optional operating snapshot.
 class ChatPharmacyContext extends ChatPlaceContext {
   final String pharmacyId;
 
@@ -362,6 +374,7 @@ class ChatPharmacyContext extends ChatPlaceContext {
   // - latitude (double): WGS84 위도(도 단위)
   // - longitude (double): WGS84 경도(도 단위)
   // - sourceUpdatedAt (DateTime?): 원본 약국 자료의 갱신 시각
+  // - operatingSnapshot (ChatPlaceOperatingSnapshot?): 공유 시점의 영업 상태·확인 시각·개폐점 시각.
   // 반환값:
   // - ChatPharmacyContext: 초기화된 인스턴스.
   const ChatPharmacyContext({
@@ -404,12 +417,19 @@ class ChatPharmacyContext extends ChatPlaceContext {
   }
 }
 
-// 병원 공유는 선택한 진료 날짜와 정보 확인 시각을 별도로 보존한다.
+// Class Name: ChatHospitalContext
+// Role: Represents a hospital attachment with a selected consultation date.
+// Responsibilities: Keep hospital identity, departments and the selected date distinct from the information-check timestamp.
+// Attributes: hospitalId/departments/scheduleDate: Hospital-specific context; inherited fields hold location and shared operating information.
 class ChatHospitalContext extends ChatPlaceContext {
   final String hospitalId;
   final List<String> departments;
   final DateTime scheduleDate;
 
+  // 함수이름: ChatHospitalContext
+  // 함수역할: 선택 진료 날짜와 진료과를 공통 장소 정보에 더해 보관한다.
+  // 매개변수: hospitalId: 병원 ID; name/address/telephone/latitude/longitude: 장소 정보; sourceUpdatedAt/operatingSnapshot: 출처 정보; departments: 진료과; scheduleDate: 선택 날짜.
+  // 반환값: 병원 공유 문맥; 목록 복사나 입력 검증은 수행하지 않는다.
   const ChatHospitalContext({
     required this.hospitalId,
     required super.name,
@@ -423,6 +443,10 @@ class ChatHospitalContext extends ChatPlaceContext {
     required this.scheduleDate,
   });
 
+  // 함수이름: ChatHospitalContext.fromJson
+  // 함수역할: 공통 장소 필드와 병원 조회 날짜를 복원한다.
+  // 매개변수: json: 병원 공유 JSON.
+  // 반환값: 병원 문맥; 날짜가 없거나 공통 필드가 잘못되면 FormatException, 진료과 필드 타입 오류는 전파한다.
   factory ChatHospitalContext.fromJson(Map<String, dynamic> json) {
     final base = ChatPharmacyContext.fromJson({
       ...json,
@@ -447,7 +471,10 @@ class ChatHospitalContext extends ChatPlaceContext {
   }
 }
 
-// 공유 당시의 날짜 범위와 집계만 보존하며 현재 기록으로 해석하지 않는다.
+// 클래스명: ChatMedicationHistoryContext
+// 역할: 공유 당시 복약 기록의 날짜 범위와 집계를 보관한다.
+// 주요 책임: 현재 기록과 구분하고 정기·필요시 분리 집계가 없는 이전 메시지를 그대로 표현한다.
+// 속성: startDate/endDate: 기간; taken/skipped/unrecordedCount: 합계; scheduled 계열/asNeededTakenCount: 선택적 분리 집계.
 class ChatMedicationHistoryContext {
   final DateTime startDate;
   final DateTime endDate;
@@ -459,9 +486,16 @@ class ChatMedicationHistoryContext {
   final int? scheduledUnrecordedCount;
   final int? asNeededTakenCount;
 
-  // 이전 메시지의 합계에서 필요시 복용을 추정하지 않는다.
+  // 함수이름: hasScheduledCounts
+  // 함수역할: 이전 메시지의 전체 합계로 필요시 복용을 추정하지 않고 분리 집계의 존재만 확인한다.
+  // 매개변수: 없음.
+  // 반환값: scheduledTakenCount가 제공되었으면 true.
   bool get hasScheduledCounts => scheduledTakenCount != null;
 
+  // 함수이름: ChatMedicationHistoryContext._
+  // 함수역할: 검증된 기간과 전체·선택적 분리 집계 값을 내부적으로 보관한다.
+  // 매개변수: startDate/endDate (DateTime): 기간; takenCount/skippedCount/unrecordedCount (int): 전체 집계; scheduledTakenCount/scheduledSkippedCount/scheduledUnrecordedCount (int?): 정기 복용 분리 집계; asNeededTakenCount (int?): 필요시 복용 완료 수.
+  // 반환값: ChatMedicationHistoryContext: 불변 공유 집계.
   const ChatMedicationHistoryContext._({
     required this.startDate,
     required this.endDate,
@@ -474,6 +508,10 @@ class ChatMedicationHistoryContext {
     this.asNeededTakenCount,
   });
 
+  // 함수이름: ChatMedicationHistoryContext.fromJson
+  // 함수역할: 공유 기간과 음이 아닌 정수 집계를 검증하고 선택적 분리 집계의 일관성을 확인한다.
+  // 매개변수: json: 공유 기록의 기간과 집계 필드.
+  // 반환값: 공유 문맥; 역전·과도한 기간, 누락·음수 집계, 서로 맞지 않는 분리 합계는 FormatException.
   factory ChatMedicationHistoryContext.fromJson(Map<String, dynamic> json) {
     final start = MedicationHistoryDates.parse(json['start_date']);
     final end = MedicationHistoryDates.parse(json['end_date']);
@@ -484,6 +522,10 @@ class ChatMedicationHistoryContext {
         days > MedicationHistoryRange.maximumReadDays) {
       throw const FormatException('공유 복약 기록의 날짜 범위가 올바르지 않습니다.');
     }
+    // 함수이름: count
+    // 함수역할: 지정 집계 필드가 음이 아닌 정수인지 검증한다.
+    // 매개변수: key: 읽을 JSON 집계 키.
+    // 반환값: 집계 값; 누락·다른 타입·음수이면 FormatException.
     int count(String key) {
       final value = json[key];
       if (value is! int || value < 0) {
@@ -519,7 +561,10 @@ class ChatMedicationHistoryContext {
     );
   }
 
-  // 손상된 첨부는 숨기되 메시지 본문과 나머지 대화는 유지한다.
+  // 함수이름: tryParse
+  // 함수역할: 손상된 복약 기록 첨부를 숨길 수 있도록 제한적으로 파싱한다.
+  // 매개변수: value: 첨부 데이터 후보.
+  // 반환값: 유효한 문맥 또는 맵 형식 불일치·FormatException이면 null; 메시지 본문은 변경하지 않는다.
   static ChatMedicationHistoryContext? tryParse(Object? value) {
     if (value is! Map<String, dynamic>) return null;
     try {
@@ -531,9 +576,9 @@ class ChatMedicationHistoryContext {
 }
 
 // 클래스명: ChatDeletionScope
-// 역할: 메시지를 본인에게만 숨길지 모든 참여자에게 삭제할지 구분한다.
-// 주요 책임:
-// - 삭제 요청에 서버가 검증할 개인·공유 범위를 명시한다.
+// 역할: 메시지를 본인에게 숨길지 모든 참여자에게 삭제할지 지정한다.
+// 주요 책임: 삭제 요청에 서버가 검증할 범위를 전달한다.
+// 속성: me: 본인에게 숨김; everyone: 전체 참여자에게 삭제.
 enum ChatDeletionScope { me, everyone }
 
 // 클래스명: ChatMessage
@@ -550,6 +595,7 @@ enum ChatDeletionScope { me, everyone }
 // - messageKind (ChatMessageKind): 일반·복약·약국 맥락 메시지 유형
 // - medicationContext (ChatMedicationContext?): 구형 단일 약 첨부 맥락
 // - medicationContexts (List<ChatMedicationContext>): 메시지에 첨부한 여러 약의 맥락
+// - medicationReferences (List<ChatMedicationReference>): 메시지에 첨부한 저장하지 않은 검색약
 // - scheduleContext (ChatScheduleContext?): 메시지에 첨부한 시간대별 복약 진행 정보
 // - pharmacyContext (ChatPharmacyContext?): 메시지에 첨부한 약국 연락처·위치 정보
 // - remainingDays (int?): 복약 맥락의 남은 복용 일수
@@ -568,6 +614,7 @@ class ChatMessage {
   final ChatMessageKind messageKind;
   final ChatMedicationContext? medicationContext;
   final List<ChatMedicationContext> medicationContexts;
+  final List<ChatMedicationReference> medicationReferences;
   final ChatScheduleContext? scheduleContext;
   final ChatPharmacyContext? pharmacyContext;
   final ChatHospitalContext? hospitalContext;
@@ -599,6 +646,8 @@ class ChatMessage {
   // - readAt (DateTime?): 상대가 메시지를 읽은 시각
   // - hiddenForMe (bool): 현재 사용자에게만 숨겨진 메시지 상태
   // - deletedForEveryone (bool): 모든 참여자에게 삭제된 메시지 상태
+  // - medicationReferences (List<ChatMedicationReference>): 저장하지 않은 검색약 첨부.
+  // - hospitalContext (ChatHospitalContext?): 병원·진료일 공유 문맥; historyContext (ChatMedicationHistoryContext?): 기간별 복약 기록 공유 집계.
   // 반환값:
   // - ChatMessage: 초기화된 인스턴스.
   const ChatMessage({
@@ -611,6 +660,7 @@ class ChatMessage {
     this.messageKind = ChatMessageKind.text,
     this.medicationContext,
     this.medicationContexts = const [],
+    this.medicationReferences = const [],
     this.scheduleContext,
     this.pharmacyContext,
     this.hospitalContext,
@@ -681,6 +731,10 @@ class ChatMessage {
           ? null
           : medicationContexts.first,
       medicationContexts: medicationContexts,
+      medicationReferences:
+          json['hidden_for_me'] == true || json['deleted_for_everyone'] == true
+          ? const []
+          : _readMedicationReferences(context['medication_references']),
       scheduleContext: rawScheduleContext is Map
           ? ChatScheduleContext.fromJson(
               Map<String, dynamic>.from(rawScheduleContext),
@@ -753,6 +807,7 @@ class ChatMessage {
       messageKind: redact ? ChatMessageKind.text : messageKind,
       medicationContext: redact ? null : medicationContext,
       medicationContexts: redact ? const [] : medicationContexts,
+      medicationReferences: redact ? const [] : medicationReferences,
       scheduleContext: redact ? null : scheduleContext,
       pharmacyContext: redact ? null : pharmacyContext,
       hospitalContext: redact ? null : hospitalContext,
@@ -778,6 +833,29 @@ class ChatMessage {
     }
     final singleContext = medicationContext;
     return singleContext == null ? const [] : [singleContext];
+  }
+
+  // 함수이름: _readMedicationReferences
+  // 함수역할: 약품 참고 첨부를 읽으며 손상된 개별 항목만 건너뛴다.
+  // 매개변수: value: 참고 첨부 배열 후보.
+  // 반환값: 수정 불가 참조 목록; 배열이 아니면 빈 목록이며 FormatException·TypeError 항목은 제외한다.
+  static List<ChatMedicationReference> _readMedicationReferences(
+    dynamic value,
+  ) {
+    if (value is! List) return const [];
+    final references = <ChatMedicationReference>[];
+    for (final raw in value.whereType<Map>()) {
+      try {
+        references.add(
+          ChatMedicationReference.fromJson(Map<String, dynamic>.from(raw)),
+        );
+      } on FormatException {
+        continue;
+      } on TypeError {
+        continue;
+      }
+    }
+    return List.unmodifiable(references);
   }
 
   // 함수이름: _readMedicationContexts

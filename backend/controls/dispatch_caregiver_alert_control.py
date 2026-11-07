@@ -36,16 +36,10 @@ logger = logging.getLogger(__name__)
 
 
 
-# 클래스명: _PreparedPush
-# 역할:
-# - DB 세션을 반환하기 전에 완성해 둔 한 번의 푸시 전송 요청을 담는다.
-# 주요 책임:
-# - 전송 중 세션을 다시 읽지 않도록 ORM 행이 아닌 일반 값만 보관한다.
-# 속성:
-# - tokens (tuple[str, ...]): 알림을 보낼 기기 토큰.
-# - title (str): 알림 제목.
-# - body (str): 알림 본문.
-# - data (dict[str, str]): 화면 이동용 문자열 데이터.
+# Class Name: _PreparedPush
+# Role: Hold a resolved caregiver notification before external delivery.
+# Responsibilities: Separate recipient lookup from network I/O so the database read transaction can be released.
+# Attributes: tokens is the immutable recipient tuple; title and body are display text; data is the string-valued payload.
 class _PreparedPush(NamedTuple):
     tokens: tuple[str, ...]
     title: str
@@ -87,6 +81,10 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             link_repository or PatientCaregiverLinkRepository(db)
         )
 
+    # 함수이름: notifyAsNeededDoseCompletedIfCurrent
+    # 함수역할: 오늘도 유효한 필요시 복용 이벤트만 현재 연동·알림·미리보기 설정에 따라 보호자에게 보낸다.
+    # 매개변수: patient_hash (str)는 환자, schedule_date (date | None)는 복용일, event_key (str)는 안정된 복용 이벤트 키다.
+    # 반환값: PushDeliveryResult 또는 날짜·기록이 무효이면 None. 채팅은 생성하지 않으며 전송 실패는 전달한다.
     def notifyAsNeededDoseCompletedIfCurrent(
         self, *, patient_hash: str, schedule_date: date | None, event_key: str,
     ) -> PushDeliveryResult | None:
@@ -200,18 +198,10 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             )
         return self._send_prepared_pushes(prepared_pushes, resolver)
 
-    # 함수이름: notifySlotMissed
-    # 함수역할:
-    # - 보호자가 명시적으로 선택한 마감 시각 이후에도 미완료인 복약 시간대를 알린다.
-    # - 전송 직전에 연결, 설정, 날짜와 실제 완료 상태를 다시 확인해 오래된 알림을 막는다.
-    # - 수신자와 문구를 모두 읽은 뒤 세션의 읽기 트랜잭션을 끝내고 전송한다. 호출자는 자신의 변경을 먼저 커밋해야 한다.
-    # 매개변수:
-    # - caregiver_hash (str): 알림 수신 보호자 식별자.
-    # - patient_hash (str): 확인할 연결 환자 식별자.
-    # - slot_key (str): 확인할 복약 시간대 키.
-    # - schedule_date (date): 알림 이벤트의 복약 날짜.
-    # 반환값:
-    # - 유효 대상별 FCM 성공·실패·무효 토큰 집계.
+    # Function Name: notifySlotMissed
+    # Description: Delegate missed-dose delivery after rechecking actionability, mapping a no-longer-actionable result to zero deliveries.
+    # Parameters: caregiver_hash identifies the recipient; patient_hash, slot_key and schedule_date identify the missed slot; alert_context optionally supplies notification action data.
+    # Returns: PushDeliveryResult; delivery errors propagate.
     def notifySlotMissed(
         self,
         *,
@@ -227,14 +217,10 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
         )
         return PushDeliveryResult(success_count=0) if result is None else result
 
-    # 함수이름: notifySlotMissedIfActionable
-    # 함수역할:
-    # - notifySlotMissed와 같지만, 날짜·연동·설정·복용 상태 때문에 보낼 필요가 없어진 알림이면
-    #   아무것도 보내지 않고 None을 돌려 호출자가 "보낸 것 없음"을 구분하게 한다.
-    # 매개변수:
-    # - caregiver_hash, patient_hash, slot_key, schedule_date, alert_context: notifySlotMissed와 같다.
-    # 반환값:
-    # - 전송 결과; 보낼 필요가 없으면 None.
+    # Function Name: notifySlotMissedIfActionable
+    # Description: Recheck the link, preferences, deadline and dose state before sending a missed-slot alert.
+    # Parameters: caregiver_hash identifies the recipient; patient_hash, slot_key and schedule_date identify the case; alert_context optionally supplies action data.
+    # Returns: PushDeliveryResult, or None when the missed slot is no longer actionable; delivery errors propagate.
     def notifySlotMissedIfActionable(
         self,
         *,
@@ -257,6 +243,10 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             slot_key=slot_key, alert_context=alert_context,
         )
 
+    # Function Name: isMissedSlotActionable
+    # Description: Applies the same current-date, link, preference, deadline and completion checks used before missed-dose delivery.
+    # Parameters: caregiver_hash, patient_hash (str) identify the pair; slot_key (str) selects the slot; schedule_date (date) is the event day.
+    # Returns: bool indicating whether a new action is still valid; database failures propagate.
     def isMissedSlotActionable(
         self, *, caregiver_hash: str, patient_hash: str, slot_key: str, schedule_date: date,
     ) -> bool:
@@ -267,6 +257,10 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             slot_key=slot_key, schedule_date=schedule_date,
         )
 
+    # Function Name: _missed_slot_is_actionable
+    # Description: Rejects stale dates, inactive links, disabled/non-missed settings, future deadlines and completed or absent scheduled doses.
+    # Parameters: resolver (PushRecipientResolver) reuses recipient preferences; caregiver_hash, patient_hash and slot_key (str) identify the scope; schedule_date (date) is the event day.
+    # Returns: True only when the slot remains incomplete and caregiver alerts are enabled; query errors propagate.
     def _missed_slot_is_actionable(
         self, resolver: PushRecipientResolver, *, caregiver_hash: str,
         patient_hash: str, slot_key: str, schedule_date: date,
@@ -306,6 +300,10 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
 
         return resolver.caregiver_alerts_enabled(caregiver_hash)
 
+    # Function Name: _send_missed_notification
+    # Description: Localizes privacy-aware missed-dose text and splits tokens between legacy OS notifications and opted-in action payloads.
+    # Parameters: resolver resolves tokens/preferences; caregiver_hash, patient_hash and slot_key (str) identify the event; alert_context (dict | None) enables actions when present.
+    # Returns: PushDeliveryResult, with zero successes when no tokens exist; dispatch errors propagate.
     def _send_missed_notification(
         self, resolver: PushRecipientResolver, *, caregiver_hash: str,
         patient_hash: str, slot_key: str, alert_context: dict[str, str] | None,
@@ -355,16 +353,10 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             prepared_pushes.append(_PreparedPush(tokens=tokens, title=title, body=body, data=data))
         return self._send_prepared_pushes(prepared_pushes, resolver)
 
-    # 함수이름: _send_prepared_pushes
-    # 함수역할:
-    # - 준비된 전송 요청을 DB 연결 없이 Firebase로 보내고 결과를 하나로 집계한다.
-    # - Firebase 호출이 느려도 풀 연결과 읽기 트랜잭션을 잡고 있지 않도록 전송 전에 세션을 반환한다.
-    # - 거부된 토큰은 전송 직후 짧은 별도 트랜잭션으로 비활성화한다.
-    # 매개변수:
-    # - prepared_pushes (list[_PreparedPush]): 세션에서 이미 읽어 완성한 전송 요청 목록.
-    # - resolver (PushRecipientResolver): 이번 전송에서 수신자를 읽은 해석기.
-    # 반환값:
-    # - 전체 요청의 성공 수, 중복을 제거한 무효 토큰과 재시도 가능한 실패 수.
+    # Function Name: _send_prepared_pushes
+    # Description: Release the read transaction before sending prepared notifications, aggregate delivery results, and disable invalid registrations through the resolver.
+    # Parameters: prepared_pushes (list[_PreparedPush]) contains resolved payloads; resolver (PushRecipientResolver) owns registration cleanup.
+    # Returns: PushDeliveryResult with totals and deduplicated invalid tokens; unexpected sender/cleanup errors propagate.
     def _send_prepared_pushes(
         self,
         prepared_pushes: list[_PreparedPush],
@@ -394,13 +386,10 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             retryable_failure_count=retryable_failure_count,
         )
 
-    # 함수이름: _deadline_has_passed
-    # 함수역할: 저장된 시·분을 현재 날짜의 마감 시각으로 조합해 경과 여부를 검사한다.
-    # 매개변수:
-    # - current_time (datetime): 애플리케이션 시간대가 적용된 현재 시각.
-    # - slot_setting (dict[str, object]): 마감 시·분을 포함한 시간대별 설정.
-    # 반환값:
-    # - 유효한 마감 시각을 지났으면 True, 값이 잘못됐거나 아직 전이면 False.
+    # Function Name: _deadline_has_passed
+    # Description: Compare the current time against today's configured deadline in the same time zone.
+    # Parameters: current_time (datetime) supplies date/time/zone; slot_setting (dict[str, object]) supplies deadline_hour and deadline_minute.
+    # Returns: bool, including True exactly at the deadline and False for missing or invalid deadline values.
     @staticmethod
     def _deadline_has_passed(
         current_time: datetime,

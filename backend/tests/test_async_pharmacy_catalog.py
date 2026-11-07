@@ -5,11 +5,14 @@ import asyncio
 from datetime import date, datetime
 from pathlib import Path
 from threading import Event, get_ident
+from typing import Any
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Connection, ExecutionContext
+from sqlalchemy.engine.interfaces import DBAPICursor
 from sqlalchemy.orm import Session, sessionmaker
 
 from controls.check_nearby_pharmacy_control import CheckNearbyPharmacy, PharmacySearchMode
@@ -151,10 +154,16 @@ async def test_catalogue_search_reads_plain_rows_in_two_statements(tmp_path: Pat
 
     # Function Name: record_statement
     # Description: Collects every SQL statement the engine executes during the searches.
-    # Parameters: statement: SQL text; the other event arguments are unused.
+    # Parameters: statement (str): SQL text; conn (Connection), cursor (DBAPI cursor),
+    # parameters (bound values), context (ExecutionContext), and executemany (bool)
+    # are supplied by SQLAlchemy but unused by this recorder.
     # Returns: None.
     @event.listens_for(engine, "before_cursor_execute")
-    def record_statement(conn, cursor, statement, parameters, context, executemany) -> None:
+    def record_statement(
+        conn: Connection, cursor: DBAPICursor, statement: str,
+        parameters: tuple[Any, ...] | list[tuple[Any, ...]],
+        context: ExecutionContext | None, executemany: bool,
+    ) -> None:
         statements.append(" ".join(statement.split()).lower())
 
     adapter = AsyncPharmacyCatalog(sessionmaker(bind=engine))

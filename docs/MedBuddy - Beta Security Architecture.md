@@ -266,9 +266,16 @@ Routes with a real per-request cost carry a daily quota besides the per-minute
 limit: prescription analysis, pill identification, medication lookup (whose
 approval summaries come from the AI model) and the health recommendation share
 `AI_REQUEST_DAILY_LIMIT` per account, and hospital search, including a hospital
-shared in chat, has `HOSPITAL_SEARCH_DAILY_LIMIT`. A day ends at midnight in the
+shared in chat, has `HOSPITAL_SEARCH_DAILY_LIMIT`, and nearby pharmacy search has
+`PHARMACY_SEARCH_DAILY_LIMIT` (its live fallback shares
+`PHARMACY_API_DAILY_REQUEST_BUDGET`). A day ends at midnight in the
 service time zone (Asia/Seoul). One IP address is allowed twenty times the
 account quota, which bounds what scripted accounts can spend from one address.
+The per-address daily count is taken after sign-in is checked, so a request
+that is refused before sign-in leaves only the per-minute address counter,
+which expires within a minute. Day-long counters for unauthenticated addresses
+could otherwise pile up until the counter store reached its memory cap; a full
+store refuses every write, and the limiter then answers 503 to every user.
 The public hospital API budget (`HOSPITAL_API_DAILY_REQUEST_BUDGET`) is still
 shared by all users of one process; it is counted per provider operation
 (location, detail, department list), matching the provider's quota, and a spent
@@ -568,9 +575,13 @@ secrets. It supplies `ANDROID_SIGNING_CERT_SHA256`,
 variables for Flutter compile-time configuration. Firebase API/app identifiers
 and certificate fingerprints are identifiers rather than credentials. The
 environment must require owner approval and an exact custom deployment policy
-for `main` and the active `beta/v0.2.1` branch. The workflow repeats that exact-ref
+for `main` and the active release branch (`beta/v1.0.0`); entries for finished beta
+branches should be removed from that policy. The workflow repeats that exact-ref
 gate before repository build code can receive signing material. Other beta
-branches and version-like tags cannot access the environment. The protected environment
+branches and version-like tags cannot access the environment. A dispatch input
+`api_base_url` is honoured only on the active release branch; the requested endpoint
+is shown in the run title and the first job's summary before the reviewer approves
+the signing job, and the ingress probe requires the backend's exact API contract. The protected environment
 also prevents accidental cross-project builds rather than treating public
 Firebase identifiers as authorization secrets.
 The signed-build workflow sets `MEDBUDDY_REQUIRE_RELEASE_SIGNING=true`, verifies

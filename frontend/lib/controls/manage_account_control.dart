@@ -11,15 +11,16 @@ import '../services/notification_inbox_store.dart';
 import '../services/notification_service.dart';
 import '../services/pharmacy_favorite_service.dart';
 import '../services/user_setting_preference_keys.dart';
+import 'as_needed_check_reminder_control.dart';
 import 'manage_user_setting_control.dart';
 
 // 파일명: manage_account_control.dart
 // 역할: 사용자 데이터 전체 삭제 요청과 기기 캐시 정리를 담당한다.
 
 // Class Name: AccountDeletionFailureReason
-// Role: Names why account-data deletion stopped before the device cache was cleared.
-// Responsibilities:
-// - Let the settings screen choose the guidance in its own language instead of printing a fixed sentence.
+// Role: Explain why account-data deletion stopped before local cache cleanup.
+// Responsibilities: Allow localized guidance without parsing fixed error strings.
+// Attributes: serverRejected: server refused deletion; missingAccountScope: no usable owner identity.
 enum AccountDeletionFailureReason { serverRejected, missingAccountScope }
 
 // Class Name: AccountDeletionFailure
@@ -178,6 +179,7 @@ class ManageAccount {
       ),
       '${CaregiverPatientLocalStateService.linkedPatientsKeyPrefix}'
           '$normalizedUserHash',
+      AsNeededCheckReminderControl.storageKeyFor(normalizedUserHash),
     };
     // Only the namespace owner counts; a patient/message reference in another
     // user's key is not owned by the account being deleted.

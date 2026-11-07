@@ -1,9 +1,13 @@
+# 파일명: rebuild_guide.py
+# 역할: 저장소 원문·캡처로 설명서를 재생성하고 검토가 끝난 산출물만 배포 위치에 반영한다.
 """Rebuild the full illustrated guide from README and repository-local source assets."""
 from collections import OrderedDict
 from copy import deepcopy
 from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
+from types import ModuleType
+from typing import Any
 import argparse
 import importlib.util
 import json
@@ -19,26 +23,42 @@ from reportlab.pdfgen import canvas
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / ".build"
-PDF = "MedBuddy_User_Guide_ko.pdf"
+PDF = "MedBuddy_User_Guide_ko_portrait.pdf"
 SOURCE = ROOT / "source"
 
 
-def read_json(path):
+# 함수이름: read_json
+# 함수역할: 이전 BOM 파일을 포함한 UTF-8 JSON을 읽는다.
+# 매개변수: path(Path)는 입력 파일이다.
+# 반환값: 역직렬화한 object. 파일 접근·JSON 오류는 호출자에게 전달한다.
+def read_json(path: Path) -> Any:
     """Read the reviewed UTF-8 layout data, including legacy BOM files."""
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
-def dump(path, value):
+# 함수이름: dump
+# 함수역할: 생성 데이터와 검증 기록을 UTF-8 JSON으로 저장한다.
+# 매개변수: path(Path)는 출력 파일, value(object)는 직렬화 가능한 값이다.
+# 반환값: None. 쓰기·직렬화 오류는 호출자에게 전달한다.
+def dump(path: Path, value: object) -> None:
     """Write generated authoring or verification data inside the guide directory."""
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
-def digest(path):
+# 함수이름: digest
+# 함수역할: 검토 입력과 출력이 바뀌지 않았는지 대조할 파일 해시를 계산한다.
+# 매개변수: path(Path)는 검사할 파일이다.
+# 반환값: SHA-256의 16진수 str. 파일 접근 오류는 호출자에게 전달한다.
+def digest(path: Path) -> str:
     """Identify the exact input or output used for this build."""
     return sha256(path.read_bytes()).hexdigest()
 
 
-def parse_markdown(text):
+# 함수이름: parse_markdown
+# 함수역할: 원문의 소절·단계·강조 설명·참고를 읽어 작성 순서대로 묶는다.
+# 매개변수: text(str)는 설명서 Markdown 원문이다.
+# 반환값: 소절별 OrderedDict. 소절 수나 필수 형식이 맞지 않으면 AssertionError.
+def parse_markdown(text: str) -> OrderedDict[str, dict[str, Any]]:
     """Parse this manual's explicit headings, numbered steps and linked reference notes."""
     sections = OrderedDict()
     notes = []
@@ -100,7 +120,11 @@ def parse_markdown(text):
     return sections
 
 
-def engine(font_dir):
+# 함수이름: engine
+# 함수역할: 저장소의 배치 모듈을 불러와 빌드 경로·글꼴·출력 이름을 설정한다.
+# 매개변수: font_dir(Path)는 승인된 글꼴 디렉터리다.
+# 반환값: 설정된 guide_layout 모듈. 모듈 로딩 오류는 호출자에게 전달한다.
+def engine(font_dir: Path) -> ModuleType:
     """Load the checked-in typesetter and explicitly supplied portable font directory."""
     path = ROOT / "tools/guide_layout.py"
     spec = importlib.util.spec_from_file_location("guide_layout", path)
@@ -112,7 +136,13 @@ def engine(font_dir):
     return module
 
 
-def collect_content(groups, layout):
+# 함수이름: collect_content
+# 함수역할: 최신 문장을 기존 캡처 좌표에 결합하고 배치 가능 여부에 따라 페이지를 나눈다.
+# 매개변수: groups(OrderedDict)는 소절별 문장, layout(module)은 설정된 배치 엔진이다.
+# 반환값: 페이지 list[dict]. 원본 해시·단계가 달라지거나 배치가 불가능하면 예외를 발생시킨다.
+def collect_content(
+    groups: OrderedDict[str, dict[str, Any]], layout: ModuleType,
+) -> list[dict[str, Any]]:
     """Join authoritative Markdown copy with reviewed, repository-relative image geometry."""
     old = OrderedDict()
     for page in read_json(SOURCE / "layout.json"):
@@ -129,13 +159,13 @@ def collect_content(groups, layout):
             assert item["number"] == previous["number"], section
             step = deepcopy(previous)
             step.update(item)
-            step["callouts"] = previous["callouts"]
+            step["callouts"] = item["callouts"]
             step["section"] = group["section"]
             step["action"] = step["text"]
             step["alt"] = step["label"] + ": " + step["text"]
             steps.append(step)
         output.append(dict(kind="divider", chapter=group["chapter"], section=group["section"], steps=[]))
-        # Use the original four-slot layout unless a longer explanation needs two wide slots.
+        # Place captions below photos; use two steps only when four do not fit.
         for start in range(0, len(steps), 4):
             batch = steps[start:start + 4]
             page = dict(kind="steps", chapter=group["chapter"], section=group["section"], steps=batch, redraw=True, wide=False, page=0)
@@ -153,7 +183,11 @@ def collect_content(groups, layout):
     return output
 
 
-def build(font_dir):
+# 함수이름: build
+# 함수역할: 표지·본문·탐색 정보를 재생성하고 Markdown 왕복 변환과 단계 누락을 검증한다.
+# 매개변수: font_dir(Path)는 승인된 글꼴 디렉터리다.
+# 반환값: None. 산출물은 .build에 저장하며 검증·입출력 실패는 호출자에게 전달한다.
+def build(font_dir: Path) -> None:
     """Create a candidate full PDF plus synchronized Markdown and structural checks."""
     BUILD.mkdir(exist_ok=True)
     source = (ROOT / "README.md").read_text(encoding="utf-8-sig")
@@ -172,7 +206,7 @@ def build(font_dir):
     cover.setFont(layout.BOLD, 30)
     cover.drawCentredString(layout.W / 2, layout.H / 2 - 145, "MedBuddy 사용설명서")
     cover.setFont(layout.REG, 12)
-    cover.drawCentredString(layout.W / 2, layout.H / 2 - 172, "0.2.5 개발 브랜치 | 2026-11-06")
+    cover.drawCentredString(layout.W / 2, layout.H / 2 - 172, "ver 1.0.0")
     layout.draw_footer(cover, layout.footer_layout(1, plan["total_pages"], ""))
     cover.showPage()
     cover.save()
@@ -182,26 +216,30 @@ def build(font_dir):
     generated = layout.markdown(plan)
     preamble = source.split("## 차례", 1)[0]
     result = preamble + "## 차례" + generated.split("## 차례", 1)[1]
-    anchor = '### 9.12 휴대폰 알림 확인과 테스트하기\n'
-    result = result.replace(anchor, anchor + '\n<img src="assets/notification_settings_2026-10-22.png" width="340" alt="복약 및 알림 안의 휴대폰 알림 권한과 테스트 버튼">\n\n휴대폰 권한과 앱의 알림 수신 설정을 한 화면에서 확인하는 현재 설정 화면입니다.\n', 1)
     (BUILD / "README.md").write_text(result, encoding="utf-8", newline="\n")
     rebuilt = parse_markdown(result)
     for key, group in groups.items():
         for before, after in zip(group["steps"], rebuilt[key]["steps"], strict=True):
-            assert before["text"] == after["text"], (key, before["number"])
+            for field in ("number", "label", "text", "callouts", "source_note"):
+                assert before[field] == after[field], (key, before["number"], field)
     reader = PdfReader(BytesIO(pdf))
     all_text = "\n".join(page.extract_text() or "" for page in reader.pages)
     compact = re.sub(r"\s+", "", all_text)
     for page in content:
         for step in page.get("steps", []):
-            assert re.sub(r"\s+", "", step["text"]) in compact, step["identity"]
+            texts = [step["label"], step["text"], step.get("source_note", "")]
+            if len(step.get("boxes", [])) > 1:
+                texts.extend(item["text"] for item in step["callouts"])
+            for value in texts:
+                assert re.sub(r"\s+", "", value) in compact, step["identity"]
     assets = {s["image"]: digest(ROOT / s["image"]) for p in content for s in p.get("steps", [])}
     audit.update(pages=len(reader.pages), subsections=len(groups), steps=sum(len(g["steps"]) for g in groups.values()),
                  pdf_sha256=digest(BUILD / PDF), markdown_sha256=digest(BUILD / "README.md"),
-                 all_step_text_verified=True, baseline_step_ids_preserved=True, visual_qa="pending",
+                 all_step_text_verified=True, all_source_note_text_verified=True,
+                 baseline_step_ids_preserved=True, visual_qa="pending",
                  source_layout_sha256=digest(SOURCE / "layout.json"),
                  fonts={name: digest(font_dir / name) for name in ("NanumBarunGothic.ttf", "NanumBarunGothicBold.ttf")},
-                 updated_sections=[key for key in groups if key in {"1.6", "1.7", "2.1", "2.2", "2.3", "2.4", "2.5", "3.7", "3.9", "3.10", "5.1", "5.5", "5.6", "5.8", "7.1", "7.2", "7.6", "9.6", "9.7"}])
+                 included_sections=list(groups))
     dump(BUILD / "audit.json", audit)
     dump(BUILD / "navigation.json", navigation)
     dump(BUILD / "pages.json", layout.public_pages(plan["pages"]))
@@ -210,7 +248,11 @@ def build(font_dir):
     print(json.dumps({key: audit[key] for key in ("pages", "steps", "subsections", "verified_internal_links", "verified_bookmarks", "pdf_sha256", "visual_qa")}, ensure_ascii=False))
 
 
-def render(poppler):
+# 함수이름: render
+# 함수역할: 빌드한 PDF의 모든 쪽을 이미지와 모아보기 이미지로 렌더링한다.
+# 매개변수: poppler(Path)는 PDF 이미지 변환 프로그램의 디렉터리다.
+# 반환값: None. 결과는 검토 폴더에 저장하며 외부 프로그램 실패는 예외로 전달한다.
+def render(poppler: Path) -> None:
     """Render all pages and build numbered contact sheets for visual inspection."""
     review = BUILD / "review"
     review.mkdir(exist_ok=True)
@@ -229,7 +271,11 @@ def render(poppler):
     print(json.dumps(dict(rendered_pages=len(pages), contact_sheets=(len(pages) + 15) // 16)))
 
 
-def publish():
+# 함수이름: publish
+# 함수역할: 시각 검토 완료와 입력·출력 해시를 확인한 뒤 PDF와 README를 반영한다.
+# 매개변수: 없음. .build의 검토 기록과 원본 파일을 사용한다.
+# 반환값: None. 검토 누락이나 검토 후 변경이 있으면 AssertionError로 반영을 막는다.
+def publish() -> None:
     """Publish reviewed candidates without staging or committing any repository file."""
     audit = read_json(BUILD / "audit.json")
     assert audit["visual_qa"] == "reviewed", "Record visual review before publishing."

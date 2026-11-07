@@ -1,11 +1,13 @@
 # File Name: firebase_identity_boundary.py
-# Role: Isolates Firebase identity deletion from MedBuddy account controls.
+# Role: Isolates Firebase identity deletion and session-revocation lookups from MedBuddy controls.
 
+from datetime import UTC, datetime
 from typing import Protocol
 
 from firebase_admin import auth
 
 from boundaries.firebase_admin_boundary import get_firebase_admin_app
+from boundaries.oidc_token_verifier_boundary import forget_identity_state
 
 
 # Class Name: IdentityDeletionUnavailableError
@@ -13,6 +15,7 @@ from boundaries.firebase_admin_boundary import get_firebase_admin_app
 # - Signals a retryable failure to delete an external Firebase identity.
 # Responsibilities:
 # - Allow account controls to distinguish provider outages from idempotent success.
+# Attributes: Inherited exception arguments only; no additional instance state.
 class IdentityDeletionUnavailableError(RuntimeError):
     """Raised when Firebase cannot complete a retryable identity deletion."""
 
@@ -22,6 +25,7 @@ class IdentityDeletionUnavailableError(RuntimeError):
 # - Defines the external identity deletion contract used by ManageAccount.
 # Responsibilities:
 # - Require deletion by verified UID and allow an already absent identity to count as success.
+# Attributes: None required by this protocol; implementations own storage and connection state.
 class IdentityDeletionBoundary(Protocol):
     # Function Name: deleteIdentity
     # Description:
@@ -67,8 +71,45 @@ class FirebaseIdentityDeletionBoundary:
         try:
             auth.delete_user(normalized_subject, app=self._app)
         except auth.UserNotFoundError:
+            forget_identity_state(normalized_subject)
             return
         except Exception as exc:
             raise IdentityDeletionUnavailableError(
                 "Firebase identity deletion is temporarily unavailable."
             ) from exc
+        # The token check reuses an account's state for a few seconds; a deleted account must not.
+        forget_identity_state(normalized_subject)
+
+
+# Class Name: FirebaseSessionRevocationBoundary
+# Role:
+# - Reads when a Firebase user's sessions were last revoked (password change, revokeRefreshTokens).
+# Responsibilities:
+# - Report the revocation time so device registrations from older sessions can be retired.
+# - Never fail a caller: an unavailable lookup reports no revocation.
+# Attributes:
+# - _app (App): Shared Firebase Admin application.
+class FirebaseSessionRevocationBoundary:
+    # Function Name: __init__
+    # Description: Reuses the configured project's shared Firebase Admin app for identity operations.
+    # Parameters: project_id (str) is the Firebase project ID.
+    # Returns: None; Admin initialization/configuration errors propagate.
+    def __init__(self, project_id: str) -> None:
+        self._app = get_firebase_admin_app(project_id)
+
+    # Function Name: sessionsValidAfter
+    # Description:
+    # - Returns the time before which the user's sessions are revoked, as naive UTC like the
+    #   database columns, or None when unknown.
+    # Parameters:
+    # - subject (str): Verified Firebase UID.
+    # Returns:
+    # - Naive UTC datetime or None.
+    def sessionsValidAfter(self, subject: str) -> datetime | None:
+        try:
+            milliseconds = auth.get_user(subject.strip(), app=self._app).tokens_valid_after_timestamp
+        except Exception:
+            return None
+        if not milliseconds:
+            return None
+        return datetime.fromtimestamp(milliseconds / 1000, tz=UTC).replace(tzinfo=None)

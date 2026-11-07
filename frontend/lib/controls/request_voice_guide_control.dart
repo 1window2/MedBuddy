@@ -30,19 +30,10 @@ typedef VoiceGuideSpeaker =
 
 
 
-// 클래스명: RequestVoiceGuide
-// 역할: 약 상세 정보 기반 음성 안내 요청을 처리한다.
-// 주요 책임:
-// - backend RequestVoiceGuide control에서 음성 안내 문구를 받아온다.
-// - backend를 사용할 수 없는 경우 MedicationDetail의 로컬 문구로 fallback한다.
-// - 한 번 정한 안내 문구는 약 내용과 언어별로 보관해 같은 안내를 다시 들을 때 서버를 기다리지 않는다.
-// - 실제 음성 재생은 TTS Service로 위임한다.
-// 속성:
-// - baseUrl (String): 복약 API 기본 주소
-// - _ttsService (TTSService?): 사용자 설정 기반 음성 재생 서비스
-// - _speaker (VoiceGuideSpeaker?): TTS 재생을 대체할 주입 가능한 음성 경계
-// - _client (http.Client): 요청에 사용할 HTTP 클라이언트; 주입 여부에 따른 소유권은 생성자 설명 참조
-// - _voiceGuideTextCache (Map<String, String>): 요청 내용(약 이름·복용 방법·주의사항·언어)별로 정해진 안내 문구
+// Class Name: RequestVoiceGuide
+// Role: Resolve medication voice guidance and delegate playback.
+// Responsibilities: Cache text by medication content and language, fall back locally on server failure, and invalidate pending playback on stop.
+// Attributes: baseUrl/_client/_ownsClient: HTTP endpoint and ownership; _ttsService/_speaker: playback boundaries; _requestGeneration: cancellation revision; _voiceGuideTextCache: resolved text by request JSON.
 class RequestVoiceGuide {
   final String baseUrl;
   final TTSService? _ttsService;
@@ -128,13 +119,10 @@ class RequestVoiceGuide {
     );
   }
 
-  // 함수이름: _getVoiceGuideText
-  // 함수역할: 같은 약 내용과 언어로 이미 정한 안내 문구가 있으면 그대로 쓰고, 없으면 backend에서 가져오며 실패 시 서버와 같은 형식의 로컬 문구를 반환한다. 정해진 문구는 다음 요청을 위해 보관한다.
-  // 매개변수:
-  // - medicationDetail (MedicationDetail): 약 상세 정보와 복용 스케줄을 묶은 안내 모델
-  // - language (String): 사용자 언어 설정
-  // 반환값:
-  // - 음성 안내 문구
+  // Function Name: _getVoiceGuideText
+  // Description: Reuse cached guidance for identical medication content and language; cache only nonblank results from the server-or-local resolver.
+  // Parameters: medicationDetail (MedicationDetail): guidance source; language (String): requested language.
+  // Returns: Future<String>: cached or newly resolved guidance.
   Future<String> _getVoiceGuideText({
     required MedicationDetail medicationDetail,
     required String language,
@@ -157,14 +145,10 @@ class RequestVoiceGuide {
     return voiceGuideText;
   }
 
-  // 함수이름: _requestVoiceGuideText
-  // 함수역할: backend에 음성 안내 문구를 요청하고 실패하거나 문구가 없으면 로컬 문구를 반환한다.
-  // 매개변수:
-  // - requestBody (String): 약 이름·복용 방법·주의사항·언어를 담은 JSON 요청 본문
-  // - medicationDetail (MedicationDetail): 로컬 문구를 만들 약 상세 정보
-  // - language (String): 사용자 언어 설정
-  // 반환값:
-  // - 서버 또는 로컬 음성 안내 문구
+  // Function Name: _requestVoiceGuideText
+  // Description: Request server guidance, logging any request or response failure and falling back to local medication text.
+  // Parameters: requestBody (String): encoded guidance request; medicationDetail (MedicationDetail): fallback source; language (String): fallback language.
+  // Returns: Future<String>: nonblank server text or local fallback.
   Future<String> _requestVoiceGuideText({
     required String requestBody,
     required MedicationDetail medicationDetail,

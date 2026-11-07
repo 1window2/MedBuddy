@@ -3,6 +3,7 @@
 #   and request-scoped account locks.
 import asyncio
 import threading
+from collections.abc import Iterator
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -52,7 +53,7 @@ from schemas.prescription_change import (
 # Returns:
 # - Yields an isolated Session; closes the session and engine during fixture cleanup.
 @pytest.fixture
-def db_session():
+def db_session() -> Iterator[Session]:
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -84,7 +85,14 @@ def _principal(subject: str = "firebase-user") -> AuthenticatedPrincipal:
     )
 
 
-def test_caregiver_home_aggregate_uses_verified_owner(db_session) -> None:
+# 함수이름: test_caregiver_home_aggregate_uses_verified_owner
+# 함수역할:
+# - 일괄 조회는 전달된 타인 해시 대신 인증된 보호자 범위와 전체 일정 옵션을 사용하는지 확인한다.
+# 매개변수:
+# - db_session: Session; 권한 컨트롤용 격리 세션.
+# 반환값:
+# - None.
+def test_caregiver_home_aggregate_uses_verified_owner(db_session: Session) -> None:
     """일괄 조회에서도 전달된 타인 해시 대신 인증된 보호자 범위만 사용한다."""
     principal = _principal("caregiver")
     monitoring = Mock()
@@ -117,6 +125,8 @@ def _production_api_settings(**overrides: object) -> Settings:
         "RUNTIME_ROLE": "api",
         "AUTH_MODE": "firebase",
         "FIREBASE_PROJECT_ID": "medbuddy-test",
+        "FIREBASE_CHECK_REVOKED_TOKENS": True,
+        "FIREBASE_REQUIRE_VERIFIED_EMAIL": True,
         "FIREBASE_APP_CHECK_REQUIRED": True,
         "RATE_LIMIT_ENABLED": True,
         "RATE_LIMIT_REQUIRE_REDIS": True,
@@ -241,7 +251,7 @@ async def _resolve_registered_principal(
 # - None.
 @pytest.mark.anyio
 async def test_deleted_account_only_allows_authenticated_deletion_retry(
-    db_session,
+    db_session: Session,
 ) -> None:
     principal = _principal("deleted-firebase-user")
     db_session.add(
@@ -297,7 +307,7 @@ def test_verified_claims_map_to_stable_internal_user_hash() -> None:
 # - None.
 @pytest.mark.anyio
 async def test_registered_principal_quota_uses_stable_identity_and_route_scope(
-    db_session,
+    db_session: Session,
 ) -> None:
     # Class Name: RotatingTokenVerifier
     # Role: Firebase verifier double that records rotated tokens while resolving them to one
@@ -384,18 +394,20 @@ async def test_registered_principal_quota_uses_stable_identity_and_route_scope(
     assert verifier.tokens == ["rotated-token-one", "rotated-token-two"]
     assert principals[0].user_hash == principals[1].user_hash
     stable_identity = f"user:{principals[0].user_hash}"
-    # 약 조회와 건강 추천은 하루 AI 비용 한도도 함께 세므로 같은 계정으로 한 번씩 더 기록된다.
-    assert [call[0] for call in rate_limit_store.calls] == [stable_identity] * 4
+    # 약 조회와 건강 추천은 하루 AI 비용 한도도 함께 세므로 같은 계정으로 한 번씩 더 기록되고,
+    # 인증 뒤에 같은 하루 한도를 주소 단위로도 한 번씩 센다.
+    assert [call[:2] for call in rate_limit_store.calls] == [
+        (stable_identity, "POST:/api/v1/medication/identify"),
+        ("ip:203.0.113.10", "daily:ai"),
+        (stable_identity, "daily:ai"),
+        (stable_identity, "GET:/api/v1/medication/health/recommendation"),
+        ("ip:203.0.113.10", "daily:ai"),
+        (stable_identity, "daily:ai"),
+    ]
     assert all(
         credentials.credentials not in stable_identity
         for credentials in credentials
     )
-    assert [call[1] for call in rate_limit_store.calls] == [
-        "POST:/api/v1/medication/identify",
-        "daily:ai",
-        "GET:/api/v1/medication/health/recommendation",
-        "daily:ai",
-    ]
 
 
 # Function Name: test_sqlite_account_lock_is_held_until_dependency_cleanup
@@ -791,7 +803,7 @@ def test_structured_database_settings_escape_reserved_password_characters() -> N
 # - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
 # Returns:
 # - None.
-def test_owner_scope_ignores_untrusted_client_hash(db_session) -> None:
+def test_owner_scope_ignores_untrusted_client_hash(db_session: Session) -> None:
     principal = _principal()
     authorization = AuthorizationControl(db_session)
 
@@ -812,7 +824,7 @@ def test_owner_scope_ignores_untrusted_client_hash(db_session) -> None:
 # - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
 # Returns:
 # - None.
-def test_prescription_change_uses_server_authorized_patient_scope(db_session) -> None:
+def test_prescription_change_uses_server_authorized_patient_scope(db_session: Session) -> None:
     principal = _principal()
     authorization = AuthorizationControl(db_session)
 
@@ -871,7 +883,7 @@ def test_prescription_change_uses_server_authorized_patient_scope(db_session) ->
 # - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
 # Returns:
 # - None.
-def test_caregiver_scope_requires_active_link(db_session) -> None:
+def test_caregiver_scope_requires_active_link(db_session: Session) -> None:
     principal = _principal("caregiver")
     authorization = AuthorizationControl(db_session)
     patient_hash = "usr_linked_patient"
@@ -1027,6 +1039,8 @@ def test_app_check_verification_failure_is_classified(
     #   failure.
     # Responsibilities:
     # - Raises the selected verification error without inspecting or forwarding the token.
+    # Attributes:
+    # - None.
     class FailingVerifier:
         # Function Name: verifyToken
         # Description:
@@ -1145,18 +1159,45 @@ def test_only_account_deletion_accepts_the_token_of_a_deleted_account() -> None:
         "email_verified": True,
     }
 
+    # Class Name: DeletedAccountVerifier
+    # Role: Simulates a valid token whose external identity has been deleted.
+    # Responsibilities:
+    # - Raises DeletedIdentityTokenError with the captured verified claims.
+    # Attributes:
+    # - None.
     class DeletedAccountVerifier:
+        # Function Name: verifyIdToken
+        # Description:
+        # - Raises the deleted-identity error with the fixture claims for every token.
+        # Parameters:
+        # - token: str; presented token, unused.
+        # Returns:
+        # - Never returns; raises DeletedIdentityTokenError.
         def verifyIdToken(self, token: str) -> dict[str, object]:
             raise DeletedIdentityTokenError(claims)
 
     app = FastAPI()
 
+    # Function Name: delete_account
+    # Description:
+    # - Echoes the authenticated subject from the test deletion route to observe retry admission.
+    # Parameters:
+    # - principal: AuthenticatedPrincipal; injected authentication result.
+    # Returns:
+    # - dict[str, str]; authenticated subject.
     @app.delete("/api/v1/auth/account-data")
     def delete_account(
         principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     ) -> dict[str, str]:
         return {"subject": principal.subject}
 
+    # Function Name: session
+    # Description:
+    # - Echoes the authenticated subject from the ordinary session route to test its stricter admission.
+    # Parameters:
+    # - principal: AuthenticatedPrincipal; injected authentication result.
+    # Returns:
+    # - dict[str, str]; authenticated subject.
     @app.get("/api/v1/auth/session")
     def session(
         principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
@@ -1194,6 +1235,8 @@ def test_firebase_verifier_outage_returns_retryable_service_error() -> None:
     # Responsibilities:
     # - Raises TokenVerificationUnavailableError to exercise retryable authentication
     #   failures.
+    # Attributes:
+    # - None.
     class UnavailableVerifier:
         # Function Name: verifyIdToken
         # Description:
@@ -1317,3 +1360,26 @@ def test_password_provider_still_requires_verified_email() -> None:
             get_authenticated_principal(credentials)
 
     assert denied.value.status_code == 403
+
+
+# 함수이름: test_production_api_requires_revocation_and_verified_email_and_no_emulator
+# 함수역할:
+# - 운영 API가 토큰 취소·이메일 검증 비활성화, 인증 에뮬레이터, 중복 설정 키를 거부하는지 검증한다.
+# 매개변수:
+# - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
+# 반환값:
+# - None.
+def test_production_api_requires_revocation_and_verified_email_and_no_emulator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("FIREBASE_CHECK_REVOKED_TOKENS", "FIREBASE_REQUIRE_VERIFIED_EMAIL"):
+        with pytest.raises(ValueError, match=name):
+            _production_api_settings(**{name: False})
+    monkeypatch.setenv("FIREBASE_AUTH_EMULATOR_HOST", "127.0.0.1:9099")
+    with pytest.raises(ValueError, match="FIREBASE_AUTH_EMULATOR_HOST"):
+        _production_api_settings()
+    monkeypatch.delenv("FIREBASE_AUTH_EMULATOR_HOST")
+    # Windows 환경 변수는 대소문자를 구분하지 않아 별도 매핑으로 충돌을 재현한다.
+    monkeypatch.setattr("os.environ", {"APP_ENV": "production", "app_env": "development"})
+    with pytest.raises(ValueError, match="Conflicting environment spellings for: APP_ENV"):
+        Settings(_env_file=None)

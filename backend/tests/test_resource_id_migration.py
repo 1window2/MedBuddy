@@ -1,6 +1,11 @@
+# 파일명: test_resource_id_migration.py
+# 역할: 리소스 ID 재사용 방지 이전의 데이터 보존, 개정 병합과 소급 복구 한계를 검증한다.
+
 import importlib.util
 from datetime import datetime
 from pathlib import Path
+from types import ModuleType
+from typing import Any
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -11,6 +16,7 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from alembic.script import ScriptDirectory
 from sqlalchemy import MetaData, Table, create_engine, inspect, select
+from sqlalchemy.engine import Connection, Engine, Row
 from sqlalchemy.orm import Session
 
 from controls.check_saved_medication_control import CheckSavedMedication
@@ -29,7 +35,14 @@ NEW_REVISION = "d19e7c4b2a60"
 CATALOG_REVISION = "c5e1a7f3b902"
 
 
-def migration():
+# 함수이름: migration
+# 함수역할:
+# - 리소스 ID 보호 마이그레이션 파일을 별도 모듈로 불러온다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - ModuleType; upgrade를 직접 호출할 마이그레이션 모듈.
+def migration() -> ModuleType:
     spec = importlib.util.spec_from_file_location(
         "resource_id_migration", ROOT / "migrations/versions/d19e7c4b2a60_preserve_deleted_resource_ids.py",
     )
@@ -38,13 +51,27 @@ def migration():
     return module
 
 
-def config_for(tmp_path):
+# 함수이름: config_for
+# 함수역할:
+# - 임시 SQLite 파일을 대상으로 저장소의 Alembic 설정을 구성한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# 반환값:
+# - Config; 테스트 데이터베이스 URL이 지정된 설정.
+def config_for(tmp_path: Path) -> Config:
     config = Config(str(ROOT / "alembic.ini"))
     config.attributes["database_url"] = f"sqlite:///{(tmp_path / 'id-migration.db').as_posix()}"
     return config
 
 
-def snapshot(connection):
+# 함수이름: snapshot
+# 함수역할:
+# - Alembic 개정 표를 제외한 모든 테이블 행을 정렬해 데이터 보존 비교 자료를 만든다.
+# 매개변수:
+# - connection: Connection; 검사할 SQLite 연결.
+# 반환값:
+# - dict[str, list[Row]]; 테이블별 전체 행.
+def snapshot(connection: Connection) -> dict[str, list[Row[tuple[Any, ...]]]]:
     return {
         table: sorted(connection.exec_driver_sql(f'SELECT * FROM "{table}"').all(), key=repr)
         for table in inspect(connection).get_table_names()
@@ -52,11 +79,26 @@ def snapshot(connection):
     }
 
 
+# 함수이름: historical_medications
+# 함수역할:
+# - 최신 ORM 열을 가정하지 않고 현재 연결의 과거 약품 테이블 정의를 반영한다.
+# 매개변수:
+# - db: Session; 과거 스키마에 연결된 세션.
+# 반환값:
+# - Table; 실제 저장 약품 테이블.
 def historical_medications(db: Session) -> Table:
     # 최신 ORM 필드가 없는 과거 스키마는 당시 테이블 정의로만 읽고 쓴다.
     return Table("saved_medications", MetaData(), autoload_with=db.connection())
 
 
+# 함수이름: seed_historical_medication
+# 함수역할:
+# - 과거 스키마의 열만 사용해 고유 중복 키를 가진 약품을 저장·커밋한다.
+# 매개변수:
+# - db: Session; 과거 스키마에 연결된 세션.
+# - overrides: dict[str, object]; 합성 약품에 덮어쓸 열 값.
+# 반환값:
+# - int; 삽입된 약품 ID.
 def seed_historical_medication(db: Session, **overrides: object) -> int:
     values = {
         "patient_hash": "patient-a", "created_date": application_today(),
@@ -71,7 +113,14 @@ def seed_historical_medication(db: Session, **overrides: object) -> int:
     return medication_id
 
 
-def seed_history(engine):
+# 함수이름: seed_history
+# 함수역할:
+# - 이전 스키마에 계정·약품·완료 기록·연동·채팅 메시지를 만들어 이전 전 비교 상태를 준비한다.
+# 매개변수:
+# - engine: Engine; 이전 버전 스키마가 적용된 데이터베이스.
+# 반환값:
+# - tuple[int, int, int]; 약품·연동·메시지 ID.
+def seed_history(engine: Engine) -> tuple[int, int, int]:
     with Session(engine) as db:
         seed_account(db, "patient-a", "caregiver-a", "unrelated-owner")
         medication_id = seed_historical_medication(db)
@@ -89,7 +138,14 @@ def seed_history(engine):
         return medication_id, link.id, result.message.message_id
 
 
-def test_existing_database_upgrade_preserves_rows_and_prevents_id_reuse(tmp_path):
+# 함수이름: test_existing_database_upgrade_preserves_rows_and_prevents_id_reuse
+# 함수역할:
+# - 개정 왕복 중 모든 행과 무결성을 보존하며 최신 스키마에서 삭제 약품·메시지 ID를 재사용하지 않는지 확인한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# 반환값:
+# - None.
+def test_existing_database_upgrade_preserves_rows_and_prevents_id_reuse(tmp_path: Path) -> None:
     config = config_for(tmp_path)
     command.upgrade(config, OLD_REVISION)
     engine = create_engine(config.attributes["database_url"])
@@ -122,7 +178,14 @@ def test_existing_database_upgrade_preserves_rows_and_prevents_id_reuse(tmp_path
         engine.dispose()
 
 
-def test_migration_rejects_populated_foreign_key_connection_before_changes(tmp_path):
+# 함수이름: test_migration_rejects_populated_foreign_key_connection_before_changes
+# 함수역할:
+# - 외래 키가 활성화된 기존 데이터 연결에서는 이전을 거부하고 데이터·스키마를 변경하지 않는지 확인한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# 반환값:
+# - None.
+def test_migration_rejects_populated_foreign_key_connection_before_changes(tmp_path: Path) -> None:
     config = config_for(tmp_path)
     command.upgrade(config, OLD_REVISION)
     engine = create_engine(config.attributes["database_url"])
@@ -142,7 +205,15 @@ def test_migration_rejects_populated_foreign_key_connection_before_changes(tmp_p
         engine.dispose()
 
 
-def test_repeat_upgrade_does_not_reset_deleted_high_water_marks(fk_engine, fk_db):
+# 함수이름: test_repeat_upgrade_does_not_reset_deleted_high_water_marks
+# 함수역할:
+# - ID 보호 이전을 반복해도 삭제된 최대 ID 100의 상한을 초기화하지 않는지 확인한다.
+# 매개변수:
+# - fk_engine: Engine; 외래 키가 활성화된 격리 SQLite 데이터베이스.
+# - fk_db: Session; 외래 키가 활성화된 격리 데이터베이스.
+# 반환값:
+# - None.
+def test_repeat_upgrade_does_not_reset_deleted_high_water_marks(fk_engine: Engine, fk_db: Session) -> None:
     seed_account(fk_db, "patient-a", "caregiver-a")
     medication = seed_medication(fk_db, id=100)
     fk_db.delete(medication)
@@ -165,7 +236,14 @@ def test_repeat_upgrade_does_not_reset_deleted_high_water_marks(fk_engine, fk_db
     ).message.message_id > 100
 
 
-def test_upgrade_cannot_recover_ids_deleted_before_autoincrement(tmp_path):
+# 함수이름: test_upgrade_cannot_recover_ids_deleted_before_autoincrement
+# 함수역할:
+# - AUTOINCREMENT 적용 전에 삭제된 최대 ID는 복구할 수 없어 재사용될 수 있다는 이전 한계를 명시한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# 반환값:
+# - None.
+def test_upgrade_cannot_recover_ids_deleted_before_autoincrement(tmp_path: Path) -> None:
     config = config_for(tmp_path)
     command.upgrade(config, OLD_REVISION)
     engine = create_engine(config.attributes["database_url"])
@@ -192,8 +270,16 @@ def test_upgrade_cannot_recover_ids_deleted_before_autoincrement(tmp_path):
         engine.dispose()
 
 
+# 함수이름: test_merge_preserves_applied_histories_data_and_deleted_ids
+# 함수역할:
+# - 두 갈래 개정의 어느 시작점에서도 병합·반복 이전이 데이터와 삭제 ID 상한을 보존하는지 확인한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# - starting_revision: str; ID 보호·카탈로그 개정 또는 두 개정 모두.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("starting_revision", [NEW_REVISION, CATALOG_REVISION, "both"])
-def test_merge_preserves_applied_histories_data_and_deleted_ids(tmp_path, starting_revision):
+def test_merge_preserves_applied_histories_data_and_deleted_ids(tmp_path: Path, starting_revision: str) -> None:
     config = config_for(tmp_path)
     if starting_revision == "both":
         command.upgrade(config, NEW_REVISION)
@@ -221,7 +307,14 @@ def test_merge_preserves_applied_histories_data_and_deleted_ids(tmp_path, starti
                     name="synthetic-catalog", last_success_at=token_values["created_at"],
                 ))
 
-        def delete_highest_ids():
+        # 함수이름: delete_highest_ids
+        # 함수역할:
+        # - 약품과 메시지 ID 900을 저장 후 삭제하여 SQLite 시퀀스에만 남은 상한을 만든다.
+        # 매개변수:
+        # - 없음.
+        # 반환값:
+        # - None.
+        def delete_highest_ids() -> None:
             with Session(engine) as db:
                 medication_id = seed_historical_medication(db, id=900, item_name="deleted-highest")
                 message = _ChatMessage(

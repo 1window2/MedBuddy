@@ -9,9 +9,9 @@ import '../theme/medbuddy_theme.dart';
 // 역할: 휠·직접 입력을 통한 복약 알림 시각 선택을 제공한다.
 
 // 클래스명: _TimeValueType
-// 역할: 직접 입력할 시 또는 분의 구분을 담당한다.
-// 주요 책임:
-// - 직접 입력할 시 또는 분의 구분에서 지원하는 선택지를 열거하고 구분한다: hour, minute.
+// 역할: 직접 숫자를 입력할 알림 시각 부분.
+// 주요 책임: 시 입력과 분 입력의 유효 범위를 구분한다.
+// 속성: hour/minute: 입력 부분.
 enum _TimeValueType { hour, minute }
 
 // Class Name: SetNotificationUI
@@ -83,10 +83,10 @@ class SetNotificationUI extends StatefulWidget {
   State<SetNotificationUI> createState() => _SetNotificationUIState();
 }
 
-// 클래스명: _SetNotificationUIState
-// 역할: 회전 휠과 직접 입력으로 확정하는 알림 시각의 화면 상태를 관리한다.
-// 주요 책임:
-// - 회전 휠과 직접 입력으로 확정하는 알림 시각에 필요한 상태 변경과 사용자 동작을 연결한다.
+// Class Name: _SetNotificationUIState
+// Role: Wheel and numeric-entry state for a confirmed reminder time.
+// Responsibilities: Keeps selected hour/minute synchronized with wheel controllers and validates direct entry.
+// Attributes: _selectedHour/_selectedMinute (int): selected time; _hourController/_minuteController (FixedExtentScrollController): wheels; _hourCount/_minuteCount (int): valid cycle sizes.
 class _SetNotificationUIState extends State<SetNotificationUI> {
   static const int _hourCount = 24;
   static const int _minuteCount = 60;
@@ -133,11 +133,10 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
     super.dispose();
   }
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 회전 휠과 직접 입력으로 확정하는 알림 시각 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 회전 휠과 직접 입력으로 확정하는 알림 시각에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Combines hour/minute wheels and direct numeric entry with explicit time confirmation.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -177,11 +176,10 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
     );
   }
 
-  // 함수이름: _buildHeader
-  // 함수역할: 팝업 닫기, 제목과 시간 확정 버튼을 배치한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 회전 휠과 직접 입력으로 확정하는 알림 시각에 쓰는 위젯 트리.
+  // Function Name: _buildHeader
+  // Description: Places close, title and confirm controls in the time-picker header.
+  // Parameters: context (BuildContext): popup navigation scope.
+  // Returns: The time-picker header.
   Widget _buildHeader(BuildContext context) {
     return Row(
       children: [
@@ -230,11 +228,10 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
     );
   }
 
-  // 함수이름: _buildTimePicker
-  // 함수역할: 시와 분 회전 휠 위에 선택 영역과 직접 입력 터치 영역을 구성한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 회전 휠과 직접 입력으로 확정하는 알림 시각에 쓰는 위젯 트리.
+  // Function Name: _buildTimePicker
+  // Description: Places selection highlights and direct-entry touch areas over the hour/minute wheels.
+  // Parameters: None.
+  // Returns: The interactive time-selection body.
   Widget _buildTimePicker() {
     return SizedBox(
       height: _pickerHeight,
@@ -317,16 +314,10 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
     );
   }
 
-  // 함수이름: _buildWheel
-  // 함수역할: 지정된 값 범위를 순환해서 선택할 수 있는 회전 휠을 생성한다.
-  // 매개변수:
-  // - key (Key): 위젯을 구분하고 상태를 유지할 식별 키.
-  // - controller (FixedExtentScrollController): 해당 카메라·지도·입력·스크롤 동작을 제어하는 객체.
-  // - itemCount (int): 문구나 목록에 표시할 항목 수 또는 일련번호.
-  // - selectedValue (int): 현재 선택한 시·분 또는 선택지 값.
-  // - type (_TimeValueType): 시·분 또는 처방 변화 등 현재 분기 종류.
-  // - onSelected (ValueChanged<int>): 변경된 값 또는 선택 상태를 소유 화면에 전달할 콜백.
-  // 반환값: 회전 휠과 직접 입력으로 확정하는 알림 시각에 쓰는 위젯 트리.
+  // Function Name: _buildWheel
+  // Description: Creates a cyclic wheel over the supplied value range and reports selection changes.
+  // Parameters: key: identity; controller (FixedExtentScrollController): wheel position; itemCount: range size; selectedValue: current hour/minute; type (_TimeValueType): edited component; onSelected: value callback.
+  // Returns: The configured time-component wheel.
   Widget _buildWheel({
     required Key key,
     required FixedExtentScrollController controller,
@@ -404,11 +395,10 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
     );
   }
 
-  // 함수이름: _showDirectInput
-  // 함수역할: 선택한 시 또는 분을 숫자 키패드로 입력받고 범위를 검증한다.
-  // 매개변수:
-  // - type (_TimeValueType): 시·분 또는 처방 변화 등 현재 분기 종류.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _showDirectInput
+  // Description: Collects an hour or minute through a numeric keyboard and validates its allowed range.
+  // Parameters: type (_TimeValueType): hour or minute to edit.
+  // Returns: Future completing after valid entry or cancellation.
   Future<void> _showDirectInput(_TimeValueType type) async {
     final isHour = type == _TimeValueType.hour;
     final maximum = isHour ? 23 : 59;

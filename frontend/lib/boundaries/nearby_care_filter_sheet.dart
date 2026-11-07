@@ -1,9 +1,19 @@
+// 파일명: nearby_care_filter_sheet.dart
+// 역할: 병원·약국의 운영 조건과 조회 날짜 초안을 적용 전까지 보관한다.
+
 part of 'check_nearby_pharmacy_ui_boundary.dart';
 
 typedef _NearbyCareConditions = ({_PharmacyFilter filter, DateTime? date});
 
-// 병원과 약국이 같은 날짜·운영 상태 선택창을 사용한다. 적용 전에는 검색하지 않는다.
+// 클래스명: _NearbyCareFilterSheet
+// 역할: 시설 검색 조건을 한 번에 확정하는 선택창.
+// 주요 책임: 초기 조건을 복사하고 적용 전에는 검색을 요청하지 않는다.
+// 속성: filter (_PharmacyFilter): 조건; selectedDate (DateTime?): 날짜; now (DateTime Function()): 시계; hospitals (bool): 병원; text (_NearbyPharmacyText): 문구; filterLabel (String Function): 조건 이름.
 class _NearbyCareFilterSheet extends StatefulWidget {
+  // 함수이름: _NearbyCareFilterSheet
+  // 함수역할: 초기 검색 조건·날짜와 표시용 의존성을 연결한다.
+  // 매개변수: filter (_PharmacyFilter): 조건; selectedDate (DateTime?): 날짜; now (DateTime Function()): 시계; hospitals (bool): 병원; text (_NearbyPharmacyText): 문구; filterLabel (String Function(_PharmacyFilter)): 이름.
+  // 반환값: 새 _NearbyCareFilterSheet.
   const _NearbyCareFilterSheet({
     required this.filter,
     required this.selectedDate,
@@ -20,15 +30,26 @@ class _NearbyCareFilterSheet extends StatefulWidget {
   final _NearbyPharmacyText text;
   final String Function(_PharmacyFilter) filterLabel;
 
+  // 함수이름: createState
+  // 함수역할: 적용 전의 조건·날짜 초안을 관리할 상태를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 새 _NearbyCareFilterSheetState.
   @override
   State<_NearbyCareFilterSheet> createState() => _NearbyCareFilterSheetState();
 }
 
+// Class Name: _NearbyCareFilterSheetState
+// Role: Keeps date and operating-condition edits local until applied.
+// Responsibilities: Clamps calendar choices and clears selected dates for the open-now filter.
+// Attributes: _filter (_PharmacyFilter): draft filter; _date (DateTime?): draft day.
 class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
   late _PharmacyFilter _filter = widget.filter;
   late DateTime? _date = widget.selectedDate;
 
-  // 날짜 선택 취소는 기존 초안을 유지한다. 과거 조회일도 달력 범위 안으로 제한한다.
+  // Function Name: _pickDate
+  // Description: Picks a date from seven calendar days ago through 366 days ahead, avoiding DST duration drift.
+  // Parameters: None.
+  // Returns: Future<void>; cancellation preserves the draft, selection stores noon on the chosen day.
   Future<void> _pickDate() async {
     final today = DateUtils.dateOnly(widget.now());
     // 24시간 단위로 더하면 서머타임 전환일을 지날 때 범위가 하루 어긋나므로 달력 날짜로 계산한다.
@@ -49,6 +70,10 @@ class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
     );
   }
 
+  // Function Name: _heading
+  // Description: Creates a compact subsection heading above filter choices.
+  // Parameters: label (String): heading text.
+  // Returns: Padded Text widget.
   Widget _heading(String label) => Padding(
     padding: const EdgeInsets.only(bottom: 8),
     child: Text(
@@ -61,6 +86,10 @@ class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
     ),
   );
 
+  // Function Name: build
+  // Description: Builds a bounded-height filter sheet with scrollable choices and explicit apply/cancel actions.
+  // Parameters: context (BuildContext): Sheet location.
+  // Returns: Condition editor; changes are returned only on apply.
   @override
   Widget build(BuildContext context) {
     final text = widget.text;
@@ -156,7 +185,10 @@ class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
     );
   }
 
-  // 현재 영업 조건으로 돌아가면 과거·미래 날짜 선택을 제거한다.
+  // Function Name: _option
+  // Description: Builds a selectable condition row; choosing open-now clears any historical/future date.
+  // Parameters: filter (_PharmacyFilter): condition to offer.
+  // Returns: Accessible selection row reflecting the draft choice.
   Widget _option(_PharmacyFilter filter) {
     final selected = filter == _filter;
     return Semantics(

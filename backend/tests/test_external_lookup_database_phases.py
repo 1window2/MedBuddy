@@ -40,10 +40,15 @@ def principal(owner: str = "caregiver") -> AuthenticatedPrincipal:
     return AuthenticatedPrincipal(subject=owner, issuer="test", user_hash=owner)
 
 
-# 함수이름: routed_request
-# 함수역할: 접두사로 붙인 라우터처럼 route.path가 상대 경로인 요청을 만든다.
-# 매개변수: method: HTTP 메서드, path: 접두사를 포함한 실제 경로, route_path: 라우터 안의 경로 템플릿.
-# 반환값: route가 설정된 시험 요청.
+# Function Name: routed_request
+# Description:
+# - Build a request whose route template remains relative to the mounted router prefix.
+# Parameters:
+# - method: str; HTTP method.
+# - path: str; full request path including prefix.
+# - route_path: str; route template inside the router.
+# Returns:
+# - Request; synthetic request with route metadata.
 def routed_request(method: str, path: str, route_path: str) -> Request:
     return Request({
         "type": "http", "method": method, "path": path, "headers": [],
@@ -51,9 +56,13 @@ def routed_request(method: str, path: str, route_path: str) -> Request:
     })
 
 
-# 함수이름: database
-# 함수역할: 연결 하나인 임시 DB와 합성 복약·연동 정보를 제공한다.
-# 매개변수: tmp_path: pytest 임시 경로. 반환값: engine·세션 factory, 종료 시 연결 회수 확인.
+# Function Name: database
+# Description:
+# - Yield a single-connection temporary database with synthetic medication and link data, then verify all connections were returned.
+# Parameters:
+# - tmp_path: Path; isolated temporary directory.
+# Returns:
+# - Iterator[Database]; engine and session factory, disposed after the test.
 @pytest.fixture
 def database(tmp_path: Path) -> Iterator[Database]:
     # 연결이 하나뿐인 환경에서도 AI 대기가 다른 조회를 막지 않아야 한다.
@@ -84,7 +93,9 @@ def database(tmp_path: Path) -> Iterator[Database]:
 
 
 # 클래스명: GatedRecommendation
-# 역할 및 주요 책임: 실제 외부 전송 없이 AI 대기 시점을 통제한다.
+# 역할: 외부 AI 호출의 대기 진입과 해제를 통제하는 비동기 대역이다.
+# 주요 책임:
+# - 목표 호출 수에 도달하면 준비 신호를 보내고 해제 신호까지 응답을 지연한다.
 # 속성: expected/count: 요청 수, ready/release: 대기 진입·해제 신호.
 class GatedRecommendation:
     # 함수이름: __init__
@@ -219,10 +230,16 @@ def test_cancelled_ai_keeps_no_connection_or_cache(database: Database) -> None:
     asyncio.run(scenario())
 
 
-# 함수이름: test_only_explicit_external_lookups_release_postgres_registration
-# 함수역할: 외부 조회 허용 목록만 등록 단계에서 commit하는지 검사한다.
-# 매개변수: method/path: route, route_path: 라우터 안의 경로, detached: 연결 반환 기대 여부. 반환값: 없음.
-# 허용 목록을 표에서 읽지 않고 직접 적어, 표의 항목이 빠지거나 바뀌면 이 시험이 실패하게 한다.
+# Function Name: test_only_explicit_external_lookups_release_postgres_registration
+# Description:
+# - Verify only explicitly listed external-lookup routes commit during PostgreSQL account registration; use an independent case table to catch allowlist drift.
+# Parameters:
+# - method: str; request HTTP method.
+# - path: str; full mounted request path.
+# - route_path: str; router-relative template.
+# - detached: bool; whether registration should commit and release the connection.
+# Returns:
+# - None.
 @pytest.mark.parametrize("method,path,route_path,detached", [
     ("POST", "/api/v1/medication/identify", "/identify", True),
     ("POST", "/api/v1/medication/analyze-prescription-text", "/analyze-prescription-text", True),
@@ -262,9 +279,13 @@ def test_only_explicit_external_lookups_release_postgres_registration(
     asyncio.run(scenario())
 
 
-# 함수이름: test_postgres_registration_takes_the_account_lock_and_commits_only_when_detached
-# 함수역할: 실제 등록 함수가 PostgreSQL 계정 잠금을 잡고, 외부 조회 등록만 commit하는지 검사한다.
-# 매개변수: detached: 외부 조회용 등록 여부. 반환값: 없음.
+# Function Name: test_postgres_registration_takes_the_account_lock_and_commits_only_when_detached
+# Description:
+# - Require account locking before lookup and commit only for detached external-lookup registration.
+# Parameters:
+# - detached: bool; select detached registration or request-lifetime registration.
+# Returns:
+# - None.
 @pytest.mark.parametrize("detached", [False, True])
 def test_postgres_registration_takes_the_account_lock_and_commits_only_when_detached(detached: bool) -> None:
     # 다른 시험은 _register_account_scope를 대체하므로 잠금 호출이 빠져도 통과한다.
@@ -310,15 +331,23 @@ def test_catalog_worker_uses_the_released_connection(database: Database) -> None
     asyncio.run(scenario())
 
 
-# 함수이름: test_sqlite_external_lookup_does_not_hold_request_lifetime_lock
-# 함수역할: SQLite 외부 조회가 같은 계정의 다음 요청을 막지 않는지 검사한다.
-# 매개변수: database: 임시 DB. 반환값: 없음.
+# Function Name: test_sqlite_external_lookup_does_not_hold_request_lifetime_lock
+# Description:
+# - Allow another request for the same SQLite account while an external-lookup dependency remains open.
+# Parameters:
+# - database: Database; temporary engine and session factory.
+# Returns:
+# - None.
 def test_sqlite_external_lookup_does_not_hold_request_lifetime_lock(database: Database) -> None:
     _, factory = database
 
-    # 함수이름: scenario
-    # 함수역할: 같은 계정의 dependency 두 개가 동시에 열릴 수 있는지 검사한다.
-    # 매개변수: 없음. 반환값: 없음.
+    # Function Name: scenario
+    # Description:
+    # - Open two same-account authentication dependencies without retaining a request-lifetime SQLite lock.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     async def scenario() -> None:
         request = routed_request(
             "GET", "/api/v1/medication/health/recommendation", "/health/recommendation",

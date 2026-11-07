@@ -5,24 +5,37 @@ import '../entities/medication_slot_label.dart';
 import '../services/dose_sync_service.dart';
 import '../theme/medbuddy_theme.dart';
 
+// Class Name: DoseSyncStatus
+// Role: Displays durable dose-sync problems separately from ordinary pending records.
+// Responsibilities: Show unrecoverable-record notices, pending/rejected operations and explicit retry/discard actions.
+// Attributes: service: Observed DoseSyncService; isEnglish: Feedback language.
 class DoseSyncStatus extends StatelessWidget {
   final DoseSyncService service;
   final bool isEnglish;
+  // 함수이름: DoseSyncStatus
+  // 함수역할: 복용 동기화 서비스의 상태를 표시할 영역을 구성한다.
+  // 매개변수: key: 위젯 식별자; service: 구독할 동기화 서비스; isEnglish: 영어 표시 여부.
+  // 반환값: 상태 위젯; 서비스 수명은 호출자가 관리한다.
   const DoseSyncStatus({
     super.key,
     required this.service,
     this.isEnglish = false,
   });
 
+  // Function Name: build
+  // Description: Composes independent lost-record and pending-operation notices.
+  // Parameters: context: Flutter build context.
+  // Returns: A compact column whose empty sections collapse.
   @override
   Widget build(BuildContext context) => Column(
     mainAxisSize: MainAxisSize.min,
     children: [_buildLostRecords(), _buildPending(context)],
   );
 
-  // 함수이름: _buildLostRecords
-  // 함수역할: 기기 키가 사라져 전송하지 못하고 버려진 기록이 있으면 건수와 다음 행동을 알린다.
-  // 매개변수: 없음. 반환값: 안내 줄. 유실 기록이 없으면 빈 위젯.
+  // Function Name: _buildLostRecords
+  // Description: Shows records lost after secure-storage reset and allows acknowledging the warning.
+  // Parameters: None.
+  // Returns: A service-subscribed warning, or an empty widget when no lost records remain.
   Widget _buildLostRecords() => ListenableBuilder(
     listenable: service,
     builder: (context, _) {
@@ -58,6 +71,10 @@ class DoseSyncStatus extends StatelessWidget {
     },
   );
 
+  // Function Name: _buildPending
+  // Description: Displays pending sync state and opens a live operation list with retry and confirmed rejected-record removal.
+  // Parameters: context: Context for the details sheet.
+  // Returns: A subscribed pending row or empty widget; discard affects rejected local intentions, not server records.
   Widget _buildPending(BuildContext context) => ListenableBuilder(
     listenable: service,
     builder: (context, _) {
@@ -200,5 +217,9 @@ class DoseSyncStatus extends StatelessWidget {
     },
   );
 
+  // Function Name: _slot
+  // Description: Localizes a pending operation's medication slot.
+  // Parameters: key: Dose slot identifier.
+  // Returns: The current-language slot label.
   String _slot(String key) => medicationSlotLabel(key, isEnglish: isEnglish);
 }

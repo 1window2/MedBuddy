@@ -23,6 +23,7 @@ import 'package:medbuddy_frontend/services/device_location_service.dart';
 // Responsibilities:
 // - Let a screen or view model load an empty schedule in tests that are about something else.
 // Note: Subclass it to add medication rows or to record status updates.
+// Attributes: No additional state; owner and HTTP client are inherited from CheckSchedule.
 class EmptyCheckSchedule extends CheckSchedule {
   // Function Name: EmptyCheckSchedule
   // Description: Creates the control with the production defaults or the given scope and client.
@@ -43,6 +44,7 @@ class EmptyCheckSchedule extends CheckSchedule {
 // Role: Reminder control whose alarm read returns no saved alarm without a request.
 // Responsibilities:
 // - Let a screen or view model load reminder settings in tests that are about something else.
+// Attributes: No additional state; owner, client and registrar are inherited from SetNotification.
 class EmptySetNotification extends SetNotification {
   // Function Name: EmptySetNotification
   // Description: Creates the control with the production defaults or the given collaborators.

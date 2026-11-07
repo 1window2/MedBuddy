@@ -4,11 +4,9 @@ import 'package:flutter/foundation.dart';
 // 역할: 앱 전역 ViewModel의 변경 알림을 기능 단위로 분리한다.
 
 // 클래스명: MedBuddyFeature
-// 역할: 처방전·저장 약·일정·설정 등 상태 변경을 구독할 기능 영역을 구분한다.
-// 주요 책임:
-// - 관심 기능만 갱신하는 알림 채널의 키로 사용한다.
-// 비고:
-// - 파일명: medbuddy_feature_updates.dart
+// 역할: 앱의 기능별 변경 구독 대상을 구분한다.
+// 주요 책임: 처방·저장 약·일정·알림·건강 추천·사용자 설정의 갱신 범위를 지정한다.
+// 속성: prescription/savedMedication/schedule/reminder/healthRecommendation/userSetting: 기능 식별값.
 enum MedBuddyFeature {
   prescription,
   savedMedication,
@@ -19,9 +17,9 @@ enum MedBuddyFeature {
 }
 
 // 클래스명: MedBuddyFeatureUpdates
-// 역할: 특정 기능의 변경 알림과 수정 횟수를 제공한다.
-// 주요 책임:
-// - 수정 카운터를 증가시키고 해당 기능을 구독한 화면만 갱신하도록 알린다.
+// 역할: 기능별 변경 순번과 구독 알림을 관리한다.
+// 주요 책임: markChanged 호출마다 순번을 증가시키고 리스너를 알린다.
+// 속성: _revision (int): 변경 순번; revision: 읽기 전용 공개 값.
 class MedBuddyFeatureUpdates extends ChangeNotifier {
   int _revision = 0;
 

@@ -52,13 +52,13 @@ def _request_with_store(store: RequestRateLimitStore) -> Request:
     )
 
 
-# 함수이름: test_chat_daily_quota_rejects_messages_above_limit
-# 함수역할:
-# - 채팅 일일 상한 초과 시 429와 양수 Retry-After가 반환되는지 검증한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_chat_daily_quota_rejects_messages_above_limit
+# Description:
+# - Reject messages beyond the daily quota with HTTP 429 and a positive Retry-After.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_chat_daily_quota_rejects_messages_above_limit() -> None:
     """일일 상한을 넘긴 메시지 저장 시도가 429로 차단되는지 검증한다."""
@@ -80,13 +80,13 @@ async def test_chat_daily_quota_rejects_messages_above_limit() -> None:
     assert int(context.value.headers["Retry-After"]) >= 1
 
 
-# 함수이름: test_chat_push_is_throttled_per_recipient_and_link
-# 함수역할:
-# - 동일 상대·연동의 연속 푸시는 한 번만 허용하고 다른 연동의 푸시는 독립적으로 허용하는지 검증한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_chat_push_is_throttled_per_recipient_and_link
+# Description:
+# - Throttle repeated pushes to one recipient/link while allowing a different link independently.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_chat_push_is_throttled_per_recipient_and_link() -> None:
     """같은 상대와 연동에 대한 연속 푸시가 한 번만 예약되는지 검증한다."""

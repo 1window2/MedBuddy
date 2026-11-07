@@ -1,3 +1,5 @@
+// File Name: set_notification_control.dart
+// Role: Persists patient alarm settings and delegates dated notification registration to the platform boundary.
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -32,9 +34,6 @@ typedef NotificationRegistrar =
       required List<DateTime> activeDates,
       String language,
     });
-
-// File Name: set_notification_control.dart
-// Role: Persists patient alarm settings and delegates dated notification registration to the platform boundary.
 
 // Class Name: SetNotification
 // Role: Coordinates patient medication alarm setting requests with the backend.
@@ -153,18 +152,10 @@ class SetNotification {
     );
   }
 
-  // Function Name: registerNotification
-  // Description: Passes active course dates to the notification registrar, keeping plugin details inside NotificationService.
-  // Parameters:
-  // - id (int): Platform identifier used to schedule, replace, or cancel an alert.
-  // - slotKey (String): Medication slot key: morning, lunch, evening, or bedtime.
-  // - slotTitle (String): Localized medication slot name.
-  // - hour (int): Local hour in 24-hour time.
-  // - minute (int): Minute component of local time.
-  // - activeDates (List<DateTime>): Reminder dates within the medication course.
-  // - language (String): Language code used for display or speech guidance.
-  // Returns:
-  // - Future<void>: asynchronous completion without a result payload.
+  // 함수이름: registerNotification
+  // 함수역할: 유효한 복용 날짜와 시간대를 주입된 알림 등록 경계에 전달한다.
+  // 매개변수: id (int): 예약 식별자; slotKey/slotTitle (String): 시간대 키와 표시명; hour/minute (int): 현지 시각; activeDates (List<DateTime>): 복용 기간 내 예약 날짜; language (String): 알림 언어.
+  // 반환값: Future<void>: 등록 완료; 등록 경계의 오류는 전파된다.
   Future<void> registerNotification({
     required int id,
     required String slotKey,

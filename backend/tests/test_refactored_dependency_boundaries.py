@@ -146,27 +146,26 @@ def test_medication_name_matching_stays_runtime_independent() -> None:
     _assert_standard_library_only(ROOT / "backend/services/medication_match_safety.py")
 
 
-# Function Name: test_medication_detail_control_contains_only_orchestration_class
-# Description:
-# - Keeps storage/client implementation classes out of the medication-detail use-case control.
-# Parameters:
+# 함수이름: test_medication_detail_control_contains_only_orchestration_class
+# 함수역할:
+# - 약품 상세 제어 모듈에는 조율 클래스만 남고 저장소·클라이언트 구현이 다시 포함되지 않는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
 # - None.
-# Returns:
-# - None; helpers must remain public collaborators rather than be embedded again.
 def test_medication_detail_control_contains_only_orchestration_class() -> None:
     source = ROOT / "backend/controls/check_medication_detail_control.py"
     classes = [node.name for node in ast.parse(source.read_text(encoding="utf-8")).body if isinstance(node, ast.ClassDef)]
     assert classes == ["CheckMedicationDetail"]
 
 
-# Function Name: test_catalog_workers_never_consult_borrowed_request_sessions
-# Description:
-# - Guards worker setup/read/write methods against reacquiring or sharing their owner's request Session.
-# - Keeps captured Engine-bound factories as the only worker-session composition port.
-# Parameters:
+# 함수이름: test_catalog_workers_never_consult_borrowed_request_sessions
+# 함수역할:
+# - 목록 작업자의 준비·조회·저장 메서드가 요청 세션을 빌리지 않고 캡처한 엔진 기반 팩터리만 사용하는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
 # - None.
-# Returns:
-# - None; a direct self.db access identifies the lifecycle regression before runtime.
 def test_catalog_workers_never_consult_borrowed_request_sessions() -> None:
     for relative_path, method_names in (
         ("services/prescription_medication_name_verifier.py", {

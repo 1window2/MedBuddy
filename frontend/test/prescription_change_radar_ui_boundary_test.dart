@@ -16,6 +16,13 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
   for (final language in ['ko', 'en']) {
+    // 함수이름: testWidgets callback
+    // 함수역할:
+    // - 작은 화면·두 배 글씨에서 긴 변화 목록은 처음 접혀 있고, 펼친 상태는 재빌드 후 유지되며 다시 접어도 렌더링 오류가 없는지 확인한다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets('long radar stays folded across rebuilds in $language', (
       tester,
     ) async {
@@ -23,6 +30,13 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
+      // 함수이름: screen
+      // 함수역할:
+      // - 현재 언어로 20개 추가 항목을 가진 스크롤 가능한 레이더 화면을 만든다.
+      // 매개변수:
+      // - 없음; 바깥 language 값을 사용한다.
+      // 반환값:
+      // - Widget: 두 배 글씨를 적용한 MaterialApp.
       Widget screen() => MaterialApp(
         home: Scaffold(
           body: MediaQuery(

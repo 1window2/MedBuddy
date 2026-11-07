@@ -43,12 +43,10 @@ class CheckPrescriptionChange {
        _client = client ?? AuthenticatedApiClient(),
        _ownsClient = client == null;
 
-  // 함수이름: requestPrescriptionChange
-  // 함수역할: 현재 분석된 처방을 서버에 전달하고 이전 처방과의 차이를 요청한다.
-  // 매개변수:
-  // - medications (List<AnalyzedMedication>): 약품 상세정보와 OCR 복약 일정이 결합된 현재 처방 목록
-  // 반환값:
-  // - 이전 처방 존재 여부와 변화 목록을 포함한 PrescriptionChangeRadar
+  // Function Name: requestPrescriptionChange
+  // Description: Compare analyzed medication details and OCR schedules with the previous prescription; skip HTTP for an empty selection.
+  // Parameters: medications (List<AnalyzedMedication>): current prescription details and schedules.
+  // Returns: Future<PrescriptionChangeRadar>: comparison or no-previous-prescription result; transport and response failures propagate.
   Future<PrescriptionChangeRadar> requestPrescriptionChange(
     List<AnalyzedMedication> medications,
   ) async {

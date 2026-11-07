@@ -13,18 +13,13 @@ import '../entities/nearby_care_entity.dart';
 import '../services/naver_map_config.dart';
 import '../services/nearby_care_marker_diff.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/naver_map_sdk_gate.dart';
 import 'pharmacy_map_symbols.dart';
 
-// 클래스명: NearbyPharmacyMap
-// 역할: 약국 마커·선택 강조·확대·출처 명령을 담당한다.
-// 주요 책임:
-// - 약국 마커·선택 강조·확대·출처 명령의 State가 사용할 화면 설정과 외부 의존성을 보관한다.
-// 속성:
-// - pharmacies (List<NearbyCarePlace>): 지도 또는 목록에 배치할 약국 검색 결과.
-// - selectedPharmacyId (String?): 공유하거나 지도에서 선택한 약국 ID.
-// - favoritePharmacyIds (Set<String>): 골드색 별로 표시할 사용자별 약국 ID.
-// - onPharmacySelected (ValueChanged<NearbyCarePlace>): 목록·마커에서 선택한 약국을 전달할 콜백.
-// - onAttributionRequested (VoidCallback): 지도 데이터의 출처·저작권 안내를 여는 콜백.
+// Class Name: NearbyPharmacyMap
+// Role: Interactive nearby-care map with selection and favorites.
+// Responsibilities: Keeps device location distinct from the searched area and changes camera focus only for explicit selection/recenter requests.
+// Attributes: searchArea/deviceLocation/centerRevision: location and focus; pharmacies/selectedPharmacyId/favoritePharmacyIds: markers; bottomInset/showControls: viewport controls; callbacks and labels: search, current location, selection and attribution.
 class NearbyPharmacyMap extends StatefulWidget {
   final bool hospitals;
   final NearbyCareSearchArea searchArea;
@@ -53,22 +48,10 @@ class NearbyPharmacyMap extends StatefulWidget {
   final String unavailableText;
   final String myLocationTooltip;
 
-  // 함수이름: NearbyPharmacyMap
-  // 함수역할: 약국 마커·선택 강조·확대·출처 명령에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
-  // - pharmacies (List<NearbyCarePlace>): 지도 또는 목록에 배치할 약국 검색 결과.
-  // - selectedPharmacyId (String?): 공유하거나 지도에서 선택한 약국 ID.
-  // - favoritePharmacyIds (Set<String>): 지도에 반영할 사용자별 즐겨찾기 ID.
-  // - onPharmacySelected (ValueChanged<NearbyCarePlace>): 목록·마커에서 선택한 약국을 전달할 콜백.
-  // - onAttributionRequested (VoidCallback): 지도 데이터의 출처·저작권 안내를 여는 콜백.
-  // - statusText (String?): 현재 작업 결과·오류·상태에 대한 표시 문구.
-  // - selectMarkerHint (String): 아이콘의 동작을 설명할 도움말·접근성 문구.
-  // - zoomInTooltip (String): 지도 확대 명령의 도움말.
-  // - zoomOutTooltip (String): 지도 축소 명령의 도움말.
-  // - configurationUnavailableText (String): 현재 빌드에 지도 설정이 없을 때의 안내.
-  // - unavailableText (String): 지도 또는 관련 정보를 표시할 수 없을 때의 안내.
-  // 반환값: 입력 설정이 반영된 NearbyPharmacyMap 인스턴스.
+  // Function Name: NearbyPharmacyMap
+  // Description: Binds map results, viewport settings, explicit camera requests and localized control/failure labels.
+  // Parameters: key: identity; hospitals: marker category; searchArea/deviceLocation/centerRevision: search center, device fix and recenter request; bottomInset/showControls: layout; isSearching/onSearchAreaRequested/searchAreaLabel: area query; onCurrentLocationRequested/myLocationTooltip: device action; pharmacies/selectedPharmacyId/favoritePharmacyIds/onPharmacySelected: markers and selection; onAttributionRequested: source action; statusText/selectMarkerHint/zoomInTooltip/zoomOutTooltip/configurationUnavailableText/unavailableText: status, control and fallback copy.
+  // Returns: A NearbyPharmacyMap.
   const NearbyPharmacyMap({
     super.key,
     this.hospitals = false,
@@ -110,12 +93,9 @@ const _contentPaddingSettleDelay = Duration(milliseconds: 100);
 const _markerRetryDelay = Duration(seconds: 1);
 
 // 클래스명: _NearbyPharmacyMapState
-// 역할: 약국 마커·선택 강조·확대·출처 명령의 화면 상태를 관리한다.
-// 주요 책임:
-// - 기존 약국 마커를 지운 뒤 최신 세대의 마커만 추가하고 카메라 범위를 갱신한다.
-// - 약국 좌표에 선택 크기·색상·이름과 탭 선택 콜백을 갖춘 마커를 만든다.
-// - 검색 후에는 지도 중심과 확대 수준을 유지하고 약국 선택·내 위치 요청 때만 이동한다.
-// 현재 갱신 방식: 전체 삭제 대신 변경된 마커만 교체하며 플랫폼 작업 순서를 보장한다.
+// 역할: 지도 마커와 카메라 갱신의 세대·수명을 관리한다.
+// 주요 책임: 오래된 오버레이 작업을 버리고 실패 복구를 제한하며 사용자의 지도 이동과 선택 장소를 조율한다.
+// 속성: _mapController (NaverMapController?): 지도; _overlayGeneration/_cameraGeneration (int): 작업 세대; _renderedMarkers (Map<String,NearbyCareMarkerStyle>): 반영 마커; _overlayWork (Future<void>): 직렬 작업; _markerRetryTimer (Timer?): 복구 예약.
 class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   NaverMapController? _mapController;
   int _overlayGeneration = 0;
@@ -140,9 +120,10 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   late double _paddingInset = widget.bottomInset;
   Timer? _paddingSettleTimer;
 
-  // 함수이름: dispose
-  // 함수역할: 대기 중인 여백 반영과 마커 복구 타이머를 취소한다.
-  // 매개변수: 없음. 반환값: 없음.
+  // Function Name: dispose
+  // Description: Cancels pending viewport-inset updates and marker-recovery timers before ending map state.
+  // Parameters: None.
+  // Returns: None.
   @override
   void dispose() {
     _paddingSettleTimer?.cancel();
@@ -150,9 +131,10 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     super.dispose();
   }
 
-  // 함수이름: _loadSymbols
-  // 함수역할: 일반·선택·즐겨찾기 마커와 현재 위치 이미지를 한 번 생성한다.
-  // 매개변수: 없음. 반환값: 이미지 준비 완료.
+  // Function Name: _loadSymbols
+  // Description: Shares one symbol-generation future; clears a failed attempt so a later call can retry and rethrows that failure.
+  // Parameters: None.
+  // Returns: Future completing when symbols are ready.
   Future<void> _loadSymbols() => _symbolLoading ??= () async {
     try {
       await _createSymbols();
@@ -163,9 +145,10 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     }
   }();
 
-  // 함수이름: _createSymbols
-  // 함수역할: 지도 마커와 현재 위치 표시에 쓸 이미지를 만든다.
-  // 매개변수: 없음. 반환값: 이미지 생성 완료.
+  // Function Name: _createSymbols
+  // Description: Creates regular, selected and favorite markers plus the device-location image; awaits the first image to serialize SDK temporary-directory initialization.
+  // Parameters: None.
+  // Returns: Future completing after icon generation, stopping state updates if unmounted.
   Future<void> _createSymbols() async {
     // 지도 SDK의 임시 이미지 폴더 초기화가 동시에 실행되지 않게 첫 이미지는 기다린다.
     _pinIcon = await NOverlayImage.fromWidget(
@@ -196,17 +179,17 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     _favoritePinIcon = icons[2];
   }
 
-  // 함수이름: _mappablePharmacies
-  // 함수역할: 유효한 위도·경도를 가진 약국만 지도 표시 목록으로 선택한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: List<NearbyCarePlace>: 조회 또는 좌표 조건을 반영한 지도·목록용 약국 목록.
+  // Function Name: _mappablePharmacies
+  // Description: Filters results to places with valid map coordinates.
+  // Parameters: None.
+  // Returns: The mappable nearby-place list.
   List<NearbyCarePlace> get _mappablePharmacies =>
       widget.pharmacies.where(_hasValidCoordinate).toList(growable: false);
 
-  // 함수이름: didUpdateWidget
-  // 함수역할: 결과·즐겨찾기 마커를 갱신하고 명시적인 약국 선택·내 위치 요청만 카메라에 반영한다.
-  // 매개변수: oldWidget: 이전 지도 설정. 반환값: 없음.
+  // Function Name: didUpdateWidget
+  // Description: Updates result/favorite markers while applying camera movement only for explicit selection or current-location requests.
+  // Parameters: oldWidget (NearbyPharmacyMap): previous map configuration.
+  // Returns: None.
   @override
   void didUpdateWidget(covariant NearbyPharmacyMap oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -276,45 +259,47 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
         ),
         child: Stack(
           children: [
-            NaverMap(
-              forceGesture: true,
-              options: NaverMapViewOptions(
-                initialCameraPosition: NCameraPosition(
-                  target: NLatLng(
-                    initialSelection?.latitude ??
-                        widget.searchArea.center.latitude,
-                    initialSelection?.longitude ??
-                        widget.searchArea.center.longitude,
+            NaverMapSdkGate(
+              builder: (context) => NaverMap(
+                forceGesture: true,
+                options: NaverMapViewOptions(
+                  initialCameraPosition: NCameraPosition(
+                    target: NLatLng(
+                      initialSelection?.latitude ??
+                          widget.searchArea.center.latitude,
+                      initialSelection?.longitude ??
+                          widget.searchArea.center.longitude,
+                    ),
+                    zoom: initialSelection != null ? 16 : _searchAreaZoom,
                   ),
-                  zoom: initialSelection != null ? 16 : _searchAreaZoom,
+                  minZoom: 5,
+                  maxZoom: 19,
+                  rotationGesturesEnable: false,
+                  tiltGesturesEnable: false,
+                  scaleBarEnable: false,
+                  compassEnable: false,
+                  logoClickEnable: true,
+                  contentPadding: EdgeInsets.only(bottom: _paddingInset + 28),
                 ),
-                minZoom: 5,
-                maxZoom: 19,
-                rotationGesturesEnable: false,
-                tiltGesturesEnable: false,
-                scaleBarEnable: false,
-                compassEnable: false,
-                logoClickEnable: true,
-                contentPadding: EdgeInsets.only(bottom: _paddingInset + 28),
+                // Function Name: build.onMapReady callback
+                // Description: Updates the local input or request state for pharmacy markers, selected highlighting, zoom, and attribution controls: `_mapController = controller`.
+                // Parameters:
+                // - controller (inferred by callback contract): Object controlling the associated camera, map, input, or scrolling interaction.
+                // Returns: No payload; applies the captured state changes.
+                onMapReady: (controller) {
+                  if (!mounted) return;
+                  if (!identical(_mapController, controller)) {
+                    _renderedMarkers.clear();
+                    _markerStateUncertain = false;
+                    _markerRetryTimer?.cancel();
+                    _markerRetryUsed = false;
+                  }
+                  setState(() => _mapController = controller);
+                  unawaited(_synchronizeMap());
+                },
+                onCameraChange: _onCameraChange,
+                onCameraIdle: () => unawaited(_onCameraIdle()),
               ),
-              // Function Name: build.onMapReady callback
-              // Description: Updates the local input or request state for pharmacy markers, selected highlighting, zoom, and attribution controls: `_mapController = controller`.
-              // Parameters:
-              // - controller (inferred by callback contract): Object controlling the associated camera, map, input, or scrolling interaction.
-              // Returns: No payload; applies the captured state changes.
-              onMapReady: (controller) {
-                if (!mounted) return;
-                if (!identical(_mapController, controller)) {
-                  _renderedMarkers.clear();
-                  _markerStateUncertain = false;
-                  _markerRetryTimer?.cancel();
-                  _markerRetryUsed = false;
-                }
-                setState(() => _mapController = controller);
-                unawaited(_synchronizeMap());
-              },
-              onCameraChange: _onCameraChange,
-              onCameraIdle: () => unawaited(_onCameraIdle()),
             ),
             if (_pendingArea != null && widget.onSearchAreaRequested != null)
               Positioned(
@@ -447,8 +432,10 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     }
   }
 
-  // 함수이름: _onCameraIdle
-  // 함수역할: 이동이 끝난 지도 중심과 화면 반경을 저장하며 자동 검색하지 않는다. 매개변수: 없음. 반환값: 좌표 확인 완료.
+  // Function Name: _onCameraIdle
+  // Description: Records the settled map center and visible radius without automatically starting a search.
+  // Parameters: None.
+  // Returns: Future completing after viewport coordinates are read.
   Future<void> _onCameraIdle() async {
     final controller = _mapController;
     if (!_cameraMoved || controller == null) return;
@@ -514,10 +501,10 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     await _overlayWork;
   }
 
-  // 삭제·추가 완료 뒤에만 기록을 갱신해 도중에 새 검색이 와도 다음 요청이 복구한다.
-  // 함수이름: _applyMapChanges
-  // 함수역할: 최신 마커 변경을 직렬 적용하고 유효한 명시적 카메라 이동만 수행한다.
-  // 매개변수: generation: 대기 작업 세대. 반환값: 지도 반영 완료.
+  // Function Name: _applyMapChanges
+  // Description: Applies the newest marker generation serially, repairing uncertain native overlays and updating cached markers only after successful removal/addition; ignores stale generations and only honors valid explicit camera requests.
+  // Parameters: generation (int): queued overlay generation.
+  // Returns: Future completing after synchronization; native errors propagate to the queue recovery handler.
   Future<void> _applyMapChanges(int generation) async {
     final controller = _mapController;
     if (!mounted || generation != _overlayGeneration || controller == null) {
@@ -604,9 +591,10 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     }
   }
 
-  // 함수이름: _scheduleMarkerRetry
-  // 함수역할: 일부만 추가된 마커를 다음 화면 변경까지 두지 않도록 지도 동기화를 한 번만 다시 예약한다.
-  // 매개변수: 없음. 반환값: 없음. 이미 자동 복구를 쓴 뒤에는 성공할 때까지 다시 예약하지 않는다.
+  // Function Name: _scheduleMarkerRetry
+  // Description: Schedules one automatic marker-recovery attempt after partial native failure; does not schedule further retries until a successful synchronization resets the allowance.
+  // Parameters: None.
+  // Returns: None.
   void _scheduleMarkerRetry() {
     if (_markerRetryUsed) return;
     _markerRetryUsed = true;
@@ -659,12 +647,10 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     return marker;
   }
 
-  // 함수이름: _updateCamera
-  // 함수역할: 약국 선택 또는 내 위치 재검색 때만 카메라를 이동해 지역 검색 후 확대·중심을 보존한다.
-  // 매개변수:
-  // - controller (NaverMapController): 마커와 카메라 이동에 사용할 준비된 네이버 지도 컨트롤러.
-  // - pharmacies (List<NearbyCarePlace>): 지도 또는 목록에 배치할 약국 검색 결과.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _updateCamera
+  // Description: Moves the camera for place selection or current-location recentering while preserving zoom/center after ordinary area searches.
+  // Parameters: controller (NaverMapController): ready map; pharmacies (List<NearbyCarePlace>): current results.
+  // Returns: Future completing after the requested camera update.
   Future<void> _updateCamera(
     NaverMapController controller,
     List<NearbyCarePlace> pharmacies,
@@ -690,18 +676,20 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     );
   }
 
-  // 병원 지도는 실제 검색 반경에 맞춰 확대하고 약국의 기존 배율은 유지한다.
+  // 함수이름: _searchAreaZoom
+  // 함수역할: 병원은 실제 검색 반경으로 줌을 계산하고 5~18로 제한하며 약국의 기존 배율은 유지한다.
+  // 매개변수: 없음.
+  // 반환값: 병원 계산 줌 또는 약국 13.
   double get _searchAreaZoom => widget.hospitals
       ? (14 - math.log(widget.searchArea.radiusKm) / math.ln2)
             .clamp(5, 18)
             .toDouble()
       : 13;
 
-  // 함수이름: _findSelectedPharmacy
-  // 함수역할: 현재 선택 ID에 해당하는 약국을 목록에서 찾고 없으면 null을 반환한다.
-  // 매개변수:
-  // - pharmacies (List<NearbyCarePlace>): 지도 또는 목록에 배치할 약국 검색 결과.
-  // 반환값: NearbyCarePlace?: 선택 ID와 일치하는 약국; 없으면 null.
+  // Function Name: _findSelectedPharmacy
+  // Description: Finds the currently selected place in the result list.
+  // Parameters: pharmacies (List<NearbyCarePlace>): candidate results.
+  // Returns: The matching place, or null.
   NearbyCarePlace? _findSelectedPharmacy(List<NearbyCarePlace> pharmacies) {
     for (final pharmacy in pharmacies) {
       if (pharmacy.placeId == widget.selectedPharmacyId) {
@@ -711,11 +699,10 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     return null;
   }
 
-  // Function Name: _changeZoom
-  // Description: Applies the requested zoom increment when the map controller is ready.
-  // Parameters:
-  // - delta (double): Increment added to the current map zoom level.
-  // Returns: None; updates state or performs the documented action.
+  // 함수이름: _changeZoom
+  // 함수역할: 지도 제어기가 준비되었을 때 현재 확대 수준에 요청한 증감량을 적용한다.
+  // 매개변수: delta (double): 확대 수준 증감량.
+  // 반환값: 없음.
   void _changeZoom(double delta) {
     final controller = _mapController;
     if (controller != null) {
@@ -726,11 +713,10 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     }
   }
 
-  // 함수이름: _hasValidCoordinate
-  // 함수역할: 유한한 위도·경도 범위를 검증하고 둘 다 0인 좌표를 제외한다.
-  // 매개변수:
-  // - pharmacy (NearbyCarePlace): 표시하거나 전화·길찾기·공유할 약국.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: _hasValidCoordinate
+  // Description: Requires finite coordinates within latitude/longitude bounds and excludes the all-zero location.
+  // Parameters: pharmacy (NearbyCarePlace): coordinates to test.
+  // Returns: True when the place can be mapped.
   bool _hasValidCoordinate(NearbyCarePlace pharmacy) {
     final latitude = pharmacy.latitude;
     final longitude = pharmacy.longitude;
@@ -743,11 +729,10 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
         (latitude != 0 || longitude != 0);
   }
 
-  // 함수이름: _coordinateSignature
-  // 함수역할: 약국 ID·이름·좌표를 연결해 지도 표시 갱신 여부를 비교한다.
-  // 매개변수:
-  // - pharmacies (List<NearbyCarePlace>): 지도 또는 목록에 배치할 약국 검색 결과.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: _coordinateSignature
+  // Description: Builds a result signature from place identity, name and coordinates to detect marker changes.
+  // Parameters: pharmacies (List<NearbyCarePlace>): ordered results.
+  // Returns: The comparison signature string.
   String _coordinateSignature(List<NearbyCarePlace> pharmacies) {
     return pharmacies
         .map(
@@ -763,14 +748,10 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   }
 }
 
-// 클래스명: _MapControlButton
-// 역할: 지도 위의 확대·축소·출처 아이콘 명령을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 지도 위의 확대·축소·출처 아이콘 명령 위젯을 구성한다.
-// 속성:
-// - tooltip (String): 아이콘의 동작을 설명할 도움말·접근성 문구.
-// - icon (IconData): 기본 또는 선택 상태에서 표시할 아이콘.
-// - onPressed (VoidCallback): 해당 항목의 명시된 주 동작을 실행할 콜백.
+// Class Name: _MapControlButton
+// Role: Map overlay icon command.
+// Responsibilities: Exposes zoom or attribution actions with an accessible tooltip.
+// Attributes: tooltip: action description; icon: command symbol; onPressed: action callback.
 class _MapControlButton extends StatelessWidget {
   final String tooltip;
   final IconData icon;
@@ -810,12 +791,10 @@ class _MapControlButton extends StatelessWidget {
   }
 }
 
-// 클래스명: _MapUnavailableState
-// 역할: 지도 설정 또는 유효한 좌표 부재 안내를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 지도 설정 또는 유효한 좌표 부재 안내 위젯을 구성한다.
-// 속성:
-// - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
+// Class Name: _MapUnavailableState
+// Role: Map-unavailable presentation.
+// Responsibilities: Explains missing map configuration or usable coordinates.
+// Attributes: message (String): unavailability explanation.
 class _MapUnavailableState extends StatelessWidget {
   final String message;
 
@@ -826,11 +805,10 @@ class _MapUnavailableState extends StatelessWidget {
   // 반환값: 입력 설정이 반영된 _MapUnavailableState 인스턴스.
   const _MapUnavailableState({required this.message});
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 지도 설정 또는 유효한 좌표 부재 안내 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 지도 설정 또는 유효한 좌표 부재 안내에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays the map-unavailable explanation in place of the interactive map.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return Container(

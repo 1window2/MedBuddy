@@ -28,16 +28,10 @@ from services.prescription_similarity import (
 )
 
 
-# 클래스명: CheckPrescriptionChange
-# 역할:
-# - 저장된 이전 처방과 새로 분석한 현재 처방의 객관적 차이를 계산한다.
-# 주요 책임:
-# - 환자 범위와 90일 비교 기간을 기준으로 이전 처방 후보를 조회한다.
-# - 약품, 성분과 치료 맥락 관련성이 가장 높은 후보를 선택한다.
-# - 품목 식별자와 정규화된 약품명으로 같은 약품을 연결한다.
-# - 추가, 이번 처방 미확인, 복약 일정 변경을 구분한다.
-# 속성:
-# - db (Session): 저장된 복약 정보를 조회하는 SQLAlchemy 세션
+# Class Name: CheckPrescriptionChange
+# Role: Compare a newly analyzed prescription with relevant saved prescriptions.
+# Responsibilities: Select a prior prescription within the comparison window, match products, and distinguish additions, absent products and schedule changes.
+# Attributes: db reads saved prescriptions and ingredients; normalization patterns and schedule-field constants define comparable values.
 class CheckPrescriptionChange:
     _SPACE_PATTERN = re.compile(r"\s+")
     _NON_NAME_PATTERN = re.compile(r"[^0-9a-z가-힣]")
@@ -265,14 +259,10 @@ class CheckPrescriptionChange:
             ],
         )
 
-    # 함수이름: _load_main_ingredients
-    # 함수역할:
-    # - 로컬 의약품 허가정보에서 비교 후보 약품의 주성분을 한 번에 조회한다.
-    # 매개변수:
-    # - current_medications (list[PrescriptionChangeMedication]): 현재 처방 약품 목록
-    # - previous_medications (list[_SavedMedication]): 후보 이전 처방의 전체 약품 목록
-    # 반환값:
-    # - 품목 식별자별 주성분 문자열
+    # Function Name: _load_main_ingredients
+    # Description: Fetch only product identifiers and main ingredients for products in either prescription.
+    # Parameters: current_medications is the analyzed medication list; previous_medications is the saved comparison list.
+    # Returns: dict[str, str] keyed by nonempty item sequence, or an empty mapping when no identifiers exist; database errors propagate.
     def _load_main_ingredients(
         self,
         current_medications: list[PrescriptionChangeMedication],
@@ -509,15 +499,10 @@ class CheckPrescriptionChange:
         compact_name = self._SPACE_PATTERN.sub("", item_name.strip().lower())
         return self._NON_NAME_PATTERN.sub("", compact_name)
 
-    # 함수이름: _normalize_schedule_value
-    # 함수역할:
-    # - 복약 일정 값의 공백과 대소문자 차이를 제거한다.
-    # - 횟수·주기·일수는 일정과 같은 규칙으로 읽어 비교하고, 읽히지 않는 값과 용량은 표기 그대로 비교한다.
-    # 매개변수:
-    # - value (object): 원본 복약 일정 값
-    # - field_name (str): 횟수·기간·용량의 정규화 범위를 구분하는 필드명
-    # 반환값:
-    # - 비교용 복약 일정 문자열
+    # Function Name: _normalize_schedule_value
+    # Description: Normalize pure duration/count expressions without capping frequency; retain additional dosing instructions in whitespace-free comparison text.
+    # Parameters: value (object) is a schedule value; field_name (str) chooses duration or frequency parsing.
+    # Returns: str comparison key, falling back to normalized source text when no pure count applies.
     def _normalize_schedule_value(self, value: object, field_name: str) -> str:
         text = self._read_text(value)
         # 숫자와 단위만 있는 표기는 일정과 같은 규칙으로 읽은 값으로 비교한다: "7", "7일분", "1주"는

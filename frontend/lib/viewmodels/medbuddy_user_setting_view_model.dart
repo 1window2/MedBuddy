@@ -1,26 +1,29 @@
 // File Name: medbuddy_user_setting_view_model.dart
 // Role: Owns user settings without accessing sibling feature state.
+import 'dart:async';
+
 import '../controls/app_language_control.dart';
 import '../controls/manage_user_setting_control.dart';
 import '../entities/user_setting_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../services/notification_service.dart';
 
-// Class Name: MedBuddyUserSettingViewModel
-// Role: Settings state owner.
-// Responsibilities: Persist settings and request explicit cross-feature refreshes.
+// 클래스명: MedBuddyUserSettingViewModel
+// 역할: 사용자 설정과 서버 미반영 상태를 관리하고 관련 기능 갱신을 조율한다.
+// 주요 책임: 조회·저장을 직렬화하고 알림 공개·언어·허용 상태 변화에 맞춰 일정을 갱신한다.
+// 속성: _userSetting: 현재 설정; manageUserSetting/notificationService: 저장·알림 경계; 갱신 콜백: 다른 기능 연결; 작업 큐와 종료·대기 상태.
 class MedBuddyUserSettingViewModel {
   UserSetting _userSetting = const UserSetting();
   // Function Name: userSetting
-  // 함수역할: 현재 환자 범위의 접근성·언어·알림 설정을 제공한다.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - UserSetting: User settings including language, accessibility, and notification policy.
+  // Description: Exposes the current account preferences for language, accessibility and notification policy.
+  // Parameters: None.
+  // Returns: The currently applied UserSetting.
   UserSetting get userSetting => _userSetting;
   final ManageUserSetting manageUserSetting;
   final NotificationService notificationService;
-  final Future<void> Function() refreshMedicationOverview;
+  final Future<void> Function({Future<void>? startedTodayInfo})
+  refreshMedicationOverview;
+  final Future<void> Function()? startTodayMedicationInfo;
   final Future<void> Function() refreshMedicationSchedule;
   final Future<void> Function({bool notifyAfterLoad})
   loadMedicationReminderSettings;
@@ -33,12 +36,14 @@ class MedBuddyUserSettingViewModel {
   Future<bool>? _deviceLanguageSynchronization;
   bool _deviceLanguageRetryRequested = false;
   // Function Name: MedBuddyUserSettingViewModel
-  // Description: Binds settings persistence and narrow refresh operations.
-  // Parameters: Borrowed dependencies and callbacks. Returns: Settings state owner.
+  // Description: Bind settings persistence and cross-feature refresh callbacks without loading preferences yet.
+  // Parameters: manageUserSetting (ManageUserSetting): persistence; notificationService (NotificationService): platform/privacy updates; refreshMedicationOverview (Future<void> Function({Future<void>? startedTodayInfo})): overview refresh that can join a started today-schedule load; startTodayMedicationInfo (Future<void> Function()?): starts today's schedule load while the settings request is in flight; refreshMedicationSchedule (Future<void> Function()): schedule refresh; loadMedicationReminderSettings (Future<void> Function({bool notifyAfterLoad})): reminder reload with notification policy; onChanged (void Function()): state notification; readEnglish (bool Function()): current locale.
+  // Returns: MedBuddyUserSettingViewModel: settings state owner.
   MedBuddyUserSettingViewModel({
     required this.manageUserSetting,
     required this.notificationService,
     required this.refreshMedicationOverview,
+    this.startTodayMedicationInfo,
     required this.refreshMedicationSchedule,
     required this.loadMedicationReminderSettings,
     required void Function() onChanged,
@@ -68,7 +73,10 @@ class MedBuddyUserSettingViewModel {
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> loadUserSetting() => _enqueueSettingOperation(_loadUserSetting);
 
-  // 조회와 저장을 순서대로 처리해 늦은 응답이 새 선택이나 실패 후의 로컬 저장을 지우지 않게 한다.
+  // 함수이름: _enqueueSettingOperation
+  // 함수역할: 설정 조회와 저장을 직렬화해 늦은 응답이 최신 선택을 덮지 않게 한다.
+  // 매개변수: operation: 앞 작업 완료 후 실행할 비동기 설정 작업.
+  // 반환값: 해당 작업 결과 Future; 오류를 호출자에게 전파하되 다음 큐 작업은 계속 실행한다.
   Future<T> _enqueueSettingOperation<T>(Future<T> Function() operation) {
     final result = _settingOperations.then((_) => operation());
     _settingOperations = result.then<void>(
@@ -78,10 +86,22 @@ class MedBuddyUserSettingViewModel {
     return result;
   }
 
+  // Function Name: _loadUserSetting
+  // Description: Loads settings unless disposed or a local save remains unsynchronized, then applies privacy and refreshes the overview. Today's schedule does not depend on the settings, so its load starts together with the settings request; reminder settings and reconciliation still wait for the settings.
+  // Parameters: None.
+  // Returns: Completion after load/refresh; errors propagate and listeners are notified in finally.
   Future<void> _loadUserSetting() async {
     if (_disposed || _hasUnsynchronizedSetting) return;
+    final todayInfo = startTodayMedicationInfo?.call();
     try {
-      final setting = await manageUserSetting.requestUserSetting();
+      final UserSetting setting;
+      try {
+        setting = await manageUserSetting.requestUserSetting();
+      } catch (_) {
+        // The started schedule load still shows today's list; only its result is no longer awaited here.
+        if (todayInfo != null) unawaited(todayInfo.catchError((Object _) {}));
+        rethrow;
+      }
       if (_disposed) return;
       _userSetting = setting;
       _settingLoaded = true;
@@ -93,7 +113,7 @@ class MedBuddyUserSettingViewModel {
       notificationService.setShowSensitiveDetails(
         _userSetting.showNotificationDetails,
       );
-      await refreshMedicationOverview();
+      await refreshMedicationOverview(startedTodayInfo: todayInfo);
     } finally {
       _notifyViewModelListeners();
     }
@@ -195,12 +215,10 @@ class MedBuddyUserSettingViewModel {
     return saved;
   }
 
-  // 함수이름: _saveAndApply
-  // 함수역할: 설정을 저장한 뒤 알림 허용·민감정보 표시·언어·기본 시각 변경에 맞춰 예약을 취소하거나 새로고침하고 설정 구독자를 갱신한다.
-  // 매개변수:
-  // - save (Future<UserSettingSaveResult> Function()): 실제 저장을 수행하는 함수
-  // 반환값:
-  // - Future<UserSettingSaveResult>: 저장된 설정과 서버 동기화 여부.
+  // Function Name: _saveAndApply
+  // Description: Saves settings and applies changes to reminder enablement, privacy, language and default times.
+  // Parameters: save: Persistence operation returning the saved setting and synchronization status.
+  // Returns: The save result; disposal before saving throws, later disposal skips UI effects, and reminder-refresh failures propagate.
   Future<UserSettingSaveResult> _saveAndApply(
     Future<UserSettingSaveResult> Function() save,
   ) async {

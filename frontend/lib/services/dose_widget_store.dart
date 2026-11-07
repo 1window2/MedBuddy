@@ -1,13 +1,18 @@
+// File Name: dose_widget_store.dart
+// Role: Commits home-widget actions and their encrypted dose operations in one transaction.
 part of 'dose_outbox_store.dart';
 
 // Widget actions and their outbox operation commit together. Multiple widgets,
 // rapid taps and retried Android jobs cannot apply one button twice.
+// Class Name: DoseWidgetStore
+// Role: Extends encrypted dose storage with account-guarded native widget state and actions.
+// Responsibilities: Validate opaque action/navigation tokens, preserve caregiver read-only scope, and commit dose changes with widget state.
+// Attributes: No additional fields; uses the enclosing outbox database, encryption, and ownership helpers.
 extension DoseWidgetStore on DoseOutboxStore {
-  // 함수이름: updateWidget
-  // 함수역할: 복용·취소 토큰과 직전 상태를 검증한 뒤 기록과 전송 대기를 함께 저장한다.
-  // 매개변수: owner 계정, configuration 설정, action 동작, actionToken 중복 방지 토큰,
-  //   now 날짜 검증 시각.
-  // 반환값: 현재 계정의 위젯 상태. 로그아웃 또는 계정 불일치이면 null.
+  // Function Name: updateWidget
+  // Description: Atomically project and persist widget state for the active owner; accept only current-day, valid action tokens and matching patient-cache revisions.
+  // Parameters: owner (String?): expected owner, otherwise stored owner; configuration (Map<String, dynamic>?): display settings; action/actionToken (String?): take/cancel intent and nonce; patientCache (Map<String, dynamic>?): current linked-patient data; expectedPatientRevision (String?): stale-cache guard; now (DateTime): projection day.
+  // Returns: Future<DoseWidgetState?>: saved state, or null for missing/mismatched active ownership; storage/decryption errors propagate.
   Future<DoseWidgetState?> updateWidget({
     String? owner,
     Map<String, dynamic>? configuration,
@@ -25,6 +30,10 @@ extension DoseWidgetStore on DoseOutboxStore {
           (expectedOwner != null && token != expectedOwner)) {
         return null;
       }
+      // 함수이름: read
+      // 함수역할: 위젯 갱신 트랜잭션 안에서 활성 계정의 저장 상태를 복호화한다.
+      // 매개변수: name (String) - 읽을 전체 메타데이터 키.
+      // 반환값: 저장된 JSON 맵 또는 없으면 null. DB·복호화·형식 오류는 전파한다.
       Future<Map<String, dynamic>?> read(String name) async {
         final rows = await tx.query(
           'metadata',
@@ -196,15 +205,18 @@ extension DoseWidgetStore on DoseOutboxStore {
     });
   }
 
-  // 함수이름: widgetRefreshNeed
-  // 함수역할: 저장소를 바꾸지 않고, 백그라운드 갱신이 서버 조회를 해야 하는지 판단할 값을 읽는다.
-  //   updateWidget과 달리 버튼 토큰을 새로 만들지 않으므로 위젯에 발행하지 않아도 안전하다.
-  // 매개변수: now - 기준 시각.
-  // 반환값: 활성 계정과, 위젯이 표시할 오늘 조회 결과(본인 일정 또는 실패하지 않은 환자 조회)의
-  //   보유 여부. 로그아웃 상태이거나 위젯 상태를 아직 만들지 않았으면 null.
+  // Function Name: widgetRefreshNeed
+  // Description: Inspects display-source freshness without writing widget state or issuing new action tokens.
+  // Parameters: now (DateTime) - clock used to determine the dose day.
+  // Returns: Active owner and whether its selected self/patient snapshot is current; null without an active initialized widget.
+  // - A failed patient snapshot is stale even on today's date; storage/decryption errors propagate.
   Future<({String owner, bool snapshotCurrent})?> widgetRefreshNeed({
     required DateTime now,
   }) async {
+    // Function Name: read
+    // Description: Decodes one account-scoped metadata value without mutating the stored projection.
+    // Parameters: name (String) - complete metadata key; token (String) - owner hash for authenticated decryption.
+    // Returns: Decoded map or null when absent; storage/decoding errors propagate.
     Future<Map<String, dynamic>?> read(String name, String token) async {
       final rows = await db.query(
         'metadata',
@@ -234,6 +246,10 @@ extension DoseWidgetStore on DoseOutboxStore {
   }
 
   // Resolve only current, active-account patient keys, never hashes from intents.
+  // 함수이름: resolveWidgetPatient
+  // 함수역할: 현재 계정의 위젯 상태를 다시 만들고 오늘의 환자 보기 탐색 토큰과 환자 키를 검증한다.
+  // 매개변수: owner (String) - 활성 계정; patientKey/navigationKey (String) - 표시 상태의 불투명 키; now (DateTime) - 기준 시각.
+  // 반환값: 일치한 저장 연동의 환자 해시 또는 null. 인텐트의 해시를 신뢰하지 않으며 저장소 오류는 전파한다.
   Future<String?> resolveWidgetPatient({
     required String owner,
     required String patientKey,

@@ -1,5 +1,5 @@
 // 파일명: feature_search_test.dart
-// 역할: 일상 표현의 검색 순위, 무관한 입력, 접근성, 설정 바로가기의 무변경 동작을 검증한다.
+// 역할: 기능 검색의 표현 매칭·메뉴 경로·큰 글씨 선택과 설정 바로가기의 비저장 동작을 검증한다.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/feature_search_ui_boundary.dart';
@@ -11,8 +11,14 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 
 // 함수이름: main
-// 함수역할: 문장·동의어·띄어쓰기·언어와 화면 이동의 회귀 사례를 등록한다.
+// 함수역할: 경로·일상 표현·언어 변형과 검색/설정 바로가기의 UI 회귀 사례를 등록한다.
+// 매개변수: 없음.
+// 반환값: 없음. 기능 검색 테스트 등록.
 void main() {
+  // 함수이름: test: '약 등록과 복약 기록의 경로는 현재 메뉴 구조와 일치한다'
+  // 함수역할: 기능별 정의에서 약 등록·약 관리·복약 기록·공유 경로를 현재 메뉴 구조와 대조한다.
+  // 매개변수: 없음.
+  // 반환값: 각 기능이 홈 등록 메뉴 또는 하단 복약 기록의 정확한 한국어 경로를 갖는다.
   test('약 등록과 복약 기록의 경로는 현재 메뉴 구조와 일치한다', () {
     final entries = {for (final e in FindAppFeature.entries) e.feature: e};
     for (final feature in [
@@ -27,6 +33,8 @@ void main() {
     expect(entries[AppFeature.historySharing]!.pathKo, '하단 메뉴 > 복약 기록 > 공유');
   });
   final expressions = <String, AppFeature>{
+    '약 이름 검색': AppFeature.medicationSearch,
+    'drug lookup': AppFeature.medicationSearch,
     '폰 글씨가 작아서 크게 보고 싶어': AppFeature.fontSize,
     '잘 안 보여요': AppFeature.fontSize,
     '글시 크게': AppFeature.fontSize,
@@ -81,6 +89,10 @@ void main() {
     '어제 약 먹었어?': AppFeature.medicationHistory,
   };
   for (final expression in expressions.entries) {
+    // 함수이름: test: '일상 표현을 관련 기능으로 정렬: ${expression.key}'
+    // 함수역할: 표에 정의한 일상 표현으로 기능을 검색한다.
+    // 매개변수: 없음.
+    // 반환값: 각 표현의 첫 결과가 표에 연결된 AppFeature와 같다.
     test('일상 표현을 관련 기능으로 정렬: ${expression.key}', () {
       expect(
         FindAppFeature.search(expression.key).first.feature,
@@ -88,11 +100,19 @@ void main() {
       );
     });
   }
+  // 함수이름: test: '빈 검색·무관한 질문은 임의 기능으로 연결하지 않는다'
+  // 함수역할: 빈 문자열·공백·기호·무관한 질문과 알 수 없는 문자열을 검색한다.
+  // 매개변수: 없음.
+  // 반환값: 모든 질의가 빈 결과를 반환하여 임의 기능으로 연결하지 않는다.
   test('빈 검색·무관한 질문은 임의 기능으로 연결하지 않는다', () {
     for (final query in ['', '   ', '???', '점심메뉴짜장면', '무릎이 아파요', 'zxqvw']) {
       expect(FindAppFeature.search(query), isEmpty, reason: query);
     }
   });
+  // 함수이름: test: '정확한 이름과 구두점·공백 변형은 같은 목적지를 찾는다'
+  // 함수역할: 모든 기능의 한국어/영어 이름과 공백·구두점 변형을 검색하고 위젯 미지원 조건도 적용한다.
+  // 매개변수: 없음.
+  // 반환값: 정의가 모든 enum 값을 포함하고 이름 검색은 정확한 기능을 반환하며 미지원 위젯 검색은 비어 있다.
   test('정확한 이름과 구두점·공백 변형은 같은 목적지를 찾는다', () {
     expect(
       FindAppFeature.entries.map((e) => e.feature).toSet().length,
@@ -119,6 +139,10 @@ void main() {
 
   for (final english in [false, true]) {
     for (final scale in [1.0, 2.0]) {
+      // Function Name: testWidgets: '검색·초기화·선택과 좁은 화면 큰 글씨: $english/$scale'
+      // Description: Exercises search, no-match feedback, clear and font-size selection at 320px for each language/text scale.
+      // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+      // Returns: Search does not choose a destination implicitly; explicit selection reports fontSize while the search panel remains rendered without layout exceptions.
       testWidgets('검색·초기화·선택과 좁은 화면 큰 글씨: $english/$scale', (tester) async {
         tester.view.physicalSize = const Size(320, 720);
         tester.view.devicePixelRatio = 1;
@@ -223,6 +247,10 @@ void main() {
     UserSettingDestination.notificationPrivacy: 'notificationPrivacySelector',
     UserSettingDestination.defaultTimes: 'defaultMedicationTime-morning',
   }.entries) {
+    // 함수이름: testWidgets: '설정 바로가기는 ${target.key.name}을 표시하되 저장하지 않는다'
+    // 함수역할: initialDestination으로 각 설정 바로가기를 직접 열고 대상 조작이 보이는지 확인한 뒤 뒤로간다.
+    // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+    // 반환값: 대상은 터치 가능하고 설정 메뉴로 복귀하며 전체 과정에서 저장 호출과 예외가 없다.
     testWidgets('설정 바로가기는 ${target.key.name}을 표시하되 저장하지 않는다', (tester) async {
       tester.view.physicalSize = const Size(360, 760);
       tester.view.devicePixelRatio = 1;

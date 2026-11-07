@@ -12,10 +12,9 @@ import 'app_temp_file.dart';
 // 역할: 촬영한 원본 사진에서 화면 가이드 안쪽만 남긴 OCR 입력 이미지를 만든다.
 
 // Class Name: PrescriptionImageCropService
-// Role: Produces OCR input by cropping the captured image to the displayed prescription guide.
-// Responsibilities:
-// - Apply EXIF orientation, clamp crop coordinates, write the derived JPEG, and attempt cleanup of raw captures and failed partial outputs.
-// - Remove guide crops that a flow left in the app temporary directory without reaching its own cleanup.
+// Role: Crop prescription images to the visible guide while preserving a usable source on recoverable crop failures.
+// Responsibilities: Run image work off the UI isolate and manage guide-image temporary output.
+// Attributes: _guideImageSuffix (String): cropped JPEG suffix; no per-instance state.
 class PrescriptionImageCropService {
   static const String _guideImageSuffix = '_guide.jpg';
 
@@ -27,13 +26,10 @@ class PrescriptionImageCropService {
   // - PrescriptionImageCropService: 초기화된 인스턴스.
   const PrescriptionImageCropService();
 
-  // Function Name: cropToGuide
-  // Description: Applies EXIF orientation and writes the bounded guide crop as JPEG. Always attempts raw-capture cleanup and attempts to remove the derived output if processing or raw cleanup fails.
-  // Parameters:
-  // - sourceImage (XFile): App-owned raw capture to crop to the guide.
-  // - normalizedGuideRect (Rect): Normalized zero-to-one crop region of the orientation-corrected image consumed by this service.
-  // Returns:
-  // - Future<XFile>: the derived guide JPEG after successful raw-capture cleanup; processing and nonsuppressed cleanup errors propagate.
+  // 함수이름: cropToGuide
+  // 함수역할: 원본 경로와 정규화된 가이드 영역을 별도 실행 경계에 전달하여 잘린 이미지 파일을 얻는다.
+  // 매개변수: sourceImage (XFile): 촬영 원본; normalizedGuideRect (Rect): 0~1 좌표의 가이드 영역.
+  // 반환값: Future<XFile>: 자르기 결과 파일 또는 처리 경계가 선택한 원본 대체 파일.
   Future<XFile> cropToGuide({
     required XFile sourceImage,
     required Rect normalizedGuideRect,
@@ -43,6 +39,10 @@ class PrescriptionImageCropService {
     debugLabel: 'prescription-crop',
   ));
 
+  // Function Name: _cropToGuide
+  // Description: Orients and crops an app-owned capture, writes a quality-92 JPEG, and always attempts to delete the raw capture.
+  // Parameters: sourceImage (XFile) - raw capture owned by this flow; normalizedGuideRect (Rect) - normalized crop bounds.
+  // Returns: Derived JPEG after cleanup; processing/raw-cleanup errors propagate and trigger best-effort output cleanup.
   Future<XFile> _cropToGuide({
     required XFile sourceImage,
     required Rect normalizedGuideRect,
@@ -181,6 +181,10 @@ class PrescriptionImageCropService {
 }
 
 // 이미지 가공과 임시 파일 정리를 같은 작업에서 끝내 원본 정리 규칙을 유지한다.
+// 함수이름: _cropPrescription
+// 함수역할: compute 작업에서 자르기와 원본 정리를 실행하고 생성 파일의 경로만 돌려준다.
+// 매개변수: input ((String, Rect)) - 앱 소유 원본 경로와 정규화한 안내 영역.
+// 반환값: 잘라낸 JPEG 경로 Future. 이미지 처리·원본 정리 오류는 호출자에게 전파한다.
 Future<String> _cropPrescription((String, Rect) input) async {
   final result = await const PrescriptionImageCropService()._cropToGuide(
     sourceImage: XFile(input.$1), normalizedGuideRect: input.$2,

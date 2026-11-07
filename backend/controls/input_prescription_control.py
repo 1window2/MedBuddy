@@ -1,6 +1,7 @@
 # File Name: input_prescription_control.py
 # Role: Coordinates de-identified prescription text analysis, privacy masking and catalog-backed medication-name verification.
 
+import asyncio
 import json
 import logging
 import secrets
@@ -37,10 +38,9 @@ MAX_PRESCRIPTION_TEXT_LENGTH = 20_000
 
 
 # Class Name: PrescriptionAnalysisTimeoutError
-# Role:
-# - Raised when the required external OCR stage exceeds its deadline.
-# Responsibilities:
-# - Distinguish a required OCR deadline failure from optional name-correction fallback failures.
+# Role: Identify a timeout in required prescription extraction.
+# Responsibilities: Preserve a distinguishable failure for the API timeout response.
+# Attributes: Inherited args contains the timeout message.
 class PrescriptionAnalysisTimeoutError(RuntimeError):
     """Raised when the required external OCR stage exceeds its deadline."""
 
@@ -150,14 +150,10 @@ class InputPrescription:
             )
         )
 
-    # 함수이름: requestPrescriptionText
-    # 함수역할:
-    # - 기기에서 개인정보를 제거한 OCR 텍스트를 구조화 처방 정보로 변환한다.
-    # - 개인정보 보호 경계상 원본 처방전 이미지는 백엔드에서 받지 않는다.
-    # 매개변수:
-    # - masked_text (str): 기기 내 OCR과 민감정보 제거가 끝난 처방전 텍스트
-    # 반환값:
-    # - API 호환 복약 일정 분석 결과
+    # Function Name: requestPrescriptionText
+    # Description: Reject empty or oversized text, remove remaining identifying details off the event loop, and parse extracted prescription data; extraction timeouts become PrescriptionAnalysisTimeoutError.
+    # Parameters: masked_text (str) is the client-redacted prescription text.
+    # Returns: dict[str, object] with the built prescription response; validation and other extraction/build failures propagate.
     async def requestPrescriptionText(
         self,
         masked_text: str,
@@ -169,7 +165,8 @@ class InputPrescription:
             raise ValueError(
                 f"Masked prescription text exceeds {MAX_PRESCRIPTION_TEXT_LENGTH:,} characters."
             )
-        normalized_text = deidentify_prescription_text(normalized_text)
+        # 정규식 검사는 CPU 작업이므로 이벤트 루프를 막지 않게 스레드에서 실행한다.
+        normalized_text = await asyncio.to_thread(deidentify_prescription_text, normalized_text)
         try:
             response_text = await self.ocr_service_boundary.extractPrescriptionTextData(
                 normalized_text

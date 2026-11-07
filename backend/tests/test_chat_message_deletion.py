@@ -116,6 +116,14 @@ def test_private_deletion_hides_only_selected_user_and_unread(chat: ChatFixture,
 
 
 # 읽음 구분선과 개수는 숨김·전체삭제·상대 역할을 같은 조건으로 제외한다.
+# 함수이름: test_unread_boundary_skips_hidden_and_deleted_messages
+# 함수역할:
+# - 숨김·전체 삭제·본인 발신을 읽지 않은 수에서 제외하고 첫 미확인 ID와 읽음 처리 후 빈 경계를 갱신하는지 확인한다.
+# 매개변수:
+# - chat: ChatFixture; 격리 채팅 컨트롤과 연동 ID.
+# - reader: str; 읽는 환자 또는 보호자.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("reader", ["patient-a", "caregiver-a"])
 def test_unread_boundary_skips_hidden_and_deleted_messages(chat: ChatFixture, reader: str) -> None:
     control, link_id = chat

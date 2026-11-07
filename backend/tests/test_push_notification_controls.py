@@ -3,17 +3,21 @@
 
 import sys
 import unittest
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
+from sqlite3 import Cursor
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import ANY, patch
 
 import pytest
 from firebase_admin import exceptions as firebase_exceptions
 from firebase_admin import messaging
 from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Connection, ExecutionContext
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -139,15 +143,12 @@ class _RecordingPushBoundary:
         )
 
 
-# 클래스명: PushNotificationControlTest
-# 역할: 기기 토큰 등록부터 시간대별 보호자 알림과 outbox 전달 상태까지 검증하는 테스트 모음이다.
-# 주요 책임:
-# - 같은 기기 토큰의 소유자를 최신 사용자로 옮기고 다른 사용자의 해제는 무시하며 소유자 해제만 비활성화하는지 검증한다.
-# - 성공한 outbox 전달을 sent와 전송 시각으로 기록하고 처리 시작 표시를 해제하며 해당 환자·시간대만 알리는지 검증한다.
-# - 전달 예외 후 실패 유형과 시도 횟수를 기록하고 다음 실행 시각을 늦추며 처리 중 표시를 해제하는지 검증한다.
-# 속성:
-# - engine (Engine): 격리 인메모리 SQLite 엔진.
-# - db (Session): 이 테스트의 DB 상태만 보관하는 SQLAlchemy 세션.
+# Class Name: PushNotificationControlTest
+# Role: Tests device registration, caregiver slot alerts, and outbox delivery state.
+# Responsibilities:
+# - Verify token ownership and revocation, recipient scoping, delivery retries, and terminal outbox outcomes.
+# Attributes:
+# - engine (Engine): isolated SQLite engine. db (Session): test session.
 class PushNotificationControlTest(unittest.TestCase):
     # 함수이름: setUp
     # 함수역할:
@@ -203,6 +204,40 @@ class PushNotificationControlTest(unittest.TestCase):
         control.unregisterPushToken("user-b", token)
         self.db.refresh(rows[0])
         self.assertFalse(rows[0].enabled)
+
+    # Function Name: test_registration_after_session_revocation_retires_older_devices
+    # Description:
+    # - Retire same-account devices not registered since revocation while preserving newer and unrelated devices; leave all enabled when revocation time is unknown.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_registration_after_session_revocation_retires_older_devices(self) -> None:
+        control = ManagePushToken(self.db)
+        for user, token in (("user-a", "stolen-device-token-0001"),
+                            ("user-a", "second-device-token-0002"),
+                            ("user-b", "other-account-token-0003")):
+            control.registerPushToken(user, token, "android")
+        rows = {row.token: row for row in self.db.query(_DevicePushToken).all()}
+        long_ago = datetime(2026, 1, 1)
+        for row in rows.values():
+            row.updated_at = long_ago
+        self.db.commit()
+        revoked_at = datetime(2026, 6, 1)
+
+        control.registerPushToken("user-a", "second-device-token-0002", "android",
+                                  sessions_valid_after=None)
+        self.db.refresh(rows["stolen-device-token-0001"])
+        self.assertTrue(rows["stolen-device-token-0001"].enabled)
+
+        control.registerPushToken("user-a", "new-phone-token-0004", "android",
+                                  sessions_valid_after=revoked_at)
+        for row in rows.values():
+            self.db.refresh(row)
+        # 두 번째 기기는 바로 위에서 다시 등록해 취소 시각보다 새로우므로 남는다.
+        self.assertFalse(rows["stolen-device-token-0001"].enabled)
+        self.assertTrue(rows["second-device-token-0002"].enabled)
+        self.assertTrue(rows["other-account-token-0003"].enabled)
 
     # 함수이름: test_completed_dose_is_sent_only_for_matching_slot_setting
     # 함수역할:
@@ -307,10 +342,10 @@ class PushNotificationControlTest(unittest.TestCase):
         )
         self.assertFalse(invalid_row.enabled)
 
-    # Function Name: test_fcm_permanent_token_error_is_disabled_without_retry
+    # Function Name: test_action_capable_missed_is_data_only_but_other_notifications_are_unchanged
     # Description:
-    # - Separates permanent malformed-token failures from retryable FCM failures and does
-    #   not retry invalid tokens.
+    # - Omits both notification payloads for action-version-1 missed-dose alerts while
+    #   preserving titled notification payloads for legacy missed, chat, and completed alerts.
     # Parameters:
     # - None.
     # Returns:
@@ -335,6 +370,13 @@ class PushNotificationControlTest(unittest.TestCase):
                     self.assertEqual(message.notification.title, "title")
                     self.assertIsNotNone(message.android.notification)
 
+    # Function Name: test_device_capability_is_opt_in_and_resets_for_legacy_registration
+    # Description:
+    # - Requires explicit action capability opt-in and clears it when the device re-registers through the legacy contract.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_device_capability_is_opt_in_and_resets_for_legacy_registration(self) -> None:
         control = ManagePushToken(self.db)
         token = "capability-test-device-token-12345"
@@ -343,6 +385,13 @@ class PushNotificationControlTest(unittest.TestCase):
         control.registerPushToken("user-a", token, "android")
         self.assertFalse(self.db.query(_DevicePushToken).filter_by(token=token).one().supports_caregiver_actions)
 
+    # Function Name: test_fcm_permanent_token_error_is_disabled_without_retry
+    # Description:
+    # - Classifies a permanently malformed FCM token as invalid while retaining a throttled token as retryable.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_fcm_permanent_token_error_is_disabled_without_retry(self) -> None:
         malformed_token = "malformed-fcm-token-value-1234"
         throttled_token = "throttled-fcm-token-value-1234"
@@ -495,13 +544,13 @@ class PushNotificationControlTest(unittest.TestCase):
         )
         self.assertRegex(notify.call_args.kwargs["event_key"], r"^[0-9a-f]{64}$")
 
-    # 함수이름: test_outbox_gives_up_a_row_that_keeps_stalling_in_processing
-    # 함수역할:
-    # - 처리 중에 멈춘 행을 다시 가져오는 것도 시도로 세어, 시도 한도에 이르면 보내지 않고 포기하는지 검증한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음 (None).
+    # Function Name: test_outbox_gives_up_a_row_that_keeps_stalling_in_processing
+    # Description:
+    # - Count stalled processing recoveries as attempts and dead-letter the row at the limit without sending.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_outbox_gives_up_a_row_that_keeps_stalling_in_processing(self) -> None:
         self._completed_slot("evening")
         row = _CaregiverAlertOutbox(
@@ -534,13 +583,13 @@ class PushNotificationControlTest(unittest.TestCase):
         self.assertIsNone(row.sent_at)
         notify.assert_not_called()
 
-    # 함수이름: test_outbox_retries_after_partial_push_delivery
-    # 함수역할:
-    # - 일부 푸시가 일시 실패하면 outbox를 실패·1회 시도로 기록하고 전송 완료 시각을 남기지 않는지 검증한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음 (None).
+    # Function Name: test_outbox_retries_after_partial_push_delivery
+    # Description:
+    # - Mark partial transient push delivery failed with one attempt and no sent timestamp.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_outbox_retries_after_partial_push_delivery(self) -> None:
         self._completed_slot("lunch")
         row = _CaregiverAlertOutbox(
@@ -573,13 +622,13 @@ class PushNotificationControlTest(unittest.TestCase):
         self.assertEqual(row.last_error, "_RetryablePushDeliveryError")
         self.assertIsNone(row.sent_at)
 
-    # 함수이름: test_outbox_reschedules_failed_delivery
-    # 함수역할:
-    # - 전달 예외 후 실패 유형과 시도 횟수를 기록하고 다음 실행 시각을 늦추며 처리 중 표시를 해제하는지 검증한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음 (None).
+    # Function Name: test_outbox_reschedules_failed_delivery
+    # Description:
+    # - Record the delivery exception and attempt count, delay the next attempt, and clear the processing marker.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_outbox_reschedules_failed_delivery(self) -> None:
         self._completed_slot("evening")
         row = _CaregiverAlertOutbox(
@@ -781,19 +830,18 @@ _MISSED_TEXT = {
 }
 
 
-# 함수이름: _seed_caregiver_alert_scene
-# 함수역할:
-# - 환자·보호자 연동, 아침 시간대 알림 설정, 미완료 아침 약과 보호자·타인의 기기 토큰을 저장한다.
-# - 보호자에게는 일반·액션 지원·비활성 토큰을 하나씩 두어 수신 대상 선택을 검증할 수 있게 한다.
-# 매개변수:
-# - db (Session): 외래 키가 적용된 테스트 세션.
-# - notification_type (str): 아침 시간대에 저장할 보호자 알림 모드.
-# - user_setting (dict[str, object] | None): 보호자 user_settings 값; None이면 행을 만들지 않는다.
-# - slot_settings (str | None): 저장할 시간대 JSON 원문; None이면 아침 시간대만 담아 저장한다.
-# 반환값:
-# - 없음 (None).
+# Function Name: _seed_caregiver_alert_scene
+# Description:
+# - Seed a linked caregiver, morning alert preferences, an incomplete morning dose, and active, action-capable, disabled, and unrelated device tokens.
+# Parameters:
+# - db: Session; isolated database with foreign keys.
+# - notification_type: str; morning alert mode.
+# - user_setting: dict[str, object] | None; caregiver preferences, or no row.
+# - slot_settings: str | None; raw slot JSON, or the default morning-only mapping.
+# Returns:
+# - None.
 def _seed_caregiver_alert_scene(
-    db,
+    db: Session,
     *,
     notification_type: str,
     user_setting: dict[str, object] | None = None,
@@ -844,17 +892,17 @@ def _seed_caregiver_alert_scene(
     db.commit()
 
 
-# 함수이름: _notify_missed_morning
-# 함수역할:
-# - 오늘 아침 시간대의 미복용 알림을 보호자에게 전송한다.
-# 매개변수:
-# - db (Session): 전송 제어가 사용할 테스트 세션.
-# - boundary (object): 전송 요청을 기록하는 푸시 대체 경계.
-# - alert_context (dict[str, str] | None): 액션 지원 기기에 함께 보낼 알림 문맥.
-# 반환값:
-# - PushDeliveryResult: 미복용 알림 전송 집계.
+# Function Name: _notify_missed_morning
+# Description:
+# - Send the caregiver a missed-dose alert for this morning.
+# Parameters:
+# - db: Session; delivery control session.
+# - boundary: object; recording push fake.
+# - alert_context: dict[str, str] | None; optional action context for capable devices.
+# Returns:
+# - PushDeliveryResult; aggregated missed-dose delivery outcome.
 def _notify_missed_morning(
-    db, boundary, alert_context: dict[str, str] | None = None,
+    db: Session, boundary: RecordingPushBoundary, alert_context: dict[str, str] | None = None,
 ) -> PushDeliveryResult:
     return DispatchCaregiverAlert(db, boundary).notifySlotMissed(
         caregiver_hash=_CAREGIVER,
@@ -865,21 +913,21 @@ def _notify_missed_morning(
     )
 
 
-# 함수이름: test_completed_alert_follows_recipient_language_and_detail_mode
-# 함수역할:
-# - 완료 알림의 제목·본문·언어 데이터가 보호자의 언어와 종류만 표시 설정을 따르는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# - user_setting (dict[str, object] | None): 보호자 설정 값 또는 행 없음.
-# - language (str): 기대하는 알림 언어 코드.
-# - show_details (bool): 시간대가 드러나는 상세 문구를 기대하는지 여부.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_completed_alert_follows_recipient_language_and_detail_mode
+# Description:
+# - Format completed-dose push title, body, and language data according to the recipient's language and privacy preferences.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# - user_setting: dict[str, object] | None; recipient settings or no settings row.
+# - language: str; expected notification language.
+# - show_details: bool; whether slot-specific details should be visible.
+# Returns:
+# - None.
 @pytest.mark.parametrize(
     ("user_setting", "language", "show_details"), _RECIPIENT_PREFERENCE_CASES,
 )
 def test_completed_alert_follows_recipient_language_and_detail_mode(
-    fk_db, user_setting, language, show_details,
+    fk_db: Session, user_setting: dict[str, object] | None, language: str, show_details: bool,
 ) -> None:
     _seed_caregiver_alert_scene(
         fk_db,
@@ -907,21 +955,21 @@ def test_completed_alert_follows_recipient_language_and_detail_mode(
     assert sorted(call["tokens"]) == sorted([_PLAIN_TOKEN, _ACTION_TOKEN])
 
 
-# 함수이름: test_missed_alert_follows_recipient_language_and_detail_mode
-# 함수역할:
-# - 미복용 알림의 제목·본문·언어 데이터가 보호자의 언어와 종류만 표시 설정을 따르는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# - user_setting (dict[str, object] | None): 보호자 설정 값 또는 행 없음.
-# - language (str): 기대하는 알림 언어 코드.
-# - show_details (bool): 시간대가 드러나는 상세 문구를 기대하는지 여부.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_missed_alert_follows_recipient_language_and_detail_mode
+# Description:
+# - Format missed-dose push title, body, and language data according to the recipient's language and privacy preferences.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# - user_setting: dict[str, object] | None; recipient settings or no settings row.
+# - language: str; expected notification language.
+# - show_details: bool; whether slot-specific details should be visible.
+# Returns:
+# - None.
 @pytest.mark.parametrize(
     ("user_setting", "language", "show_details"), _RECIPIENT_PREFERENCE_CASES,
 )
 def test_missed_alert_follows_recipient_language_and_detail_mode(
-    fk_db, user_setting, language, show_details,
+    fk_db: Session, user_setting: dict[str, object] | None, language: str, show_details: bool,
 ) -> None:
     _seed_caregiver_alert_scene(
         fk_db,
@@ -946,14 +994,14 @@ def test_missed_alert_follows_recipient_language_and_detail_mode(
     assert sorted(call["tokens"]) == sorted([_PLAIN_TOKEN, _ACTION_TOKEN])
 
 
-# 함수이름: test_missed_alert_sends_action_data_only_to_action_capable_devices
-# 함수역할:
-# - 알림 문맥이 있으면 액션 지원 기기에만 문맥·제목·본문 데이터를 보내고 나머지 기기는 기존 알림을 받는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# 반환값:
-# - 없음 (None).
-def test_missed_alert_sends_action_data_only_to_action_capable_devices(fk_db) -> None:
+# Function Name: test_missed_alert_sends_action_data_only_to_action_capable_devices
+# Description:
+# - Include action context, title, and body data only for action-capable devices while retaining legacy notification data for others.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# Returns:
+# - None.
+def test_missed_alert_sends_action_data_only_to_action_capable_devices(fk_db: Session) -> None:
     _seed_caregiver_alert_scene(
         fk_db,
         notification_type=CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE,
@@ -989,14 +1037,14 @@ def test_missed_alert_sends_action_data_only_to_action_capable_devices(fk_db) ->
     assert (action_call["title"], action_call["body"]) == (title, body)
 
 
-# 함수이름: test_caregiver_switch_blocks_both_caregiver_alerts_but_chat_switch_does_not
-# 함수역할:
-# - 보호자 알림 전역 설정을 끄면 완료·미복용 알림을 모두 보내지 않고, 채팅 알림 설정은 보호자 알림에 영향을 주지 않는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# - notification_type (str): 검증할 보호자 알림 모드.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_caregiver_switch_blocks_both_caregiver_alerts_but_chat_switch_does_not
+# Description:
+# - Suppress both caregiver alert modes when their global switch is off, independently of the chat-alert switch.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# - notification_type: str; completed-dose or missed-dose alert mode.
+# Returns:
+# - None.
 @pytest.mark.parametrize(
     "notification_type",
     (
@@ -1005,7 +1053,7 @@ def test_missed_alert_sends_action_data_only_to_action_capable_devices(fk_db) ->
     ),
 )
 def test_caregiver_switch_blocks_both_caregiver_alerts_but_chat_switch_does_not(
-    fk_db, notification_type,
+    fk_db: Session, notification_type: str,
 ) -> None:
     _seed_caregiver_alert_scene(
         fk_db,
@@ -1016,10 +1064,13 @@ def test_caregiver_switch_blocks_both_caregiver_alerts_but_chat_switch_does_not(
         },
     )
 
-    # 함수이름: send
-    # 함수역할: 검증 중인 알림 모드에 맞는 전송을 한 번 수행한다.
-    # 매개변수: 없음.
-    # 반환값: 전송 요청을 기록한 푸시 대체 경계.
+    # Function Name: send
+    # Description:
+    # - Send one alert using the selected caregiver notification mode.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - RecordingPushBoundary; fake containing the recorded requests.
     def send() -> RecordingPushBoundary:
         boundary = RecordingPushBoundary()
         if notification_type == CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED:
@@ -1051,15 +1102,15 @@ _OUTBOX_PUSH_COUNT = {
 }
 
 
-# 함수이름: file_sessions
-# 함수역할:
-# - 파일 SQLite 엔진의 세션 팩터리를 제공한다. 세션마다 다른 연결을 쓰므로 두 번째 세션은 커밋된 값만 읽는다.
-# 매개변수:
-# - tmp_path (Path): pytest가 제공하는 테스트별 임시 디렉터리.
-# 반환값:
-# - 외래 키가 적용된 파일 엔진의 sessionmaker; 테스트가 끝나면 엔진을 닫는다.
+# Function Name: file_sessions
+# Description:
+# - Yield a foreign-key-enabled file database factory so independent sessions observe only committed changes.
+# Parameters:
+# - tmp_path: Path; isolated temporary directory.
+# Returns:
+# - Iterator[sessionmaker]; session factory, with the engine disposed after use.
 @pytest.fixture
-def file_sessions(tmp_path):
+def file_sessions(tmp_path: Path) -> Iterator[sessionmaker[Session]]:
     engine = make_engine(tmp_path)
     try:
         yield make_session_factory(engine)
@@ -1067,16 +1118,16 @@ def file_sessions(tmp_path):
         engine.dispose()
 
 
-# 함수이름: _send_alert
-# 함수역할:
-# - 알림 모드에 맞는 보호자 알림을 전송 제어로 직접 한 번 보낸다.
-# 매개변수:
-# - db (Session): 전송 제어가 사용할 테스트 세션.
-# - boundary (object): 전송 요청을 기록하는 푸시 대체 경계.
-# - notification_type (str): 완료 또는 미복용 알림 모드.
-# 반환값:
-# - PushDeliveryResult: 전송 집계.
-def _send_alert(db, boundary, notification_type: str) -> PushDeliveryResult:
+# Function Name: _send_alert
+# Description:
+# - Dispatch one completed or missed caregiver alert through the matching delivery method.
+# Parameters:
+# - db: Session; delivery control session.
+# - boundary: object; recording push fake.
+# - notification_type: str; completed-dose or missed-dose alert mode.
+# Returns:
+# - PushDeliveryResult; aggregated delivery result.
+def _send_alert(db: Session, boundary: RecordingPushBoundary, notification_type: str) -> PushDeliveryResult:
     if notification_type == CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED:
         return DispatchCaregiverAlert(db, boundary).notifySlotCompleted(
             patient_hash=_PATIENT, slot_key="morning",
@@ -1084,15 +1135,15 @@ def _send_alert(db, boundary, notification_type: str) -> PushDeliveryResult:
     return _notify_missed_morning(db, boundary)
 
 
-# 함수이름: _queue_outbox_event
-# 함수역할:
-# - 오늘 아침 시간대의 아웃박스 요청을 대기 상태로 저장한다. 완료 요청이면 아침 약도 복용 완료로 바꾼다.
-# 매개변수:
-# - db (Session): 장면이 저장된 테스트 세션.
-# - notification_type (str): 완료 또는 미복용 알림 모드.
-# 반환값:
-# - 저장된 아웃박스 행의 기본키.
-def _queue_outbox_event(db, notification_type: str) -> int:
+# Function Name: _queue_outbox_event
+# Description:
+# - Persist a pending morning outbox event and mark the medication complete for completed-dose events.
+# Parameters:
+# - db: Session; database containing the seeded scene.
+# - notification_type: str; completed-dose or missed-dose alert mode.
+# Returns:
+# - int; persisted outbox identifier.
+def _queue_outbox_event(db: Session, notification_type: str) -> int:
     today = application_today()
     if notification_type == CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED:
         db.query(_SavedMedication).update(
@@ -1119,8 +1170,16 @@ def _queue_outbox_event(db, notification_type: str) -> int:
     return int(row.id)
 
 
+# 함수이름: test_completed_outbox_retry_keeps_event_identity_and_new_event_does_not_collapse
+# 함수역할:
+# - 완료 알림은 작업자가 바뀐 재시도에도 같은 기기 식별자를 쓰고 같은 날짜·슬롯의 새 이벤트는 별도로 구분하는지 확인한다.
+# 매개변수:
+# - fk_db: Session; 외래 키가 활성화된 격리 데이터베이스.
+# - late_link: bool; 뒤늦은 연동 완료 이벤트로 검사할지 지정한다.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("late_link", [False, True])
-def test_completed_outbox_retry_keeps_event_identity_and_new_event_does_not_collapse(fk_db, late_link):
+def test_completed_outbox_retry_keeps_event_identity_and_new_event_does_not_collapse(fk_db: Session, late_link: bool) -> None:
     _seed_caregiver_alert_scene(fk_db, notification_type=CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED)
     outbox_id = _queue_outbox_event(fk_db, CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED)
     row = fk_db.get(_CaregiverAlertOutbox, outbox_id)
@@ -1168,22 +1227,25 @@ def test_completed_outbox_retry_keeps_event_identity_and_new_event_does_not_coll
         }
 
 
-# 함수이름: _fail_next_commits
-# 함수역할:
-# - 세션의 다음 커밋을 지정한 횟수만큼 DB 장애처럼 실패시키고 그 뒤에는 원래대로 동작하게 한다.
-# 매개변수:
-# - db (Session): 커밋을 실패시킬 테스트 세션.
-# - count (int): 실패시킬 커밋 횟수.
-# 반환값:
-# - 없음 (None).
-def _fail_next_commits(db, count: int = 1) -> None:
+# Function Name: _fail_next_commits
+# Description:
+# - Replace session commit with a bounded OperationalError injector, then resume normal commits.
+# Parameters:
+# - db: Session; session whose commit is replaced.
+# - count: int; number of upcoming commits to fail.
+# Returns:
+# - None.
+def _fail_next_commits(db: Session, count: int = 1) -> None:
     original_commit = db.commit
     remaining = [count]
 
-    # 함수이름: failing_commit
-    # 함수역할: 남은 실패 횟수 동안 OperationalError를 올리고 이후에는 실제 커밋을 수행한다.
-    # 매개변수: 없음.
-    # 반환값: 없음 (None).
+    # Function Name: failing_commit
+    # Description:
+    # - Raise OperationalError for the remaining injected failures, then delegate to the original commit.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None; raises OperationalError while failures remain.
     def failing_commit() -> None:
         if remaining[0] > 0:
             remaining[0] -= 1
@@ -1193,21 +1255,24 @@ def _fail_next_commits(db, count: int = 1) -> None:
     db.commit = failing_commit
 
 
-# 함수이름: _fail_commits_after_first_send
-# 함수역할:
-# - 첫 전송이 일어난 직후부터 세션의 커밋을 지정한 횟수만큼 실패시키는 전송 훅을 만든다.
-# 매개변수:
-# - db (Session): 커밋을 실패시킬 테스트 세션.
-# - count (int): 실패시킬 커밋 횟수.
-# 반환값:
-# - RecordingPushBoundary의 on_send에 넘길 훅.
-def _fail_commits_after_first_send(db, count: int = 1):
+# Function Name: _fail_commits_after_first_send
+# Description:
+# - Create a send hook that arms commit failures only after the first push.
+# Parameters:
+# - db: Session; session whose commits will fail.
+# - count: int; number of post-send commits to fail.
+# Returns:
+# - Callable; hook accepted by RecordingPushBoundary.on_send.
+def _fail_commits_after_first_send(db: Session, count: int = 1) -> Callable[[dict[str, object]], None]:
     armed: list[bool] = []
 
-    # 함수이름: hook
-    # 함수역할: 첫 전송에서만 커밋 실패를 예약한다.
-    # 매개변수: call (dict[str, object]): 기록된 전송 요청.
-    # 반환값: 없음 (None).
+    # Function Name: hook
+    # Description:
+    # - Arm the configured commit failures on the first push only.
+    # Parameters:
+    # - call: dict[str, object]; recorded push request, unused.
+    # Returns:
+    # - None.
     def hook(call: dict[str, object]) -> None:
         if not armed:
             armed.append(True)
@@ -1216,17 +1281,17 @@ def _fail_commits_after_first_send(db, count: int = 1):
     return hook
 
 
-# 함수이름: test_caregiver_push_is_sent_after_the_session_released_its_transaction
-# 함수역할:
-# - 완료·미복용 알림 모두 Firebase 호출 시점에 세션이 트랜잭션을 잡고 있지 않은지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# - notification_type (str): 검증할 보호자 알림 모드.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_caregiver_push_is_sent_after_the_session_released_its_transaction
+# Description:
+# - Release the session transaction before Firebase delivery for either caregiver alert mode.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# - notification_type: str; completed-dose or missed-dose alert mode.
+# Returns:
+# - None.
 @pytest.mark.parametrize("notification_type", _ALERT_MODES)
 def test_caregiver_push_is_sent_after_the_session_released_its_transaction(
-    fk_db, notification_type,
+    fk_db: Session, notification_type: str,
 ) -> None:
     _seed_caregiver_alert_scene(fk_db, notification_type=notification_type)
     open_transactions: list[bool] = []
@@ -1240,17 +1305,17 @@ def test_caregiver_push_is_sent_after_the_session_released_its_transaction(
     assert open_transactions == [False]
 
 
-# 함수이름: test_outbox_event_is_claimed_before_send_and_recorded_after_it
-# 함수역할:
-# - 아웃박스 요청이 전송 전에 처리 중으로 커밋되고, 전송 중에는 풀 연결을 하나도 잡지 않으며, 전송 뒤 별도 트랜잭션으로 완료가 기록되는지 검증한다.
-# 매개변수:
-# - file_sessions (sessionmaker): 세션마다 다른 연결을 쓰는 파일 엔진 팩터리.
-# - notification_type (str): 검증할 보호자 알림 모드.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_outbox_event_is_claimed_before_send_and_recorded_after_it
+# Description:
+# - Commit the outbox claim before sending, hold no pooled connection during delivery, and persist completion in a later transaction.
+# Parameters:
+# - file_sessions: sessionmaker; isolated file database with independent session connections.
+# - notification_type: str; completed-dose or missed-dose alert mode.
+# Returns:
+# - None.
 @pytest.mark.parametrize("notification_type", _ALERT_MODES)
 def test_outbox_event_is_claimed_before_send_and_recorded_after_it(
-    file_sessions, notification_type,
+    file_sessions: sessionmaker[Session], notification_type: str,
 ) -> None:
     db = file_sessions()
     observer = file_sessions()
@@ -1260,10 +1325,13 @@ def test_outbox_event_is_claimed_before_send_and_recorded_after_it(
         pool = file_sessions.kw["bind"].pool
         seen_at_send: list[tuple[int, bool, str, object]] = []
 
-        # 함수이름: observe
-        # 함수역할: 전송 시점에 대여 중인 풀 연결 수, 작업 세션 트랜잭션 여부와 다른 연결이 보는 아웃박스 상태를 기록한다.
-        # 매개변수: call (dict[str, object]): 기록된 전송 요청.
-        # 반환값: 없음 (None).
+        # Function Name: observe
+        # Description:
+        # - Observe checked-out connections, worker transaction state, and independently committed outbox state at send time.
+        # Parameters:
+        # - call: dict[str, object]; recorded push request, unused.
+        # Returns:
+        # - None.
         def observe(call: dict[str, object]) -> None:
             observer.rollback()
             checked_out = pool.checkedout()
@@ -1296,17 +1364,17 @@ def test_outbox_event_is_claimed_before_send_and_recorded_after_it(
         db.close()
 
 
-# 함수이름: test_rejected_tokens_are_disabled_in_a_committed_transaction
-# 함수역할:
-# - 완료·미복용 알림에서 Firebase가 거부한 토큰만 비활성화하고 그 변경이 다른 연결에서 보이도록 커밋되는지 검증한다.
-# 매개변수:
-# - file_sessions (sessionmaker): 세션마다 다른 연결을 쓰는 파일 엔진 팩터리.
-# - notification_type (str): 검증할 보호자 알림 모드.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_rejected_tokens_are_disabled_in_a_committed_transaction
+# Description:
+# - Commit deactivation of only Firebase-rejected tokens so independent sessions observe the change.
+# Parameters:
+# - file_sessions: sessionmaker; isolated file database with independent session connections.
+# - notification_type: str; completed-dose or missed-dose alert mode.
+# Returns:
+# - None.
 @pytest.mark.parametrize("notification_type", _ALERT_MODES)
 def test_rejected_tokens_are_disabled_in_a_committed_transaction(
-    file_sessions, notification_type,
+    file_sessions: sessionmaker[Session], notification_type: str,
 ) -> None:
     db = file_sessions()
     observer = file_sessions()
@@ -1335,17 +1403,17 @@ def test_rejected_tokens_are_disabled_in_a_committed_transaction(
         db.close()
 
 
-# 함수이름: test_delivered_event_stays_sent_when_token_cleanup_fails
-# 함수역할:
-# - 전송 직후 무효 토큰 정리가 DB 장애로 실패해도 전달된 요청을 실패로 되돌려 다시 보내지 않는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# - notification_type (str): 검증할 보호자 알림 모드.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_delivered_event_stays_sent_when_token_cleanup_fails
+# Description:
+# - Keep successfully delivered events sent when invalid-token cleanup fails, without resending.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# - notification_type: str; completed-dose or missed-dose alert mode.
+# Returns:
+# - None.
 @pytest.mark.parametrize("notification_type", _ALERT_MODES)
 def test_delivered_event_stays_sent_when_token_cleanup_fails(
-    fk_db, notification_type,
+    fk_db: Session, notification_type: str,
 ) -> None:
     _seed_caregiver_alert_scene(fk_db, notification_type=notification_type)
     outbox_id = _queue_outbox_event(fk_db, notification_type)
@@ -1368,17 +1436,17 @@ def test_delivered_event_stays_sent_when_token_cleanup_fails(
     assert len(boundary.calls) == _OUTBOX_PUSH_COUNT[notification_type]
 
 
-# 함수이름: test_delivered_event_is_recorded_on_the_second_attempt
-# 함수역할:
-# - 전송 뒤 완료 기록이 한 번 실패하면 실패 상태로 바꾸지 않고 완료 기록만 다시 시도하는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# - notification_type (str): 검증할 보호자 알림 모드.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_delivered_event_is_recorded_on_the_second_attempt
+# Description:
+# - Retry only the completion-state write after its first failure, without recording delivery failure or sending again.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# - notification_type: str; completed-dose or missed-dose alert mode.
+# Returns:
+# - None.
 @pytest.mark.parametrize("notification_type", _ALERT_MODES)
 def test_delivered_event_is_recorded_on_the_second_attempt(
-    fk_db, notification_type,
+    fk_db: Session, notification_type: str,
 ) -> None:
     _seed_caregiver_alert_scene(fk_db, notification_type=notification_type)
     outbox_id = _queue_outbox_event(fk_db, notification_type)
@@ -1398,15 +1466,15 @@ def test_delivered_event_is_recorded_on_the_second_attempt(
     assert len(boundary.calls) == _OUTBOX_PUSH_COUNT[notification_type]
 
 
-# 함수이름: test_delivered_event_keeps_its_lease_when_the_result_cannot_be_written
-# 함수역할:
-# - 전송 뒤 완료 기록이 거듭 실패하면 예외를 올리고 요청을 처리 중으로 남겨, 선점 시간이 끝나기 전에는 다시 보내지 않는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_delivered_event_keeps_its_lease_when_the_result_cannot_be_written
+# Description:
+# - Raise on repeated result-write failure and retain the processing lease so delivery is not retried before lease expiry.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# Returns:
+# - None.
 def test_delivered_event_keeps_its_lease_when_the_result_cannot_be_written(
-    fk_db,
+    fk_db: Session,
 ) -> None:
     notification_type = CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED
     _seed_caregiver_alert_scene(fk_db, notification_type=notification_type)
@@ -1428,17 +1496,17 @@ def test_delivered_event_keeps_its_lease_when_the_result_cannot_be_written(
     assert len(boundary.calls) == 1
 
 
-# 함수이름: test_event_whose_send_failed_is_retried_and_never_recorded_as_sent
-# 함수역할:
-# - Firebase 호출이 실패한 요청은 전송 완료로 기록하지 않고 재시도 상태로 남기며, 다음 시도에서 한 번만 전달되는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# - notification_type (str): 검증할 보호자 알림 모드.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_event_whose_send_failed_is_retried_and_never_recorded_as_sent
+# Description:
+# - Keep a failed Firebase send retryable and unsent until a later successful delivery.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# - notification_type: str; completed-dose or missed-dose alert mode.
+# Returns:
+# - None.
 @pytest.mark.parametrize("notification_type", _ALERT_MODES)
 def test_event_whose_send_failed_is_retried_and_never_recorded_as_sent(
-    fk_db, notification_type,
+    fk_db: Session, notification_type: str,
 ) -> None:
     _seed_caregiver_alert_scene(fk_db, notification_type=notification_type)
     outbox_id = _queue_outbox_event(fk_db, notification_type)
@@ -1464,14 +1532,14 @@ def test_event_whose_send_failed_is_retried_and_never_recorded_as_sent(
     assert fk_db.get(_CaregiverAlertOutbox, outbox_id).status == CAREGIVER_ALERT_STATUS_SENT
 
 
-# 함수이름: test_legacy_setting_without_slot_json_receives_completed_alert
-# 함수역할:
-# - 시간대 JSON이 비어 있고 기존 단일 설정 열만 켜진 행의 보호자도 완료 알림을 받는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# 반환값:
-# - 없음 (None).
-def test_legacy_setting_without_slot_json_receives_completed_alert(fk_db) -> None:
+# Function Name: test_legacy_setting_without_slot_json_receives_completed_alert
+# Description:
+# - Deliver completion alerts using enabled legacy preferences when slot JSON is absent.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# Returns:
+# - None.
+def test_legacy_setting_without_slot_json_receives_completed_alert(fk_db: Session) -> None:
     _seed_caregiver_alert_scene(fk_db, notification_type="enable", slot_settings="{}")
     boundary = RecordingPushBoundary()
 
@@ -1485,15 +1553,15 @@ def test_legacy_setting_without_slot_json_receives_completed_alert(fk_db) -> Non
     ]
 
 
-# 함수이름: _link_late_caregiver
-# 함수역할:
-# - 완료 알림이 전송된 뒤에 다른 사용자를 환자의 보호자로 처음 연동하고 아침 완료 알림을 켠다.
-# 매개변수:
-# - db (Session): 장면이 저장된 테스트 세션.
-# - linked_at (datetime): 연동 행의 생성 시각.
-# 반환값:
-# - 새 연동 행의 기본키.
-def _link_late_caregiver(db, linked_at: datetime) -> int:
+# Function Name: _link_late_caregiver
+# Description:
+# - Add a new caregiver link after the original completion push and enable its morning completion alerts.
+# Parameters:
+# - db: Session; database containing the completed-dose scene.
+# - linked_at: datetime; creation timestamp for the new link.
+# Returns:
+# - int; newly persisted link identifier.
+def _link_late_caregiver(db: Session, linked_at: datetime) -> int:
     link = _PatientCaregiverLink(
         patient_hash=_PATIENT, caregiver_hash=_OTHER_USER, linked=True,
         created_at=linked_at,
@@ -1522,16 +1590,14 @@ def _link_late_caregiver(db, linked_at: datetime) -> int:
     return int(link.id)
 
 
-# 함수이름: test_caregiver_linked_after_the_sent_completion_alert_gets_it_once
-# 함수역할:
-# - 완료 알림이 전송된 뒤에 처음 연동된 보호자는 시간대를 취소했다가 다시 완료하면 알림과 채팅 완료
-#   기록을 한 번 받고, 이미 받은 보호자에게는 다시 가지 않으며, 또 취소·완료해도 아무에게도 다시
-#   가지 않는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# 반환값:
-# - 없음 (None).
-def test_caregiver_linked_after_the_sent_completion_alert_gets_it_once(fk_db) -> None:
+# Function Name: test_caregiver_linked_after_the_sent_completion_alert_gets_it_once
+# Description:
+# - On recompletion, notify a newly linked caregiver and create its receipt once without notifying previous recipients again.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# Returns:
+# - None.
+def test_caregiver_linked_after_the_sent_completion_alert_gets_it_once(fk_db: Session) -> None:
     _seed_caregiver_alert_scene(
         fk_db, notification_type=CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
     )
@@ -1577,15 +1643,14 @@ def test_caregiver_linked_after_the_sent_completion_alert_gets_it_once(fk_db) ->
     assert fk_db.query(_CaregiverAlertOutbox).count() == 2
 
 
-# 함수이름: test_link_older_than_the_sent_completion_alert_gets_no_second_alert
-# 함수역할:
-# - 완료 알림 전송 시각보다 먼저 만들어진 연동은, 해제했다가 다시 연동했더라도 이미 알림을 받았을 수
-#   있으므로 시간대를 다시 완료해도 보호자별 요청을 만들지 않는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# 반환값:
-# - 없음 (None).
-def test_link_older_than_the_sent_completion_alert_gets_no_second_alert(fk_db) -> None:
+# Function Name: test_link_older_than_the_sent_completion_alert_gets_no_second_alert
+# Description:
+# - Do not create a second completion alert for a link older than the original sent event, including a reactivated link.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# Returns:
+# - None.
+def test_link_older_than_the_sent_completion_alert_gets_no_second_alert(fk_db: Session) -> None:
     _seed_caregiver_alert_scene(
         fk_db, notification_type=CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
     )
@@ -1609,15 +1674,14 @@ def test_link_older_than_the_sent_completion_alert_gets_no_second_alert(fk_db) -
     assert len(boundary.calls) == 1
 
 
-# 함수이름: test_late_link_event_undone_before_delivery_is_sent_after_recompletion
-# 함수역할:
-# - 늦게 연동된 보호자용 요청이 전송되기 전에 시간대가 취소되면 전송하지 않고, 다시 완료되면 같은
-#   요청을 한 번만 전송하는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# 반환값:
-# - 없음 (None).
-def test_late_link_event_undone_before_delivery_is_sent_after_recompletion(fk_db) -> None:
+# Function Name: test_late_link_event_undone_before_delivery_is_sent_after_recompletion
+# Description:
+# - Skip a late-link event if the dose is undone before delivery, then send that same event once after recompletion.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# Returns:
+# - None.
+def test_late_link_event_undone_before_delivery_is_sent_after_recompletion(fk_db: Session) -> None:
     _seed_caregiver_alert_scene(
         fk_db, notification_type=CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
     )
@@ -1644,17 +1708,15 @@ def test_late_link_event_undone_before_delivery_is_sent_after_recompletion(fk_db
     assert fk_db.query(_CaregiverAlertOutbox).count() == 2
 
 
-# 함수이름: test_legacy_missed_deadline_setting_is_queued_and_delivered
-# 함수역할:
-# - 시간대 JSON이 비어 있는 기존 미복용 설정 행이 큐에 적재되고 실제 푸시까지 전달되는지 검증한다.
-# - 큐는 환자의 알림 시각과 유예 시간이 지나야 적재하므로, 실제 시각과 무관하게 마감 00:00이
-#   지난 상태가 되도록 환자의 아침 알림을 00:00으로 저장하고 유예 시간을 0으로 둔다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# - monkeypatch (pytest.MonkeyPatch): 미복용 알림 유예 시간을 이 테스트에서만 0으로 바꾼다.
-# 반환값:
-# - 없음 (None).
-def test_legacy_missed_deadline_setting_is_queued_and_delivered(fk_db, monkeypatch) -> None:
+# Function Name: test_legacy_missed_deadline_setting_is_queued_and_delivered
+# Description:
+# - Queue and deliver a legacy missed-dose preference without slot JSON using a midnight deadline and zero grace period.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# - monkeypatch: pytest.MonkeyPatch; restores temporary dependency replacements.
+# Returns:
+# - None.
+def test_legacy_missed_deadline_setting_is_queued_and_delivered(fk_db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "CAREGIVER_MISSED_DOSE_GRACE_MINUTES", 0)
     _seed_caregiver_alert_scene(
         fk_db,
@@ -1682,16 +1744,16 @@ def test_legacy_missed_deadline_setting_is_queued_and_delivered(fk_db, monkeypat
         assert call["data"]["slot_key"] == "morning"
 
 
-# 함수이름: test_slot_disabled_by_the_caregiver_gets_no_alert
-# 함수역할:
-# - 기존 단일 설정 열이 켜져 있어도 보호자가 시간대 설정에서 직접 끈 시간대에는 큐 적재도 푸시도 없는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# - notification_type (str): 기존 단일 설정 열에 남아 있는 알림 모드.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_slot_disabled_by_the_caregiver_gets_no_alert
+# Description:
+# - Honor explicitly disabled slots even when the legacy single-mode preference remains enabled.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# - notification_type: str; completed-dose or missed-dose alert mode.
+# Returns:
+# - None.
 @pytest.mark.parametrize("notification_type", _ALERT_MODES)
-def test_slot_disabled_by_the_caregiver_gets_no_alert(fk_db, notification_type) -> None:
+def test_slot_disabled_by_the_caregiver_gets_no_alert(fk_db: Session, notification_type: str) -> None:
     _seed_caregiver_alert_scene(
         fk_db,
         notification_type=notification_type,
@@ -1714,14 +1776,14 @@ def test_slot_disabled_by_the_caregiver_gets_no_alert(fk_db, notification_type) 
     assert boundary.calls == []
 
 
-# 함수이름: test_missed_event_delivery_stays_within_statement_budget
-# 함수역할:
-# - 미복용 요청 한 건의 선점부터 완료 기록까지 SQL 문 수가 상한을 넘지 않고 수신자 설정과 토큰을 한 번씩만 읽는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# 반환값:
-# - 없음 (None).
-def test_missed_event_delivery_stays_within_statement_budget(fk_db) -> None:
+# Function Name: test_missed_event_delivery_stays_within_statement_budget
+# Description:
+# - Complete missed-dose outbox delivery within ten SQL statements, reading recipient preferences and tokens only once each.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# Returns:
+# - None.
+def test_missed_event_delivery_stays_within_statement_budget(fk_db: Session) -> None:
     notification_type = CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE
     _seed_caregiver_alert_scene(fk_db, notification_type=notification_type)
     outbox_id = _queue_outbox_event(fk_db, notification_type)
@@ -1730,11 +1792,19 @@ def test_missed_event_delivery_stays_within_statement_budget(fk_db) -> None:
     statements: list[str] = []
     engine = fk_db.get_bind()
 
-    # 함수이름: record_statement
-    # 함수역할: 실행되는 SQL 문을 순서대로 기록한다.
-    # 매개변수: SQLAlchemy before_cursor_execute 이벤트 인자.
-    # 반환값: 없음 (None).
-    def record_statement(conn, cursor, statement, parameters, context, executemany):
+    # Function Name: record_statement
+    # Description:
+    # - Record SQL statements in execution order for the outbox delivery query budget.
+    # Parameters:
+    # - conn: Connection; event connection, unused.
+    # - cursor: DBAPI cursor; execution cursor, unused.
+    # - statement: str; SQL text to append.
+    # - parameters: object; bound values, unused.
+    # - context: ExecutionContext; execution metadata, unused.
+    # - executemany: bool; batch flag, unused.
+    # Returns:
+    # - None.
+    def record_statement(conn: Connection, cursor: Cursor, statement: str, parameters: Sequence[Any] | Mapping[str, Any], context: ExecutionContext, executemany: bool) -> None:
         statements.append(" ".join(statement.split()))
 
     event.listen(engine, "before_cursor_execute", record_statement)

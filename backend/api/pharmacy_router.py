@@ -12,6 +12,7 @@ from api.dependencies import (
     get_check_nearby_pharmacy,
 )
 from boundaries.pharmacy_api_boundary import (
+    PharmacyApiBudgetExhaustedError,
     PharmacyApiResponseError,
     PharmacyApiUnavailableError,
 )
@@ -19,9 +20,11 @@ from controls.check_nearby_pharmacy_control import (
     CheckNearbyPharmacy,
     PharmacySearchMode,
 )
+from core.application_clock import seconds_until_next_application_day
 from schemas.pharmacy import NearbyPharmacyItem, NearbyPharmacyResponse
 
 router = APIRouter(dependencies=list(AUTHENTICATED_APP_DEPENDENCIES))
+PHARMACY_BUDGET_EXHAUSTED_DETAIL = "오늘 약국 정보를 실시간으로 조회할 수 있는 횟수를 모두 사용했습니다. 내일 다시 시도해주세요."
 
 
 # Function Name: get_nearby_pharmacies
@@ -71,6 +74,13 @@ async def get_nearby_pharmacies(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PharmacyApiBudgetExhaustedError:
+        # 함께 쓰는 하루 조회 예산이 바닥났으면 몇 초 뒤 다시 시도해도 소용없으므로 자정까지 기다리게 한다.
+        raise HTTPException(
+            status_code=503,
+            detail=PHARMACY_BUDGET_EXHAUSTED_DETAIL,
+            headers={"Retry-After": str(seconds_until_next_application_day())},
+        ) from None
     except PharmacyApiUnavailableError as exc:
         raise HTTPException(
             status_code=503,

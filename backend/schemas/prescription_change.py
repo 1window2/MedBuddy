@@ -90,6 +90,7 @@ class PrescriptionMedicationChange(BaseModel):
 # - 처방 변화 유형별 개수를 요약한다.
 # 주요 책임:
 # - 추가·미확인·일정 변경 유형별 수를 일관된 기본값으로 제공한다.
+# 속성: added_count·missing_count·schedule_changed_count·unchanged_count는 유형별 int 건수이며 기본값은 0이다.
 class PrescriptionChangeSummary(BaseModel):
     added_count: int = 0
     missing_count: int = 0
@@ -102,6 +103,8 @@ class PrescriptionChangeSummary(BaseModel):
 # - 관련성 판정 상태, 이전 처방 기준일과 처방 변화 결과를 반환한다.
 # 주요 책임:
 # - 관련 처방 여부, 이전 비교 날짜와 약품별 변화·요약을 함께 직렬화한다.
+# 속성: has_previous_prescription은 bool, comparison_status는 비교 상태, comparison_window_days는 기간 int, similarity_score는 float | None이다.
+#   match_basis는 근거 str, previous_prescription_date·current_prescription_date는 date | None, summary는 집계, changes는 약별 변화 목록이다.
 class PrescriptionChangeResponse(BaseModel):
     has_previous_prescription: bool
     comparison_status: Literal[

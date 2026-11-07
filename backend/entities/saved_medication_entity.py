@@ -27,23 +27,14 @@ from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from entities.user_account_entity import _UserAccount  # noqa: F401
 
 
-# Class Name: _SavedMedication
-# Role:
-# - Internal SQLAlchemy row for saved medication detail snapshots.
-# Responsibilities:
-# - Map saved medication fields to the saved_medications table.
-# - Keep saved medication snapshots scoped to a patient hash.
-# - Preserve the canonical MFDS product identifier for later enrichment.
-# - Preserve interaction, side-effect, and storage guidance shown before save.
-# - Preserve prescription-derived dosage schedule fields for later schedule features.
-# - Persist the current medication schedule status for CheckSchedule use cases.
-# Attributes:
-# - patient_hash (String): Patient ownership scope for the operation.
-# - created_date (Date): Date the schedule or medication snapshot was created.
-# - prescription_date (Date): Prescription dispensing date, if available.
-# - prescription_batch_id (String(64)): Optional identifier linking medications from one analysis batch.
-# - item_seq (String): Canonical MFDS product identifier.
-# - item_name (String): Public medication product name.
+# 클래스명: _SavedMedication
+# 역할: 환자 소유 약의 상세·안전정보·복용 계획을 영속화한다.
+# 주요 책임: 환자별 일일 중복 서명을 제한하고 제품·처방 배치·안전 안내·복용 상태·변경 이력을 보존한다.
+# 속성: id는 Integer, patient_hash는 계정 외래키, created_date·prescription_date는 Date, prescription_batch_id·item_seq는 식별 문자열이다.
+#   item_name과 효능·용법·경고·상호작용·부작용·보관·AI 안내는 상세 문자열, dosage_per_time·daily_frequency·total_days는 처방 지시다.
+#   schedule_slot_keys는 JSON Text, dosing_mode는 String, regimen_revision은 Integer, regimen_effective_from·stopped_on은 Date다.
+#   superseded_by_id는 대체 약 Integer, deduplication_key는 String(64), medication_status·medication_status_date는 완료 여부·날짜, image_url은 이미지 주소다.
+# 비고: SQLite 자동 증가 ID는 삭제된 약의 지연 요청이 새 약을 가리키지 않게 한다.
 class _SavedMedication(Base):
     __tablename__ = "saved_medications"
     __table_args__ = (
@@ -103,19 +94,11 @@ class _SavedMedication(Base):
     ai_guide = Column(String, nullable=True)
 
 
-# Function Name: build_saved_medication_deduplication_key
-# Description:
-# - Hashes normalized medication, date, course and slot fields, including a batch identifier only when provided.
-# Parameters:
-# - item_name (str | None): Public medication product name.
-# - prescription_date (date | None): Prescription dispensing date, if available.
-# - prescription_batch_id (str | None): Optional identifier linking medications from one analysis batch.
-# - dosage_per_time (str | None): Dose per administration from the prescription.
-# - daily_frequency (str | None): Number or description of doses per day.
-# - total_days (str | None): Prescribed course duration.
-# - schedule_slot_keys (object): User-confirmed medication time slots.
-# Returns:
-# - SHA-256 fingerprint compatible with legacy snapshots lacking a batch ID.
+# 함수이름: build_saved_medication_deduplication_key
+# 함수역할: 약명·처방 지시·시간대를 정규화해 배치 구분과 필요시 모드를 포함하는 중복 방지 서명을 만든다.
+# 매개변수: item_name, prescription_batch_id, dosage_per_time, daily_frequency, total_days (str | None)는 약·배치·지시다.
+#   prescription_date (date | None)는 조제일, schedule_slot_keys (object)는 시간대, dosing_mode (str)는 정기/필요시 모드다.
+# 반환값: SHA-256 64자리 str. 빈 배치와 정기 모드는 추가 표식을 넣지 않아 기존 서명과 호환한다.
 def build_saved_medication_deduplication_key(
     *,
     item_name: str | None,
@@ -156,13 +139,10 @@ def _normalize_signature_text(value: str | None) -> str:
     return " ".join((value or "").strip().lower().split())
 
 
-# 함수이름: _normalize_schedule_slot_value
-# 함수역할:
-# - JSON 또는 목록 입력에서 지원 시간대만 골라 고정 순서로 중복 없이 직렬화한다.
-# 매개변수:
-# - value (object): JSON 문자열 또는 목록 형태의 복용 시간대 입력.
-# 반환값:
-# - 결정적 비교용 시간대 JSON; 잘못된 입력은 빈 목록 JSON.
+# Function Name: _normalize_schedule_slot_value
+# Description: Uses shared slot decoders/normalizers to produce a deterministic compact JSON comparison key.
+# Parameters: value (object) is stored JSON text or a slot collection.
+# Returns: ASCII JSON of supported slots in canonical order; invalid/absent selections follow shared empty-list handling.
 def _normalize_schedule_slot_value(value: object) -> str:
     slots = (
         decode_medication_schedule_slot_keys(value)

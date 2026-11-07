@@ -4,15 +4,15 @@
 import 'json_value_reader.dart';
 
 // 클래스명: PrescriptionChangeType
-// 역할: 약 추가·미확인·일정 변경·알 수 없음 유형을 구분한다.
-// 주요 책임:
-// - 처방 변화 카드와 요약 집계에서 같은 변화 범주를 사용하게 한다.
+// 역할: 이전 처방 대비 약 추가·누락·일정 변경을 구분한다.
+// 주요 책임: 서버 변화 유형을 화면의 비교 항목으로 표현한다.
+// 속성: added/missing/scheduleChanged/unknown: 변화 종류.
 enum PrescriptionChangeType { added, missing, scheduleChanged, unknown }
 
 // 클래스명: PrescriptionComparisonStatus
-// 역할: 이전 처방의 비교 가능·기간 만료·무관·이력 없음 상태를 구분한다.
-// 주요 책임:
-// - 화면이 실제 변화와 비교 불가 사유를 혼동하지 않도록 비교 결과를 분류한다.
+// 역할: 이전 처방과 현재 처방을 비교할 수 있는 상태를 구분한다.
+// 주요 책임: 이력 없음·기간 초과·연관 없음 상태를 실제 비교 결과와 분리한다.
+// 속성: comparable/noHistory/expired/unrelated: 비교 가능성과 제외 사유.
 enum PrescriptionComparisonStatus { comparable, noHistory, expired, unrelated }
 
 // 클래스명: PrescriptionScheduleSnapshot
@@ -42,12 +42,10 @@ class PrescriptionScheduleSnapshot {
     this.totalDays = '',
   });
 
-  // 함수이름: PrescriptionScheduleSnapshot.fromJson
-  // 함수역할: 백엔드의 복약 일정 JSON을 일정 스냅샷으로 변환한다.
-  // 매개변수:
-  // - json (Map<String, dynamic>): 복약 일정 필드를 포함한 JSON 객체
-  // 반환값:
-  // - 변환된 PrescriptionScheduleSnapshot
+  // Function Name: PrescriptionScheduleSnapshot.fromJson
+  // Description: Normalize dosage, daily frequency and duration text from a comparison snapshot.
+  // Parameters: json (Map<String, dynamic>): schedule snapshot.
+  // Returns: PrescriptionScheduleSnapshot: normalized text fields.
   factory PrescriptionScheduleSnapshot.fromJson(Map<String, dynamic> json) {
     return PrescriptionScheduleSnapshot(
       dosagePerTime: readJsonText(json['dosage_per_time']),
@@ -107,12 +105,10 @@ class PrescriptionMedicationChange {
     this.current,
   });
 
-  // 함수이름: PrescriptionMedicationChange.fromJson
-  // 함수역할: 백엔드의 약품별 변화 JSON을 화면 Entity로 변환한다.
-  // 매개변수:
-  // - json (Map<String, dynamic>): 변화 유형과 전후 일정 정보를 포함한 JSON 객체
-  // 반환값:
-  // - 변환된 PrescriptionMedicationChange
+  // Function Name: PrescriptionMedicationChange.fromJson
+  // Description: Decode a medication change with its changed fields and optional before/after schedules.
+  // Parameters: json (Map<String, dynamic>): change record.
+  // Returns: PrescriptionMedicationChange: parsed change, using unknown for unrecognized kinds.
   factory PrescriptionMedicationChange.fromJson(Map<String, dynamic> json) {
     return PrescriptionMedicationChange(
       type: _readChangeType(json['change_type']),
@@ -155,12 +151,10 @@ class PrescriptionChangeSummary {
     this.unchangedCount = 0,
   });
 
-  // 함수이름: PrescriptionChangeSummary.fromJson
-  // 함수역할: 백엔드의 변화 유형별 개수 JSON을 요약 Entity로 변환한다.
-  // 매개변수:
-  // - json (Map<String, dynamic>): 추가·미확인·일정 변경·유지 개수를 포함한 JSON 객체
-  // 반환값:
-  // - 변환된 PrescriptionChangeSummary
+  // Function Name: PrescriptionChangeSummary.fromJson
+  // Description: Read comparison counts, substituting zero when an integer is absent or invalid.
+  // Parameters: json (Map<String, dynamic>): count summary.
+  // Returns: PrescriptionChangeSummary: added, missing, changed and unchanged counts.
   factory PrescriptionChangeSummary.fromJson(Map<String, dynamic> json) {
     return PrescriptionChangeSummary(
       addedCount: readJsonInt(json['added_count']) ?? 0,
@@ -230,12 +224,10 @@ class PrescriptionChangeRadar {
     this.changes = const [],
   });
 
-  // 함수이름: PrescriptionChangeRadar.fromJson
-  // 함수역할: 비교 상태와 약품별 변화가 포함된 백엔드 응답을 화면 Entity로 변환한다.
-  // 매개변수:
-  // - json (Map<String, dynamic>): 처방 변화 레이더 응답 JSON
-  // 반환값:
-  // - 변환된 PrescriptionChangeRadar
+  // Function Name: PrescriptionChangeRadar.fromJson
+  // Description: Decode comparison metadata and map-shaped changes; default absent summary/changes and a missing or zero comparison window.
+  // Parameters: json (Map<String, dynamic>): comparison response.
+  // Returns: PrescriptionChangeRadar: normalized comparison with a default 90-day window.
   factory PrescriptionChangeRadar.fromJson(Map<String, dynamic> json) {
     final rawSummary = json['summary'];
     final rawChanges = json['changes'];
@@ -288,13 +280,10 @@ class PrescriptionChangeRadar {
   bool get hasChanges => summary.changeCount > 0;
 }
 
-// 함수이름: _readComparisonStatus
-// 함수역할: 백엔드 비교 상태를 열거형으로 변환하고 이전 응답 형식도 지원한다.
-// 매개변수:
-// - value (dynamic): 백엔드의 comparison_status 값
-// - hasPreviousPrescription (bool): 이전 응답 형식의 비교 가능 여부
-// 반환값:
-// - 화면에서 사용할 PrescriptionComparisonStatus
+// Function Name: _readComparisonStatus
+// Description: Map comparison status text, falling back to the previous-prescription flag for unknown values.
+// Parameters: value (dynamic): wire status; hasPreviousPrescription (bool): legacy fallback.
+// Returns: PrescriptionComparisonStatus: recognized status or comparable/noHistory fallback.
 PrescriptionComparisonStatus _readComparisonStatus(
   dynamic value, {
   required bool hasPreviousPrescription,
@@ -311,12 +300,10 @@ PrescriptionComparisonStatus _readComparisonStatus(
   };
 }
 
-// 함수이름: _readChangeType
-// 함수역할: 백엔드의 변화 유형 문자열을 화면 열거형으로 변환한다.
-// 매개변수:
-// - value (dynamic): 백엔드의 change_type 값
-// 반환값:
-// - 화면에서 사용할 PrescriptionChangeType
+// Function Name: _readChangeType
+// Description: Map supported medication-change wire values.
+// Parameters: value (dynamic): change kind.
+// Returns: PrescriptionChangeType: recognized kind or unknown.
 PrescriptionChangeType _readChangeType(dynamic value) {
   return switch (readJsonText(value)) {
     'added' => PrescriptionChangeType.added,
@@ -341,12 +328,10 @@ PrescriptionScheduleSnapshot? _readSnapshot(dynamic value) {
   );
 }
 
-// 함수이름: _readStringList
-// 함수역할: JSON 배열에서 비어 있지 않은 문자열 목록을 읽는다.
-// 매개변수:
-// - value (dynamic): 문자열 배열로 변환할 JSON 값
-// 반환값:
-// - 비어 있지 않은 문자열 목록
+// Function Name: _readStringList
+// Description: Normalize nonblank strings from a response list.
+// Parameters: value (dynamic): candidate list.
+// Returns: List<String>: fixed-length text list, empty for non-lists.
 List<String> _readStringList(dynamic value) {
   if (value is! List) {
     return const [];

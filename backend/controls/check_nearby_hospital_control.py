@@ -1,3 +1,5 @@
+# 파일명: check_nearby_hospital_control.py
+# 역할: 병원 검색과 공유에 사용할 진료과·시간표·공휴일 근거를 조합한다.
 """주변 병원의 진료과·요일별 운영시간을 검증해 지도 결과를 만든다."""
 
 import asyncio
@@ -51,8 +53,12 @@ DEPARTMENT_NAMES: dict[str, tuple[str, ...]] = {
 # 클래스명: CheckNearbyHospital
 # 역할: 병원 검색 조건과 서버 검증 채팅 공유 문맥을 구성한다.
 # 주요 책임: 진료과·선택일·운영 상태를 함께 판정하고 불확실한 시간표를 숨기지 않는다.
+# 속성: _boundary는 병원 조회, _holiday_boundary는 선택적 달력 조회, _timezone과 _clock은 기준 시각이다.
 class CheckNearbyHospital:
-    # 위치 경계와 공휴일 달력만 연결하며 약국 카탈로그는 사용하지 않는다.
+    # 함수이름: __init__
+    # 함수역할: 병원·공휴일 경계와 기준 시계를 연결하며 조회는 실행하지 않는다.
+    # 매개변수: hospital_boundary (HospitalLookupBoundary)는 필수 조회, holiday_boundary (HolidayLookupBoundary | None)는 선택적 달력, clock (Callable[[], datetime] | None)은 기준 시계이다.
+    # 반환값: 없음. 달력 미지정 시 공휴일 여부를 알 수 없는 상태로 처리한다.
     def __init__(
         self,
         hospital_boundary: HospitalLookupBoundary,
@@ -65,7 +71,11 @@ class CheckNearbyHospital:
         self._timezone = ZoneInfo(settings.APPLICATION_TIME_ZONE)
         self._clock = clock or (lambda: datetime.now(self._timezone))
 
-    # 결과 제한은 진료과·운영 필터 적용 후 계산하고 페이지 탐색은 상한을 둔다.
+    # Function Name: requestNearbyHospitalSearch
+    # Description: Validates the search, resolves calendar evidence and bounded location/detail pages, then sorts matching hospitals by distance.
+    # Parameters: latitude, longitude (float) are the center; search_mode selects hours filtering; target_datetime is optional application-local time;
+    #   department (str | None) selects a supported code; limit (int, 1..30) caps results; max_distance_km (float, 0.1..50) bounds distance.
+    # Returns: NearbyHospitalResponse with truncation/uncertainty flags. Invalid input raises ValueError; initial lookup or total detail failure propagates.
     async def requestNearbyHospitalSearch(
         self,
         *,
@@ -219,7 +229,10 @@ class CheckNearbyHospital:
             ),
         )
 
-    # 공휴일 확인 실패 시 평일로 단정하지 않는다.
+    # 함수이름: _is_holiday
+    # 함수역할: 제한 시간 안에 달력을 조회하고 확인 실패를 평일로 단정하지 않는다.
+    # 매개변수: value (date)는 확인할 날짜다.
+    # 반환값: 공휴일이면 True, 평일이면 False, 경계 미설정·가용성 실패·시간 초과이면 None이다.
     async def _is_holiday(self, value: date) -> bool | None:
         if self._holiday_boundary is None:
             return None
@@ -229,7 +242,10 @@ class CheckNearbyHospital:
         except (PharmacyApiUnavailableError, HospitalApiUnavailableError, TimeoutError):
             return None
 
-    # 검색일의 운영표와 제공자에서 확인한 병원 정보만 채팅 스냅샷으로 만든다.
+    # 함수이름: requestShareContext
+    # 함수역할: 선택일의 시간표와 전송 시점 운영 상태를 제공자 근거로 구성하며 클라이언트 명칭·좌표를 신뢰하지 않는다.
+    # 매개변수: hospital_id (str)는 병원 ID, schedule_date (date)는 허용 범위 안의 검색일이다.
+    # 반환값: 채팅용 dict. 날짜 범위 초과·검증된 위치 누락은 ValueError, 상세 조회 실패는 제공자 예외다.
     async def requestShareContext(self, hospital_id: str, schedule_date: date) -> dict[str, object]:
         """서버 상세 정보·선택 날짜 시간표와 전송 시점의 운영 상태를 저장한다."""
         # 검색과 같은 달력일 범위만 받아, 임의 날짜로 공휴일 조회를 반복시키지 못하게 한다.
@@ -273,8 +289,13 @@ class CheckNearbyHospital:
             ),
         }
 
-    # 일부 상세 조회 실패는 다른 병원의 확인된 결과와 구분해 유지한다.
-    async def _load_details(self, hospital_id: str, allowed: bool):
+    # 함수이름: _load_details
+    # 함수역할: 허용된 병원의 상세만 조회하고 알려진 제공자 오류를 결과로 보존한다.
+    # 매개변수: hospital_id (str)는 병원 ID, allowed (bool)는 이번 검색의 상세 호출 허용 여부다.
+    # 반환값: HospitalDetails 또는 가용성·응답 예외 객체. 미허용이면 빈 상세이며 예상 밖 예외는 전달한다.
+    async def _load_details(
+        self, hospital_id: str, allowed: bool,
+    ) -> HospitalDetails | HospitalApiUnavailableError | HospitalApiResponseError:
         if not allowed:
             return HospitalDetails(hospital_id)
         try:
@@ -282,8 +303,16 @@ class CheckNearbyHospital:
         except (HospitalApiUnavailableError, HospitalApiResponseError) as exc:
             return exc
 
-    # 느린 상세 한 건 때문에 먼저 받은 진료시간까지 버리지 않는다.
-    async def _load_details_with_deadline(self, candidates, detail_ids, deadline):
+    # 함수이름: _load_details_with_deadline
+    # 함수역할: 상세를 동시에 조회해 완료된 결과를 유지하고 마감 뒤 남은 작업을 취소·회수한다.
+    # 매개변수: candidates (목록)는 병원·거리 쌍, detail_ids (집합)는 상세 조회 허용 ID, deadline (단조 시각)은 루프 기준 마감이다.
+    # 반환값: 입력 순서의 상세·예외 목록. 미완료 건은 시간 초과 오류 객체이며 예상 밖 작업 오류는 전파한다.
+    async def _load_details_with_deadline(
+        self,
+        candidates: list[tuple[HospitalLocationRecord, float]],
+        detail_ids: set[str],
+        deadline: float,
+    ) -> list[HospitalDetails | HospitalApiUnavailableError | HospitalApiResponseError]:
         if not candidates:
             return []
         tasks = [asyncio.create_task(
@@ -304,19 +333,29 @@ class CheckNearbyHospital:
                     task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    # 코드가 없으면 명시된 진료과명만 정확히 비교하며 병원 이름은 추측하지 않는다.
+    # 함수이름: _matches_department
+    # 함수역할: 제공된 진료과 코드 또는 등록된 명칭을 정확히 비교하며 병원명에서 진료과를 추측하지 않는다.
+    # 매개변수: details (HospitalDetails)는 제공자 상세, department (str)는 요청 코드다.
+    # 반환값: bool. 코드나 허용 명칭이 일치할 때만 True다.
     @staticmethod
     def _matches_department(details: HospitalDetails, department: str) -> bool:
         return department in details.department_codes or bool(
             set(DEPARTMENT_NAMES.get(department, ())) & set(details.departments)
         )
 
-    # 불완전하거나 동일한 시작·종료 시각은 휴무나 24시간으로 추정하지 않는다.
+    # 함수이름: _hours
+    # 함수역할: 공통 시간표 해석기를 사용해 불완전하거나 동일한 시작·종료를 미확인으로 남긴다.
+    # 매개변수: values (tuple[str, str])는 원본 시작·종료 시각이다.
+    # 반환값: 자정 기준 분 단위 쌍, 해석할 수 없으면 (None, None)이다.
     @staticmethod
     def _hours(values: tuple[str, str]) -> tuple[int | None, int | None]:
         return parse_operating_hours(values)
 
-    # 선택일과 전날의 공휴일 운영표를 따로 선택해 자정 이월을 계산한다.
+    # Function Name: _present
+    # Description: Combines today's and yesterday's schedules, retaining unknown calendar or free-text exceptions instead of asserting open status.
+    # Parameters: record (HospitalLocationRecord), details (HospitalDetails) supply provider data; distance (float) is km; target (datetime) is local time;
+    #   today_holiday, previous_holiday (bool | None) distinguish known calendar dates from unverified ones.
+    # Returns: NearbyHospitalItem with hours, overnight status, close countdown and evidence source; unknown status remains None.
     @classmethod
     def _present(
         cls, record: HospitalLocationRecord, details: HospitalDetails,
@@ -368,7 +407,10 @@ class CheckNearbyHospital:
             ),
         )
 
-    # 주말·휴일 필터는 기존 화면처럼 선택한 날짜의 운영표를 기준으로 한다.
+    # 함수이름: _matches_mode
+    # 함수역할: 선택 모드에 맞는 확인된 운영 정보만 통과시키며 주말·공휴일은 선택일 기준으로 판단한다.
+    # 매개변수: item (NearbyHospitalItem)은 검색 결과, mode (HospitalSearchMode)는 필터, target (datetime)은 선택 시각이다.
+    # 반환값: bool. ALL은 항상 True, 다른 모드는 해당 운영 근거가 있을 때만 True다.
     @staticmethod
     def _matches_mode(item: NearbyHospitalItem, mode: HospitalSearchMode, target: datetime) -> bool:
         if mode == HospitalSearchMode.ALL:

@@ -20,15 +20,17 @@ import 'package:medbuddy_frontend/services/pharmacy_favorite_service.dart';
 import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
 
 // 클래스명: _DelayedFavorites
-// 역할: 즐겨찾기 저장 지연·거절·예외를 재현한다.
-// 주요 책임: 실제 기기 설정을 바꾸지 않고 요청 횟수와 완료 순서를 검사한다.
+// 역할: 즐겨찾기 초기 조회와 저장의 지연·거절·예외를 재현한다.
+// 주요 책임: 실제 기기 저장소 없이 요청 ID 사본을 기록하고 테스트가 각 비동기 결과를 완료하게 한다.
+// 속성: writes: 저장별 완료 신호; requestedIds: 저장 요청 ID 집합 사본; initialLoad: 선택적 초기 조회 완료 신호.
 class _DelayedFavorites extends PharmacyFavoriteService {
   final writes = <Completer<bool>>[];
   final requestedIds = <Set<String>>[];
   Completer<Set<String>>? initialLoad;
   // 함수이름: loadFavoriteIds
-  // 함수역할: 다른 약국의 기존 즐겨찾기를 시험 초기값으로 제공한다.
-  // 매개변수: 없음. 반환값: 기존 ID 집합.
+  // 함수역할: 초기 조회 신호가 있으면 기다리고 없으면 다른 약국의 기존 즐겨찾기를 제공한다.
+  // 매개변수: 없음.
+  // 반환값: Future<Set<String>>: 주입한 조회 결과 또는 existing ID 집합; 주입한 비동기 오류는 전파한다.
   @override
   Future<Set<String>> loadFavoriteIds() async =>
       initialLoad == null ? {'existing'} : await initialLoad!.future;
@@ -45,11 +47,9 @@ class _DelayedFavorites extends PharmacyFavoriteService {
 }
 
 // 클래스명: _FakeLocationBoundary
-// 역할: 위치 성공과 지정된 위치 오류를 선택할 수 있는 경계 대역.
-// 주요 책임:
-// - 오류가 주입되면 위치 예외를 발생시키고 아니면 고정 서울 좌표를 제공한다.
-// - 앱 권한 설정 화면을 실제로 열지 않고 이동 성공을 재현한다.
-// - 기기 위치 설정 화면을 실제로 열지 않고 이동 성공을 재현한다.
+// 역할: 현재 위치 성공·실패와 기기 설정 이동을 대신하는 위치 경계.
+// 주요 책임: 주입한 위치 오류를 던지거나 고정 서울 좌표를 반환하고 설정 이동은 실제 화면 없이 성공 처리한다.
+// 속성: failure (DeviceLocationFailure?): 재현할 위치 실패, null이면 좌표 조회 성공.
 class _FakeLocationBoundary implements DeviceLocationBoundary {
   final DeviceLocationFailure? failure;
 
@@ -98,19 +98,10 @@ class _FakeLocationBoundary implements DeviceLocationBoundary {
   Future<bool> openDeviceLocationSettings() async => true;
 }
 
-// 함수이름: _buildControl
-// 함수역할:
-// - 검색 모드별 응답·위치 오류·외부 앱·클립보드 동작을 주입한 약국 제어기를 구성한다.
-// 매개변수:
-// - failure (DeviceLocationFailure?): 재현할 선택적 위치 실패 유형.
-// - onRequest (VoidCallback?): 가로챈 약국 요청을 감시할 선택적 콜백.
-// - requestedModes (List<String?>?): 수신한 약국 검색 모드를 기록할 선택적 목록.
-// - emptyModes (Set<String>): 약국 없음 응답을 제공할 검색 모드 집합.
-// - customPharmacies (List<Map<String, Object?>>?): 기본 대역 대신 반환할 선택적 약국 데이터 행.
-// - uriLauncher (Future<bool> Function(Uri uri)?): 전화·길찾기 앱 실행을 대신할 선택적 함수.
-// - clipboardWriter (Future<void> Function(String text)?): 시스템 클립보드 쓰기를 대신할 선택적 콜백.
-// 반환값:
-// - 네트워크 없이 필터와 사용자 명령을 검사할 제어기.
+// Function Name: _buildControl
+// Description: Build a pharmacy controller with recorded search modes/times, configurable HTTP rows and holiday verification, and injectable external actions.
+// Parameters: failure (DeviceLocationFailure?): Location error; onRequest (VoidCallback?): Request observer; requestedModes (List<String?>?): Captured modes; requestedTimes (List<DateTime>?): Parsed target datetimes; beforeResponse (Future<void> Function()?): Response gate or injected failure; emptyModes (Set<String>): Modes returning no rows; holidayScheduleStatus (String): Calendar-verification status; customPharmacies (List<Map<String, Object?>>?): Row override; uriLauncher (Future<bool> Function(Uri)?): External-app substitute; clipboardWriter (Future<void> Function(String)?): Clipboard substitute.
+// Returns: CheckNearbyPharmacy: Mock-backed controller; callbacks may delay or fail requests, and the default URI launcher reports success without opening an app.
 CheckNearbyPharmacy _buildControl({
   DeviceLocationFailure? failure,
   VoidCallback? onRequest,
@@ -196,12 +187,9 @@ CheckNearbyPharmacy _buildControl({
 }
 
 // 함수이름: _testApp
-// 함수역할:
-// - 작은 화면과 1.6배 글씨, 테스트 지도 경계로 약국 화면을 감싼다.
-// 매개변수:
-// - control (CheckNearbyPharmacy): 테스트가 주입하고 수명을 관리하는 제어기.
-// 반환값:
-// - 약국 목록과 가짜 지도가 있는 MaterialApp.
+// 함수역할: 360x640 MediaQuery와 주입한 지도·시계·즐겨찾기를 사용해 약국 화면을 감싼다.
+// 매개변수: control (CheckNearbyPharmacy): 호출자가 수명을 관리할 제어기; clock (DateTime Function()?): 기준 시각; nativeMap (bool): 실제 지도 위젯 사용 여부; language (String): 표시 언어; textScale (double): 글자 배율; favoriteService (PharmacyFavoriteService?): 즐겨찾기 저장소 대역.
+// 반환값: Widget: 약국 화면을 담은 MaterialApp; 기본값은 1.6배 글씨와 버튼형 지도 대역이다.
 Widget _testApp(
   CheckNearbyPharmacy control, {
   DateTime Function()? clock,
@@ -227,22 +215,10 @@ Widget _testApp(
   );
 }
 
-// 함수이름: _buildTestMap
-// 함수역할:
-// - 외부 지도 대신 상태 문구와 가로로 나열한 약국 선택 버튼을 표시한다.
-// 매개변수:
-// - pharmacies (List<NearbyCarePlace>): 가짜 지도 마커로 표시할 약국 목록.
-// - selectedPharmacyId (String?): 현재 지도에서 초점을 맞춘 약국 식별자. 이 대역에서는 직접 사용하지 않는다.
-// - onPharmacySelected (ValueChanged<NearbyCarePlace>): 지도에서 고른 약국을 전달받을 처리기.
-// - onAttributionRequested (VoidCallback): 지도 출처 표시 요청 콜백. 이 대역에서는 직접 사용하지 않는다.
-// - statusText (String?): 대체 지도 위젯에 표시할 선택적 상태 문구.
-// - selectMarkerHint (String): 약국 마커 선택에 대한 접근성 힌트. 이 대역에서는 직접 사용하지 않는다.
-// - zoomInTooltip (String): 지도 생성 계약의 번역된 확대 안내 문구. 이 대역에서는 직접 사용하지 않는다.
-// - zoomOutTooltip (String): 지도 생성 계약의 번역된 축소 안내 문구. 이 대역에서는 직접 사용하지 않는다.
-// - configurationUnavailableText (String): 지도 계약이 전달하는 설정 누락 안내 문구. 이 대역에서는 직접 사용하지 않는다.
-// - unavailableText (String): 지도 데이터를 사용할 수 없을 때의 대체 문구. 이 대역에서는 직접 사용하지 않는다.
-// 반환값:
-// - 높이 80의 지도 대체 위젯.
+// Function Name: _buildTestMap
+// Description: Render an 80-pixel map substitute with optional status text and horizontal pharmacy buttons that forward selections.
+// Parameters: searchArea (NearbyCareSearchArea), centerRevision (int), isSearching (bool): Accepted map state, unused here; onSearchAreaRequested (Future<bool> Function(NearbyCareSearchArea)), onCurrentLocationRequested (VoidCallback): Unused search actions; pharmacies (List<NearbyCarePlace>): Button data; selectedPharmacyId (String?): Unused focus ID; onPharmacySelected (ValueChanged<NearbyCarePlace>): Invoked by a button; onAttributionRequested (VoidCallback): Unused attribution action; statusText (String?): Optional visible status; selectMarkerHint, zoomInTooltip, zoomOutTooltip, configurationUnavailableText, unavailableText (String): Accepted but unused localized map labels.
+// Returns: Widget: Fixed-height status/selection layout with no native map or network access.
 Widget _buildTestMap({
   required NearbyCareSearchArea searchArea,
   required int centerRevision,
@@ -304,7 +280,10 @@ Widget _buildTestMap({
   );
 }
 
-// 조회 조건 초안은 스크롤로 선택한 뒤 적용해야 실제 지도 검색에 반영된다.
+// 함수이름: _applySearchFilter
+// 함수역할: 조회 조건 초안을 스크롤해 선택한 뒤 적용 버튼으로 실제 검색에 반영한다.
+// 매개변수: tester (WidgetTester): 화면 제어기; option (String): pharmacy-filter-option 키에 넣을 검색 조건.
+// 반환값: Future<void>: 선택·적용과 결과 화면 안정화 완료.
 Future<void> _applySearchFilter(WidgetTester tester, String option) async {
   final target = find.byKey(ValueKey('pharmacy-filter-option-$option'));
   await tester.ensureVisible(target);
@@ -316,13 +295,19 @@ Future<void> _applySearchFilter(WidgetTester tester, String option) async {
 }
 
 // 함수이름: main
-// 함수역할: 약국 필터, 지도 선택, 위치 오류와 새로고침 제한 검증 사례를 등록한다.
+// 함수역할: 약국 검색 초안, 위치·지도, 즐겨찾기, 외부 앱 및 화면 수명 회귀 테스트를 등록한다.
+// 매개변수: 없음.
+// 반환값: void: 테스트 등록만 수행하며 검증은 각 콜백에서 실행한다.
 void main() {
   // 함수이름: setUp 콜백
   // 함수역할: 즐겨찾기 저장소를 격리한다. 매개변수: 없음. 반환값: 없음.
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   for (final apply in [false, true]) {
+    // 함수이름: testWidgets: 'rapid filter and date drafts send only the final choice: $apply'
+    // 함수역할: 필터와 날짜 초안을 연속 변경한 뒤 적용 또는 닫기를 선택하고 지연 응답을 해제한다.
+    // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+    // 반환값: 반환값 없음; 적용 전에는 최초 요청뿐이고 적용 시 최종 all·9월 29일 정오만 추가 요청하며 대기 중 선택 버튼은 비활성화된다.
     testWidgets(
       'rapid filter and date drafts send only the final choice: $apply',
       (tester) async {
@@ -387,6 +372,10 @@ void main() {
   }
 
   for (final fail in [false, true]) {
+    // 함수이름: testWidgets: 'late pharmacy search is inert after disposal: $fail'
+    // 함수역할: 최초 검색 응답을 보류한 채 화면을 제거하고 성공 또는 오류로 완료한다.
+    // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+    // 반환값: 반환값 없음; 검색은 한 번뿐이며 해제된 화면에 대한 예외가 발생하지 않는다.
     testWidgets('late pharmacy search is inert after disposal: $fail', (
       tester,
     ) async {
@@ -413,6 +402,10 @@ void main() {
   }
 
   for (final apply in [false, true]) {
+    // 함수이름: testWidgets: 'conditions double dismissal keeps the nearby route: $apply'
+    // 함수역할: 이전 화면 위에 약국을 열고 조건 변경 후 적용 또는 닫기를 연속 두 번 누른다.
+    // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+    // 반환값: 반환값 없음; 약국 경로가 남아 뒤로 이동할 수 있고 적용한 경우에만 all 검색이 추가된다.
     testWidgets('conditions double dismissal keeps the nearby route: $apply', (
       tester,
     ) async {
@@ -459,6 +452,10 @@ void main() {
     });
   }
 
+  // 함수이름: testWidgets: 'conditions rapid opening creates only one sheet'
+  // 함수역할: 지도 조건 버튼을 프레임 갱신 전에 두 번 누르고 열린 시트를 닫는다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 숨겨진 경로까지 포함해 BottomSheet는 하나이며 닫은 뒤 남지 않는다.
   testWidgets('conditions rapid opening creates only one sheet', (
     tester,
   ) async {
@@ -477,6 +474,10 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  // 함수이름: testWidgets: 'conditions rapid date opening creates only one calendar'
+  // 함수역할: 조건에서 전체 약국을 선택하고 날짜 버튼을 빠르게 두 번 누른다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 숨겨진 경로까지 포함해 달력 대화상자가 하나만 열린다.
   testWidgets('conditions rapid date opening creates only one calendar', (
     tester,
   ) async {
@@ -502,6 +503,10 @@ void main() {
 
   for (final dispose in [false, true]) {
     for (final installed in [false, true]) {
+      // 함수이름: testWidgets: 'late directions failure starts no fallback after leaving: dispose=$dispose installed=$installed'
+      // 함수역할: 설치 앱 또는 Google Maps 실행을 보류한 채 약국 화면을 해제하거나 다른 경로로 덮고 실패 응답을 완료한다.
+      // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+      // 반환값: 반환값 없음; 외부 실행은 최초 한 번뿐이고 주소 복사 등 후속 대체 동작이나 위젯 예외가 없다.
       testWidgets(
         'late directions failure starts no fallback after leaving: dispose=$dispose installed=$installed',
         (tester) async {
@@ -561,7 +566,10 @@ void main() {
   }
 
   for (final language in ['ko', 'en']) {
-    // 약국도 날짜를 조회 조건 안에만 표시하며 취소·적용·재진입 동안 값을 정확히 유지한다.
+    // 함수이름: testWidgets: 'pharmacy date lives inside conditions in $language'
+    // 함수역할: 한국어·영어의 작은 화면에서 조건 내부 날짜를 9월 30일로 바꾸고 적용·재진입·달력 취소를 수행한다.
+    // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+    // 반환값: 반환값 없음; 적용 시 정오 기준 요청만 추가되고 값이 유지되며 지도 높이·외부 날짜 표시와 중복 요청이 바뀌지 않는다.
     testWidgets('pharmacy date lives inside conditions in $language', (
       tester,
     ) async {
@@ -1090,9 +1098,10 @@ void main() {
     expect(map.centerRevision, revision);
   });
 
-  // 함수이름: 상세창 드래그 재구성 범위 테스트
-  // 함수역할: 상세창을 드래그할 때 지도 여백만 갱신하고 화면 상단은 다시 만들지 않는지 검증한다.
-  // 매개변수: tester: 위젯 제어기. 반환값: 비동기 검증 완료.
+  // Function Name: testWidgets: 'details sheet drag updates the map inset without a rebuild of ' 'the header'
+  // Description: Collapse an open pharmacy detail sheet by dragging while retaining the header widget instance.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; the map inset shrinks to the sheet height within 0.1 pixels, the header is identical, and no widget exception occurs.
   testWidgets('details sheet drag updates the map inset without a rebuild of '
       'the header', (tester) async {
     await tester.pumpWidget(_testApp(_buildControl(), nativeMap: true));
@@ -1260,9 +1269,10 @@ void main() {
     });
   }
 
-  // 함수이름: 정보창 채팅 공유 테스트
-  // 함수역할: 선택 모드의 전화 확인 상태와 약국이 상세창에서 호출자에게 반환되는지 검증한다.
-  // 매개변수: tester: 위젯 제어기. 반환값: 비동기 검증 완료.
+  // Function Name: testWidgets: 'detail sheet preserves the pharmacy chat-sharing result'
+  // Description: Open pharmacy selection, verify the phone checkbox, and share from the detail sheet after making its action reachable.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; the caller receives pharmacy open with phoneVerified true, the title is not duplicated, and navigation returns to the caller.
   testWidgets('detail sheet preserves the pharmacy chat-sharing result', (
     tester,
   ) async {
@@ -1330,6 +1340,10 @@ void main() {
     expect(find.text('open selection'), findsOneWidget);
   });
 
+  // Function Name: testWidgets: 'device dot stays at the fix when the search area moves'
+  // Description: Move the map search area after obtaining a device coordinate.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; the search longitude changes to the requested center while the device-location object remains the same.
   testWidgets('device dot stays at the fix when the search area moves', (
     tester,
   ) async {
@@ -1353,9 +1367,10 @@ void main() {
   });
 
   for (final language in ['ko', 'en']) {
-    // 함수이름: 거리 안내 자동 숨김 테스트
-    // 함수역할: 4초 뒤 지도 높이가 늘어나고 이후 지역 검색에서 안내가 반복되지 않는지 확인한다.
-    // 매개변수: tester: 화면·시간 제어기. 반환값: 비동기 검증 완료.
+    // Function Name: testWidgets: 'map distance guide expires once and frees map space: $language'
+    // Description: Search a map area in each language, wait three then one second, and search again.
+    // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+    // Returns: No value; the distance guide expires at four seconds, increases map height without replacing the map or center, and does not repeat.
     testWidgets(
       'map distance guide expires once and frees map space: $language',
       (tester) async {
@@ -1409,9 +1424,10 @@ void main() {
     );
   }
 
-  // 함수이름: 거리 안내 타이머 수명 테스트
-  // 함수역할: 안내 중 화면을 닫으면 타이머를 취소하고 종료된 화면을 갱신하지 않는지 확인한다.
-  // 매개변수: tester: 화면·시간 제어기. 반환값: 비동기 검증 완료.
+  // Function Name: testWidgets: 'closing the pharmacy screen cancels the distance guide timer'
+  // Description: Start the distance-guide timer with a map-area search, dispose the screen, then advance five seconds.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; no delayed update accesses the disposed widget.
   testWidgets('closing the pharmacy screen cancels the distance guide timer', (
     tester,
   ) async {
@@ -1434,9 +1450,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 함수이름: 거리 안내와 검색 오류 분리 테스트
-  // 함수역할: 거리 안내 표시 시간이 지나도 이후 검색 실패 안내는 유지되는지 확인한다.
-  // 매개변수: tester: 화면·시간 제어기. 반환값: 비동기 검증 완료.
+  // Function Name: testWidgets: 'search failure notice survives the distance guide timeout'
+  // Description: Show the map-area guide, inject a subsequent search failure, then advance beyond the guide timeout.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; the search-failure notice remains visible after five seconds without a widget exception.
   testWidgets('search failure notice survives the distance guide timeout', (
     tester,
   ) async {
@@ -1469,6 +1486,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets: 'fallback search never pretends to be the device position'
+  // 함수역할: 위치 서비스 중단 상태로 실제 지도 위젯을 표시하고 안내 시간을 넘긴다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 검색 영역은 대체 위치이고 기기 좌표는 null이며 홍익대 기준 안내가 유지된다.
   testWidgets('fallback search never pretends to be the device position', (
     tester,
   ) async {
@@ -1486,6 +1507,10 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     expect(find.text('위치를 확인하지 못해 홍익대학교 서울캠퍼스 기준으로 검색했어요.'), findsOneWidget);
   });
+  // 함수이름: testWidgets: 'stale background resume refreshes once; brief inactive does not'
+  // 함수역할: 짧은 inactive 전환, 10초 백그라운드, 2분 백그라운드 복귀와 반복 resumed 이벤트를 차례로 보낸다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 오래된 결과만 현재 시각으로 한 번 새로 조회하고 반복 복귀·화면 제거 뒤 이벤트는 추가 오류를 내지 않는다.
   testWidgets(
     'stale background resume refreshes once; brief inactive does not',
     (tester) async {
@@ -1521,6 +1546,10 @@ void main() {
     },
   );
 
+  // 함수이름: testWidgets: 'resume queues one fresh search behind an in-flight old request'
+  // 함수역할: 자정 직전 첫 검색을 보류하고 백그라운드에서 20초 경과 후 복귀한 뒤 기존 응답을 완료한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 기존 요청 중에는 겹쳐 조회하지 않고 완료 후 새 날짜·시각으로 한 번만 추가 검색한다.
   testWidgets(
     'resume queues one fresh search behind an in-flight old request',
     (tester) async {
@@ -1554,6 +1583,10 @@ void main() {
     },
   );
 
+  // 함수이름: testWidgets: 'filter search advances past midnight and labels reference time'
+  // 함수역할: 첫 검색 후 시계를 다음 날 00:50으로 바꾸고 늦게까지 영업 조건을 적용한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 요청은 갱신된 시각을 사용하고 조회 시각 기준 영업·조회일을 표시하되 별도 날짜 줄이나 현재 영업 중 문구는 보이지 않는다.
   testWidgets(
     'filter search advances past midnight and labels reference time',
     (tester) async {
@@ -1583,13 +1616,10 @@ void main() {
     },
   );
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 지도 설정 누락과 약국 좌표 누락을 서로 다르게 안내한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // Function Name: testWidgets: '지도 설정 누락과 약국 좌표 누락을 서로 다르게 안내한다'
+  // Description: Mount the native map with a pharmacy that has coordinates but without map configuration.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; the missing-configuration message appears, the missing-coordinates message does not, and rendering has no exception.
   testWidgets('지도 설정 누락과 약국 좌표 누락을 서로 다르게 안내한다', (tester) async {
     const pharmacy = NearbyCarePlace(
       placeId: 'configured-location',
@@ -1648,13 +1678,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 영업 중 약국을 우선 표시하고 필터에 따라 영업 종료 약국을 제외하는지 검증한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // 함수이름: testWidgets: 'map filters update pins without opening the pharmacy list'
+  // 함수역할: 목록을 열지 않은 상태에서 지도 필터를 늦은 영업·주말/공휴일·전체·영업 중 순서로 적용한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 동일 지도에서 전체일 때만 종료 약국 마커가 보이고 요청 모드가 순서대로 기록되며 목록을 연 뒤에는 목록의 조건 버튼을 사용한다.
   testWidgets('map filters update pins without opening the pharmacy list', (
     tester,
   ) async {
@@ -1756,6 +1783,10 @@ void main() {
     },
   );
 
+  // 함수이름: testWidgets: 'shows open pharmacies first and filters closed pharmacies'
+  // 함수역할: 기본 지도에서 목록을 열고 닫아 상태를 유지한 뒤 전체 약국과 영업 중 필터를 번갈아 적용한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 기본에는 영업 중 약국만 보이고 전체에서 종료 약국이 추가되며 단순 목록 전환은 재조회나 지도 교체를 만들지 않는다.
   testWidgets('shows open pharmacies first and filters closed pharmacies', (
     tester,
   ) async {
@@ -1844,13 +1875,10 @@ void main() {
     expect(find.byKey(const ValueKey('pharmacy-card-closed')), findsNothing);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 영업 중 약국에서 늦게까지 운영하는 결과를 먼저 표시한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // 함수이름: testWidgets: '영업 중 약국에서 늦게까지 운영하는 결과를 먼저 표시한다'
+  // 함수역할: 거리 0.1km의 일반 영업 약국과 0.8km의 늦게까지 영업 약국을 함께 반환한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 두 마커가 존재하고 늦게까지 영업하는 약국이 가로 목록에서 먼저 표시되며 화면 예외가 없다.
   testWidgets('영업 중 약국에서 늦게까지 운영하는 결과를 먼저 표시한다', (tester) async {
     await tester.pumpWidget(
       _testApp(
@@ -1901,13 +1929,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 약국 카드 선택이 지도 선택 표시와 일치하는지 검증한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // Function Name: testWidgets: 'selecting a pharmacy card updates the map focus state'
+  // Description: Open the list and select the open pharmacy while the map-selection hint is visible.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; selecting the card clears the map hint without producing a widget exception.
   testWidgets('selecting a pharmacy card updates the map focus state', (
     tester,
   ) async {
@@ -1936,6 +1961,10 @@ void main() {
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   for (final fromDetails in [false, true]) {
+    // 함수이름: testWidgets: '길찾기 연속 선택과 외부 앱 복귀가 약국 화면을 닫지 않는다: $fromDetails'
+    // 함수역할: 목록 또는 상세창에서 길찾기 실행을 연속 선택한 뒤 앱 paused·resumed를 재현한다.
+    // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+    // 반환값: 반환값 없음; 외부 앱 실행은 한 번이며 약국 경로와 원래 목록·상세창이 유지되고 이전 홈으로 돌아가지 않는다.
     testWidgets('길찾기 연속 선택과 외부 앱 복귀가 약국 화면을 닫지 않는다: $fromDetails', (
       tester,
     ) async {
@@ -2004,6 +2033,10 @@ void main() {
     });
   }
 
+  // 함수이름: testWidgets: '길찾기는 실행 방법을 묻고 주소 복사를 지원한다'
+  // 함수역할: 약국 길찾기 메뉴의 설치 앱·Google Maps·주소 복사 선택지를 확인하고 복사를 선택한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 서울특별시 종로구가 복사되고 성공 안내가 표시되며 위젯 예외가 없다.
   testWidgets('길찾기는 실행 방법을 묻고 주소 복사를 지원한다', (tester) async {
     String? copiedAddress;
     await tester.pumpWidget(

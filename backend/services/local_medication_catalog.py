@@ -44,16 +44,11 @@ SUMMARY_FAILURE_PLACEHOLDER = "요약 실패"
 PARTIAL_SUMMARY_RETRY_AFTER = timedelta(hours=24)
 
 
-# 클래스명: LocalMedicationCatalog
-# 역할:
-# - 로컬 약품 카탈로그에서 이름이 일치하는 기본 정보와 허가 정보 요약을 조회한다.
-# 주요 책임:
-# - 기본·허가 카탈로그 후보의 이름 신뢰도를 비교하고 저장 요약을 재사용하거나 새 요약을 보관한다.
-# 속성:
-# - db (Session | None): 현재 작업에 사용할 SQLAlchemy 세션.
-# - summary_generator (MedicationSummaryGenerator): 상세 허가 문서의 AI 요약 생성기.
-# Note: File-backed catalog reads and conditional summary writes own Engine-bound worker sessions.
-# Connection-local in-memory SQLite retains only the read fallback; its optional summary writes are skipped.
+# Class Name: LocalMedicationCatalog
+# Role: Finds trusted local basic/approval products and reuses or refreshes approval summaries.
+# Responsibilities: Prioritizes basic matches, bounds fuzzy candidates and conditionally caches successful summaries without borrowing request sessions across threads.
+# Attributes: db (Session | None), summary_generator and name_matcher supply lookup/summary behavior; _worker_session_factory and _uses_memory_sqlite select session policy.
+# Note: File-backed work owns Engine-bound worker sessions; connection-local in-memory SQLite keeps the read fallback and skips optional summary writes.
 class LocalMedicationCatalog:
     _FUZZY_ANCHOR_LENGTH = 3
     _FUZZY_CANDIDATE_LIMIT = 30
@@ -61,15 +56,10 @@ class LocalMedicationCatalog:
     # write gives up after this wait instead of holding a worker thread behind it.
     _SUMMARY_WRITE_LOCK_TIMEOUT_SQL = "SELECT set_config('lock_timeout', '2s', true)"
 
-    # 함수이름: __init__
-    # 함수역할:
-    # - 약품 조회 세션, 이름 일치 판정기와 허가 문서 요약기를 연결한다.
-    # 매개변수:
-    # - db (Session | None): 현재 작업에 사용할 SQLAlchemy 세션.
-    # - summary_generator (MedicationSummaryGenerator): 상세 허가 문서의 AI 요약 생성기.
-    # - name_matcher (MedicationNameMatcher | None): 약품명 유사도 점수 계산과 신뢰도 필터.
-    # 반환값:
-    # - 없음.
+    # Function Name: __init__
+    # Description: Binds catalog, summary and name-matching collaborators and derives an engine-owned worker session policy.
+    # Parameters: db (Session | None) may disable local lookup; summary_generator builds approval summaries; name_matcher optionally overrides the default matcher.
+    # Returns: None; no catalog query or summary generation occurs here.
     def __init__(
         self,
         db: Session | None,
@@ -112,14 +102,10 @@ class LocalMedicationCatalog:
             self._build_approval_detail(drug_name, item) for item in approval_items
         )
 
-    # 함수이름: _search_catalog
-    # 함수역할:
-    # - 로컬 카탈로그 조회를 이벤트 루프 밖의 독립 DB 세션에서 처리한다.
-    # - 연결별 DB가 분리되는 인메모리 SQLite에서는 현재 테스트 세션을 사용한다.
-    # 매개변수:
-    # - drug_name (str): 검색 또는 직렬화할 약품명.
-    # 반환값:
-    # - 이름 신뢰도 기준을 통과한 기본 카탈로그 행과 허가 카탈로그 행의 쌍.
+    # Function Name: _search_catalog
+    # Description: Finds basic matches first and reads approval candidates only when none exist; uses a worker session except for connection-local in-memory SQLite.
+    # Parameters: drug_name (str) is the search label.
+    # Returns: (basic rows, approval rows), both empty without a database; query failures propagate.
     async def _search_catalog(
         self,
         drug_name: str,
@@ -134,13 +120,10 @@ class LocalMedicationCatalog:
             drug_name,
         )
 
-    # 함수이름: _search_catalog_with_isolated_session
-    # 함수역할:
-    # - 작업 스레드 안에서 별도 세션을 만들고 기본·허가 카탈로그를 순서대로 조회한다.
-    # 매개변수:
-    # - drug_name (str): 검색 또는 직렬화할 약품명.
-    # 반환값:
-    # - 독립 세션에서 읽은 기본·허가 카탈로그 후보 목록의 쌍.
+    # Function Name: _search_catalog_with_isolated_session
+    # Description: Opens a worker-owned session, searches basic then approval rows and always closes that session.
+    # Parameters: drug_name (str) is the search label.
+    # Returns: Candidate-list pair, empty when no worker factory exists; database errors propagate.
     def _search_catalog_with_isolated_session(
         self,
         drug_name: str,
@@ -159,14 +142,10 @@ class LocalMedicationCatalog:
         finally:
             worker_db.close()
 
-    # 함수이름: _search_basic
-    # 함수역할:
-    # - 로컬 e약은요 DB에서 완전 일치를 우선 조회하고 유사 후보를 점수화한다.
-    # 매개변수:
-    # - drug_name (str): OCR 보정 검색어
-    # - limit (int): 반환할 최대 후보 수
-    # 반환값:
-    # - 이름 유사도 임계값을 통과한 e약은요 후보 목록
+    # Function Name: _search_basic
+    # Description: Prefers exact normalized basic-catalog names, otherwise ranks at most 30 fragment candidates against name/safety thresholds.
+    # Parameters: drug_name (str) is the query; limit (int) caps returned matches.
+    # Returns: Basic catalog rows, or an empty list for an empty normalized query/no suitable candidates; requires a bound session.
     def _search_basic(self, drug_name: str, limit: int = 3) -> list[_DrugBasicInfo]:
         keyword = normalize_catalog_item_name(drug_name)
         if not keyword:
@@ -194,14 +173,10 @@ class LocalMedicationCatalog:
             limit,
         )
 
-    # 함수이름: _search_approval
-    # 함수역할:
-    # - 로컬 허가정보 DB에서 완전 일치를 우선 조회하고 유사 후보를 점수화한다.
-    # 매개변수:
-    # - drug_name (str): OCR 보정 검색어
-    # - limit (int): 반환할 최대 후보 수
-    # 반환값:
-    # - 이름 유사도 임계값을 통과한 허가정보 후보 목록
+    # Function Name: _search_approval
+    # Description: Prefers exact normalized approval-catalog names, otherwise ranks at most 30 fragment candidates.
+    # Parameters: drug_name (str) is the query; limit (int) caps returned matches.
+    # Returns: Approval rows passing the lookup policy, or an empty list; requires a bound session and propagates query errors.
     def _search_approval(
         self,
         drug_name: str,
@@ -233,14 +208,10 @@ class LocalMedicationCatalog:
             limit,
         )
 
-    # 함수이름: _build_fuzzy_filter
-    # 함수역할:
-    # - 전체 검색어와 부분 앵커 중 하나를 포함하는 로컬 DB 조회 조건을 만든다.
-    # 매개변수:
-    # - model (type[_DrugBasicInfo] | type[_DrugApprovalInfo]): 조회할 로컬 약품 SQLAlchemy 모델
-    # - keyword (str): 공백을 제거한 검색어
-    # 반환값:
-    # - SQLAlchemy OR 검색 조건
+    # Function Name: _build_fuzzy_filter
+    # Description: Combines literal substring predicates for the full normalized query and its bounded anchors, escaping SQL LIKE metacharacters.
+    # Parameters: model is a basic/approval ORM type; keyword (str) is the normalized name.
+    # Returns: SQLAlchemy OR expression; does not execute a query.
     def _build_fuzzy_filter(
         self,
         model: type[_DrugBasicInfo] | type[_DrugApprovalInfo],
@@ -257,13 +228,10 @@ class LocalMedicationCatalog:
             )
         )
 
-    # 함수이름: _build_fuzzy_anchors
-    # 함수역할:
-    # - 한두 글자 OCR 오류가 있어도 후보를 찾도록 검색어 앞·중간·뒤 조각을 만든다.
-    # 매개변수:
-    # - keyword (str): 공백을 제거한 검색어
-    # 반환값:
-    # - 중복이 제거된 세 글자 검색 조각 목록
+    # Function Name: _build_fuzzy_anchors
+    # Description: Takes unique leading, middle and trailing three-character fragments for OCR-tolerant candidate retrieval.
+    # Parameters: keyword (str) is the normalized name.
+    # Returns: Ordered fragment list; names shorter than five characters yield no anchors.
     def _build_fuzzy_anchors(self, keyword: str) -> list[str]:
         if len(keyword) < self._FUZZY_ANCHOR_LENGTH + 2:
             return []
@@ -308,16 +276,10 @@ class LocalMedicationCatalog:
 
         return enriched_details
 
-    # 함수이름: _build_approval_detail
-    # 함수역할:
-    # - 저장된 허가 요약을 재사용하거나 원문을 AI로 요약한 뒤 결과를 캐시에 저장한다.
-    # - 원문이 있는데도 빠진 항목이 있는 저장 요약은 PARTIAL_SUMMARY_RETRY_AFTER가 지나면 다시 요약한다.
-    #   다시 요약하지 못하면 저장된 요약을 그대로 돌려주고, 새 요약에서 빠진 항목은 저장된 문구를 유지한다.
-    # 매개변수:
-    # - drug_name (str): 검색 또는 직렬화할 약품명.
-    # - approval_item (_DrugApprovalInfo): 원문 문서와 선택적 생성 요약을 가진 저장된 허가 정보 행.
-    # 반환값:
-    # - 로컬 허가 자료 출처를 표시한 약품 상세 정보.
+    # Function Name: _build_approval_detail
+    # Description: Reuses stored summaries unless a partial result is due for retry; new summaries preserve previously known fields omitted by the provider.
+    # Parameters: drug_name (str) is the search label; approval_item (_DrugApprovalInfo) holds source documents and optional summary.
+    # Returns: MedicationDetail with local approval provenance; on refresh failure, reuses/re-saves an available partial summary to restart its retry window, otherwise propagates the failure.
     async def _build_approval_detail(
         self,
         drug_name: str,

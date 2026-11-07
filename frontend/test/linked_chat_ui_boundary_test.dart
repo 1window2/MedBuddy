@@ -1,7 +1,8 @@
 // 파일명: linked_chat_ui_boundary_test.dart
-// 역할: 채팅 화면의 재전송 중복 방지와 큰 글씨 레이아웃을 검증한다.
+// 역할: 채팅의 재전송·첨부·공유 화면 이동, 연동 종료·지연 응답과 큰 글씨 레이아웃을 검증한다.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/linked_chat_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/medication_search_ui_boundary.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 import 'package:medbuddy_frontend/widgets/chat_date_divider.dart';
 import 'package:medbuddy_frontend/boundaries/medication_history_ui_boundary.dart';
@@ -28,23 +30,44 @@ import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
 import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/dose_sync_harness.dart';
+import 'medication_history_fixtures.dart';
 
 // 클래스명: _RetryChatControl
-// 역할: 첫 전송 실패, 재시도 식별자와 선택 복약 문맥을 기록하는 채팅 대역.
+// 역할: 채팅 조회·전송·읽음 처리의 응답과 실패 시점을 제어하는 대역.
 // 주요 책임:
-// - 네트워크 조회 대신 주입한 채팅 이력을 제공한다.
-// - 아침 약과 저녁 약 두 개를 채팅 선택 대상으로 제공한다.
-// - 시간대별 진행 카드에 사용할 지정 일정 문맥을 제공한다.
+// - 요청 인자를 기록하고 페이지·지연 응답을 주입하여 재시도, 첨부, 공유 및 경합을 검증한다.
 // 속성:
-// - failFirstSend (bool): 재시도 검사를 위해 첫 채팅 전송만 실패시킬지 여부.
-// - sendAttempts (int): 같은 메시지 재시도를 포함한 채팅 전송 횟수.
-// - detailRequests (int): 채팅에서 시작한 약 상세조회 횟수.
+// - clientMessageIds (List<String>): 시도별 클라이언트 메시지 ID.
+// - primaryMedicationIds (List<int?>): 시도별 대표 약 ID.
+// - medicationIdGroups (List<List<int>>): 시도별 저장 약 ID의 불변 복사본.
+// - referenceGroups (List<List<ChatMedicationReference>>): 시도별 약 참조의 불변 복사본.
+// - messageKinds (List<ChatMessageKind>): 시도별 메시지 유형.
+// - slotKeys (List<String?>): 시도별 복약 시간대.
+// - hospitalIds (List<String?>): 시도별 병원 ID.
+// - pharmacyIds (List<String?>): 시도별 약국 ID.
+// - hospitalDates (List<String?>): 시도별 병원 일정 날짜.
+// - failFirstSend (bool): 첫 전송만 실패시킬지 여부.
+// - failSends (bool): 모든 전송을 실패시킬지 여부.
+// - scheduleContexts (List<ChatScheduleContext>): 조회에 반환할 일정 문맥.
+// - historyMessages (List<ChatMessage>): 기본 이력과 미확인 요약의 원본.
+// - sendAttempts (int): 실패를 포함한 전송 횟수.
+// - detailRequests (int): 약 상세 조회 횟수.
+// - historyRequests (int): 실패를 포함한 이력 조회 횟수.
+// - failHistory (bool): 이력 조회를 StateError로 실패시킬지 여부.
+// - historyGate (Completer<List<ChatMessage>>?): 페이지 대역이 없을 때 이력 응답을 보류하는 완료자.
+// - detailGate (Completer<MedicationDetail>?): 약 상세 응답을 보류하는 완료자.
+// - historyPages (Map<int?, List<ChatMessage>>?): 이전 메시지 커서별 응답.
+// - historyBoundaries (List<int?>): 실패하지 않은 이력 요청의 커서 기록.
+// - markedReadIds (List<int>): 읽음 요청의 마지막 메시지 ID 기록.
+// - unreadSummary (ChatUnreadSummary?): 이력 집계 대신 반환할 입장 시 미확인 요약.
 class _RetryChatControl extends ManageLinkedChat {
   final List<String> clientMessageIds = [];
   final List<int?> primaryMedicationIds = [];
   final List<List<int>> medicationIdGroups = [];
+  final List<List<ChatMedicationReference>> referenceGroups = [];
   final List<ChatMessageKind> messageKinds = [];
   final List<String?> slotKeys = [];
   final List<String?> hospitalIds = [];
@@ -59,12 +82,19 @@ class _RetryChatControl extends ManageLinkedChat {
   int historyRequests = 0;
   bool failHistory = false;
   Completer<List<ChatMessage>>? historyGate;
+  Completer<MedicationDetail>? detailGate;
   Map<int?, List<ChatMessage>>? historyPages;
   final historyBoundaries = <int?>[];
   final markedReadIds = <int>[];
   ChatUnreadSummary? unreadSummary;
 
-  // 실제 읽음 집계 없이 입장 직전 미확인 경계를 주입한다.
+  // 함수이름: requestUnreadSummary
+  // 함수역할:
+  // - 지정된 요약을 우선 반환하며, 없으면 이력에서 patient-a 이외 발신자의 미확인·미삭제 메시지를 집계한다.
+  // 매개변수:
+  // - linkId (int): 인터페이스의 연동 ID이며 이 대역의 집계에는 사용하지 않는다.
+  // 반환값:
+  // - Future<ChatUnreadSummary>; 미확인 수와 이력 순서상 첫 ID 또는 null.
   @override
   Future<ChatUnreadSummary> requestUnreadSummary({required int linkId}) async {
     if (unreadSummary != null) return unreadSummary!;
@@ -84,13 +114,13 @@ class _RetryChatControl extends ManageLinkedChat {
 
   // 함수이름: _RetryChatControl
   // 함수역할:
-  // - 초기 채팅 이력·일정 문맥·첫 전송 실패 조건을 보관한다.
+  // - patient-a 계정의 빈 HTTP 응답 클라이언트를 구성하고 기본 이력·일정·첫 전송 실패 조건을 보관한다.
   // 매개변수:
-  // - failFirstSend (bool): 재시도 검사를 위해 첫 채팅 전송만 실패시킬지 여부.
-  // - scheduleContexts (List<ChatScheduleContext>): 대화에 표시할 시간대별 복약 진행 카드.
-  // - historyMessages (List<ChatMessage>): 초기 또는 반복 조회에 제공할 채팅 기록.
+  // - failFirstSend (bool): 첫 전송 실패 여부이며 기본값은 true이다.
+  // - scheduleContexts (List<ChatScheduleContext>): 조회에 반환할 일정 문맥이며 기본값은 빈 목록이다.
+  // - historyMessages (List<ChatMessage>): 기본 이력과 미확인 집계 원본이며 기본값은 빈 목록이다.
   // 반환값:
-  // - 재전송과 빠른 답장을 검사할 채팅 대역.
+  // - _RetryChatControl; 요청과 실패 시점을 제어할 대역.
   _RetryChatControl({
     this.failFirstSend = true,
     this.scheduleContexts = const [],
@@ -109,13 +139,13 @@ class _RetryChatControl extends ManageLinkedChat {
 
   // 함수이름: requestHistory
   // 함수역할:
-  // - 네트워크 조회 대신 주입한 채팅 이력을 제공한다.
+  // - 조회 횟수를 늘리고 failHistory이면 StateError로 실패한다. 성공 요청의 커서를 기록하며 페이지 맵, 지연 응답, 기본 이력 순으로 결과를 선택한다.
   // 매개변수:
-  // - linkId (int): 대화를 구분하는 환자·보호자 연결 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - beforeMessageId (int?): 이 식별자보다 이전 기록을 가져오는 페이지 경계. 이 대역에서는 직접 사용하지 않는다.
-  // - limit (int): 요청할 채팅 기록의 최대 개수. 이 대역에서는 직접 사용하지 않는다.
+  // - linkId (int): 인터페이스의 연동 ID이며 응답 선택에는 사용하지 않는다.
+  // - beforeMessageId (int?): 페이지 맵 조회 키이며 null은 최신 페이지를 뜻한다.
+  // - limit (int): 기본값 50인 요청 한도이며 이 대역은 결과를 자르지 않는다.
   // 반환값:
-  // - 생성자에 지정한 메시지 목록.
+  // - Future<List<ChatMessage>>; 선택한 페이지나 이력이며 없는 페이지는 빈 목록이다.
   @override
   Future<List<ChatMessage>> requestHistory({
     required int linkId,
@@ -131,11 +161,11 @@ class _RetryChatControl extends ManageLinkedChat {
 
   // 함수이름: requestMedicationContexts
   // 함수역할:
-  // - 아침 약과 저녁 약 두 개를 채팅 선택 대상으로 제공한다.
+  // - 복용량과 시간대가 다른 아침 약 91번과 저녁 약 92번을 고정 선택 대상으로 제공한다.
   // 매개변수:
-  // - linkId (int): 대화를 구분하는 환자·보호자 연결 식별자. 이 대역에서는 직접 사용하지 않는다.
+  // - linkId (int): 인터페이스의 연동 ID이며 고정 응답에는 사용하지 않는다.
   // 반환값:
-  // - 서로 다른 시간대와 복용량을 가진 두 약의 문맥.
+  // - Future<List<ChatMedicationContext>>; 아침 1정과 저녁 0.5정의 약 문맥.
   @override
   Future<List<ChatMedicationContext>> requestMedicationContexts({
     required int linkId,
@@ -156,11 +186,11 @@ class _RetryChatControl extends ManageLinkedChat {
 
   // 함수이름: requestScheduleContexts
   // 함수역할:
-  // - 시간대별 진행 카드에 사용할 지정 일정 문맥을 제공한다.
+  // - 화면의 복약 진행 카드에 사용할 지정 일정 문맥을 그대로 제공한다.
   // 매개변수:
-  // - linkId (int): 대화를 구분하는 환자·보호자 연결 식별자. 이 대역에서는 직접 사용하지 않는다.
+  // - linkId (int): 인터페이스의 연동 ID이며 응답에는 사용하지 않는다.
   // 반환값:
-  // - 생성자에 지정한 일정 문맥 목록.
+  // - Future<List<ChatScheduleContext>>; 생성자에 전달한 scheduleContexts.
   @override
   Future<List<ChatScheduleContext>> requestScheduleContexts({
     required int linkId,
@@ -168,18 +198,19 @@ class _RetryChatControl extends ManageLinkedChat {
 
   // 함수이름: requestMedicationDetail
   // 함수역할:
-  // - 상세조회 횟수를 기록하고 식별자에 맞는 아침 또는 저녁 약 정보를 제공한다.
+  // - 상세 조회 횟수를 늘리고 detailGate가 있으면 그 결과를 기다린다. 없으면 92번은 저녁 약, 그 외에는 아침 약 설명을 반환한다.
   // 매개변수:
-  // - linkId (int): 대화를 구분하는 환자·보호자 연결 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - medicationId (int): 선택한 저장 약 식별자.
+  // - linkId (int): 인터페이스의 연동 ID이며 상세 생성에는 사용하지 않는다.
+  // - medicationId (int): 반환할 약 ID와 이름·복용량을 선택할 식별자.
   // 반환값:
-  // - 지정 약 식별자와 대응 복용량이 있는 상세정보.
+  // - Future<MedicationDetail>; 지정 ID의 상세 또는 완료자가 전달한 결과·오류.
   @override
   Future<MedicationDetail> requestMedicationDetail({
     required int linkId,
     required int medicationId,
   }) async {
     detailRequests += 1;
+    if (detailGate != null) return detailGate!.future;
     return MedicationDetail(
       id: medicationId,
       itemName: medicationId == 92 ? '저녁정' : '테스트정',
@@ -192,18 +223,24 @@ class _RetryChatControl extends ManageLinkedChat {
 
   // 함수이름: sendMessage
   // 함수역할:
-  // - 요청 식별자·약 목록·메시지 유형을 기록하고 필요 시 첫 전송만 실패시켜 재시도를 재현한다.
+  // - 전송 인자를 기록한 뒤 설정에 따라 StateError로 실패한다. 성공 시 선택 약 문맥과 참조를 담은 고정 ID의 환자 메시지를 반환한다.
   // 매개변수:
-  // - linkId (int): 대화를 구분하는 환자·보호자 연결 식별자.
-  // - clientMessageId (String): 채팅 재전송에도 유지할 요청 식별자.
-  // - body (String): 호출자가 전달한 알림 또는 메시지 본문.
-  // - medicationId (int?): 선택한 저장 약 식별자.
-  // - medicationIds (List<int>): 채팅 메시지에 함께 첨부한 약 식별자 목록.
-  // - messageKind (ChatMessageKind): 일반 텍스트 또는 복약 문맥 메시지 유형.
-  // - slotKey (String?): 아침·점심·저녁·취침 전 등을 구분하는 복약 시간대 키.
-  // - pharmacyId (String?): 채팅 인터페이스의 선택적 약국 문맥 식별자. 이 대역에서는 직접 사용하지 않는다.
+  // - sourceAlertId (int?): 원본 알림 ID이며 이 대역에서는 사용하지 않는다.
+  // - linkId (int): 응답 메시지의 연동 ID.
+  // - clientMessageId (String): 재시도 동일성을 검사할 요청 ID.
+  // - body (String): 응답 메시지에 그대로 담을 본문.
+  // - medicationId (int?): 기록할 대표 저장 약 ID.
+  // - medicationIds (List<int>): 기록하고 약 문맥으로 변환할 ID 목록이며 기본값은 빈 목록이다.
+  // - medicationReferences (List<ChatMedicationReference>): 기록하고 응답에 포함할 약 참조이며 기본값은 빈 목록이다.
+  // - messageKind (ChatMessageKind): 기록 및 응답에 사용할 유형이며 기본값은 text이다.
+  // - slotKey (String?): 기록할 복약 시간대.
+  // - pharmacyId (String?): 기록할 약국 ID.
+  // - hospitalId (String?): 기록할 병원 ID.
+  // - hospitalScheduleDate (String?): 기록할 병원 일정 날짜.
+  // - historyStartDate (String?): 이력 공유 시작일이며 이 대역에서는 사용하지 않는다.
+  // - historyEndDate (String?): 이력 공유 종료일이며 이 대역에서는 사용하지 않는다.
   // 반환값:
-  // - 성공 시 선택 약 문맥이 포함된 메시지; 첫 실패 조건이면 StateError.
+  // - Future<ChatMessage>; 약 문맥·참조를 포함한 메시지 또는 설정된 전송 오류.
   @override
   Future<ChatMessage> sendMessage({
     int? sourceAlertId,
@@ -212,6 +249,7 @@ class _RetryChatControl extends ManageLinkedChat {
     required String body,
     int? medicationId,
     List<int> medicationIds = const [],
+    List<ChatMedicationReference> medicationReferences = const [],
     ChatMessageKind messageKind = ChatMessageKind.text,
     String? slotKey,
     String? pharmacyId,
@@ -224,6 +262,7 @@ class _RetryChatControl extends ManageLinkedChat {
     clientMessageIds.add(clientMessageId);
     primaryMedicationIds.add(medicationId);
     medicationIdGroups.add(List<int>.unmodifiable(medicationIds));
+    referenceGroups.add(List.unmodifiable(medicationReferences));
     messageKinds.add(messageKind);
     slotKeys.add(slotKey);
     hospitalIds.add(hospitalId);
@@ -258,17 +297,18 @@ class _RetryChatControl extends ManageLinkedChat {
       messageKind: messageKind,
       medicationContext: contexts.isEmpty ? null : contexts.first,
       medicationContexts: contexts,
+      medicationReferences: medicationReferences,
     );
   }
 
   // 함수이름: markRead
   // 함수역할:
-  // - 읽음 요청을 외부 서버로 보내지 않고 성공 처리해 화면 테스트를 격리한다.
+  // - 서버 호출 없이 마지막 읽음 메시지 ID를 기록하여 중복 읽음 처리 여부를 검사할 수 있게 한다.
   // 매개변수:
-  // - linkId (int): 대화를 구분하는 환자·보호자 연결 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - throughMessageId (int): 읽음 처리에 포함할 마지막 수신 메시지 식별자. 이 대역에서는 직접 사용하지 않는다.
+  // - linkId (int): 인터페이스의 연동 ID이며 이 대역에서는 사용하지 않는다.
+  // - throughMessageId (int): 읽음 처리 범위의 마지막 ID로 기록할 값.
   // 반환값:
-  // - 읽음 처리 모의 완료.
+  // - Future<void>; ID 기록 후 완료한다.
   @override
   Future<void> markRead({
     required int linkId,
@@ -278,11 +318,16 @@ class _RetryChatControl extends ManageLinkedChat {
   }
 }
 
-// 명시적 복용 확인 요청만 기록하고 일반 메시지 전송과 구분하는 대역.
 // 클래스명: _TakenChatControl
-// 역할: 기기 전송 대기열이 없을 때만 쓰이는 채팅 복용 확인 요청의 대상과 식별자를 수집한다.
-// 주요 책임: 대기열 경로에서는 이 요청이 전혀 나가지 않았음을 확인할 근거를 제공한다.
-// 속성: takenRequestIds·takenMedicationIds·takenSlotKeys: 수집 요청, saveGate: 응답 제어.
+// 역할: 전송 대기열이 없을 때 사용하는 채팅 복용 확인 API의 대역.
+// 주요 책임:
+// - 복용 확인 대상과 요청 ID를 수집하고 저장 완료를 지연할 수 있다.
+// 속성:
+// - takenRequestIds (List<String>): 복용 확인 요청 ID 기록.
+// - takenMedicationIds (List<List<int>>): 요청별 선택 약 목록.
+// - takenSlotKeys (List<String>): 요청별 복약 시간대.
+// - multiSlotMedication (bool): 91번 약을 아침·저녁 복용으로 노출할지 여부.
+// - saveGate (Completer<void>?): 복용 확인 응답을 보류할 완료자.
 class _TakenChatControl extends _RetryChatControl {
   final List<String> takenRequestIds = [];
   final List<List<int>> takenMedicationIds = [];
@@ -291,8 +336,14 @@ class _TakenChatControl extends _RetryChatControl {
   final Completer<void>? saveGate;
 
   // 함수이름: _TakenChatControl
-  // 함수역할: 초기 일정과 지연 조건을 지정해 복용 확인 대역을 만든다.
-  // 매개변수: multiSlotMedication: 다중 시간대 약, saveGate: 저장 대기, contexts: 일정 문맥. 반환값: 복용 확인 테스트 대역.
+  // 함수역할:
+  // - 일반 전송 실패를 끄고 지정 일정 또는 아침 약 두 건의 기본 일정으로 복용 확인 대역을 생성한다.
+  // 매개변수:
+  // - multiSlotMedication (bool): 91번 약의 아침·저녁 시간대 노출 여부이며 기본값은 false이다.
+  // - saveGate (Completer<void>?): 복용 확인 응답을 보류할 선택적 완료자.
+  // - contexts (List<ChatScheduleContext>?): 사용할 일정 문맥이며 null이면 2026-09-21 아침 기본 일정을 쓴다.
+  // 반환값:
+  // - _TakenChatControl; 복용 확인 요청을 기록할 대역.
   _TakenChatControl({
     this.multiSlotMedication = false,
     this.saveGate,
@@ -326,8 +377,12 @@ class _TakenChatControl extends _RetryChatControl {
        );
 
   // 함수이름: requestMedicationContexts
-  // 함수역할: 다중 시간대 설정이면 같은 약에 아침·저녁 시간대를 제공해 선택 범위 보존을 검사한다.
-  // 매개변수: linkId: 조회할 연동 식별자. 반환값: 채팅에서 선택할 약 문맥 목록 Future.
+  // 함수역할:
+  // - 부모의 약 문맥을 가져오고 다중 시간대 설정이 켜진 경우에만 91번 약의 시간대를 아침·저녁으로 확장한다.
+  // 매개변수:
+  // - linkId (int): 부모 조회에 전달할 연동 ID.
+  // 반환값:
+  // - Future<List<ChatMedicationContext>>; 선택 범위 검사용 약 문맥.
   @override
   Future<List<ChatMedicationContext>> requestMedicationContexts({
     required int linkId,
@@ -343,8 +398,16 @@ class _TakenChatControl extends _RetryChatControl {
   }
 
   // 함수이름: recordMedicationTaken
-  // 함수역할: 원래 날짜를 확인하고 요청·약·시간대를 수집하며 지정한 대기 후 완료 응답을 제공한다.
-  // 매개변수: linkId: 연동, clientMessageId: 요청 식별자, scheduleDate: 기준일, slotKey: 시간대, medicationIds: 선택 약. 반환값: 확인 메시지와 갱신 일정 Future.
+  // 함수역할:
+  // - 기준 날짜가 2026-09-21인지 검사하고 시간대·요청 ID·선택 약을 기록한다. 지정한 저장 대기 후 확인 메시지와 91번 약의 아침 완료 일정을 반환한다.
+  // 매개변수:
+  // - linkId (int): 반환 메시지의 연동 ID.
+  // - clientMessageId (String): 기록하고 응답에 사용할 복용 확인 요청 ID.
+  // - scheduleDate (String): 기대 기준일과 일치해야 하는 일정 날짜.
+  // - slotKey (String): 기록할 선택 시간대.
+  // - medicationIds (List<int>): 기록할 선택 약 목록.
+  // 반환값:
+  // - Future<ChatMedicationTakenResult>; 확인 메시지와 갱신된 일정이며 날짜 불일치 시 검증이 실패한다.
   @override
   Future<ChatMedicationTakenResult> recordMedicationTaken({
     required int linkId,
@@ -394,9 +457,13 @@ const List<MedicationSchedule> _cachedTwoSlotSchedule = [
   ),
 ];
 
-// 함수이름: _attachChatDoseSync
-// 함수역할: main.dart와 같은 방식으로 실제 DoseSyncService와 전송 대기열을 환자 ViewModel에 붙이고 오늘 일정 캐시를 채운다.
-// 매개변수: schedules: 서버에서 받은 것으로 저장할 오늘 일정. 반환값: 대기열 기록과 업로드를 확인할 하네스.
+// Function Name: _attachChatDoseSync
+// Description:
+// - Attaches the production dose-sync service and outbox to a patient view model, then seeds its schedule cache at the fixed test clock.
+// Parameters:
+// - schedules (List<MedicationSchedule>): cached schedules; defaults to one medication with morning and evening slots.
+// Returns:
+// - Future<DoseSyncHarness>; the attached harness after seeding completes.
 Future<DoseSyncHarness> _attachChatDoseSync([
   List<MedicationSchedule> schedules = _cachedTwoSlotSchedule,
 ]) async {
@@ -412,9 +479,17 @@ Future<DoseSyncHarness> _attachChatDoseSync([
   return harness;
 }
 
-// 함수이름: _pumpPatientChat
-// 함수역할: 전송 대기열이 붙은 ViewModel 아래에 환자 채팅 화면을 표시한다.
-// 매개변수: tester: 화면 도구, harness: 대기열 하네스, control·realtime: 채팅 대역, mediaQuery: 선택적 화면 조건. 반환값: 첫 조회까지 끝난 뒤 완료.
+// Function Name: _pumpPatientChat
+// Description:
+// - Mounts patient chat under the dose-sync view model and settles initial loading, optionally applying explicit display constraints.
+// Parameters:
+// - tester (WidgetTester): mounts and settles the widget tree.
+// - harness (DoseSyncHarness): supplies the patient view model and outbox.
+// - control (ManageLinkedChat): chat request provider.
+// - realtime (LinkedChatRealtimeService): event and connection-state provider.
+// - mediaQuery (MediaQueryData?): optional screen and text-scaling configuration.
+// Returns:
+// - Future<void>; completes when initial frames settle.
 Future<void> _pumpPatientChat(
   WidgetTester tester,
   DoseSyncHarness harness, {
@@ -443,8 +518,13 @@ Future<void> _pumpPatientChat(
 }
 
 // 함수이름: _selectDoseSlots
-// 함수역할: 약 선택 화면에서 91번 약의 지정 시간대를 고르고 확인한다.
-// 매개변수: tester: 화면 도구, slots: 선택할 시간대 키. 반환값: 채팅으로 돌아온 뒤 완료.
+// 함수역할:
+// - 채팅의 약 선택 화면에서 91번 약의 지정 시간대들을 눌러 선택하고 확인하여 채팅으로 돌아온다.
+// 매개변수:
+// - tester (WidgetTester): 메뉴·선택 화면의 입력과 애니메이션을 처리한다.
+// - slots (List<String>): 91번 약에서 누를 시간대 키 목록.
+// 반환값:
+// - Future<void>; 선택 확인 후 화면이 안정되면 완료한다.
 Future<void> _selectDoseSlots(WidgetTester tester, List<String> slots) async {
   await tester.tap(find.byKey(const ValueKey('chatActions')));
   await tester.pumpAndSettle();
@@ -465,18 +545,29 @@ Future<void> _selectDoseSlots(WidgetTester tester, List<String> slots) async {
   await tester.pumpAndSettle();
 }
 
-// 함수이름: _tapTaken
-// 함수역할: 빠른 답장의 "먹었어요"를 눌러 선택한 복용을 기록하게 한다.
-// 매개변수: tester: 화면 도구. 반환값: 기록과 화면 갱신이 끝난 뒤 완료.
+// Function Name: _tapTaken
+// Description:
+// - Reveals and taps the taken quick reply, then settles the dose recording and resulting frames.
+// Parameters:
+// - tester (WidgetTester): finds, reveals, and taps the quick reply.
+// Returns:
+// - Future<void>; completes after the resulting frames settle.
 Future<void> _tapTaken(WidgetTester tester) async {
   await tester.ensureVisible(find.widgetWithText(ActionChip, '먹었어요'));
   await tester.tap(find.widgetWithText(ActionChip, '먹었어요'));
   await tester.pumpAndSettle();
 }
 
-// 함수이름: _closeChat
-// 함수역할: 화면을 내리고 채팅 대역과 대기열 하네스를 테스트 본문 안에서 정리한다(재시도 타이머가 남지 않게 한다).
-// 매개변수: tester: 화면 도구, harness: 대기열 하네스, control·realtime: 채팅 대역. 반환값: 정리 완료.
+// Function Name: _closeChat
+// Description:
+// - Unmounts chat and closes its realtime service, request control, and dose-sync harness before retry timers can outlive the test.
+// Parameters:
+// - tester (WidgetTester): replaces chat with an empty widget.
+// - harness (DoseSyncHarness): owns the dose queue and sync resources to close.
+// - control (ManageLinkedChat): chat request control to dispose.
+// - realtime (_FakeRealtimeService): broadcast streams and authentication client to close.
+// Returns:
+// - Future<void>; completes after all listed resources close.
 Future<void> _closeChat(
   WidgetTester tester,
   DoseSyncHarness harness, {
@@ -490,17 +581,19 @@ Future<void> _closeChat(
 }
 
 // 클래스명: _ChatScheduleControl
-// 역할: 채팅 일정 카드가 이동할 저녁 복약 일정을 제공한다.
+// 역할: 채팅에서 이동한 복약 일정 화면에 저녁 약을 제공하는 대역.
 // 주요 책임:
-// - 채팅의 저녁 복약 카드가 이동할 일정 한 건을 제공한다.
+// - 서버 조회 대신 저녁 0.5정 일정 한 건을 반환한다.
+// 속성:
+// - 직접 선언한 속성 없음; CheckSchedule을 상속한다.
 class _ChatScheduleControl extends CheckSchedule {
   // 함수이름: requestTodayMedicationSchedule
   // 함수역할:
-  // - 채팅의 저녁 복약 카드가 이동할 일정 한 건을 제공한다.
+  // - 저녁 카드의 이동 대상을 확인할 수 있도록 저녁 전용 약 한 건을 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - 저녁에 반 단위 복용하는 일정.
+  // - Future<List<MedicationSchedule>>; evening-medication ID의 저녁 일정.
   @override
   Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
     return const [
@@ -517,27 +610,30 @@ class _ChatScheduleControl extends CheckSchedule {
 }
 
 // 클래스명: _ChatSetNotification
-// 역할: 채팅에서 일정 화면을 열 때 외부 알림 플러그인 없이 설정을 조회한다.
+// 역할: 채팅에서 일정 화면으로 이동할 때 사용할 빈 알림 설정 대역.
 // 주요 책임:
-// - 채팅에서 일정으로 이동할 때 플랫폼 알림 동기화를 유발하지 않는 빈 설정을 제공한다.
+// - 서버 조회 없이 알림 목록을 비워 테스트를 격리한다.
+// 속성:
+// - 직접 선언한 속성 없음; SetNotification을 상속한다.
 class _ChatSetNotification extends SetNotification {
   // 함수이름: requestMedicationAlarm
   // 함수역할:
-  // - 채팅에서 일정으로 이동할 때 플랫폼 알림 동기화를 유발하지 않는 빈 설정을 제공한다.
+  // - 실제 알림 설정 조회 없이 빈 목록을 반환한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - 빈 알림 목록.
+  // - Future<List<MedicationAlarm>>; 빈 알림 목록.
   @override
   Future<List<MedicationAlarm>> requestMedicationAlarm() async => const [];
 }
 
 // 클래스명: _FakeRealtimeService
-// 역할: 실제 WebSocket 없이 채팅 이벤트와 연결 상태 스트림을 제공하는 대역.
+// 역할: WebSocket 없이 메시지와 연결 상태를 주입하는 실시간 서비스 대역.
 // 주요 책임:
-// - 채팅 화면에 테스트가 주입할 메시지 이벤트를 노출한다.
-// - 연결·해제 상태를 채팅 화면에 전달할 스트림을 노출한다.
-// - 실제 연결 없이 연결됨 상태를 스트림에 전달한다.
+// - 방송 스트림으로 이벤트를 전달하고 시작·중지·정리 동작을 재현한다.
+// 속성:
+// - _events (StreamController<Map<String, dynamic>>): 직접 주입하는 메시지 이벤트 방송 스트림.
+// - _states (StreamController<LinkedChatConnectionState>): 연결 상태 방송 스트림.
 class _FakeRealtimeService extends LinkedChatRealtimeService {
   final StreamController<Map<String, dynamic>> _events =
       StreamController<Map<String, dynamic>>.broadcast();
@@ -546,11 +642,11 @@ class _FakeRealtimeService extends LinkedChatRealtimeService {
 
   // 함수이름: _FakeRealtimeService
   // 함수역할:
-  // - 고정 연결 범위와 자격 증명이 없는 로컬 인증 클라이언트를 구성한다.
+  // - 연동 17과 patient-a 계정에 대해 토큰이 없는 로컬 인증 클라이언트를 구성한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - 수동 이벤트 주입용 실시간 서비스 대역.
+  // - _FakeRealtimeService; 수동 이벤트 주입용 서비스.
   _FakeRealtimeService()
     : super(
         linkId: 17,
@@ -586,31 +682,31 @@ class _FakeRealtimeService extends LinkedChatRealtimeService {
 
   // 함수이름: events
   // 함수역할:
-  // - 채팅 화면에 테스트가 주입할 메시지 이벤트를 노출한다.
+  // - 테스트가 직접 주입한 메시지 이벤트를 여러 구독자에게 전달하는 스트림을 노출한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - 내부 이벤트 스트림.
+  // - Stream<Map<String, dynamic>>; _events의 방송 스트림.
   @override
   Stream<Map<String, dynamic>> get events => _events.stream;
 
   // 함수이름: states
   // 함수역할:
-  // - 연결·해제 상태를 채팅 화면에 전달할 스트림을 노출한다.
+  // - 테스트가 지정한 연결 상태를 구독할 수 있도록 방송 스트림을 노출한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - 내부 연결 상태 스트림.
+  // - Stream<LinkedChatConnectionState>; _states의 방송 스트림.
   @override
   Stream<LinkedChatConnectionState> get states => _states.stream;
 
   // 함수이름: start
   // 함수역할:
-  // - 실제 연결 없이 연결됨 상태를 스트림에 전달한다.
+  // - 실제 소켓을 열지 않고 connected 상태 이벤트를 발행한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - 연결 상태 이벤트 전송 완료.
+  // - Future<void>; 상태 이벤트를 추가한 뒤 완료한다.
   @override
   Future<void> start() async {
     _states.add(LinkedChatConnectionState.connected);
@@ -618,11 +714,11 @@ class _FakeRealtimeService extends LinkedChatRealtimeService {
 
   // 함수이름: stop
   // 함수역할:
-  // - 연결 해제 상태를 스트림에 전달한다.
+  // - 실제 소켓 작업 없이 disconnected 상태 이벤트를 발행한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - 해제 상태 이벤트 전송 완료.
+  // - Future<void>; 상태 이벤트를 추가한 뒤 완료한다.
   @override
   Future<void> stop() async {
     _states.add(LinkedChatConnectionState.disconnected);
@@ -630,11 +726,11 @@ class _FakeRealtimeService extends LinkedChatRealtimeService {
 
   // 함수이름: dispose
   // 함수역할:
-  // - 메시지·연결 상태 스트림과 인증 HTTP 클라이언트를 닫는다.
+  // - 메시지와 상태 스트림을 순서대로 닫고 인증 HTTP 클라이언트를 정리한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - 모든 테스트용 통신 자원 정리 완료.
+  // - Future<void>; 스트림 종료와 클라이언트 정리 후 완료한다.
   @override
   Future<void> dispose() async {
     await _events.close();
@@ -643,38 +739,60 @@ class _FakeRealtimeService extends LinkedChatRealtimeService {
   }
 }
 
-// 클래스명: _NoMedicationChatControl
-// 역할: 복용 중인 약이 없는 연동을 재현하는 대역.
-// 주요 책임:
-// - 채팅에 첨부할 약 문맥을 빈 목록으로 제공한다.
+// Class Name: _NoMedicationChatControl
+// Role: A chat control for a patient with no saved medications.
+// Responsibilities:
+// - Returns an empty attachment list while retaining normal chat behavior.
+// Attributes:
+// - No declared attributes; inherits request tracking from _RetryChatControl.
 class _NoMedicationChatControl extends _RetryChatControl {
-  // 함수이름: _NoMedicationChatControl
-  // 함수역할: 전송 실패 없이 기본 대역을 준비한다. 매개변수: 없음. 반환값: 대역.
+  // Function Name: _NoMedicationChatControl
+  // Description:
+  // - Creates a no-medication control with the initial-send failure disabled.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - _NoMedicationChatControl; a successful-send fake with no saved medications.
   _NoMedicationChatControl() : super(failFirstSend: false);
 
-  // 함수이름: requestMedicationContexts
-  // 함수역할: 복용 중인 약이 없다는 응답을 제공한다. 매개변수: linkId. 반환값: 빈 목록.
+  // Function Name: requestMedicationContexts
+  // Description:
+  // - Returns no saved medications regardless of the requested link.
+  // Parameters:
+  // - linkId (int): interface-compatible link identifier; unused by this fixed response.
+  // Returns:
+  // - Future<List<ChatMedicationContext>>; an empty list.
   @override
   Future<List<ChatMedicationContext>> requestMedicationContexts({
     required int linkId,
   }) async => const [];
 }
 
-// 클래스명: _GatedMedicationChatControl
-// 역할: 약 문맥 응답을 테스트가 정한 시점까지 붙잡아 두는 대역.
-// 주요 책임:
-// - 기능 메뉴를 연 뒤에 약 정보가 도착하는 순서를 재현한다.
-// 속성:
-// - gate (Completer<void>): 완료되면 약 문맥 응답을 돌려준다.
+// Class Name: _GatedMedicationChatControl
+// Role: A chat control that delays the medication attachment list.
+// Responsibilities:
+// - Releases the inherited list only after the test completes the gate.
+// Attributes:
+// - gate (Completer<void>): controls when medication loading can finish.
 class _GatedMedicationChatControl extends _RetryChatControl {
   final gate = Completer<void>();
 
-  // 함수이름: _GatedMedicationChatControl
-  // 함수역할: 전송 실패 없이 기본 대역을 준비한다. 매개변수: 없음. 반환값: 대역.
+  // Function Name: _GatedMedicationChatControl
+  // Description:
+  // - Creates a gated medication loader with the initial-send failure disabled.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - _GatedMedicationChatControl; a loader whose gate is initially pending.
   _GatedMedicationChatControl() : super(failFirstSend: false);
 
-  // 함수이름: requestMedicationContexts
-  // 함수역할: gate가 완료된 뒤 기본 약 문맥을 돌려준다. 매개변수: linkId. 반환값: 약 문맥.
+  // Function Name: requestMedicationContexts
+  // Description:
+  // - Waits for the gate, then delegates to the inherited medication list; a gate error propagates to the caller.
+  // Parameters:
+  // - linkId (int): forwarded to the inherited medication lookup.
+  // Returns:
+  // - Future<List<ChatMedicationContext>>; the default list after the gate opens.
   @override
   Future<List<ChatMedicationContext>> requestMedicationContexts({
     required int linkId,
@@ -685,11 +803,13 @@ class _GatedMedicationChatControl extends _RetryChatControl {
 }
 
 // 클래스명: _DeleteChatControl
-// 역할: 채팅 삭제 식별자와 범위를 기록하고 선택적으로 서버 실패를 재현하는 대역.
+// 역할: 메시지 삭제 대상과 범위를 기록하는 채팅 대역.
 // 주요 책임:
-// - 선택한 메시지 식별자와 삭제 범위를 기록하고 지정된 경우 오프라인 오류를 발생시킨다.
+// - 삭제 요청을 수집한 후 선택적으로 오프라인 오류를 발생시킨다.
 // 속성:
-// - failDeletion (bool): 메시지 삭제 실패를 주입할지 여부.
+// - failDeletion (bool): 삭제 요청 실패 여부.
+// - deletionIds (List<List<int>>): 요청별 삭제 메시지 ID 목록.
+// - deletionScopes (List<ChatDeletionScope>): 요청별 삭제 범위.
 class _DeleteChatControl extends _RetryChatControl {
   final bool failDeletion;
   final List<List<int>> deletionIds = [];
@@ -697,12 +817,12 @@ class _DeleteChatControl extends _RetryChatControl {
 
   // 함수이름: _DeleteChatControl
   // 함수역할:
-  // - 초기 채팅 이력과 삭제 실패 조건을 보관하고 전송 실패는 비활성화한다.
+  // - 지정 이력과 삭제 실패 조건을 보관하고 일반 메시지의 첫 전송 실패는 끈다.
   // 매개변수:
-  // - historyMessages (List<ChatMessage>): 초기 또는 반복 조회에 제공할 채팅 기록.
-  // - failDeletion (bool): 메시지 삭제 실패를 주입할지 여부.
+  // - historyMessages (List<ChatMessage>): 부모 대역에 전달할 초기 채팅 이력.
+  // - failDeletion (bool): 삭제를 StateError로 실패시킬지 여부이며 기본값은 false이다.
   // 반환값:
-  // - 삭제 흐름 전용 채팅 대역.
+  // - _DeleteChatControl; 삭제 요청 기록용 대역.
   _DeleteChatControl({
     required super.historyMessages,
     this.failDeletion = false,
@@ -710,13 +830,13 @@ class _DeleteChatControl extends _RetryChatControl {
 
   // 함수이름: deleteMessages
   // 함수역할:
-  // - 선택한 메시지 식별자와 삭제 범위를 기록하고 지정된 경우 오프라인 오류를 발생시킨다.
+  // - 삭제 ID와 범위를 기록하고 failDeletion이 켜져 있으면 StateError를 던진다. 이력 자체를 변경하지는 않는다.
   // 매개변수:
-  // - linkId (int): 대화를 구분하는 환자·보호자 연결 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - messageIds (List<int>): 명시적으로 선택한 삭제 대상 메시지 식별자.
-  // - scope (ChatDeletionScope): 나에게서 또는 모두에게서 삭제할 범위.
+  // - linkId (int): 인터페이스의 연동 ID이며 이 대역에서는 사용하지 않는다.
+  // - messageIds (List<int>): 기록할 삭제 대상 ID 목록.
+  // - scope (ChatDeletionScope): 기록할 개인 또는 전체 삭제 범위.
   // 반환값:
-  // - 성공 시 완료; 실패 주입 시 StateError.
+  // - Future<void>; 요청 기록 후 완료하거나 설정된 오류로 실패한다.
   @override
   Future<void> deleteMessages({
     required int linkId,
@@ -729,28 +849,33 @@ class _DeleteChatControl extends _RetryChatControl {
   }
 }
 
-// 클래스명: _RemovableLinkChatControl
-// 역할: 대화 도중 상대가 연동을 해제한 상황을 재현하는 채팅 대역.
-// 주요 책임: 연동이 해제된 뒤의 기록 조회를 서버와 같이 404로 거절한다.
-// 속성:
-// - linkRemoved (bool): 연동이 해제되었는지 여부.
+// Class Name: _RemovableLinkChatControl
+// Role: A chat control that simulates a link being removed during a conversation.
+// Responsibilities:
+// - Rejects subsequent history requests with HTTP 404 after removal.
+// Attributes:
+// - linkRemoved (bool): whether history access must be denied.
 class _RemovableLinkChatControl extends _DeleteChatControl {
   bool linkRemoved = false;
 
-  // 함수이름: _RemovableLinkChatControl
-  // 함수역할: 초기 채팅 이력을 보관한다.
-  // 매개변수:
-  // - historyMessages (List<ChatMessage>): 초기 또는 반복 조회에 제공할 채팅 기록.
-  // 반환값: 연동 해제 재현용 채팅 대역.
+  // Function Name: _RemovableLinkChatControl
+  // Description:
+  // - Creates a removable-link control with the supplied initial history.
+  // Parameters:
+  // - historyMessages (List<ChatMessage>): initial messages forwarded to the deletion-capable parent.
+  // Returns:
+  // - _RemovableLinkChatControl; initially permits history requests.
   _RemovableLinkChatControl({required super.historyMessages});
 
-  // 함수이름: requestHistory
-  // 함수역할: 연동이 해제되기 전에는 기록을 돌려주고, 해제된 뒤에는 404로 거절한다.
-  // 매개변수:
-  // - linkId (int): 대화를 구분하는 환자·보호자 연결 식별자.
-  // - beforeMessageId (int?): 이전 페이지의 기준 메시지.
-  // - limit (int): 한 번에 가져올 메시지 수.
-  // 반환값: 채팅 기록; 연동 해제 뒤에는 ApiRequestException(404).
+  // Function Name: requestHistory
+  // Description:
+  // - Throws ApiRequestException with status 404 for a removed link; otherwise delegates all paging arguments to the parent fake.
+  // Parameters:
+  // - linkId (int): link identifier forwarded to the parent.
+  // - beforeMessageId (int?): optional older-page cursor.
+  // - limit (int): requested page size, defaulting to 50.
+  // Returns:
+  // - Future<List<ChatMessage>>; inherited history or an access-denied error after removal.
   @override
   Future<List<ChatMessage>> requestHistory({
     required int linkId,
@@ -770,13 +895,13 @@ class _RemovableLinkChatControl extends _DeleteChatControl {
 
 // 함수이름: _deletionMessage
 // 함수역할:
-// - 발신자와 경과 시간을 지정한 메시지로 삭제 가능 조건을 재현한다.
+// - 발신자와 현재 시각 기준 경과 시간을 지정하여 삭제 가능 여부 검사용 메시지를 생성한다.
 // 매개변수:
-// - id (int): 약·메시지·알림 대역의 식별자.
-// - sender (String): 가상 메시지 작성자 식별자.
-// - hours (int): 가상 채팅 메시지 생성 후 경과 시간.
+// - id (int): 메시지 ID와 본문의 구분자이며 기본값은 1이다.
+// - sender (String): 발신자 해시이며 기본값은 patient-a이다.
+// - hours (int): 생성 시각을 현재 UTC보다 앞당길 시간 수이며 기본값은 1이다.
 // 반환값:
-// - 지정 시간만큼 과거에 생성된 채팅 메시지.
+// - ChatMessage; 연동 17의 지정 발신자·나이 메시지.
 ChatMessage _deletionMessage({
   int id = 1,
   String sender = 'patient-a',
@@ -790,6 +915,15 @@ ChatMessage _deletionMessage({
   createdAt: DateTime.now().toUtc().subtract(Duration(hours: hours)),
 );
 
+// 함수이름: _historyShareMessage
+// 함수역할:
+// - 오늘에서 지정 일수 이전에 끝나는 7일 이력 공유와 큰 집계 수를 만들어 공유 카드 표시를 검사한다.
+// 매개변수:
+// - sender (String): 카드 발신자이며 기본값은 patient-a이다.
+// - endDaysAgo (int): 오늘보다 공유 종료일을 앞당길 일수이며 기본값은 0이다.
+// - separate (bool): 정기·필요시 분리 집계를 추가할지 여부이며 false이면 구형 합계만 제공한다.
+// 반환값:
+// - ChatMessage; 고정 ID·생성 시각과 상대 날짜 범위를 가진 공유 메시지.
 ChatMessage _historyShareMessage({
   String sender = 'patient-a',
   int endDaysAgo = 0,
@@ -828,12 +962,452 @@ ChatMessage _historyShareMessage({
 
 // 함수이름: main
 // 함수역할:
-// - 복약 대화 삭제, 재시도 식별자, 빠른 답장과 복약 카드 이동 검증 사례와 테스트 대역을 등록한다.
+// - 채팅의 첨부·공유·복약 기록·삭제·읽음·연결 복구 및 늦은 응답에 대한 화면 경계 테스트를 등록한다.
 // 매개변수:
 // - 없음.
 // 반환값:
-// - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
+// - void; 반환값 없음.
 void main() {
+  for (final patient in [false, true]) {
+    for (final confirming in [false, true]) {
+      // 함수이름: 열린 공유 흐름에 연동 해제를 반영한다: $patient $confirming
+      // 함수역할:
+      // - 환자·보호자의 공유 메뉴 또는 장소 확인창을 연 뒤 이력 조회가 403으로 끝나면, 열린 흐름에서도 공유 동작을 막고 메시지를 보내지 않는지 검증한다.
+      // 매개변수:
+      // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+      // 반환값:
+      // - Future<void>; 비동기 검증 후 완료한다.
+      testWidgets('열린 공유 흐름에 연동 해제를 반영한다: $patient $confirming', (
+        tester,
+      ) async {
+        final control = _RetryChatControl(failFirstSend: false);
+        final realtime = _FakeRealtimeService();
+        addTearDown(control.dispose);
+        addTearDown(realtime.dispose);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: LinkedChatUI(
+              linkId: 17,
+              currentUserHash: patient ? 'patient-a' : 'caregiver-a',
+              patientHash: 'patient-a',
+              control: control,
+              realtimeService: realtime,
+              careSelectorBuilder: (_) => Scaffold(
+                body: Builder(
+                  builder: (context) => TextButton(
+                    onPressed: () => Navigator.pop(
+                      context,
+                      NearbyCareSelection(
+                        phoneVerified: false,
+                        place: NearbyCarePlace.fromJson({
+                          'pharmacy_id': 'test-place',
+                          'name': '시험 약국',
+                          'address': '서울',
+                          'latitude': 37.55,
+                          'longitude': 126.92,
+                        }),
+                      ),
+                    ),
+                    child: const Text('장소 선택'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final gate = Completer<List<ChatMessage>>();
+        control.historyGate = gate;
+        final previousRequests = control.historyRequests;
+        realtime._states.add(LinkedChatConnectionState.connected);
+        await tester.pump();
+        expect(control.historyRequests, greaterThan(previousRequests));
+        await tester.tap(find.byKey(const ValueKey('chatActions')));
+        await tester.pumpAndSettle();
+        if (confirming) {
+          await tester.tap(find.byKey(const ValueKey('chat-action-3')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('장소 선택'));
+          await tester.pumpAndSettle();
+        }
+        gate.completeError(ApiRequestException('Link ended', statusCode: 403));
+        await tester.pumpAndSettle();
+        if (confirming) {
+          await tester.tap(find.byKey(const ValueKey('confirmCareShare')));
+          await tester.pumpAndSettle();
+        } else {
+          for (final index in [0, 2, 3, 4, if (!patient) 1]) {
+            expect(
+              tester
+                  .widget<ListTile>(find.byKey(ValueKey('chat-action-$index')))
+                  .enabled,
+              isFalse,
+            );
+          }
+        }
+        expect(control.sendAttempts, 0);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+    }
+  }
+
+  for (final fails in [false, true]) {
+    // 함수이름: 가려진 채팅의 늦은 약 상세조회가 화면을 열지 않는다: $fails
+    // 함수역할:
+    // - 다른 화면에 가려진 채팅의 늦은 약 상세 성공·오류는 화면을 열지 않으며, 채팅 복귀 후 새 요청은 정상적으로 상세 화면을 여는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
+    testWidgets('가려진 채팅의 늦은 약 상세조회가 화면을 열지 않는다: $fails', (tester) async {
+      final control = _RetryChatControl(failFirstSend: false);
+      final realtime = _FakeRealtimeService();
+      addTearDown(control.dispose);
+      addTearDown(realtime.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LinkedChatUI(
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            control: control,
+            realtimeService: realtime,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _selectDoseSlots(tester, ['morning']);
+      final response = Completer<MedicationDetail>();
+      control.detailGate = response;
+      await tester.tap(find.text('테스트정'));
+      await tester.pump();
+      expect(control.detailRequests, 1);
+      final navigator = Navigator.of(tester.element(find.byType(LinkedChatUI)));
+      unawaited(
+        navigator.push<void>(
+          MaterialPageRoute(
+            builder: (_) => const Scaffold(body: Text('다른 화면')),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      if (fails) {
+        response.completeError(StateError('late detail failure'));
+      } else {
+        response.complete(
+          const MedicationDetail(
+            itemName: '테스트정',
+            efficacy: '',
+            usageMethod: '',
+            warning: '',
+          ),
+        );
+      }
+      await tester.pumpAndSettle();
+      expect(find.text('다른 화면'), findsOneWidget);
+      expect(find.text('약 상세정보'), findsNothing);
+      expect(tester.takeException(), isNull);
+      navigator.pop();
+      await tester.pumpAndSettle();
+      control.detailGate = null;
+      await tester.tap(find.text('테스트정'));
+      await tester.pumpAndSettle();
+      expect(control.detailRequests, 2);
+      expect(find.text('약 상세정보'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  for (final caregiver in [false, true]) {
+    // 함수이름: + 메뉴에서 현재 대화로 기록 공유 후 돌아온다: $caregiver
+    // 함수역할:
+    // - 환자·보호자가 현재 대화에 한정한 읽기 전용 이력 내보내기에서 명시적으로 공유하면 한 번만 전송하고, 공유 카드를 표시하며 작성 중인 초안을 유지하는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
+    testWidgets('+ 메뉴에서 현재 대화로 기록 공유 후 돌아온다: $caregiver', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final sender = caregiver ? 'caregiver-a' : 'patient-a';
+      final messages = <ChatMessage>[];
+      final control = _RetryChatControl(
+        failFirstSend: false,
+        historyMessages: messages,
+      );
+      final realtime = _FakeRealtimeService();
+      final posts = <Map<String, dynamic>>[];
+      await http.runWithClient(
+        () async {
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: MedBuddyTheme.light(),
+              home: LinkedChatUI(
+                linkId: 17,
+                currentUserHash: sender,
+                patientHash: 'patient-a',
+                control: control,
+                realtimeService: realtime,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.enterText(find.byType(TextField), '작성 중인 메시지');
+          await tester.pump();
+          await tester.tap(find.byKey(const Key('chatActions')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const Key('chat-action-4')));
+          await tester.pumpAndSettle();
+          final screen = tester.widget<MedicationHistoryUI>(
+            find.byType(MedicationHistoryUI),
+          );
+          expect(screen.patientHash, 'patient-a');
+          expect(screen.currentUserHash, sender);
+          expect(screen.chatLinkId, 17);
+          expect(screen.readOnly, isTrue);
+          expect(screen.initiallyShowExport, isTrue);
+          expect(posts, isEmpty);
+          await tester.tap(find.byKey(const Key('history-share-chat')));
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const Key('history-share-recipient-17')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const Key('history-share-recipient-18')),
+            findsNothing,
+          );
+          expect(posts, isEmpty);
+          await tester.tap(find.byKey(const Key('history-chat-send')));
+          await tester.pumpAndSettle();
+          expect(posts, hasLength(1));
+          expect(posts.single['message_kind'], 'medication_history_share');
+          expect(posts.single.containsKey('patient_hash'), isFalse);
+          expect(posts.single.containsKey('history_context'), isFalse);
+          expect(find.byType(MedicationHistoryUI), findsNothing);
+          expect(
+            find.byKey(const Key('chat-medication-history-card')),
+            findsOneWidget,
+          );
+          expect(
+            tester.widget<TextField>(find.byType(TextField)).controller!.text,
+            '작성 중인 메시지',
+          );
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+        () => MockClient((request) async {
+          if (request.url.path.endsWith('/link/list')) {
+            return historyTestResponse({
+              'data': [
+                for (final id in [17, 18])
+                  {
+                    'link_id': id,
+                    'patient_hash': 'patient-a',
+                    'caregiver_hash': 'caregiver-a',
+                    'link_status': true,
+                    'patient_alias': '환자',
+                    'caregiver_alias': '가족',
+                  },
+              ],
+            });
+          }
+          if (request.method == 'GET') {
+            expect(request.url.queryParameters['patient_hash'], 'patient-a');
+            return historyTestResponse(
+              historyTestBody(
+                start: request.url.queryParameters['start_date']!,
+                end: request.url.queryParameters['end_date']!,
+                items: [],
+              ),
+            );
+          }
+          expect(request.url.path, endsWith('/links/17/messages'));
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          posts.add(body);
+          final result = {
+            'message_id': 99,
+            'link_id': 17,
+            'sender_hash': sender,
+            'client_message_id': body['client_message_id'],
+            'body': body['body'],
+            'created_at': DateTime.now().toUtc().toIso8601String(),
+            'message_kind': 'medication_history_share',
+            'context': {
+              'history_context': {
+                'start_date': body['history_start_date'],
+                'end_date': body['history_end_date'],
+                'taken_count': 0,
+                'skipped_count': 0,
+                'unrecorded_count': 0,
+              },
+            },
+          };
+          messages.add(ChatMessage.fromJson(result));
+          return historyTestResponse({'success': true, 'data': result});
+        }),
+      );
+      await realtime.dispose();
+      control.dispose();
+    });
+  }
+
+  for (final cancelSearch in [false, true]) {
+    // 함수이름: 저장 약 없는 검색 첨부 취소는 초안을 바꾸지 않는다: $cancelSearch
+    // 함수역할:
+    // - 저장 약이 없는 상태에서 검색 자체 또는 검색 결과 첨부를 취소하면 선택 약이 남지 않고 초안과 전송 횟수가 바뀌지 않는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
+    testWidgets('저장 약 없는 검색 첨부 취소는 초안을 바꾸지 않는다: $cancelSearch', (tester) async {
+      final control = _NoMedicationChatControl();
+      final realtime = _FakeRealtimeService();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: MedBuddyTheme.light(),
+          home: LinkedChatUI(
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            control: control,
+            realtimeService: realtime,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '작성 중');
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('chatActions')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('chat-action-0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('chat-search-medication')));
+      await tester.pumpAndSettle();
+      Navigator.of(tester.element(find.byType(MedicationSearchUI))).pop(
+        cancelSearch
+            ? null
+            : const MedicationDetail(
+                itemSeq: '202600001',
+                itemName: '취소할 검색정',
+                efficacy: '',
+                usageMethod: '',
+                warning: '',
+              ),
+      );
+      await tester.pumpAndSettle();
+      if (cancelSearch) {
+        expect(
+          tester
+              .widget<FilledButton>(
+                find.byKey(const Key('scheduleMedicationSelectionConfirm')),
+              )
+              .onPressed,
+          isNull,
+        );
+      } else {
+        expect(find.text('취소할 검색정'), findsOneWidget);
+      }
+      Navigator.of(tester.element(find.byType(CheckScheduleUI))).pop();
+      await tester.pumpAndSettle();
+      expect(find.text('취소할 검색정'), findsNothing);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        '작성 중',
+      );
+      expect(control.sendAttempts, 0);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await realtime.dispose();
+      control.dispose();
+    });
+  }
+
+  for (final hasSaved in [false, true]) {
+    // 함수이름: 검색약은 저장 약과 분리해 첨부하고 복용 기록 없이 보낸다: $hasSaved
+    // 함수역할:
+    // - 검색 약 참조를 저장 약 ID와 구분해 첨부하고 복용 답장은 노출하지 않으며, 실패 후 같은 요청 ID로 시간대 없는 일반 메시지를 재전송하는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
+    testWidgets('검색약은 저장 약과 분리해 첨부하고 복용 기록 없이 보낸다: $hasSaved', (tester) async {
+      final control = hasSaved
+          ? _RetryChatControl(failFirstSend: false)
+          : _NoMedicationChatControl();
+      final realtime = _FakeRealtimeService();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: MedBuddyTheme.light(),
+          home: LinkedChatUI(
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            control: control,
+            realtimeService: realtime,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('chatActions')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('chat-action-4')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('chat-action-0')));
+      await tester.pumpAndSettle();
+      if (hasSaved) {
+        await tester.tap(
+          find.byKey(const Key('scheduleMedicationSelectionOption_morning_91')),
+        );
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.byKey(const Key('chat-search-medication')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<MedicationSearchUI>(find.byType(MedicationSearchUI))
+            .selectionMode,
+        isTrue,
+      );
+      Navigator.of(tester.element(find.byType(MedicationSearchUI))).pop(
+        const MedicationDetail(
+          itemSeq: '202600001',
+          itemName: '미등록 검색정',
+          efficacy: '',
+          usageMethod: '',
+          warning: '',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('미등록 검색정'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const Key('scheduleMedicationSelectionConfirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('미등록 검색정'), findsOneWidget);
+      expect(find.text('복용했어요'), findsNothing);
+      await tester.enterText(find.byType(TextField), '이 약에 대해 궁금해요.');
+      await tester.pump();
+      control.failSends = true;
+      await tester.tap(find.byKey(const Key('chatSendButton')));
+      await tester.pumpAndSettle();
+      expect(find.text('미등록 검색정'), findsOneWidget);
+      control.failSends = false;
+      await tester.tap(find.byKey(const Key('chatSendButton')));
+      await tester.pumpAndSettle();
+      expect(control.clientMessageIds[0], control.clientMessageIds[1]);
+      expect(control.referenceGroups.last.single.itemSeq, '202600001');
+      expect(control.medicationIdGroups.last, hasSaved ? [91] : isEmpty);
+      expect(control.slotKeys.last, isNull);
+      expect(control.messageKinds.last, ChatMessageKind.text);
+      expect(find.text('미등록 검색정'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await realtime.dispose();
+      control.dispose();
+    });
+  }
   for (final (hospital, language, status) in [
     (false, 'ko', 'before_open'),
     (false, 'en', 'closing_soon'),
@@ -841,6 +1415,13 @@ void main() {
     (true, 'en', 'open'),
     (true, 'en', 'closed'),
   ]) {
+    // 함수이름: shared place compact status and exact detail navigation $hospital/$language/$status
+    // 함수역할:
+    // - 병원·약국 공유 카드의 언어별 영업 상태, 전체 주소와 버튼 정렬을 확인하고, 현재 영업 여부를 추정하지 않은 동일 장소로 이동하되 삭제 후에는 이전 콜백도 차단하는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
     testWidgets(
       'shared place compact status and exact detail navigation $hospital/$language/$status',
       (tester) async {
@@ -1004,7 +1585,22 @@ void main() {
   }
 
   for (final language in ['ko', 'en']) {
+    // 함수이름: 같은 날 여러 메시지는 하나의 현지 날짜로 묶음 $language
+    // 함수역할:
+    // - 현지 자정을 경계로 메시지 세 건을 날짜 구분선 두 개로 묶고, 같은 날의 구분선과 요일을 언어에 맞춰 한 번만 표시하는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
     testWidgets('같은 날 여러 메시지는 하나의 현지 날짜로 묶음 $language', (tester) async {
+      // 함수이름: message
+      // 함수역할:
+      // - 날짜 구분선 검사용 환자 메시지를 만들면서 입력 시각을 UTC 저장 형식으로 변환한다.
+      // 매개변수:
+      // - id (int): 메시지 ID 및 본문·클라이언트 ID의 구분자.
+      // - time (DateTime): 현지 날짜 묶음을 확인할 생성 시각.
+      // 반환값:
+      // - ChatMessage; 지정 시각을 UTC로 담은 연동 17의 메시지.
       ChatMessage message(int id, DateTime time) => ChatMessage(
         messageId: id,
         linkId: 17,
@@ -1062,6 +1658,13 @@ void main() {
     });
 
     for (final mine in [true, false]) {
+      // 함수이름: copy preserves message text $language/$mine
+      // 함수역할:
+      // - 본인·상대 메시지의 본문과 메뉴 서체를 확인하고 한국어·영어 복사 메뉴가 선택 모드 없이 원문을 클립보드로 전달하는지 검증한다.
+      // 매개변수:
+      // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+      // 반환값:
+      // - Future<void>; 비동기 검증 후 완료한다.
       testWidgets('copy preserves message text $language/$mine', (
         tester,
       ) async {
@@ -1129,6 +1732,13 @@ void main() {
         control.dispose();
       });
 
+      // 함수이름: deleted bubble retains sender and disables copy $language/$mine
+      // 함수역할:
+      // - 삭제 메시지는 발신자별 색상·정렬과 기울임 안내를 유지하면서 본문과 복사 동작을 숨기고 선택 동작만 제공하는지 검증한다.
+      // 매개변수:
+      // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+      // 반환값:
+      // - Future<void>; 비동기 검증 후 완료한다.
       testWidgets(
         'deleted bubble retains sender and disables copy $language/$mine',
         (tester) async {
@@ -1187,6 +1797,13 @@ void main() {
     }
   }
 
+  // 함수이름: copy menu rechecks a message deleted while open
+  // 함수역할:
+  // - 복사 메뉴를 연 뒤 전체 삭제 이벤트가 도착하면 메뉴를 눌러도 삭제된 본문을 클립보드로 보내지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('copy menu rechecks a message deleted while open', (
     tester,
   ) async {
@@ -1242,6 +1859,13 @@ void main() {
       (false, true),
       (true, true),
     ]) {
+      // 함수이름: history card wraps large text $language/$mine/$separate
+      // 함수역할:
+      // - 좁은 큰 글씨 화면에서 언어·발신자·신구 집계 형식에 맞는 이력 요약과 비율을 표시하고, 공유 시각 중복·편집 제어 없이 카드가 배치되는지 검증한다.
+      // 매개변수:
+      // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+      // 반환값:
+      // - Future<void>; 비동기 검증 후 완료한다.
       testWidgets('history card wraps large text $language/$mine/$separate', (
         tester,
       ) async {
@@ -1334,7 +1958,13 @@ void main() {
     }
   }
 
-  // 90일 보관 기간이 지난 공유는 열면 실패할 화면 대신 만료 안내를 보인다.
+  // 함수이름: an expired history share explains why it cannot be opened
+  // 함수역할:
+  // - 조회 보존 기간을 벗어난 공유 이력에는 만료 이유를 표시하고 최신 기록 버튼과 카드의 화면 이동을 모두 막는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('an expired history share explains why it cannot be opened', (
     tester,
   ) async {
@@ -1376,7 +2006,13 @@ void main() {
     control.dispose();
   });
 
-  // 화면 전환과 동시에 채팅이 가려진 것으로 처리되어 두 번째 누름은 무시된다(회귀 방지).
+  // Function Name: a quick second tap on a history card opens one screen
+  // Description:
+  // - Checks that rapid repeated history-card taps push only one read-only screen, so one back navigation returns directly to chat even when the history request is denied.
+  // Parameters:
+  // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('a quick second tap on a history card opens one screen', (
     tester,
   ) async {
@@ -1420,6 +2056,13 @@ void main() {
   });
 
   for (final caregiver in [false, true]) {
+    // 함수이름: history card opens read-only shared range caregiver=$caregiver
+    // 함수역할:
+    // - 환자·보호자가 공유 카드를 열면 해당 환자와 공유 날짜 범위만 한 번 조회하고, 역할에 맞는 언어의 읽기 전용 화면을 사용하는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
     testWidgets(
       'history card opens read-only shared range caregiver=$caregiver',
       (tester) async {
@@ -1479,6 +2122,13 @@ void main() {
     );
   }
 
+  // 함수이름: revoked history card blocks both current and stale callbacks
+  // 함수역할:
+  // - 연동 해제 후 이력 카드·버튼을 비활성화하고 해제 전에 저장한 콜백으로도 이력 화면을 열 수 없는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('revoked history card blocks both current and stale callbacks', (
     tester,
   ) async {
@@ -1522,6 +2172,13 @@ void main() {
   });
 
   for (final scope in ['me', 'everyone']) {
+    // 함수이름: deleted history card cannot reopen from stale callback: $scope
+    // 함수역할:
+    // - 개인 또는 전체 삭제 이벤트로 공유 카드와 본문이 사라진 뒤 이전 콜백을 호출해도 이력 화면을 다시 열지 않는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
     testWidgets(
       'deleted history card cannot reopen from stale callback: $scope',
       (tester) async {
@@ -1569,6 +2226,13 @@ void main() {
     );
   }
 
+  // 함수이름: selection and replaced account block captured history navigation
+  // 함수역할:
+  // - 메시지 선택 모드와 계정 교체 후에는 이전 이력 열기 콜백을 호출해도 화면 이동이 발생하지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets(
     'selection and replaced account block captured history navigation',
     (tester) async {
@@ -1578,6 +2242,15 @@ void main() {
       final realtime = _FakeRealtimeService();
       final nextControl = _RetryChatControl();
       final nextRealtime = _FakeRealtimeService();
+      // 함수이름: app
+      // 함수역할:
+      // - 동일한 연동·환자에 사용자와 요청·이벤트 대역을 교체한 채팅 트리를 만든다.
+      // 매개변수:
+      // - user (String): 현재 접속 계정 해시.
+      // - chat (ManageLinkedChat): 해당 계정에서 사용할 요청 대역.
+      // - stream (LinkedChatRealtimeService): 해당 계정에서 사용할 실시간 이벤트 대역.
+      // 반환값:
+      // - Widget; 계정 교체 검사용 MaterialApp.
       Widget app(
         String user,
         ManageLinkedChat chat,
@@ -1617,6 +2290,13 @@ void main() {
     },
   );
 
+  // 함수이름: malformed history card retains body without a navigation action
+  // 함수역할:
+  // - 날짜가 없고 집계 값도 잘못된 이력 공유 문맥은 본문만 표시하며 이력 이동 버튼이나 화면 예외를 만들지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets(
     'malformed history card retains body without a navigation action',
     (tester) async {
@@ -1655,9 +2335,13 @@ void main() {
     },
   );
 
-  // 함수이름: 입력 갱신 회귀 테스트
-  // 함수역할: 입력 시 기존 목록·말풍선은 유지되고 전송 가능 여부만 바뀌는지 검사한다.
-  // 매개변수: tester: 위젯 테스트 도구. 반환값: 검증 완료.
+  // 함수이름: 입력만 바뀌면 메시지 목록을 다시 그리지 않는다
+  // 함수역할:
+  // - 입력 본문 변경 시 기존 채팅 세션·말풍선·목록을 다시 만들지 않고 전송 버튼 활성 상태만 올바르게 갱신하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('입력만 바뀌면 메시지 목록을 다시 그리지 않는다', (tester) async {
     final control = _RetryChatControl(
       historyMessages: [
@@ -1720,7 +2404,13 @@ void main() {
     control.dispose();
   });
 
-  // 발신 말풍선의 1은 상대 읽음 범위만큼 사라지고 오래된 조회가 복원하지 않는다.
+  // 함수이름: outgoing unread receipt clears on peer read and stays cleared
+  // 함수역할:
+  // - 상대 읽음 이벤트의 경계까지 본인 메시지의 미확인 표시를 제거하고, 재연결 이력이 이전 상태여도 표시를 되살리지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('outgoing unread receipt clears on peer read and stays cleared', (
     tester,
   ) async {
@@ -1774,7 +2464,13 @@ void main() {
     control.dispose();
   });
 
-  // 길이가 다른 긴 대화도 첫 진입과 화면 크기 변화 후 최신 메시지가 보인다.
+  // 함수이름: long variable-height history opens at latest and keeps unread boundary
+  // 함수역할:
+  // - 높이가 다른 긴 대화는 최신 메시지에서 열리고 화면 축소 후에도 위치를 유지하며, 과거 탐색 중 수신한 메시지는 최신 위치로 돌아온 뒤에만 읽음 처리하고 초안과 입장 경계를 보존하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets(
     'long variable-height history opens at latest and keeps unread boundary',
     (tester) async {
@@ -1882,7 +2578,13 @@ void main() {
     },
   );
 
-  // 미확인 시작이 최근 50개보다 앞서도 이전 대화를 열면 같은 경계가 나타난다.
+  // 함수이름: older history retains the entry unread boundary
+  // 함수역할:
+  // - 입장 시 미확인 경계가 이전 페이지에 있어도 더 오래된 이력을 불러오면 원래 경계를 표시하고 더 불러오기 버튼을 제거하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('older history retains the entry unread boundary', (
     tester,
   ) async {
@@ -1946,6 +2648,13 @@ void main() {
 
   for (final hospitals in [false, true]) {
     for (final confirm in [false, true]) {
+      // 함수이름: care share double dismissal keeps chat: hospital=$hospitals confirm=$confirm
+      // 함수역할:
+      // - 병원·약국 공유 확인창에서 확인 또는 취소를 연속 입력해도 채팅 경로와 초안을 보존하며, 확인한 경우에만 한 번 전송하는지 검증한다.
+      // 매개변수:
+      // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+      // 반환값:
+      // - Future<void>; 비동기 검증 후 완료한다.
       testWidgets(
         'care share double dismissal keeps chat: hospital=$hospitals confirm=$confirm',
         (tester) async {
@@ -2030,6 +2739,13 @@ void main() {
     }
   }
 
+  // 함수이름: care share rapid opening creates only one option sheet
+  // 함수역할:
+  // - 공유 메뉴를 빠르게 두 번 열어도 선택 시트는 하나만 생성되고 메시지는 전송되지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('care share rapid opening creates only one option sheet', (
     tester,
   ) async {
@@ -2063,9 +2779,13 @@ void main() {
     (hospitals: false, phoneVerified: false),
     (hospitals: false, phoneVerified: true),
   ]) {
-    // Function Name: provider-neutral care sharing retry test
-    // Description: Routes the same neutral place ID by explicit provider while retaining phone/date and retry identity.
-    // Parameters: tester: Widget test driver. Returns: Asynchronous assertions.
+    // 함수이름: care sharing confirms provider context and retries the same request: $mode
+    // 함수역할:
+    // - 병원·약국·전화 확인 약국의 공유 문맥을 확인 후 전송하고, 일반 메시지 실패가 끼어도 공유 재시도는 원래 요청 ID·장소·병원 날짜를 유지하는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
     testWidgets(
       'care sharing confirms provider context and retries the same request: $mode',
       (tester) async {
@@ -2186,9 +2906,13 @@ void main() {
     );
   }
 
-  // 함수이름: 약 사진 디코딩 크기 테스트
-  // 함수역할: 메시지에 첨부된 약 사진을 원본 해상도가 아니라 표시 크기(46dp)에 화면 배율을 곱한 폭으로 디코딩하는지 검증한다.
-  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // Function Name: medication thumbnails decode at display size
+  // Description:
+  // - Checks that a medication thumbnail is displayed at 46 logical pixels and uses ResizeImage with a decode width scaled to the device pixel ratio.
+  // Parameters:
+  // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('medication thumbnails decode at display size', (tester) async {
     const medication = ChatMedicationContext(
       medicationId: 91,
@@ -2240,11 +2964,17 @@ void main() {
     control.dispose();
   });
 
-  // 약 부족·불편 안내에서는 메시지의 모든 약 첨부를 유지하고 검색은 명시적 선택으로만 연다.
   for (final kind in [
     ChatMessageKind.medicationShortage,
     ChatMessageKind.medicationDiscomfort,
   ]) {
+    // 함수이름: $kind offers hospital search without automatic navigation
+    // 함수역할:
+    // - 약 부족·복용 불편 메시지는 병원 찾기를 제안하되 자동 이동하지 않고, 사용자가 누른 경우에만 병원 선택 화면을 열며 메시지를 추가 전송하지 않는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
     testWidgets('$kind offers hospital search without automatic navigation', (
       tester,
     ) async {
@@ -2309,9 +3039,15 @@ void main() {
     });
   }
 
-  // 보낸 메시지와 받은 메시지 모두 안전 안내 아래에 병원 찾기 버튼의 간격을 확보한다.
   for (final mine in [true, false]) {
     for (final language in ['ko', 'en']) {
+      // 함수이름: safety guidance separates hospital action $mine/$language
+      // 함수역할:
+      // - 본인·상대의 복용 불편 카드에서 한국어·영어 안전 안내와 병원 찾기 버튼 사이에 큰 글씨에서도 최소 12의 간격을 유지하는지 검증한다.
+      // 매개변수:
+      // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+      // 반환값:
+      // - Future<void>; 비동기 검증 후 완료한다.
       testWidgets('safety guidance separates hospital action $mine/$language', (
         tester,
       ) async {
@@ -2372,8 +3108,14 @@ void main() {
     }
   }
 
-  // 병원 카드의 날짜·확인 시각·방문 안내와 전화·길찾기가 작은 화면에서도 겹치지 않는다.
   for (final language in ['ko', 'en']) {
+    // 함수이름: hospital card fits narrow large-text chat in $language
+    // 함수역할:
+    // - 영업 스냅샷이 없는 병원 공유를 좁은 큰 글씨 화면에서 운영 확인 필요로 표시하고, 예약 확정 문구 없이 주소·상태·전화·길찾기를 배치하는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
     testWidgets('hospital card fits narrow large-text chat in $language', (
       tester,
     ) async {
@@ -2439,7 +3181,13 @@ void main() {
       control.dispose();
     });
   }
-  // 재연결 상태가 반복되어도 보완 조회의 대기 시간을 처음부터 다시 세지 않는다.
+  // 함수이름: repeated reconnect attempts do not postpone fallback polling
+  // 함수역할:
+  // - 재연결 상태 이벤트를 5초마다 반복해도 보조 이력 조회 타이머가 계속 미뤄지지 않고 15초 안에 한 번 조회하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('repeated reconnect attempts do not postpone fallback polling', (
     tester,
   ) async {
@@ -2470,7 +3218,13 @@ void main() {
     control.dispose();
   });
 
-  // 실시간 연결이 살아 있어도 누락분 조회 실패는 복구될 때까지 재시도한다.
+  // 함수이름: failed catch-up retries even after websocket connected
+  // 함수역할:
+  // - 소켓 연결 후 이력 보완 조회가 실패하면 보조 조회로 재시도하며, 성공한 뒤에는 추가 주기 조회를 중단하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('failed catch-up retries even after websocket connected', (
     tester,
   ) async {
@@ -2502,7 +3256,13 @@ void main() {
     await realtime.dispose();
     control.dispose();
   });
-  // 재연결 후 50개를 넘는 누락 메시지도 이미 보던 기록까지 페이지로 이어 읽는다.
+  // 함수이름: reconnection fills a gap larger than the recent history page
+  // 함수역할:
+  // - 재연결 시 기존 메시지와 최신 페이지 사이가 한 페이지보다 넓으면 최신 요청에 이어 커서 51의 이전 페이지까지 조회하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('reconnection fills a gap larger than the recent history page', (
     tester,
   ) async {
@@ -2535,7 +3295,13 @@ void main() {
     await realtime.dispose();
     control.dispose();
   });
-  // 정상 연결에서는 반복 조회하지 않고 장애·복귀 때만 한 요청씩 보완한다.
+  // 함수이름: realtime polling stops while connected or backgrounded
+  // 함수역할:
+  // - 연결 중에는 주기 조회를 하지 않고 재연결 중에도 진행 중인 조회를 중복하지 않으며, 앱 일시정지 시 중단하고 복귀 후 한 번 보완하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('realtime polling stops while connected or backgrounded', (
     tester,
   ) async {
@@ -2586,9 +3352,13 @@ void main() {
   // 아래 복용 확인 테스트는 운영과 같은 경로를 쓴다: main.dart처럼 실제 DoseSyncService와
   // 전송 대기열(DoseOutboxStore)을 ViewModel에 붙이고, 대기열에 저장된 요청으로 결과를 확인한다.
 
-  // 함수이름: 선택 시간대 오프라인 저장 테스트
-  // 함수역할: 저녁 약을 선택하면 추가 확인창 없이 원래 날짜·연동·시간대를 대기열에 한 건 저장하고 별도 채팅 요청은 보내지 않는지 검증한다.
-  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // Function Name: selected evening dose goes straight to the offline queue
+  // Description:
+  // - Checks that an explicitly selected evening dose is persisted once in the offline queue with its date, link, and medication; no chat endpoint is called and the unselected morning remains incomplete.
+  // Parameters:
+  // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('selected evening dose goes straight to the offline queue', (
     tester,
   ) async {
@@ -2611,10 +3381,10 @@ void main() {
     expect(operation['link_id'], 17);
     expect(operation['completed'], isTrue);
     expect(operation['medication_names'], ['테스트정']);
-    // 기록은 대기열 한 경로로만 나간다. 채팅 복용 확인 요청과 일반 메시지는 보내지 않는다.
+    // The outbox is the only write path; neither chat endpoint sends a duplicate.
     expect(control.takenRequestIds, isEmpty);
     expect(control.sendAttempts, 0);
-    // 서버에 닿지 않아도 기기에 남아 있고, 선택하지 않은 아침은 그대로다.
+    // Offline persistence completes evening without changing the unselected morning.
     expect(await harness.pending(), hasLength(1));
     final projected = harness.service.schedules.single;
     expect(projected.isSlotCompleted('evening'), isTrue);
@@ -2624,9 +3394,13 @@ void main() {
     await _closeChat(tester, harness, control: control, realtime: realtime);
   });
 
-  // 함수이름: 대기열 복용 확인 중복 방지 테스트
-  // 함수역할: 화면이 다시 그려지기 전의 반복 입력에도 선택 약을 한 번만 대기열에 저장하고 공용 일정과 선택 상태에 반영하는지 검증한다.
-  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // Function Name: taken is queued once and updates the shared schedule
+  // Description:
+  // - Checks that rapid repeated taken replies queue only one morning dose, update the shared schedule without completing evening, and clear the recorded selection without a second prompt.
+  // Parameters:
+  // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('taken is queued once and updates the shared schedule', (
     tester,
   ) async {
@@ -2642,7 +3416,7 @@ void main() {
     await _selectDoseSlots(tester, ['morning']);
     final taken = find.widgetWithText(ActionChip, '먹었어요');
     await tester.ensureVisible(taken);
-    // 첫 입력의 저장이 진행 중이거나 막 끝난 상태에서 화면 갱신 없이 다시 누른다.
+    // Repeat the tap before a new frame can reflect the first write.
     await tester.tap(taken);
     await tester.tap(taken, warnIfMissed: false);
     await tester.pumpAndSettle();
@@ -2652,19 +3426,23 @@ void main() {
     expect(harness.queued.single['medication_ids'], [91]);
     expect(control.takenRequestIds, isEmpty);
     expect(control.sendAttempts, 0);
-    // 일정 화면이 읽는 공용 일정에 같은 기록이 보인다.
+    // The schedule screen observes the same updated shared schedule.
     final shared = harness.viewModel.todayMedicationScheduleList.single;
     expect(shared.isSlotCompleted('morning'), isTrue);
     expect(shared.isSlotCompleted('evening'), isFalse);
-    // 기록한 선택은 비워져 같은 복용을 다시 보낼 대상이 남지 않는다.
+    // Clearing the saved selection prevents another submission of the same dose.
     expect(find.widgetWithText(ActionChip, '먹었어요'), findsNothing);
     expect(tester.takeException(), isNull);
     await _closeChat(tester, harness, control: control, realtime: realtime);
   });
 
-  // 함수이름: 대기열 없는 대체 경로 테스트
-  // 함수역할: 전송 대기열이 붙지 않은 ViewModel(운영에서는 생기지 않는 구성)에서만 쓰이는 채팅 복용 확인 요청이 저장 중 반복 입력에도 한 번만 나가고 완료 응답을 공용 일정과 확인 메시지에 반영하는지 검증한다.
-  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수이름: without an outbox the chat endpoint records once and updates the shared schedule
+  // 함수역할:
+  // - 전송 대기열이 없으면 저장 대기 중 반복 입력도 채팅 복용 확인 API 한 번으로 제한하고, 선택 약만 기록한 응답을 공용 일정과 확인 메시지에 반영하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets(
     'without an outbox the chat endpoint records once and updates the shared schedule',
     (tester) async {
@@ -2741,9 +3519,13 @@ void main() {
     },
   );
 
-  // 함수이름: 큰 글씨 복용 재시도 테스트
-  // 함수역할: 좁은 화면·큰 글씨에서 기기 저장이 실패하면 오류를 알리고 선택을 유지하며, 다시 누르면 추가 확인창 없이 같은 복용을 한 건만 저장하는지 검증한다.
-  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // Function Name: failed dose save keeps the selection and the retry queues it once at large text size
+  // Description:
+  // - Uses a rejecting database trigger to verify that failed local dose storage retains the selection and shows an error; retrying after recovery queues exactly one dose without chat API calls, even at large text size.
+  // Parameters:
+  // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets(
     'failed dose save keeps the selection and the retry queues it once at large text size',
     (tester) async {
@@ -2763,7 +3545,7 @@ void main() {
         ),
       );
       await _selectDoseSlots(tester, ['morning']);
-      // 저장소가 쓰기를 거부하는 상황(저장 공간 부족 등)을 실제 데이터베이스에서 만든다.
+      // A database trigger reproduces a rejected write, such as a full disk.
       await harness.store.db.execute(
         'CREATE TRIGGER reject_insert BEFORE INSERT ON operations '
         "BEGIN SELECT RAISE(ABORT, 'disk full'); END",
@@ -2795,9 +3577,13 @@ void main() {
   );
 
   for (final mode in ['morning', 'evening', 'both', 'partial', 'changed']) {
-    // 함수이름: 선택 시간대 보존·부분 재시도 테스트
-    // 함수역할: 선택을 다시 열어도 시간대를 보존하고 일정 변경 시 기록을 거부하며 부분 실패 시 저장하지 못한 시간대만 다시 저장하는지 검증한다.
-    // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+    // 함수이름: selected dose slots are preserved without another prompt: $mode
+    // 함수역할:
+    // - 약 선택을 다시 열어도 정확한 시간대 선택을 유지하며, 일정 변경 시 저장을 막고 일부 저장 실패 후에는 미완료 시간대만 재시도해 중복 기록하지 않는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
     testWidgets('selected dose slots are preserved without another prompt: $mode', (
       tester,
     ) async {
@@ -2894,13 +3680,13 @@ void main() {
     });
   }
 
-  // 함수이름: testWidgets 콜백
+  // 함수이름: selected private deletion survives stale polling and preserves new messages
   // 함수역할:
-  // - 선택한 메시지를 나에게서 삭제한 뒤 오래된 조회가 돌아와도 삭제 상태와 선택하지 않은 기존 메시지를 유지하는지 검증한다.
+  // - 삭제 확인 취소는 요청을 만들지 않고 개인 삭제는 선택한 메시지만 숨기며, 다른 메시지와 삭제 상태가 시간 경과 후에도 유지되는지 검증한다.
   // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
   // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets(
     'selected private deletion survives stale polling and preserves new messages',
     (tester) async {
@@ -2948,13 +3734,13 @@ void main() {
     },
   );
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 메시지 선택 중에는 체크박스뿐 아니라 말풍선을 눌러도 선택이 전환되고, 선택 중이 아니면 누르기로 선택되지 않는지 검증한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // Function Name: tapping a message toggles its selection while selecting
+  // Description:
+  // - Checks that normal message taps do not enter selection mode, while taps in selection mode toggle only the targeted message checkbox.
+  // Parameters:
+  // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('tapping a message toggles its selection while selecting', (
     tester,
   ) async {
@@ -2975,6 +3761,13 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // Function Name: selected
+    // Description:
+    // - Reads the checkbox state of the specified message using the captured widget tester.
+    // Parameters:
+    // - id (int): message identifier embedded in the selection checkbox key.
+    // Returns:
+    // - bool; the non-null checked value of the matching Checkbox.
     bool selected(int id) => tester
         .widget<Checkbox>(find.byKey(ValueKey('selectChatMessage-$id')))
         .value!;
@@ -2998,13 +3791,13 @@ void main() {
     control.dispose();
   });
 
-  // 함수이름: testWidgets 콜백
+  // 함수이름: a chat whose link was removed replaces the composer with a notice
   // 함수역할:
-  // - 대화 중 상대가 연동을 해제하면 입력창 대신 연동 해제 안내를 보이고 상태 문구도 바뀌는지 검증한다.
+  // - 재연결 이력 조회가 연동 해제로 404를 반환하면 기존 메시지는 유지하면서 입력창을 연동 해제 안내로 바꾸는지 검증한다.
   // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
   // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets(
     'a chat whose link was removed replaces the composer with a notice',
     (tester) async {
@@ -3044,13 +3837,13 @@ void main() {
     },
   );
 
-  // 함수이름: testWidgets 콜백
+  // 함수이름: shared deletion removes body and prevents delayed events restoring it
   // 함수역할:
-  // - 모두에게서 삭제한 본문이 지연 이벤트로 복구되지 않는지 검증한다.
+  // - 전체 삭제한 메시지는 삭제 안내로 대체되고, 같은 ID의 늦은 실시간 메시지 이벤트가 원문을 복구하지 않는지 검증한다.
   // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
   // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets(
     'shared deletion removes body and prevents delayed events restoring it',
     (tester) async {
@@ -3102,13 +3895,13 @@ void main() {
   );
 
   for (final sender in ['patient-a', 'caregiver-a']) {
-    // 함수이름: testWidgets 콜백
+    // 함수이름: old or incoming selection offers private deletion only: $sender
     // 함수역할:
-    // - 발신자별 오래된 메시지나 수신 메시지 선택에는 나에게서 삭제만 제공하는지 검증한다.
+    // - 25시간 지난 본인 메시지와 상대 메시지는 개인 삭제만 제안하며, 큰 글씨에서 삭제 요청이 실패하면 원문을 유지하는지 검증한다.
     // 매개변수:
-    // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+    // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
     // 반환값:
-    // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+    // - Future<void>; 비동기 검증 후 완료한다.
     testWidgets(
       'old or incoming selection offers private deletion only: $sender',
       (tester) async {
@@ -3171,13 +3964,13 @@ void main() {
     );
   }
 
-  // 함수이름: testWidgets 콜백
+  // 함수이름: 안내는 자동으로 사라지고 약 선택 없이 일반 메시지를 보낸다
   // 함수역할:
-  // - 기대 동작: 안내는 자동으로 사라지고 약 선택 없이 일반 메시지를 보낸다.
+  // - 초기 약 선택 안내는 4초 후 사라지고 입력은 계속 허용되며, 약을 선택하지 않아도 약 ID 없는 일반 메시지를 한 번 보낼 수 있는지 검증한다.
   // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
   // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('안내는 자동으로 사라지고 약 선택 없이 일반 메시지를 보낸다', (tester) async {
     final control = _RetryChatControl(failFirstSend: false);
     final realtimeService = _FakeRealtimeService();
@@ -3221,13 +4014,13 @@ void main() {
     control.dispose();
   });
 
-  // 함수이름: testWidgets 콜백
+  // 함수이름: 큰 글씨에서도 메시지 실패 재시도는 같은 요청 식별자를 사용한다
   // 함수역할:
-  // - 기대 동작: 큰 글씨에서도 메시지 실패 재시도는 같은 요청 식별자를 사용한다.
+  // - 좁은 큰 글씨 화면에서 전송 실패 시 약 선택과 초안을 유지하고 같은 요청 ID로 재전송하며, 성공 메시지의 약을 눌러 상세 정보를 조회할 수 있는지 검증한다.
   // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
   // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('큰 글씨에서도 메시지 실패 재시도는 같은 요청 식별자를 사용한다', (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 640));
     // 함수이름: addTearDown 콜백
@@ -3320,9 +4113,13 @@ void main() {
   });
 
   for (final language in ['ko', 'en']) {
-    // Function Name: caregiver requestable schedule test
-    // Description: Shows only requestable caregiver contexts and their existing localized description.
-    // Parameters: tester: Widget test driver. Returns: Asynchronous filtering, text and send assertions.
+    // Function Name: caregiver selects only requestable medication times: $language
+    // Description:
+    // - Checks that caregivers see only requestable medication times in either language and send a morning slot-check request with the localized prompt, not a generic progress view.
+    // Parameters:
+    // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+    // Returns:
+    // - Future<void>; completes after the asynchronous assertions.
     testWidgets(
       'caregiver selects only requestable medication times: $language',
       (tester) async {
@@ -3434,9 +4231,13 @@ void main() {
     );
   }
 
-  // 함수이름: 기능 메뉴 갱신 테스트
-  // 함수역할: 메뉴를 연 뒤 약 정보가 도착하면 닫았다 열지 않아도 약 첨부를 고를 수 있는지 확인한다.
-  // 매개변수: tester: 화면 테스트 도구. 반환값: 검증 완료.
+  // 함수이름: 열린 기능 메뉴는 늦게 도착한 약 정보를 반영한다
+  // 함수역할:
+  // - 저장 약 조회가 늦어도 검색 진입은 계속 허용하고, 열린 기능 메뉴가 조회 완료 후 오래된 로딩·빈 목록 안내를 남기지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('열린 기능 메뉴는 늦게 도착한 약 정보를 반영한다', (tester) async {
     final control = _GatedMedicationChatControl();
     final realtimeService = _FakeRealtimeService();
@@ -3455,10 +4256,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('chatActions')));
     await tester.pumpAndSettle();
     final medication = find.byKey(const ValueKey('chat-action-0'));
-    expect(tester.widget<ListTile>(medication).enabled, isFalse);
-    // 아직 받지 못한 목록을 "약 없음"으로 안내하지 않는다.
-    expect(find.text('복용 중인 약을 불러오는 중입니다'), findsOneWidget);
-    expect(find.text('복용 중인 약이 없습니다'), findsNothing);
+    // 저장 약 조회와 별개인 약품 검색 진입은 계속 허용한다.
+    expect(tester.widget<ListTile>(medication).enabled, isTrue);
 
     control.gate.complete();
     await tester.pumpAndSettle();
@@ -3471,10 +4270,14 @@ void main() {
     control.dispose();
   });
 
-  // 함수이름: 약 없음 기능 메뉴 테스트
-  // 함수역할: 복용 중인 약이 없으면 약 첨부 선택지를 막고 그 이유를 화면 낭독기 이름으로 알리는지 확인한다.
-  // 매개변수: tester: 화면 테스트 도구. 반환값: 검증 완료.
-  testWidgets('기능 메뉴는 복용 중인 약이 없을 때 이유를 알린다', (tester) async {
+  // 함수이름: 기능 메뉴는 복용 중인 약이 없어도 검색을 허용한다
+  // 함수역할:
+  // - 복용 중인 저장 약이 없어도 대화할 약 선택 메뉴를 비활성화하지 않고 약품 검색 화면에 진입할 수 있는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
+  testWidgets('기능 메뉴는 복용 중인 약이 없어도 검색을 허용한다', (tester) async {
     final control = _NoMedicationChatControl();
     final realtimeService = _FakeRealtimeService();
     await tester.pumpWidget(
@@ -3494,9 +4297,12 @@ void main() {
     final medication = tester.widget<ListTile>(
       find.byKey(const ValueKey('chat-action-0')),
     );
-    expect(medication.enabled, isFalse);
+    expect(medication.enabled, isTrue);
     expect(find.text('대화할 약 선택'), findsOneWidget);
-    expect(find.text('복용 중인 약이 없습니다'), findsOneWidget);
+    expect(find.text('복용 중인 약이 없습니다'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('chat-action-0')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-search-medication')), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
     await realtimeService.dispose();
@@ -3509,9 +4315,13 @@ void main() {
       (user: 'patient-a', canRequest: true),
       (user: 'caregiver-a', canRequest: false),
     ]) {
-      // 함수이름: 확인 요청 도구 숨김 테스트
-      // 함수역할: 환자 또는 요청할 시간대가 없는 보호자는 복약 확인 요청을 고를 수 없고, 약 첨부와 입력은 사용할 수 있는지 확인한다.
-      // 매개변수: tester: 화면 테스트 도구. 반환값: 검증 완료.
+      // Function Name: 확인 요청 숨김 $language $scenario
+      // Description:
+      // - Checks that patients have no check-request action and caregivers without requestable times see a disabled action with an explanation; medication, hospital, and pharmacy actions remain available without sending messages.
+      // Parameters:
+      // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+      // Returns:
+      // - Future<void>; completes after the asynchronous assertions.
       testWidgets('확인 요청 숨김 $language $scenario', (tester) async {
         tester.view.physicalSize = const Size(360, 740);
         tester.view.devicePixelRatio = 1;
@@ -3592,13 +4402,13 @@ void main() {
     }
   }
 
-  // 함수이름: testWidgets 콜백
+  // 함수이름: 환자는 여러 약을 선택해 환자용 빠른 답장을 보낸다
   // 함수역할:
-  // - 기대 동작: 환자는 여러 약을 선택해 환자용 빠른 답장을 보낸다.
+  // - 환자가 아침·저녁 약 두 건을 선택하면 환자용 빠른 답장을 제공하고, 복용 불가 답장은 두 약과 대표 약을 담은 시간대 없는 일반 메시지로 전송하는지 검증한다.
   // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
   // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('환자는 여러 약을 선택해 환자용 빠른 답장을 보낸다', (tester) async {
     final control = _RetryChatControl(failFirstSend: false);
     final realtimeService = _FakeRealtimeService();
@@ -3663,13 +4473,13 @@ void main() {
     control.dispose();
   });
 
-  // 함수이름: testWidgets 콜백
+  // 함수이름: 보호자는 환자 문구 대신 보호자용 빠른 답장을 사용한다
   // 함수역할:
-  // - 기대 동작: 보호자는 환자 문구 대신 보호자용 빠른 답장을 사용한다.
+  // - 보호자에게 환자용 복용 응답 대신 질문형 빠른 답장을 제공하며, 선택 약과 환자 이름을 포함한 확인 질문을 전송하는지 검증한다.
   // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
   // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('보호자는 환자 문구 대신 보호자용 빠른 답장을 사용한다', (tester) async {
     final control = _RetryChatControl(failFirstSend: false);
     final realtimeService = _FakeRealtimeService();
@@ -3728,18 +4538,18 @@ void main() {
     control.dispose();
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 환자가 채팅의 시간대 카드를 누르면 해당 복약 일정으로 이동한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   for (final (currentUser, kind) in [
     ('patient-a', ChatMessageKind.slotCompletion),
     ('caregiver-a', ChatMessageKind.slotCompletion),
     ('patient-a', ChatMessageKind.slotCheckRequest),
   ]) {
+    // 함수이름: $currentUser $kind: 채팅 카드에서 해당 일정으로 이동한다
+    // 함수역할:
+    // - 환자·보호자 모두 복약 확인 요청 카드는 일정 화면으로, 복용 완료 카드는 해당 환자·날짜의 읽기 전용 이력으로 이동하는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
     testWidgets('$currentUser $kind: 채팅 카드에서 해당 일정으로 이동한다', (tester) async {
       final day = MedicationHistoryDates.today(DateTime.now());
       final date =
@@ -3827,7 +4637,13 @@ void main() {
     });
   }
 
-  // 기록은 최근 90일만 읽을 수 있으므로 더 오래된 일정 카드는 실패할 화면을 열지 않는다.
+  // Function Name: a schedule card older than the history does not open
+  // Description:
+  // - Checks that tapping a completion card dated 120 days ago does not open medication history or raise a widget exception.
+  // Parameters:
+  // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('a schedule card older than the history does not open', (
     tester,
   ) async {

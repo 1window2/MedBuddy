@@ -1,3 +1,5 @@
+// File Name: caregiver_alert_context_entity.dart
+// Role: Validates versioned missed-dose alert context and derives stable notification payloads.
 // Role: Versioned, non-secret context for an original missed case and its delivery.
 import 'dart:convert';
 
@@ -17,6 +19,10 @@ int fnv1a31(String source) {
   return hash;
 }
 
+// Class Name: CaregiverAlertContext
+// Role: Carries the validated link between a missed-dose case and one delivery event.
+// Responsibilities: Serialize versioned action context and derive a stable recipient/event notification ID.
+// Attributes: alertId/sourceAlertId/linkId (int): Delivery/source/link IDs; eventId/sourceEventId: Event hashes; patientHash/recipientHash: Account scope; slotKey/scheduleDate: Dose slot/day.
 class CaregiverAlertContext {
   final int alertId;
   final int sourceAlertId;
@@ -28,14 +34,30 @@ class CaregiverAlertContext {
   final String slotKey;
   final String scheduleDate;
 
+  // Function Name: CaregiverAlertContext
+  // Description: Captures delivery and source identifiers without validating them; external payloads should use fromData.
+  // Parameters: alertId/sourceAlertId/linkId (int): IDs; eventId/sourceEventId (String): Hashes; patientHash/recipientHash (String): Accounts; slotKey/scheduleDate (String): Dose identity.
+  // Returns: An immutable alert context.
   const CaregiverAlertContext({
     required this.alertId, required this.sourceAlertId, required this.linkId,
     required this.eventId, required this.sourceEventId, required this.patientHash,
     required this.recipientHash, required this.slotKey, required this.scheduleDate,
   });
 
+  // Function Name: fromData
+  // Description: Validates action version/type, positive IDs, canonical date, known slot, nonempty accounts, and lowercase 64-hex event hashes.
+  // Parameters: data (Map<String, dynamic>): String-like notification data values.
+  // Returns: Parsed context, or null for a missing/invalid field; this validates shape, not server authorization.
   static CaregiverAlertContext? fromData(Map<String, dynamic> data) {
+    // Function Name: value
+    // Description: Normalizes a single payload value for structural validation.
+    // Parameters: key (String): Data field to inspect.
+    // Returns: Trimmed string representation, or empty string for a missing/null field.
     String value(String key) => data[key]?.toString().trim() ?? '';
+    // Function Name: positive
+    // Description: Parses an identifier while rejecting zero, negative, and non-numeric payload values.
+    // Parameters: key (String): Identifier field in the captured data map.
+    // Returns: Strictly positive integer, otherwise null.
     int? positive(String key) {
       final parsed = int.tryParse(value(key));
       return parsed != null && parsed > 0 ? parsed : null;
@@ -62,6 +84,10 @@ class CaregiverAlertContext {
     );
   }
 
+  // Function Name: toData
+  // Description: Serializes the context into version-1 notification data with string values.
+  // Parameters: None.
+  // Returns: Fresh map including the fixed caregiver_slot_missed type and action_version.
   Map<String, String> toData() => {
     'type': 'caregiver_slot_missed', 'action_version': '1',
     'alert_id': '$alertId', 'source_alert_id': '$sourceAlertId', 'link_id': '$linkId',
@@ -70,8 +96,16 @@ class CaregiverAlertContext {
     'slot_key': slotKey, 'schedule_date': scheduleDate,
   };
 
+  // Function Name: payload
+  // Description: Encodes versioned context for a notification tap without introducing raw JSON delimiters into the payload.
+  // Parameters: None.
+  // Returns: caregiver-v1 prefix followed by URI-encoded JSON; the payload is not secret or authenticated.
   String get payload => 'caregiver-v1:${Uri.encodeComponent(jsonEncode(toData()))}';
 
+  // Function Name: fromPayload
+  // Description: Checks the prefix, decodes URI/JSON content, and applies the same field validation as server data.
+  // Parameters: payload (String): Notification tap payload.
+  // Returns: Validated context or null for another prefix, malformed encoding/JSON, non-object data, or invalid fields.
   static CaregiverAlertContext? fromPayload(String payload) {
     if (!payload.startsWith('caregiver-v1:')) return null;
     try {
@@ -85,5 +119,9 @@ class CaregiverAlertContext {
   }
 
   // Stable across isolates and FCM retries, but different for each snooze cycle.
+  // Function Name: notificationId
+  // Description: Derives the same platform ID for retries of one recipient/event and a different input for later snooze cycles.
+  // Parameters: None.
+  // Returns: Nonnegative 31-bit hash; hash collisions are possible.
   int get notificationId => fnv1a31('$recipientHash:$eventId');
 }

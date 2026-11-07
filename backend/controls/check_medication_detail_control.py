@@ -50,21 +50,10 @@ class CheckMedicationDetail:
     # 프런트엔드의 60초 제한 안에서 응답할 여유를 남기며 모드별로 시간을 늘리지 않는다.
     LOOKUP_TIMEOUT_SECONDS = 50.0
 
-    # 함수이름: __init__
-    # 함수역할:
-    # - 이름 보정·유사도 비교, Redis 캐시, 공공 약품·이미지 API와 로컬 카탈로그를 연결한다.
-    # 매개변수:
-    # - db (Session | None): 현재 작업에 사용할 SQLAlchemy 세션.
-    # - text_normalizer (MedicationTextNormalizer | None): OCR 특성을 반영한 약품명 정규화·변형 생성기.
-    # - medication_cache (MedicationDetailCache | None): 약품 상세 결과를 보관하는 공유 Redis 캐시.
-    # - public_drug_small_api (PublicDrugSmallAPI | None): 기본 공공 약품 정보 API 경계.
-    # - public_drug_large_api (PublicDrugLargeAPI | None): 상세 약품 허가 문서 API 경계.
-    # - pill_image_api (PillImageAPI | None): 공공 약품 이미지 조회 API 경계.
-    # - summary_generator (MedicationSummaryGenerator | None): 상세 허가 문서의 AI 요약 생성기.
-    # - local_medication_catalog (LocalMedicationCatalog | None): 문서 요약 캐시를 포함한 로컬 기본·허가 정보 조회기.
-    # - name_matcher (MedicationNameMatcher | None): 약품명 유사도 점수 계산과 신뢰도 필터.
-    # 반환값:
-    # - 없음.
+    # Function Name: __init__
+    # Description: Assemble lookup, ranking, caching, image and summary dependencies and initialize the request summary cache.
+    # Parameters: db (Session | None) supplies the catalog session; text_normalizer, medication_cache, public_drug_small_api, public_drug_large_api, pill_image_api, summary_generator, local_medication_catalog and name_matcher override their default adapters.
+    # Returns: None.
     def __init__(
         self,
         db: Session | None = None,
@@ -94,13 +83,9 @@ class CheckMedicationDetail:
         self._summaries_by_item_seq: dict[str, MedicationDetail] = {}
 
     # Function Name: requestMedicationDetail
-    # Description:
-    # - Normalizes medication text and fetches detailed drug information.
-    # Parameters:
-    # - raw_text (str): Raw medication text supplied by the frontend.
-    # - original_text (str | None): OCR evidence retained before an automatic name correction.
-    # Returns:
-    # - Exact product details, or confirmation-only candidates without automatic data.
+    # Description: Search bounded keywords under a deadline, reject strength/form conflicts, and auto-select only one exact product from complete results; validation and provider failures propagate.
+    # Parameters: raw_text (str) is the search text; original_text (str | None) anchors safe matching; search_mode selects fast, balanced or thorough keyword expansion.
+    # Returns: MedicationResponse with one confirmed product, confirmation candidates, or an explicit no-match reason.
     async def requestMedicationDetail(
         self, raw_text: str, *, original_text: str | None = None,
         search_mode: Literal['fast', 'balanced', 'thorough'] = 'balanced',
@@ -196,12 +181,9 @@ class CheckMedicationDetail:
             raise ValueError("Medication lookup text is too long.")
 
     # 함수이름: _fetch_drug_info
-    # 함수역할:
-    # - 로컬 조회를 우선하고 신뢰 가능한 캐시 후보를 확인한 뒤 공공 API 결과를 캐시에 저장한다.
-    # 매개변수:
-    # - drug_name (str): 검색 또는 직렬화할 약품명.
-    # 반환값:
-    # - 이미지가 보완된 약품 상세 목록과 후보 요약 완결 여부.
+    # 함수역할: 로컬 목록, 검색 캐시, 공공 API 순으로 후보를 조회하고 원문 기준으로 순위를 정한다. 공급자 오류는 전파한다.
+    # 매개변수: drug_name (str)은 검색어, reference (str | None)는 매칭 기준 원문이며 생략하면 검색어를 쓴다.
+    # 반환값: MedicationLookupResult. 로컬·공공 결과의 완전성을 보존하고 가능한 이미지 정보를 보충한다.
     async def _fetch_drug_info(self, drug_name: str, *, reference: str | None = None) -> MedicationLookupResult:
         reference = reference or drug_name
         local_result = await self.local_medication_catalog.fetch_drug_info(drug_name)
@@ -280,13 +262,10 @@ class CheckMedicationDetail:
             )
         )
 
-    # 함수이름: _fetch_public_drug_info
-    # 함수역할:
-    # - 기본 API의 상위 후보를 우선 사용하고 없으면 허가 API 후보를 최대 세 개 요약한다.
-    # 매개변수:
-    # - drug_name (str): 검색 또는 직렬화할 약품명.
-    # 반환값:
-    # - 신뢰도 기준을 통과한 상세 목록과 후보 요약 완결 여부.
+    # Function Name: _fetch_public_drug_info
+    # Description: Prefer basic drug records and fall back to approval records with partial-summary tracking; rethrow a basic-provider failure if fallback finds nothing.
+    # Parameters: drug_name (str) is the provider query; reference (str | None) is the ranking and exact-match baseline.
+    # Returns: MedicationLookupResult with enriched details and completeness; approval-provider and unrecoverable summary failures propagate.
     async def _fetch_public_drug_info(
         self,
         drug_name: str,
@@ -342,15 +321,10 @@ class CheckMedicationDetail:
             is_complete=result.is_complete,
         )
 
-    # 함수이름: _summarize_advanced_item
-    # 함수역할:
-    # - 한 요청 안에서 같은 품목기준코드의 허가 문서는 AI로 한 번만 요약하고 그 결과를 재사용한다.
-    # - 실패한 요약은 저장하지 않으므로 다음 검색어에서 다시 시도한다.
-    # 매개변수:
-    # - drug_name (str): 요약을 요청한 검색어.
-    # - item (dict[str, Any]): 허가 API 품목 기록.
-    # 반환값:
-    # - AI 요약을 담은 약품 상세.
+    # Function Name: _summarize_advanced_item
+    # Description: Generate an approval-record summary once per nonempty item sequence during this request; generation errors propagate.
+    # Parameters: drug_name (str) is the lookup name; item (dict[str, Any]) is the provider record.
+    # Returns: MedicationDetail, reused from the request cache when available.
     async def _summarize_advanced_item(self, drug_name: str, item: dict[str, Any]) -> MedicationDetail:
         item_seq = read_public_item_sequence(item)
         summary = self._summaries_by_item_seq.get(item_seq) if item_seq else None
@@ -360,13 +334,10 @@ class CheckMedicationDetail:
                 self._summaries_by_item_seq[item_seq] = summary
         return summary
 
-    # 함수이름: _build_basic_drug_infos
-    # 함수역할:
-    # - 기본 API 응답의 효능·복용법·주의사항과 이미지를 상세 엔티티로 변환한다.
-    # 매개변수:
-    # - basic_items (list[dict[str, Any]]): 공공 품목·안내 필드를 포함한 기본 약품 기록 목록.
-    # 반환값:
-    # - 응답 순서의 약품 상세 목록.
+    # Function Name: _build_basic_drug_infos
+    # Description: Map basic-provider fields into medication details using the shared text and image readers.
+    # Parameters: basic_items (list[dict[str, Any]]) contains the ranked provider records.
+    # Returns: list[MedicationDetail] in input order, without external summary generation.
     async def _build_basic_drug_infos(
         self,
         basic_items: list[dict[str, Any]],

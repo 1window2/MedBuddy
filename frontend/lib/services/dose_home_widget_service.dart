@@ -21,69 +21,97 @@ import 'dose_sync_service.dart';
 import 'firebase_runtime_service.dart';
 import 'notification_service.dart';
 
-// 함수형: DoseWidgetTodayScheduleReader
-// 역할: 계정의 오늘 복약 일정을 서버에서 읽는다. 조립 계층이 일정 Control로 구현해 넣는다.
+// Function Name: DoseWidgetTodayScheduleReader
+// Description: Loads this account's schedule snapshot through the control supplied by composition.
+// Parameters: owner (String): Patient account; client (http.Client): Caller-owned authenticated transport.
+// Returns: Future schedule list; retrieval failures propagate to the widget refresh flow.
 typedef DoseWidgetTodayScheduleReader =
     Future<List<MedicationSchedule>> Function(String owner, http.Client client);
 
-// 함수형: DoseWidgetPatientSnapshotReader
-// 역할: 보호자 계정에 연동된 환자들의 오늘 일정을 서버에서 읽는다. 조립 계층이 보호자 Control로 구현해 넣는다.
+// Function Name: DoseWidgetPatientSnapshotReader
+// Description: Loads linked-patient monitoring snapshots for the caregiver widget.
+// Parameters: owner (String): Caregiver account; client (http.Client): Caller-owned authenticated transport.
+// Returns: Future linked-patient snapshots; the control implementation supplies scope and errors.
 typedef DoseWidgetPatientSnapshotReader =
     Future<List<CaregiverMonitoringSnapshot>> Function(
       String owner,
       http.Client client,
     );
 
-// 클래스명: DoseHomeWidgetPlatform
-// 역할: 위젯 서비스가 쓰는 위젯 플러그인·저장소·알림·전송 예약·통신 준비 호출을 묶는다.
-// 주요 책임: 기본 구현은 실제 플랫폼을 호출하고, 테스트는 이 클래스를 대체해 호출을 기록한다.
+// Class Name: DoseHomeWidgetPlatform
+// Role: Adapts the native home-widget, outbox, reminder, and upload scheduling services.
+// Responsibilities: Expose replaceable platform operations for tests while keeping account-sensitive data in the encrypted store.
+// Attributes: None; the adapter delegates to shared platform services.
 class DoseHomeWidgetPlatform {
+  // Function Name: DoseHomeWidgetPlatform
+  // Description: Creates a stateless adapter without opening storage or invoking Android.
+  // Parameters: None.
+  // Returns: A reusable platform adapter.
   const DoseHomeWidgetPlatform();
 
+  // Function Name: supported
+  // Description: Limits native widget operations to Android outside web builds.
+  // Parameters: None.
+  // Returns: True only on supported native Android.
   bool get supported => !kIsWeb && Platform.isAndroid;
 
-  // 함수이름: readJournal
-  // 함수역할: Android가 먼저 저장해 둔 위젯 클릭 목록을 읽는다. 반환값: JSON 배열 문자열.
+  // Function Name: readJournal
+  // Description: Reads the action journal Android persisted before requesting Dart processing.
+  // Parameters: None.
+  // Returns: JSON journal string, defaulting to an empty array; plugin errors propagate.
   Future<String?> readJournal() => HomeWidget.getWidgetData<String>(
     DoseHomeWidget.journalKey,
     defaultValue: '[]',
   );
 
-  // 함수이름: saveState
-  // 함수역할: 위젯이 표시할 상태를 저장한다. 매개변수: state - JSON 문자열. 반환값: 완료 Future.
+  // Function Name: saveState
+  // Description: Stores the JSON projection for the native widget without triggering repaint.
+  // Parameters: state (String): Serialized display state and handled action tokens.
+  // Returns: Persistence completion; plugin errors propagate.
   Future<void> saveState(String state) =>
       HomeWidget.saveWidgetData<String>(DoseHomeWidget.stateKey, state);
 
-  // 함수이름: updateWidget
-  // 함수역할: 저장한 상태로 위젯을 다시 그리게 한다. 반환값: 완료 Future.
+  // Function Name: updateWidget
+  // Description: Asks the Android provider to redraw from the saved display state.
+  // Parameters: None.
+  // Returns: Refresh-request completion, not confirmation that the launcher has painted it.
   Future<void> updateWidget() =>
       HomeWidget.updateWidget(qualifiedAndroidName: DoseHomeWidget.provider);
 
-  // 함수이름: scheduleUpdate
-  // 함수역할: 날짜가 바뀌는 시각에 위젯 갱신을 예약한다. 매개변수: at - 갱신 시각. 반환값: 완료 Future.
+  // Function Name: scheduleUpdate
+  // Description: Requests a provider refresh at the projection's expiration time.
+  // Parameters: at (DateTime): Next refresh instant, typically the next dose-day boundary.
+  // Returns: Platform scheduling completion; Android controls actual delivery.
   Future<void> scheduleUpdate(DateTime at) => HomeWidget.scheduleWidgetUpdates([
     at,
   ], qualifiedAndroidName: DoseHomeWidget.provider);
 
-  // 함수이름: cancelScheduledUpdates
-  // 함수역할: 예약한 위젯 갱신을 취소한다. 반환값: 완료 Future.
+  // Function Name: cancelScheduledUpdates
+  // Description: Removes scheduled refreshes for the dose widget provider.
+  // Parameters: None.
+  // Returns: Cancellation completion; existing widget state and queued dose operations are unchanged.
   Future<void> cancelScheduledUpdates() =>
       HomeWidget.cancelScheduledWidgetUpdates(
         qualifiedAndroidName: DoseHomeWidget.provider,
       );
 
-  // 함수이름: hasInstalledWidget
-  // 함수역할: 홈 화면에 복약 위젯이 하나라도 놓여 있는지 확인한다. 반환값: 있으면 true.
+  // Function Name: hasInstalledWidget
+  // Description: Checks whether the plugin reports any installed home-widget instances.
+  // Parameters: None.
+  // Returns: True for a nonempty installed-widget list; plugin errors propagate.
   Future<bool> hasInstalledWidget() async =>
       (await HomeWidget.getInstalledWidgets()).isNotEmpty;
 
-  // 함수이름: openStore
-  // 함수역할: 앱과 백그라운드 작업이 공유하는 암호화 저장소를 연다. 반환값: 열린 저장소.
+  // Function Name: openStore
+  // Description: Opens the encrypted outbox shared with foreground and background recording.
+  // Parameters: None.
+  // Returns: Shared outbox store Future; initialization errors propagate.
   Future<DoseOutboxStore> openStore() => DoseOutboxStore.open();
 
-  // 함수이름: cancelReminder
-  // 함수역할: 기기에 완료를 저장한 시간대의 해당 날짜 재알림을 취소한다.
-  // 매개변수: owner - 계정, slotKey - 시간대, date - 복약 기준일. 반환값: 완료 Future.
+  // Function Name: cancelReminder
+  // Description: Cancels the reminder for a locally completed account/date/slot through the notification service.
+  // Parameters: owner/slotKey (String): Account and dose slot; date (DateTime): Dose date.
+  // Returns: Cancellation completion; notification ownership checks and errors belong to the delegated service.
   Future<void> cancelReminder({
     required String owner,
     required String slotKey,
@@ -94,14 +122,17 @@ class DoseHomeWidgetPlatform {
     date: date,
   );
 
-  // 함수이름: registerSync
-  // 함수역할: 위젯에서 받은 기록의 전송 작업을 예약한다. 매개변수: owner - 계정. 반환값: 완료 Future.
+  // Function Name: registerSync
+  // Description: Requests one-off and periodic uploads for operations accepted from widget actions.
+  // Parameters: owner (String): Account owning the dose operations.
+  // Returns: Registration completion, not upload acknowledgement.
   Future<void> registerSync(String owner) =>
       DoseSyncBackgroundScheduler.register(owner);
 
-  // 함수이름: openClient
-  // 함수역할: 호출자가 통신 수단을 넘기지 않았을 때 인증을 준비하고 API 클라이언트를 만든다.
-  // 반환값: 이 서비스가 닫아야 하는 클라이언트.
+  // Function Name: openClient
+  // Description: Initializes Firebase when required and creates an authenticated transport for background use.
+  // Parameters: None.
+  // Returns: A new client that the caller must close; Firebase initialization failures propagate.
   Future<http.Client> openClient() async {
     if (AuthConfig.mode == AuthenticationMode.firebase) {
       await FirebaseRuntimeService.initialize();
@@ -110,8 +141,10 @@ class DoseHomeWidgetPlatform {
   }
 }
 
-// 클래스명: DoseHomeWidget
-// 역할: 위젯 상태 발행·새로고침·추가를 연결하며 본인 기록과 환자 조회를 분리한다.
+// Class Name: DoseHomeWidget
+// Role: Publishes safe widget projections and coordinates foreground/background refreshes.
+// Responsibilities: Apply journal actions durably, distinguish self-recording from caregiver viewing, and refresh only when needed.
+// Attributes: platform: Replaceable adapter; provider/stateKey/journalKey: Native identifiers; readTodaySchedules/readScheduleWindow/readPatientSnapshots: Composition loaders; _cancelledReminderSlots: Per-day cancellation memory.
 class DoseHomeWidget {
   static const provider = 'com.example.medbuddy_frontend.DoseWidgetProvider';
   static const stateKey = 'dose_widget_state';
@@ -122,21 +155,28 @@ class DoseHomeWidget {
   static DoseWidgetTodayScheduleReader? readTodaySchedules;
   static DoseWidgetTodayScheduleReader? readScheduleWindow;
   static DoseWidgetPatientSnapshotReader? readPatientSnapshots;
+  // Function Name: supported
+  // Description: Delegates widget capability to the installed platform adapter.
+  // Parameters: None.
+  // Returns: Whether native widget operations should run.
   static bool get supported => platform.supported;
   // 이 실행 환경에서 재알림을 이미 취소한 시간대. 키는 "계정|날짜"이며 현재 것만 보관한다.
   static final Map<String, Set<String>> _cancelledReminderSlots = {};
 
-  // 함수이름: resetForTest
-  // 함수역할: 테스트가 바꾼 플랫폼 대역과 재알림 취소 기록을 초기 상태로 되돌린다. 반환값: 없음.
+  // Function Name: resetForTest
+  // Description: Restores the default platform adapter and clears remembered reminder cancellations between tests.
+  // Parameters: None.
+  // Returns: Nothing; injected schedule-reader callbacks are not reset here.
   @visibleForTesting
   static void resetForTest() {
     platform = const DoseHomeWidgetPlatform();
     _cancelledReminderSlots.clear();
   }
 
-  // 함수이름: initialize
-  // 함수역할: 위젯이 앱 없이 새로고침을 요청할 때 실행할 백그라운드 진입점을 플러그인에 등록한다.
-  // 매개변수: callback: 조립 계층에 정의된 최상위 진입 함수. 반환값: 등록 완료 Future.
+  // Function Name: initialize
+  // Description: Registers the composition-provided background interactivity callback on supported platforms.
+  // Parameters: callback (Future<void> Function(Uri?)): Top-level widget action entry point.
+  // Returns: Registration completion, or a no-op when unsupported; plugin errors propagate.
   static Future<void> initialize(
     Future<void> Function(Uri? uri) callback,
   ) async {
@@ -145,8 +185,10 @@ class DoseHomeWidget {
     }
   }
 
-  // 함수이름: _journalActions
-  // 함수역할: Android가 저장해 둔 위젯 클릭을 읽는다. 반환값: 아직 처리하지 않은 클릭 목록.
+  // Function Name: _journalActions
+  // Description: Decodes the native journal and keeps map-shaped entries without consuming or acknowledging them.
+  // Parameters: None.
+  // Returns: Journal map entries; absent storage is empty, but invalid JSON or a non-list root throws.
   static Future<List<Map>> _journalActions() async {
     final journal = await platform.readJournal();
     return (jsonDecode(journal ?? '[]') as List).whereType<Map>().toList();
@@ -212,10 +254,10 @@ class DoseHomeWidget {
     return state;
   }
 
-  // 함수이름: _cancelCompletedReminders
-  // 함수역할: 완료한 시간대의 재알림을 시간대마다 한 번만 취소한다. 발행할 때마다 같은 취소를
-  //   반복하지 않되, 복용을 취소한 시간대는 알림이 다시 등록될 수 있으므로 다음 완료 때 다시 취소한다.
-  // 매개변수: state - 방금 만든 위젯 상태. 반환값: 완료 Future. 실패한 시간대는 다음 발행에서 재시도한다.
+  // Function Name: _cancelCompletedReminders
+  // Description: Cancels each completed dose slot once per account/day, allowing another cancellation after a completion is undone and later repeated.
+  // Parameters: state (DoseWidgetState): Newly published projection containing owner and date.
+  // Returns: Completion after successful cancellations; failed slots are not remembered and can retry on the next publish.
   static Future<void> _cancelCompletedReminders(DoseWidgetState state) async {
     final owner = state.data['owner'] as String;
     final date = state.view['date'] as String;
@@ -235,8 +277,10 @@ class DoseHomeWidget {
     }
   }
 
-  // 함수이름: _hasInstalledWidget
-  // 함수역할: 홈 화면의 위젯 유무를 확인한다. 확인하지 못하면 있는 것으로 보고 갱신을 계속한다.
+  // Function Name: _hasInstalledWidget
+  // Description: Checks native widget presence conservatively so a plugin inspection failure does not prevent refresh.
+  // Parameters: None.
+  // Returns: Reported presence, or true if inspection throws.
   static Future<bool> _hasInstalledWidget() async {
     try {
       return await platform.hasInstalledWidget();
@@ -245,11 +289,10 @@ class DoseHomeWidget {
     }
   }
 
-  // 함수이름: needsNetworkRefresh
-  // 함수역할: 주기 작업이 인증과 통신을 준비하기 전에, 통신이 필요한 일이 있는지 기기 안에서만 확인한다.
-  // 매개변수: owner - 작업을 등록한 계정.
-  // 반환값: 전송할 복용 기록이나 처리할 위젯 클릭이 있거나, 놓여 있는 위젯에 오늘 조회 결과가
-  //   없으면 true. 확인하지 못해도 true를 돌려 기존과 같이 전체 갱신을 하게 한다.
+  // Function Name: needsNetworkRefresh
+  // Description: Checks local upload eligibility, widget actions, and projection freshness before preparing authentication/network work.
+  // Parameters: owner (String): Account attached to the scheduled job.
+  // Returns: True for eligible uploads, journal actions, stale owned widget snapshots, or inspection failure; otherwise false.
   static Future<bool> needsNetworkRefresh(String owner) async {
     try {
       final store = await platform.openStore();
@@ -398,6 +441,10 @@ class DoseHomeWidget {
     }
   }
 
+  // Function Name: clear
+  // Description: Cancels refresh scheduling and replaces sensitive widget content with localized sign-in state and handled journal tokens.
+  // Parameters: None.
+  // Returns: Completion after native refresh; preference-read failure uses Korean, other platform/journal errors propagate. Outbox data is not erased.
   static Future<void> clear() async {
     if (!supported) return;
     await platform.cancelScheduledUpdates();
@@ -421,6 +468,10 @@ class DoseHomeWidget {
     await platform.updateWidget();
   }
 
+  // 함수이름: pin
+  // 함수역할: 현재 상태를 발행한 뒤 지원되는 런처에 위젯 고정 요청을 보낸다.
+  // 매개변수: 없음.
+  // 반환값: 미지원이면 false, 요청까지 마치면 true. 실제 사용자 배치 완료를 뜻하지 않으며 플러그인 오류는 전파한다.
   static Future<bool> pin() async {
     if (!supported || await HomeWidget.isRequestPinWidgetSupported() != true) {
       return false;

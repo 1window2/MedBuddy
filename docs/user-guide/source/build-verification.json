@@ -1,40 +1,285 @@
 {
-  "version": "0.2.5 (사진 정리와 본문 수정, 2026-11-06)",
-  "pages": 224,
+  "reviewed_on": "2026-11-07",
+  "app_version": "1.0.0 개발 브랜치",
+  "edition": "portrait-and-landscape",
+  "default_edition": "landscape",
+  "pdf_file": "MedBuddy_User_Guide_ko.pdf",
+  "chapters": 10,
   "subsections": 84,
-  "steps": 321,
-  "pdf_internal_links_verified": 206,
+  "steps": 327,
+  "pages": 134,
+  "previous_portrait_pages": 227,
+  "previous_landscape_pages": 148,
+  "pdf_internal_links_verified": 94,
   "pdf_bookmarks_verified": 94,
+  "all_step_text_verified": true,
+  "all_source_note_text_verified": true,
+  "preservation_checks": {
+    "sections": 84,
+    "steps": 327,
+    "all_step_ids_and_order_preserved": true,
+    "all_screenshot_paths_crops_and_annotations_preserved": true,
+    "all_source_asset_hashes_unchanged": true,
+    "all_captions_below_photos": true,
+    "all_rows_aligned": true,
+    "minimum_portrait_image_width_mm": 43.244050291872476,
+    "portrait_page_kinds": {
+      "steps": 115,
+      "references": 22
+    },
+    "portrait_pages": 141,
+    "landscape_pages": 134
+  },
+  "caption_review": {
+    "sections": 84,
+    "steps": 327,
+    "changed_captions": 323,
+    "old_caption_characters": 25661,
+    "new_caption_characters": 25799,
+    "old_note_characters": 35778,
+    "new_note_characters": 24273
+  },
   "visual_review": {
-    "status": "reviewed",
-    "renderer": "Poppler pdftoppm",
-    "rendered_pages": 224,
-    "contact_sheets": 14,
-    "changed_pages_checked": [
-      1,
-      100,
-      104,
-      141
-    ],
-    "comparison": "2026-11-05 발행본과 60dpi 전체 페이지 렌더 해시 비교: 1(표지 날짜), 100(5.1-3), 104(5.3-1), 141(7.6-5)페이지만 변경",
-    "limitations": "1.5-2와 10.1-2는 테스트 글꼴을 적용한 실제 인증 위젯 시뮬레이션으로, 기기 글꼴 및 시스템 표시줄은 다를 수 있습니다."
+    "portrait": {
+      "status": "reviewed",
+      "renderer": "pypdfium2",
+      "render_scale": 1.35,
+      "rendered_pages": 141,
+      "contact_sheets": 9,
+      "glyphs_checked": 48118,
+      "out_of_page_glyphs": 0,
+      "observed_layout_defects": [],
+      "sheets_inspected": [
+        "sheet-01.png",
+        "sheet-02.png",
+        "sheet-03.png",
+        "sheet-04.png",
+        "sheet-05.png",
+        "sheet-06.png",
+        "sheet-07.png",
+        "sheet-08.png",
+        "sheet-09.png"
+      ],
+      "enlarged_pages_checked": [
+        1,
+        7,
+        12,
+        19,
+        21,
+        26,
+        34,
+        38,
+        41,
+        44,
+        52,
+        54,
+        69,
+        71,
+        78,
+        79,
+        80,
+        84,
+        90,
+        93,
+        102,
+        108,
+        112,
+        115,
+        121,
+        126,
+        128,
+        129,
+        131,
+        136,
+        140,
+        141
+      ],
+      "final_changed_pages_inspected": [
+        1
+      ],
+      "unchanged_rendered_pages": 140,
+      "resolved_findings": [
+        "7.8 caption now starts with the home-screen entry shown in its retained screenshot, instead of describing absent error controls."
+      ],
+      "method": "Cover inspected at full render size. All 141 pages rerendered; remaining 140 images are byte-identical to the previously reviewed version."
+    },
+    "landscape": {
+      "status": "reviewed",
+      "renderer": "pypdfium2",
+      "render_scale": 1.35,
+      "rendered_pages": 134,
+      "contact_sheets": 9,
+      "glyphs_checked": 46849,
+      "out_of_page_glyphs": 0,
+      "observed_clipping_or_overlap": [],
+      "sheets_inspected": [
+        "sheet-01.png",
+        "sheet-02.png",
+        "sheet-03.png",
+        "sheet-04.png",
+        "sheet-05.png",
+        "sheet-06.png",
+        "sheet-07.png",
+        "sheet-08.png",
+        "sheet-09.png"
+      ],
+      "enlarged_pages_checked": [
+        12,
+        39,
+        68,
+        86,
+        110,
+        117,
+        128
+      ],
+      "resolved_findings": [
+        "Aligned all screenshot left edges to step numbers and captions.",
+        "Made the four-column grid outer margins symmetric."
+      ],
+      "method": "All nine contact sheets and seven listed enlarged pages inspected; all page glyph bounds checked."
+    }
   },
   "capture_environment": {
-    "kind": "별도 테스트 에뮬레이터 캡처 및 테스트 위젯 시뮬레이션",
-    "data": "시험용 Firebase 설정과 예시 데이터; 실제 계정 및 인증 메일 전송 미사용",
-    "scope": "1.5-2와 10.1-2는 실제 AuthenticationUI에 가짜 Firebase를 주입한 위젯 테스트; 나머지 최근 인증 화면은 별도 테스트 에뮬레이터 캡처",
-    "screenshot_status_bar_cropped": "에뮬레이터 캡처는 상태 표시줄을 제외; 위젯 시뮬레이션에는 시스템 표시줄이 없음"
+    "new_images": 29,
+    "kind": "Product Flutter widgets with synthetic data and mocked responses",
+    "app_text_size": "medium",
+    "text_scale": 1.0,
+    "device_system_bars": "not present in new captures",
+    "historical_image_files": "Preserved byte-for-byte; older app and emulator captures are not reclassified as new captures.",
+    "limitations": "Synthetic captures do not establish device behavior, server persistence, AI accuracy, push delivery or production release."
   },
-  "clean_rebuild": {
-    "passed": true,
-    "pdf_sha256_identical": true,
-    "markdown_sha256_identical": true,
-    "note": "저장소 밖 별도 복사본에서 캐시 없이 재생성(이전 PDF는 입력으로 읽지 않음)"
-  },
-  "pdf_sha256": "ca4740fb02d4fbc792ba92172dc013c983928378d9a09f5e595db9e446f38a59",
-  "markdown_sha256": "fc5d4b0975184b7b7330a3a1a598c4ebd99aae3d3bd366054d7e0b9cf15da954",
+  "capture_changes": "New emulator captures (medbuddy_rc, Android 14, debug build 1.0.0+27 against a local disabled-auth backend with example medicines): 2.6-7 dose-day notice; 3.3-4, 3.3-5 and 3.6-1 offline check with undo and pending banner; 3.6-2 'saved to the server' after reconnecting; 9.9-4 Android alarms page showing 1.0.0. No other screenshot changed.",
+  "pdf_sha256": "d1e64b903a93e4f1af1eaf017d26064805d70c056cd7660ca1da406c066983ce",
+  "markdown_sha256": "b1b0b0d83b7a561c573caaf1453416ea274f3af0654d43f980f424908a14bd95",
+  "content_sha256": "9e03c117eb98ca7b7acd70deddadd76c944246ff533d83b4ab80ea72d09b7b11",
+  "layout_sha256": "89efe0a5177ac139cf26bba7c7a766872ac3d1f5b2f92c427c04dff5aedf5f11",
+  "asset_manifest_sha256": "6ef2f6e370a13a5681e1551f04e15679a5f67b8f424ed91ed51ad6dd05cfa25c",
   "fonts_sha256": {
-    "NanumBarunGothic": "9b872773134e2e4d8c0b17021266786576db06c843ede0d0b523b214a450756c",
-    "NanumBarunGothicBold": "39bba4cd9bd2986143825c8654abbb62443914ab33b346c0c929a916f5d98bf2"
+    "NanumBarunGothic.ttf": "9b872773134e2e4d8c0b17021266786576db06c843ede0d0b523b214a450756c",
+    "NanumBarunGothicBold.ttf": "39bba4cd9bd2986143825c8654abbb62443914ab33b346c0c929a916f5d98bf2"
+  },
+  "libraries": {
+    "reportlab": "4.4.9",
+    "pypdf": "6.21.4",
+    "Pillow": "13.0.0",
+    "pypdfium2": "5.14.0"
+  },
+  "portrait": {
+    "pdf_file": "MedBuddy_User_Guide_ko_portrait.pdf",
+    "pages": 141,
+    "steps": 327,
+    "pdf_sha256": "0e1c5028334cf66f3c32257c865565998057f2cfaca75835b5995b808a8d78c6",
+    "internal_links_verified": 196,
+    "bookmarks_verified": 94,
+    "all_step_text_verified": true,
+    "all_notes_verified": true,
+    "renamed_without_content_changes": true
+  },
+  "landscape": {
+    "pdf_file": "MedBuddy_User_Guide_ko.pdf",
+    "pages": 134,
+    "steps": 327,
+    "pdf_sha256": "d1e64b903a93e4f1af1eaf017d26064805d70c056cd7660ca1da406c066983ce",
+    "internal_links_verified": 94,
+    "bookmarks_verified": 94,
+    "all_step_text_verified": true,
+    "all_notes_verified": true,
+    "continuation_columns": 0,
+    "alignment": {
+      "page_margin_mm": 10.6458,
+      "column_gap_mm": 10.2917,
+      "all_images_left_aligned_to_step_numbers": true,
+      "equal_outer_grid_margins": true,
+      "caption_text_unchanged": true,
+      "portrait_unchanged": true
+    }
+  },
+  "review_scope": {
+    "document_copy_layout_and_navigation": "verified",
+    "application_code_and_device_tests": "not run; document-only revision",
+    "production_services_or_deployment": "not exercised; not claimed",
+    "temporary_render_images": "Removed after verification; summary reports retained.",
+    "latest_revision": "Landscape screenshots aligned to step numbers and published as the default PDF. Portrait renamed with the _portrait suffix; PDF bytes and content manifest unchanged. README page links remain tied to the portrait edition."
+  },
+  "review_evidence": [
+    {
+      "report": ".build/audit.json",
+      "sha256": "ed0e3b58fe4d14258a021744c6fc3373865211588f314a46b0fdb3d9cad786c9"
+    },
+    {
+      "report": ".build/landscape-audit.json",
+      "sha256": "a09c88a1b3e809cc61e851e2ca1482d48d79ca4782e5e085e8e9f48b7a173884"
+    },
+    {
+      "report": ".build/spacing-visual-evidence.json",
+      "sha256": "496afa7fad0b2e263e72c53db2f52f6dff6fd2fd77a237feabf7dae731d73d00"
+    },
+    {
+      "report": ".build/review-cover-portrait/review.json",
+      "sha256": "2f0600b25aa773a2a37cd97a15c636581be0a25576305db33ab10c059656e3d3"
+    },
+    {
+      "report": ".build/review-landscape-spacing/review.json",
+      "sha256": "6fc51e59293f0b0105c98ac7bb029203ed5ae0d535fb09c5502ecb9fc3756309"
+    },
+    {
+      "report": ".build/review-landscape-aligned/review.json",
+      "sha256": "82c1b3a0bc032c48a1011f10317738b218fa22bc56e82c7a9bc14b7eb5cf197f"
+    }
+  ],
+  "layout_update": {
+    "cover_version": "ver 1.0.0",
+    "cover_date": false,
+    "title_image_gap_pt": 6,
+    "image_caption_gap_pt": 8,
+    "maximum_image_height_pt": 366,
+    "enlarged_images": 327,
+    "minimum_image_scale": 1.017595,
+    "maximum_image_scale": 1.076471,
+    "all_step_pages_unchanged": true,
+    "landscape_alignment_revision": "All screenshot left edges aligned to step numbers; symmetric outer grid margins.",
+    "previous_spacing_measurements": "Enlargement ratios describe the preceding spacing revision, not this left-alignment revision."
+  },
+  "text_update_2026_11_07": {
+    "changed_steps_and_notes": [
+      "2.6-6 필요시 복용 안내",
+      "2.6-7 비매일 주기의 복용일 안내와 새 사진",
+      "5.2 참고: 검색약은 최근 하루 안의 검색 정보로 표시"
+    ],
+    "changed_pages": {
+      "portrait": [
+        27,
+        75
+      ],
+      "landscape": [
+        25,
+        72
+      ]
+    },
+    "comparison": "직전 발행본과 50dpi 전체 페이지 렌더를 비교해 위 쪽만 바뀌었고 쪽수는 세로 141·가로 134로 같다. 바뀐 쪽은 확대해 잘림·겹침이 없음을 확인했다.",
+    "screenshots_changed": [
+      "2.6-7",
+      "3.3-4",
+      "3.3-5",
+      "3.6-1",
+      "3.6-2",
+      "9.9-4"
+    ],
+    "screenshot_pages": {
+      "portrait": [
+        27,
+        41,
+        42,
+        46,
+        124
+      ],
+      "landscape": [
+        25,
+        39,
+        40,
+        44,
+        119
+      ]
+    }
   }
 }

@@ -2,13 +2,14 @@
 # Role: Verify transaction durability, retry fencing, live privacy checks and message-owned cleanup.
 
 import asyncio
+from collections.abc import Iterator
 from datetime import timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from boundaries.push_notification_boundary import PushDeliveryResult
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
@@ -30,7 +31,7 @@ from core.application_clock import application_today
 # Description: Create isolated file-backed sessions usable by worker threads, with FK enforcement.
 # Parameters: tmp_path - test storage. Returns: Session factory and active link ID; disposes on exit.
 @pytest.fixture
-def database(tmp_path: Path):
+def database(tmp_path: Path) -> Iterator[tuple[sessionmaker[Session], int]]:
     engine = create_engine(f"sqlite:///{tmp_path / 'jobs.db'}", connect_args={"check_same_thread": False})
     # Function Name: foreign_keys
     # Description: Enforce deletion cascades in the test database.
@@ -65,6 +66,8 @@ def enqueue(database: tuple) -> int:
 
 # Class Name: Push
 # Role: Deterministic push boundary recording attempts without external side effects.
+# Responsibilities:
+# - Record request payloads and consume queued delivery results or exceptions without contacting Firebase.
 # Attributes: results - queued outcomes; calls - transmitted payloads.
 class Push:
     # Function Name: __init__

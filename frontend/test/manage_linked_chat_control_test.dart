@@ -12,12 +12,12 @@ import 'package:medbuddy_frontend/services/api_response_parser.dart';
 
 // 함수이름: _jsonResponse
 // 함수역할:
-// - 응답 데이터를 UTF-8 JSON으로 직렬화하고 지정 HTTP 상태를 붙인다.
+// - 응답 데이터를 UTF-8 JSON으로 인코딩하고 지정한 HTTP 상태와 콘텐츠 유형을 붙인다.
 // 매개변수:
-// - body (Object): JSON으로 직렬화할 응답 본문.
-// - statusCode (int): 모의 JSON 응답에 지정할 HTTP 상태 코드.
+// - body (Object): JSON으로 인코딩 가능한 응답 본문.
+// - statusCode (int): 모의 응답 HTTP 상태 코드.
 // 반환값:
-// - UTF-8 JSON 본문과 지정 상태 코드의 HTTP 응답.
+// - http.Response; UTF-8 JSON 응답. 인코딩할 수 없는 body는 오류를 발생시킨다.
 http.Response _jsonResponse(Object body, int statusCode) {
   return http.Response.bytes(
     utf8.encode(jsonEncode(body)),
@@ -28,14 +28,21 @@ http.Response _jsonResponse(Object body, int statusCode) {
 
 // 함수이름: main
 // 함수역할:
-// - 복약 대화 요청 계약, 내용 삭제, 복약 문맥과 읽음 처리 검증 사례와 테스트 대역을 등록한다.
+// - 채팅 기록·읽음·삭제·약 문맥·복용 확인·병원 및 이력 공유의 요청 계약과 잘못된 서버 응답 처리를 검사하는 사례를 등록한다.
 // 매개변수:
 // - 없음.
 // 반환값:
-// - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
+// - void; 반환값 없음.
 void main() {
   const baseUrl = 'https://api.example.test/api/v1/chat';
 
+  // 함수이름: history share sends range only and restores server snapshot
+  // 함수역할:
+  // - 공유 요청은 날짜 범위와 메시지 메타데이터만 보내고, 실제 건수·날짜 스냅샷은 서버 응답에서 복원하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   test('history share sends range only and restores server snapshot', () async {
     final control = ManageLinkedChat(
       userHash: 'patient-a',
@@ -86,6 +93,13 @@ void main() {
     expect(message.historyContext!.endDate, DateTime.utc(2026, 10, 7));
   });
 
+  // 함수이름: malformed history attachment preserves the entire history page
+  // 함수역할:
+  // - 이력 첨부의 건수 한 개가 잘못되어도 세 메시지와 페이지 행 수를 보존하고 해당 첨부만 버리며 본문을 유지하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   test(
     'malformed history attachment preserves the entire history page',
     () async {
@@ -128,7 +142,13 @@ void main() {
     },
   );
 
-  // 집계 조회는 읽음 변경 없이 서버 개수와 첫 메시지 ID를 보존한다.
+  // 함수이름: unread summary uses read-only endpoint and preserves exact count
+  // 함수역할:
+  // - 읽지 않은 메시지 요약은 GET 전용 경로를 사용하고 120건과 첫 메시지 ID 41을 축소하거나 읽음 처리하지 않고 보존하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   test(
     'unread summary uses read-only endpoint and preserves exact count',
     () async {
@@ -151,6 +171,13 @@ void main() {
     },
   );
   for (final invalid in [-1, '2', null]) {
+    // 함수이름: invalid unread count does not become zero: $invalid
+    // 함수역할:
+    // - 잘못된 unread_count 값은 읽지 않은 메시지 0건으로 숨기지 않고 StateError로 거절하는지 검증한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
     test('invalid unread count does not become zero: $invalid', () async {
       final control = ManageLinkedChat(
         userHash: 'patient-a',
@@ -168,7 +195,13 @@ void main() {
     });
   }
 
-  // 병원 이름·시간을 클라이언트가 확정하지 않고 ID·날짜만 보내며 서버 카드를 복원한다.
+  // 함수이름: hospital share sends IDs and parses dated server context
+  // 함수역할:
+  // - 병원 공유는 ID·조회일만 전송하고 서버의 이름·진료과·날짜를 복원하며, 메시지 숨김·삭제 시 병원 문맥을 제거하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   test('hospital share sends IDs and parses dated server context', () async {
     final control = ManageLinkedChat(
       userHash: 'patient-a',
@@ -227,9 +260,13 @@ void main() {
     control.dispose();
   });
 
-  // 함수이름: 복용 확인 전용 요청 테스트
-  // 함수역할: 일반 채팅 전송과 구분된 API에 원래 날짜·시간대·선택 약·요청 식별자를 전달하고 확인 메시지를 파싱하는지 검증한다.
-  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수이름: dose confirmation uses a dedicated endpoint with original date and selected IDs
+  // 함수역할:
+  // - 일반 메시지와 구분된 복용 확인 POST에 원래 날짜·시간대·선택 약·요청 ID를 보내고 서버의 확인 메시지를 복원하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   test(
     'dose confirmation uses a dedicated endpoint with original date and selected IDs',
     () async {
@@ -271,13 +308,13 @@ void main() {
     },
   );
 
-  // 함수이름: test 콜백
+  // 함수이름: deletion sends explicit IDs and scope and surfaces server refusal
   // 함수역할:
-  // - 채팅 삭제 요청이 명시적인 메시지 식별자와 삭제 범위를 전달하고 서버 거절을 오류로 보고하는지 검증한다.
+  // - 삭제 POST가 명시적인 메시지 ID 목록과 everyone 범위를 전달하며, 동일 요청이 HTTP 409로 거절되면 StateError로 알리는지 검증한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // - Future<void>; 비동기 검증 후 완료한다.
   test(
     'deletion sends explicit IDs and scope and surfaces server refusal',
     () async {
@@ -330,13 +367,13 @@ void main() {
     },
   );
 
-  // 함수이름: test 콜백
+  // 함수이름: redacted messages allow empty text and discard medication context
   // 함수역할:
-  // - 삭제 표시 메시지는 빈 본문을 허용하되 복약 문맥은 제거하는지 검증한다.
+  // - 삭제 메시지의 빈 본문을 허용하되 재삭제를 막고, 오래된 메시지의 전체 삭제 권한을 거절하며 삭제 복사본의 본문·약 문맥을 제거하는지 검증한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
+  // - void; 기대 결과와 다르면 테스트가 실패한다.
   test('redacted messages allow empty text and discard medication context', () {
     final message = ChatMessage.fromJson({
       'message_id': 1,
@@ -376,13 +413,13 @@ void main() {
     expect(original.copyWith(deletedForEveryone: true).body, isEmpty);
   });
 
-  // 함수이름: test 콜백
+  // 함수이름: 최근 채팅 기록을 사용자와 연동 범위로 조회한다
   // 함수역할:
-  // - 기대 동작: 최근 채팅 기록을 사용자와 연동 범위로 조회한다.
+  // - 현재 사용자와 연동 17, 이전 ID 42, 제한 25를 기록 GET에 전달하고 상대의 읽지 않은 메시지 본문·ID·읽음 상태를 복원하는지 검증한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // - Future<void>; 비동기 검증 후 완료한다.
   test('최근 채팅 기록을 사용자와 연동 범위로 조회한다', () async {
     // 함수이름: MockClient 콜백
     // 함수역할:
@@ -438,13 +475,13 @@ void main() {
     control.dispose();
   });
 
-  // 함수이름: test 콜백
+  // 함수이름: 클라이언트 요청 식별자와 여러 약 식별자를 함께 전송한다
   // 함수역할:
-  // - 기대 동작: 클라이언트 요청 식별자와 여러 약 식별자를 함께 전송한다.
+  // - 메시지 재전송 ID와 단일·복수 약 식별자를 함께 전송하고 응답의 두 약 문맥을 모두 보존하는지 검증한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // - Future<void>; 비동기 검증 후 완료한다.
   test('클라이언트 요청 식별자와 여러 약 식별자를 함께 전송한다', () async {
     // 함수이름: MockClient 콜백
     // 함수역할:
@@ -535,13 +572,13 @@ void main() {
     control.dispose();
   });
 
-  // 함수이름: test 콜백
+  // 함수이름: 약을 선택하지 않은 일반 메시지는 복약 식별자 없이 전송한다
   // 함수역할:
-  // - 기대 동작: 약을 선택하지 않은 일반 메시지는 복약 식별자 없이 전송한다.
+  // - 약을 선택하지 않은 일반 메시지 본문에는 medication_id와 medication_ids를 넣지 않고 반환 문맥도 null로 유지하는지 검증한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // - Future<void>; 비동기 검증 후 완료한다.
   test('약을 선택하지 않은 일반 메시지는 복약 식별자 없이 전송한다', () async {
     // 함수이름: MockClient 콜백
     // 함수역할:
@@ -594,13 +631,13 @@ void main() {
     control.dispose();
   });
 
-  // 함수이름: test 콜백
+  // 함수이름: 연동 환자의 활성 복약 목록을 채팅 선택 정보로 변환한다
   // 함수역할:
-  // - 기대 동작: 연동 환자의 활성 복약 목록을 채팅 선택 정보로 변환한다.
+  // - 연동별 활성 약 GET을 사용하여 서버의 약 ID·이름·복용량을 채팅에서 선택 가능한 문맥으로 복원하는지 검증한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // - Future<void>; 비동기 검증 후 완료한다.
   test('연동 환자의 활성 복약 목록을 채팅 선택 정보로 변환한다', () async {
     // 함수이름: MockClient 콜백
     // 함수역할:
@@ -646,13 +683,13 @@ void main() {
     control.dispose();
   });
 
-  // 함수이름: test 콜백
+  // 함수이름: 오늘 복약 상태를 시간대별 진행 카드로 변환한다
   // 함수역할:
-  // - 기대 동작: 오늘 복약 상태를 시간대별 진행 카드로 변환한다.
+  // - 보호자 범위의 일정 문맥 GET 응답에서 시간대·완료 건수·전체 건수·확인 요청 가능 여부와 약 목록을 복원하는지 검증한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // - Future<void>; 비동기 검증 후 완료한다.
   test('오늘 복약 상태를 시간대별 진행 카드로 변환한다', () async {
     // 함수이름: MockClient 콜백
     // 함수역할:
@@ -710,13 +747,13 @@ void main() {
     control.dispose();
   });
 
-  // 함수이름: test 콜백
+  // 함수이름: 복약 확인 요청은 시간대와 서버가 만든 일정 스냅샷을 유지한다
   // 함수역할:
-  // - 기대 동작: 복약 확인 요청은 시간대와 서버가 만든 일정 스냅샷을 유지한다.
+  // - 확인 요청 메시지의 종류와 아침 시간대는 전송하되 약국 ID는 보내지 않고, 응답의 서버 일정 스냅샷을 유지하는지 검증한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // - Future<void>; 비동기 검증 후 완료한다.
   test('복약 확인 요청은 시간대와 서버가 만든 일정 스냅샷을 유지한다', () async {
     // 함수이름: MockClient 콜백
     // 함수역할:
@@ -789,13 +826,13 @@ void main() {
     control.dispose();
   });
 
-  // 함수이름: test 콜백
+  // 함수이름: 마지막으로 확인한 상대 메시지까지 읽음 처리한다
   // 함수역할:
-  // - 기대 동작: 마지막으로 확인한 상대 메시지까지 읽음 처리한다.
+  // - 연동별 읽음 POST에 마지막 확인 메시지 ID 52를 전달하여 명시한 경계까지만 읽음 처리하도록 요청하는지 검증한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // - Future<void>; 비동기 검증 후 완료한다.
   test('마지막으로 확인한 상대 메시지까지 읽음 처리한다', () async {
     // 함수이름: MockClient 콜백
     // 함수역할:
@@ -836,13 +873,13 @@ void main() {
     control.dispose();
   });
 
-  // 함수이름: test 콜백
+  // 함수이름: 서버 오류를 사용자 동작에 맞는 예외로 변환한다
   // 함수역할:
-  // - 기대 동작: 서버 오류를 사용자 동작에 맞는 예외로 변환한다.
+  // - 활성 대화가 없다는 HTTP 404 응답은 정상 빈 기록 대신 상태 코드를 포함한 StateError로 드러내는지 검증한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // - Future<void>; 비동기 검증 후 완료한다.
   test('서버 오류를 사용자 동작에 맞는 예외로 변환한다', () async {
     final control = ManageLinkedChat(
       userHash: 'patient-a',
@@ -875,7 +912,7 @@ void main() {
           // 함수역할:
           // - 오류의 사용자에게 안내할 오류 메시지를 추출해 해당 필드를 검증한다.
           // 매개변수:
-          // - error (Object): 매처가 검사할 유형화된 예외.
+          // - error (StateError): 매처가 검사할 사용자 동작 오류.
           // 반환값:
           // - 예외의 message 값.
           (error) => error.message,
@@ -887,13 +924,13 @@ void main() {
     control.dispose();
   });
 
-  // 함수이름: test 콜백
-  // 함수역할:
-  // - 기대 동작: 거부된 응답은 기존 문구를 유지하면서 상태 코드와 서버 상세를 담은 ApiRequestException으로 전달한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // Function Name: 거부된 응답은 문구를 유지하고 상태 코드를 함께 전달한다
+  // Description:
+  // - Preserve the localized operation message, HTTP 403 status, and server detail in ApiRequestException when history access is denied.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test('거부된 응답은 문구를 유지하고 상태 코드를 함께 전달한다', () async {
     final control = ManageLinkedChat(
       userHash: 'patient-a',
@@ -921,14 +958,21 @@ void main() {
     control.dispose();
   });
 
-  // 함수이름: test 콜백
-  // 함수역할:
-  // - 기대 동작: 해석할 수 없는 한 행은 건너뛰고 나머지 기록을 반환하며, 이전 페이지 판단에 쓰는 행 수는 서버가 보낸 수를 유지한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // Function Name: 해석할 수 없는 행 하나가 기록 페이지 전체를 실패시키지 않는다
+  // Description:
+  // - Skip a row missing sender/time while returning the other 49 messages in order; preserve the original 50-row page count, with ordinary lists falling back to their length.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test('해석할 수 없는 행 하나가 기록 페이지 전체를 실패시키지 않는다', () async {
+    // Function Name: row
+    // Description:
+    // - Build a valid history row so one malformed sibling can be isolated in a full server page.
+    // Parameters:
+    // - id (int): message ID and suffix for client ID and body.
+    // Returns:
+    // - Map<String, Object?>; complete link-17 message payload with a fixed timestamp.
     Map<String, Object?> row(int id) => {
       'message_id': id,
       'link_id': 17,
@@ -944,7 +988,7 @@ void main() {
           'success': true,
           'data': [
             for (var id = 1; id <= 50; id++)
-              // 25번 행은 필수 값인 발신자와 작성 시각이 없다.
+      // Row 25 omits the required sender and creation timestamp.
               if (id == 25)
                 {'message_id': id, 'link_id': 17, 'body': '깨진 행'}
               else
@@ -962,7 +1006,7 @@ void main() {
     expect(page.first.messageId, 1);
     expect(page.last.messageId, 50);
     expect(ChatHistoryPage.rowCountOf(page), 50);
-    // 행 수를 담지 않은 일반 목록은 길이를 그대로 사용한다.
+    // A plain list without a server row count uses its own length.
     expect(ChatHistoryPage.rowCountOf(page.toList()), 49);
     control.dispose();
   });

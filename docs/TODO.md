@@ -1,5 +1,256 @@
 # MedBuddy Release TODO
 
+## 1.0.0 release candidate line
+
+The 1.0.0 line starts from `v0.2.5-beta` (`main` at `5b156c9`) on `beta/v1.0.0`.
+Every item still open on the beta lines below is sorted here; the details stay in
+the section that recorded it. Changes are listed in the
+[1.0.0 notes](releases/v1.0.0.md).
+
+### Code work
+
+- [x] Link codes: two caregivers redeeming two codes of one patient at the same
+      moment can pass the per-patient link limit by one (1.0.0 readiness). Fixed
+      on 2026-11-07: redemption locks both accounts before it counts.
+- [x] A 200 response without the expected data shows its English error text in
+      the Korean UI on two caregiver screens (1.0.0 readiness). Fixed on
+      2026-11-07: English developer text gives the Korean UI the generic message.
+- [x] Consistency items seen in the 2026-10-18 refactor round (v0.2.3, "Open on
+      this line"), done on 2026-11-07: a straight apostrophe in the redacted
+      caregiver text, history dates on the shared app offset, the shared language
+      rule on home and caregiver actions, the course-length constant in messages,
+      and the inbox key's trimmed account hash. The relabelled `read_at` was right
+      as it is: `utc_now()` returns naive UTC, so `replace(tzinfo=UTC)` labels it
+      correctly.
+- [x] A tap on yesterday's list right after midnight (owner decision on
+      2026-11-07: refuse it): nothing is recorded, today's list is loaded and the
+      user is asked to tap again. Reminder actions carry their own day.
+- [x] Home screen lifecycle work inside `build`, shell rebuilds on every inbox or
+      chat notification, and link polling under a pushed screen (carried over
+      from v0.2.0). Reviewed on 2026-11-07 and left as it is: `build` only schedules
+      post-frame reads when the account, language or home source changes; the poll
+      is one small GET every 15 seconds and stops in the background; pausing it
+      under a pushed screen would show a stale link list on return.
+- [ ] `KeepWordsText` for the one-off texts that still wrap by syllable.
+- [ ] A Postgres role without superuser rights for the API and catalog jobs
+      (security audit). The code is ready since 2026-11-07
+      (`scripts/provision_database_roles.py`, opt-in through
+      `MEDBUDDY_APP_DB_USER`/`MEDBUDDY_APP_DB_PASSWORD`, see Production
+      Deployment); switching production needs the owner to add the two settings.
+- [ ] Android instrumented tests in CI (an emulator job). Added on 2026-11-07: the
+      `instrumented` job of Flutter CI runs `:app:connectedDebugAndroidTest` on an
+      API 34 emulator, so the release gate now also needs the home-widget layout and
+      refresh tests. The six tests passed on the local `medbuddy_rc` emulator (API 34,
+      `pixel_7`, 420 dpi). The first GitHub run used the runner's default 160 dpi
+      screen and failed one case, so the job now uses the `pixel_7` profile too.
+- [ ] Owner decision (visual): on a 160 dpi screen the one-row widget (250 x 48 dp,
+      patient, normal text, missed dose) cuts the save-state line by 2 px when the
+      missed-dose note wraps to two lines (CI run 42317116065 on `e7bef59`). It fits
+      on the devices checked so far (420 dpi emulators, Galaxy Note10); not checked at
+      240 or 320 dpi. Changing the row layout would change the widget's look.
+- [x] Guide and UML version marks (2026-11-07): the guide cover, footer and notes
+      say 1.0.0 and describe the two 1.0.0 behaviour changes (yesterday's list after
+      midnight, the per-account pharmacy limit); the class and overall sequence
+      diagrams and the use case descriptions carry the 1.0.0 changes.
+- [ ] User guide screenshots from earlier versions (0.2.1 to 0.2.4 captures that
+      remain in the guide). On 2026-11-07 six steps were retaken on the emulator
+      against a local backend (2.6-7, 3.3-4, 3.3-5, 3.6-1, 3.6-2 and 9.9-4, which had
+      shown version 0.2.3). Still old: prescription and pill identification (2.2,
+      2.7-2.10; they need live AI and public-data lookups), the home widgets (6.1,
+      6.2; placed by hand on a launcher), the link screens (4.x; two accounts) and a
+      few settings and place screens whose content has not changed.
+
+### Owner decisions
+
+- [x] Distribution of 1.0.0 (2026-11-07): both Google Play and the GitHub APK. The
+      App Check completion criteria therefore block 1.0.0, and the GitHub APK needs
+      a way through App Check once the server requires it (open design item below).
+- [ ] Design: how the GitHub APK passes App Check when production requires it
+      (Play Integrity recognises only Play-distributed builds).
+- [x] Department search crisis wording (2026-11-07): no special handling, as now.
+- [x] Default of chat notifications (2026-11-07): message preview stays the default.
+- [x] A slot tapped on yesterday's list right after midnight: see Code work.
+- [ ] `SAVED_MEDICATION_MAX_PER_ACCOUNT` counting stopped regimen versions.
+- [ ] Missed-dose scan cost against undo after the deadline (v0.2.3).
+- [ ] Fuzzy catalogue ranking and review flagging; rate limits, retention and 403
+      wording; unused indexes; unique CI job names; Dependabot for gradle and
+      docker; APK size; chat pushes on the chat channel (carried over from
+      v0.2.0).
+- [ ] A failed local reminder save turns the reminder off; a database dump kept off
+      the production host (v0.2.3).
+
+### Owner actions
+
+- [ ] A final privacy policy and consent for health data (owner and legal).
+- [ ] A larger hospital API quota (an operating account on the public data
+      portal).
+- [ ] The security audit follow-ups below (repository secrets, data.go.kr quotas,
+      Cloudflare rule, host settings).
+- [ ] Add `beta/v1.0.0` to the `beta-android` environment before the first signed
+      build; the workflow already allows the branch.
+
+### Security audit, second run (2026-11-07)
+
+A deeper second run of the security audit (deep profile, prosecutor and defender per
+candidate, critics until a clean pass) finished on 2026-11-07 against `1c52015`; records
+stay outside the repository (`~/security-audit-skill/MedBuddy/run-2`). Six findings were
+confirmed (three medium, three low), three leads need owner checks and seven candidates
+were rejected. Fixed or still open from its results:
+
+- [x] Unlink now locks both participants, so a chat send or caregiver setting
+      written at the same moment cannot stay behind on the ended link (it could come
+      back after a re-link and appeared in the account export).
+- [x] Nearby pharmacy search has a per-account daily quota
+      (`PHARMACY_SEARCH_DAILY_LIMIT`, 200), so one account cannot spend the shared
+      live pharmacy budget for everyone.
+- [x] Provider errors from the pharmacy, holiday and emergency-pharmacy lookups no
+      longer chain the httpx error, whose text holds the request URL with the
+      service key.
+- [x] Unlink also invalidates the patient's unused link codes. A caregiver who had
+      been removed could redeem another code the patient issued before the unlink
+      and get access again without the patient (judged hardening, not a boundary
+      crossing: the code was one the patient handed out, within its 15 minutes). A code shown at the moment of an
+      unlink stops working too; the patient issues a new one.
+- [x] An open chat stream re-checks its ID token at each revalidation (about once a
+      minute), so a revoked session or disabled account stops receiving messages
+      there too, as it already did on every REST request. A verifier outage keeps the
+      stream and checks again on the next ping.
+- [x] Pharmacy shares that need a live opening-hours lookup are charged to the same
+      per-account daily quota as nearby pharmacy search. A spent shared budget now
+      answers 503 with its own message and a wait until midnight (it said "retry in 5
+      seconds"). The per-account limit stops one account; a few accounts or one IP can
+      still spend the shared budget (200 x 20 per IP > 800), as for hospital search, so
+      the Cloudflare rule stays the real bound.
+- [x] Per-IP quotas count an IPv6 address as its /64, so one host cannot open a new
+      counter for every address in its allocation (and IPv4-mapped addresses count as
+      IPv4). Whether Cloudflare passes IPv6 client addresses through is an owner check.
+- [x] The per-IP daily quota is counted only for signed-in requests. It was counted
+      before authentication, so every unauthenticated address left day-long counters
+      (up to four). A few hundred thousand addresses (one /64 if Cloudflare forwards
+      full IPv6 addresses) could fill the 128 MB noeviction store, and a full store
+      makes the limiter answer 503 to everyone. Owner checks: `INFO memory` and
+      `DBSIZE` on rate-limit-redis, and an alert as `used_memory` nears `maxmemory`.
+- [x] Production refuses to start with two spellings of one setting in the environment
+      (a lowercase `app_env` could otherwise skip every production check), without
+      revocation and verified-email checks, or with `FIREBASE_AUTH_EMULATOR_HOST` set
+      (firebase-admin then skips token signature checks).
+- [x] Signed Android builds show a requested `api_base_url` in the run title and in the
+      first job's summary before the `beta-android` approval, and the ingress probe
+      requires this commit's exact API contract header.
+- [ ] Owner checks for the signed workflow: whether the deployment review shows the
+      dispatch inputs, which branches the `beta-android` policy still allows (remove
+      finished `beta/v0.2.x` entries), and branch protection for `beta/v1.0.0`.
+- [x] Account deletion also removes the device's next as-needed check time, and release
+      builds refuse a Firebase Auth emulator host.
+- [x] Device push tokens from a revoked session are retired: when a device registers its
+      token (the app does this at every start), the server reads when the account's
+      Firebase sessions were last revoked and disables the account's other tokens not
+      registered since. After a password reset, the owner's next sign-in cuts off a device
+      that kept the old session. Still open: tokens of a user disabled by the operator keep
+      receiving pushes until the account is deleted, and the account owner has no "sign out
+      other devices" action.
+- [x] Prescription text de-identification refuses lines over 500 characters. A single
+      20,000-character line made the identifier patterns spend about 4 seconds of CPU on
+      the event loop, twice per request, stalling every other request. With the cap a
+      full 20,000-character text costs about 2 ms. The call also moved to a worker
+      thread, which alone would not have helped: the regex engine holds the GIL.
+- [x] The JPEG scan limit (100) now also applies to JPEGs with an MPF segment, which Pillow
+      opens as format "MPO" and which skipped both the limit and the reduced decode.
+- [x] Pill photos are turned upright from the EXIF orientation tag alone. Pillow's
+      `exif_transpose` re-encoded the whole EXIF block, so a 128 px PNG or WEBP with an
+      oversized tag cost about 0.45 us of Python CPU per upload byte (about 4.5 s for
+      10 MiB, some 20 times an ordinary 24 MP photo) while holding the GIL.
+- [x] The signed Android build no longer restores the Flutter SDK and pub cache. An entry
+      saved by a push run on the same branch is not part of the approved commit (the
+      audit judged it hardening: only writers of the signed branches can seed it).
+- [ ] Owner decision: one free account can spend the shared hospital API budget (800
+      detail calls a day) in about 67 ordinary searches, inside its own 120-search quota,
+      because the quota counts searches and a search makes up to 12 detail calls. Hospital
+      search then answers 503 for everyone until midnight. The provider's operating-account
+      quota (already a 1.0.0 blocker) is the real fix; a per-call share per account would
+      also limit ordinary users to a few searches a day.
+- [ ] Owner checks for the counter store (the audit could not settle them offline): how many
+      anonymous accounts Firebase lets one address create, and whether old anonymous
+      accounts are deleted. Each signed-in chat send leaves a day-long counter per account,
+      so many free accounts could still fill the 128 MB store after the per-address fix.
+- [x] Clients can no longer use the `slot_complete_` message id that the server uses
+      for its slot completion card; a patient message with that id kept the server
+      card from being created.
+- [ ] Hardening, not a vulnerability (the audit rejected it): on PostgreSQL a request
+      waiting for its own account's lock holds one of the 5 pooled connections for up
+      to 5 s. Waiting on an in-process per-account lock before checkout, as SQLite
+      already does, or giving the background loops their own small engine, would free
+      those slots. Needs a PostgreSQL concurrency test before changing the lock path.
+
+### Review of the 2026-11-07 collaborator commits
+
+Ten commits (`b2ae78a`..`a376728`: slot-check requests with a Taken action on the
+patient's notification, history sharing and searched-medication references in chat,
+standalone medication search, multi-entry manual registration with custom intervals,
+as-needed loading, the 327-step guide) were reviewed the same day in three areas and
+corrected where the defect was verified. The guide PDF and README rebuild to the
+committed hashes.
+
+- [x] Fixed: a slot-check push that reaches the phone after midnight was not shown at
+      all; it is now shown without the Taken button. A Taken tap on a request from an
+      earlier day records nothing and removes the notification instead of leaving a
+      button that does nothing. Reading the chat removes the slot-check notifications
+      up to the read message. The queued dose carries the medication names for the
+      sync status list, and the home widget is republished right after the tap.
+      The action push no longer repeats the title and body the app never reads.
+- [x] Fixed: the standalone medication search showed "check your connection" for every
+      failure, including the daily lookup limit and an expired sign-in; it now uses
+      the same messages as the prescription lookup. Its error and empty texts wrap by
+      word; a double tap on the manual-entry search opens one search screen.
+- [x] Fixed: saving several manual entries refreshed the list, today's schedule and
+      reminders after every entry; it now refreshes once at the end (also after a
+      failure or when the screen closes). A duplicate entry is no longer counted as
+      saved. A custom interval ("N일마다") reads "Every N days" in English.
+- [x] Fixed: the chat history action showed "Could not load the conversation" as the
+      reason it was unavailable; dead texts and an unreachable over-limit check were
+      removed and the attachment limit is one constant (server: 10).
+- [x] Owner decision (2026-11-07): a searched-medication reference card in chat was
+      stored as the sending app wrote it. The server now remembers the public product
+      fields its search returned (24 hours, by item number, no account data, like the
+      shared-pharmacy cache), rebuilds each card from them and refuses an item not
+      searched in that time; the app clears it and asks for a new search. Migration
+      `a9d3c5e71f24`.
+- [x] Owner decision (2026-11-07, preview approved): manual entry shows again how many
+      dose days a non-daily course gives, now also for a custom interval, and the
+      as-needed explanation; both wrap by word. The two section hints the collaborator
+      also removed stay removed.
+- [x] Owner decision (2026-11-07): the collaborator's additions belong to the 1.0.0
+      scope.
+- [ ] Left as it is: two devices with stale caches can each confirm the same slot from
+      a slot-check request, and the server then posts a second "복용을 기록했습니다"
+      message, as the chat Taken reply always has. The request notification stays
+      until read or tapped even when the dose was recorded in the app or widget.
+      Wording differs between the notification button ("복용 완료") and the reminder
+      ("복용했어요"). The guide keeps an unused photo
+      (`notification_settings_2026-10-22.png`) recorded in its verification hashes.
+      An app of this line talking to a 0.2.5 server drops a searched-medication
+      attachment without an error; deploying the server before the app (already the
+      procedure for migration `f7a2c9e4b610`) avoids it.
+- [ ] Device check: the Taken action from a locked phone and with the app closed, a
+      request arriving after midnight, and an offline tap updating the widget.
+
+### Device checks
+
+- [ ] A snooze across midnight, and sign-out while the 12-hour reminder task runs.
+- [ ] Offline after midnight, caregiver alerts after an offline start, and push
+      registration after a cold start without network.
+- [ ] Reminders scheduled by an earlier build, and the caregiver's missed-dose
+      alert withdrawn after a dose.
+- [ ] Notification actions with the app foregrounded, backgrounded and terminated,
+      on a locked screen, after a reboot and with battery saver; disabling
+      medication notifications removes alarms and shown quick actions.
+- [ ] Message deletion between two devices (reconnect, offline failure, delivered
+      previews, the 24-hour deadline) and session cases (network loss during a
+      token refresh, 401 in chat).
+- [ ] Prescription capture with the privacy filter on a real prescription.
+- [ ] Not possible with the current devices: Android 16 on a phone, device-to-device
+      transfer, more than three sessions on one link.
+
 ## v0.2.5 development line
 
 v0.2.5 starts from `v0.2.4-beta` on `beta/v0.2.5` (PR #134) and collects the
@@ -17,7 +268,7 @@ are to be finished before 1.0.0.
       opened from a notification while the tab is showing. Fixed on 2026-11-04:
       the tab reads again once the server accepts a dose; regressions in
       [history screen](../frontend/test/medication_history_ui_boundary_test.dart).
-- [ ] Department search has no crisis wording ("죽고 싶어요"); decide what it
+- [x] Department search has no crisis wording ("죽고 싶어요"); decide what it
       should offer before adding any.
 - [ ] Word wrapping covers the shared widgets and the screens checked on
       2026-11-04. Other one-off texts still wrap by syllable; switch them to
@@ -45,18 +296,18 @@ hospital API quota, a physical-device pass) and these:
 - [x] Check production, read-only, for saved medications whose course length
       is 0 or less. They were accepted before 2026-11-04 and never end.
       Checked at the 2026-11-04 deploy: none.
-- [ ] Owner decision: a slot tapped on yesterday's list right after midnight,
+- [x] Owner decision: a slot tapped on yesterday's list right after midnight,
       with the app left open across midnight, is recorded for the new day by
       design (`_ensureCurrentDayCache`), which also removes tonight's reminder of
       that slot. Refusing it with "updated for the new day, tap again" would
       change that design and its tests.
 - [ ] Owner decision: `SAVED_MEDICATION_MAX_PER_ACCOUNT` (300) also counts
       stopped regimen versions, so frequent edits over years can reach it.
-- [ ] Not changed: two caregivers redeeming two codes of one patient at the same
+- [x] Not changed: two caregivers redeeming two codes of one patient at the same
       moment can pass the per-patient link limit by one (the count is not locked
       on the patient). No data is exposed; the fix needs a second account lock
       in the redemption.
-- [ ] Not changed: a 200 response without the expected data shows its English
+- [x] Not changed: a 200 response without the expected data shows its English
       error text in the Korean UI on two caregiver screens. Deliberate in
       `UserFacingErrorMessage`; a localized generic message would replace it.
 - [ ] Physical checks of the 2026-11-04 fixes: a snooze across midnight, and
@@ -582,7 +833,7 @@ closed by any code on this branch:
       toggled the selection.
       Not checked: two physical phones, more than three sessions on one link,
       a transient FCM failure, and Android 16.
-- [ ] Chat notifications show the message preview by default; the recipient
+- [x] Chat notifications show the message preview by default; the recipient
       can switch to type-only. Decide the default.
 
 ### Decided on this branch

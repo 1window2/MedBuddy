@@ -113,6 +113,8 @@ def test_invalid_time_range_is_not_claimed_as_date_specific() -> None:
 # Class Name: _ManualClock
 # Role: Stands in for the `time` module inside the roster boundary so a test can move past the
 #   cool-down.
+# Responsibilities:
+# - Supply a controlled monotonic reading for cooldown expiry without waiting in real time.
 # Attributes:
 # - now (float): Current monotonic reading returned to the boundary.
 class _ManualClock:
