@@ -188,6 +188,8 @@ class MedicationReminderRefreshService {
       final schedules = results[1] as List<MedicationSchedule>;
       final preferences = results[2] as SharedPreferences;
       final userSetting = results[3] as UserSetting;
+      // 이전 계정의 늦은 조회는 현재 계정의 개인정보 설정과 알림을 변경하지 않는다.
+      if (!await _stillOwnsReminders()) return true;
       final language = resolveAppLanguage(
         userSetting.languageMode.isEmpty
             ? preferences.getString(appLanguagePreferenceKey) ?? 'ko'
@@ -201,6 +203,7 @@ class MedicationReminderRefreshService {
 
       if (!userSetting.medicationNotificationsEnabled) {
         for (final slotKey in medicationScheduleSlotKeys) {
+          if (!await _stillOwnsReminders()) return true;
           final setting =
               settingsBySlot[slotKey] ?? MedicationAlarm.defaults(slotKey);
           await _cancelReminder(
@@ -227,6 +230,7 @@ class MedicationReminderRefreshService {
              */(schedule) => schedule.slotKeys.contains(slotKey))
             .toList(growable: false);
         if (!setting.isEnabled || slotSchedules.isEmpty) {
+          if (!await _stillOwnsReminders()) return true;
           await _cancelReminder(
             setting.notificationId,
             slotKey: setting.slotKey,
