@@ -70,6 +70,13 @@ void main() {
   });
 
   // 위젯 갱신이 지연되어도 영속 저장과 서버 전송은 완료되어야 한다.
+  // 함수이름: test callback
+  // 함수역할:
+  // - 위젯 게시를 대기시켜도 기록 저장과 HTTP 전송 시도는 끝나며 게시 대기 해제 후 누적 상태를 한 번 더 알리는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('slow widget publication never blocks durable recording or delivery', () async {
     final widgetGate = Completer<void>();
     final posted = Completer<void>();
@@ -100,6 +107,13 @@ void main() {
   });
 
   // 로그아웃 직전의 전송 시도는 정해진 시간만 기다린다. 응답이 없으면 기록을 대기열에 둔 채 돌아온다.
+  // Function Name: test callback
+  // Description:
+  // - A stalled logout flush must return within its budget without losing the pending operation; after the late failure, a new online worker can deliver it.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   test('flushPending uploads what it can and never waits past its limit', () async {
     final hanging = Completer<http.Response>();
     var online = false;
@@ -239,6 +253,7 @@ void main() {
   // Initialization may block behind storage work; reject an expired request day
   // after it completes instead of stamping the snapshot with a new date.
   // Function Name: initialization midnight test
+  // Description: Rejects a dated cache request that expires while store initialization is pending.
   // Parameters: None.
   // Returns: Completion of asynchronous assertions.
   test('cache rejects a read that expires during initialization', () async {
@@ -267,6 +282,7 @@ void main() {
   // A durable write finishing after midnight must not advance the in-memory
   // date, which otherwise permits recording today's dose from yesterday's data.
   // Function Name: persistence midnight test
+  // Description: Keeps the original durable date after midnight and refuses current-day writes from the stale cache.
   // Parameters: None.
   // Returns: Completion of asynchronous assertions.
   test(
@@ -309,6 +325,7 @@ void main() {
   // Widget publication is asynchronous too; a day change here must not publish
   // stale foreground state, even though the old dated snapshot was persisted.
   // Function Name: publication midnight test
+  // Description: Rejects stale foreground publication after midnight while preserving the original persisted date.
   // Parameters: None.
   // Returns: Completion of asynchronous assertions.
   test(
@@ -594,7 +611,7 @@ void main() {
   });
 
   // 함수이름: 오래된 응답 덮어쓰기 방지 테스트
-  // 함수역할: 만료된 작업자의 응답과 이전 버전의 조회 결과가 최신 승인 캐시를 덮어쓰지 않는지 검증한다.
+  // 함수역할: 복용 취소 승인 뒤 만료된 작업자의 완료 응답과 이전 버전 조회가 취소 상태·캐시 리비전을 바꾸지 않는지 검증한다.
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   test(
     'stale reads and expired workers cannot overwrite an acknowledged undo',
@@ -909,6 +926,13 @@ void main() {
     expect(pending.single['link_id'], 7);
   });
   // 서버가 받은 기록 뒤에 저장소 오류로 전송을 멈춰도 기록 화면이 다시 읽도록 알린다.
+  // Function Name: test callback
+  // Description:
+  // - Accept the first queued dose and fail the second claim; require the accepted revision and a listener notification despite the later store error.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   test('a dose accepted before a store failure still notifies', () async {
     final failing = _FailingClaimStore(db, key, failOnClaim: 2);
     await failing.enqueue('patient-a', op('first'));
@@ -940,13 +964,34 @@ void main() {
 // Class Name: _FailingClaimStore
 // Role: Fail one claim after earlier operations were accepted.
 // Responsibilities: Reach the store-error exit of the upload loop with real data.
-// Attributes: failOnClaim - 1-based claim call that throws.
+// Attributes:
+// - failOnClaim (int): 1-based claim call that throws.
+// - _claims (int): Number of claim attempts, including the failing attempt.
 class _FailingClaimStore extends DoseOutboxStore {
   final int failOnClaim;
   int _claims = 0;
 
+  // Function Name: _FailingClaimStore
+  // Description:
+  // - Wrap the real encrypted test store and select one claim attempt to fail.
+  // Parameters:
+  // - db (Database): Open database owned by the test fixture.
+  // - key (SecretKey): Key used to encrypt the fixture's operations.
+  // - failOnClaim (int): 1-based claim number that raises StateError.
+  // Returns:
+  // - _FailingClaimStore: A store with a fresh claim counter.
   _FailingClaimStore(super.db, super.key, {required this.failOnClaim});
 
+  // Function Name: claim
+  // Description:
+  // - Count each attempt and fail the selected one before delegating other claims to the real store.
+  // Parameters:
+  // - owner (String): Account whose next pending operation is requested.
+  // - lease (String): Worker lease identity passed through to the store.
+  // - now (int): Millisecond timestamp used for lease expiry checks.
+  // Returns:
+  // - Future<Map<String, dynamic>?>: Claimed operation or null when none is claimable.
+  // - Throws StateError synchronously on failOnClaim; normal store failures still propagate.
   @override
   Future<Map<String, dynamic>?> claim(String owner, String lease, int now) {
     if (++_claims == failOnClaim) throw StateError('store failed');
@@ -955,8 +1000,8 @@ class _FailingClaimStore extends DoseOutboxStore {
 }
 
 // Class Name: _MidnightStore
-// Role: Advance the test clock after a real encrypted cache write completes.
-// Responsibilities: Expose the persistence await boundary deterministically.
+// Role: Advance the test clock when a pending-operation read sees a persisted cache.
+// Responsibilities: Expose the post-persistence read boundary deterministically.
 // Attributes: onSaved - simulated clock change, without changing stored data.
 class _MidnightStore extends DoseOutboxStore {
   final void Function() onSaved;
@@ -967,10 +1012,14 @@ class _MidnightStore extends DoseOutboxStore {
   // Returns: A store that retains normal database behavior.
   _MidnightStore(super.db, super.key, this.onSaved);
 
-  // Function Name: pending
-  // Description: Simulate midnight at the first read after the encrypted cache commit.
-  // Parameters: owner - unchanged account scope.
-  // Returns: The real pending operations.
+  // 함수이름: pending
+  // 함수역할:
+  // - 실제 대기 목록을 읽고 해당 계정 캐시가 있으면 onSaved를 호출해 시계를 이동한다.
+  // - 일회성 훅이 아니므로 캐시가 존재하는 후속 조회에서도 호출된다.
+  // 매개변수:
+  // - owner(String): 대기 기록과 캐시를 조회할 계정.
+  // 반환값:
+  // - Future<List<Map<String, dynamic>>>: 실제 저장소의 대기 목록; 조회 오류는 전달한다.
   @override
   Future<List<Map<String, dynamic>>> pending(String owner) async {
     final operations = await super.pending(owner);

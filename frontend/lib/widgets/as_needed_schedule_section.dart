@@ -1,3 +1,5 @@
+// 파일명: as_needed_schedule_section.dart
+// 역할: 필요시 약의 오늘 복용 보고·미확인 요청 복원·일회 확인 알림을 표시한다.
 // 필요시 약의 새 복용은 일정에서 기록하고 기존 보고의 정정은 복약 기록에 맡긴다.
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -12,7 +14,15 @@ import '../theme/medbuddy_theme.dart';
 import 'medication_schedule_header.dart';
 import 'medication_thumbnail.dart';
 
+// 클래스명: AsNeededScheduleSection
+// 역할: 필요시 약의 오늘 복용 기록과 선택적 확인 알림을 표시한다.
+// 주요 책임: 본인 기록·재시도와 보호자 읽기 전용 표시를 구분하고 날짜·활성 상태 변경에 맞춰 조회한다.
+// 속성: patientHash/control: 환자 기록 범위; reminderControl/imageStore: 알림·기기 사진; 읽기 전용·활성·갱신·표시 설정.
 class AsNeededScheduleSection extends StatefulWidget {
+  // 함수이름: AsNeededScheduleSection
+  // 함수역할: 필요시 복용 영역의 계정·조회·알림 및 표시 조건을 구성한다.
+  // 매개변수: key: 식별자; patientHash/isEnglish: 계정·언어; control/imageStore/reminderControl: 선택적 경계; refreshInProgress/refreshVersion/isActive: 갱신 조건; emptyState: 빈 화면; notificationsAllowed/readOnly: 권한; readOnlyHeaderAction/readOnlyStatusLabel: 보호자 표시.
+  // 반환값: 필요시 일정 위젯; 주입 제어기의 수명은 호출자가 관리한다.
   const AsNeededScheduleSection({
     super.key,
     required this.patientHash,
@@ -43,11 +53,19 @@ class AsNeededScheduleSection extends StatefulWidget {
   // 보호자 알림은 환자의 확인 알림과 분리해 부모 화면에서 관리한다.
   final Widget? readOnlyHeaderAction;
   final String? readOnlyStatusLabel;
+  // 함수이름: createState
+  // 함수역할: 조회와 기록 및 자정 갱신을 관리할 상태를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 새 필요시 일정 State.
   @override
   State<AsNeededScheduleSection> createState() =>
       _AsNeededScheduleSectionState();
 }
 
+// Class Name: _AsNeededScheduleSectionState
+// Role: Manages current-day as-needed history, pending saves and optional device reminders.
+// Responsibilities: Recover pending intentions, prevent overlapping records and refresh after lifecycle/date changes while preserving read-only caregiver behavior.
+// Attributes: Controllers own history/reminders; timers and flags coordinate reloads; photos/snapshot/error fields retain display state.
 class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     with WidgetsBindingObserver {
   late final MedicationHistoryControl _control;
@@ -62,11 +80,27 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
   bool _pendingStoreUnavailable = false;
   final Map<int, String> _photos = {};
   String? _saveError;
+  // 함수이름: tr
+  // 함수역할: 필요시 복용 화면의 안내 문구를 언어에 맞게 고른다.
+  // 매개변수: ko/en: 한국어와 영어 문구.
+  // 반환값: 현재 위젯 언어의 문구.
   String tr(String ko, String en) => widget.isEnglish ? en : ko;
+  // 함수이름: _readOnly
+  // 함수역할: 화면 또는 기록 제어기가 요청한 읽기 전용 제한을 함께 적용한다.
+  // 매개변수: 없음.
+  // 반환값: 둘 중 하나라도 읽기 전용이면 true.
   bool get _readOnly => widget.readOnly || _control.readOnly;
+  // 함수이름: _locked
+  // 함수역할: 진행 중 기록·조회 또는 무효화된 세션 때문에 입력을 잠가야 하는지 확인한다.
+  // 매개변수: 없음.
+  // 반환값: 입력을 잠글 상태이면 true.
   bool get _locked =>
       _recording || _control.busy || _control.sessionInvalidated;
 
+  // 함수이름: initState
+  // 함수역할: 기록·알림 경계를 준비하고 생명주기·자정 갱신과 최초 조회를 시작한다.
+  // 매개변수: 없음.
+  // 반환값: 없음; 최초 조회와 알림 복원은 비동기로 시작한다.
   @override
   void initState() {
     super.initState();
@@ -89,6 +123,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     unawaited(_restoreReminder());
   }
 
+  // 함수이름: _restoreReminder
+  // 함수역할: 활성 본인 화면에서만 저장된 확인 알림을 현재 허용·언어 설정으로 복원한다.
+  // 매개변수: 없음.
+  // 반환값: 복원 시도 완료; 알림 오류는 삼켜 복용 기록 이용을 막지 않는다.
   Future<void> _restoreReminder() async {
     // 보호자 조회는 환자의 기기 알림이나 로컬 설정을 만들거나 변경하지 않는다.
     if (_readOnly || !widget.isActive) return;
@@ -103,6 +141,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     if (mounted) setState(() {});
   }
 
+  // 함수이름: didUpdateWidget
+  // 함수역할: 부모 갱신 완료·버전 변경·재활성화에 기록을 다시 읽고 알림 허용 변경을 반영한다.
+  // 매개변수: oldWidget: 이전 위젯 구성.
+  // 반환값: 없음; 필요한 작업만 비동기로 시작한다.
   @override
   void didUpdateWidget(covariant AsNeededScheduleSection oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -116,6 +158,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     }
   }
 
+  // 함수이름: didChangeAppLifecycleState
+  // 함수역할: 앱 복귀 시 날짜 타이머를 다시 맞추고 기록과 알림을 복원한다.
+  // 매개변수: state: 새 앱 생명주기 상태.
+  // 반환값: 없음; resumed 이외 상태는 처리하지 않는다.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -125,7 +171,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     }
   }
 
-  // 한국 날짜가 바뀌면 전날의 복용 가능 목록과 횟수를 계속 보여주지 않는다.
+  // 함수이름: _scheduleDayRefresh
+  // 함수역할: 기준 시간대의 다음 자정 1초 뒤에 날짜별 기록을 갱신하도록 예약한다.
+  // 매개변수: 없음.
+  // 반환값: 없음; 기존 타이머를 취소하고 실행 후 다음 날짜 예약을 만든다.
   void _scheduleDayRefresh() {
     _dayTimer?.cancel();
     final now = MedicationHistoryDates.wallTime(_control.now);
@@ -136,6 +185,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     });
   }
 
+  // Function Name: _restorePending
+  // Description: Restores pending as-needed intentions before reading or writing records.
+  // Parameters: None.
+  // Returns: Completion; non-session storage failure sets a write-blocking flag, while invalidated sessions rethrow.
   Future<void> _restorePending() async {
     try {
       await _control.restorePendingAsNeeded();
@@ -146,6 +199,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     }
   }
 
+  // Function Name: _readToday
+  // Description: Loads today's records, removes pending intentions already acknowledged by matching server entries and starts photo loading.
+  // Parameters: None.
+  // Returns: Completion of record and pending-store updates; errors propagate, and photo loading remains asynchronous.
   Future<void> _readToday() async {
     await _restorePending();
     await _control.load(MedicationHistoryRange(_control.today, _control.today));
@@ -162,7 +219,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     if (mounted) setState(() {});
   }
 
-  // 사진의 기기 저장소 조회 때문에 복용 체크를 기다리게 하지 않는다.
+  // 함수이름: _loadPhotos
+  // 함수역할: 본인 화면의 필요시 약에만 계정별 기기 사진을 조회한다.
+  // 매개변수: snapshot: 사진을 읽을 약 목록이 포함된 기록 스냅샷.
+  // 반환값: 조회 완료 Future; 읽기 실패는 기본 아이콘으로 대체하고 보호자 화면은 기기 사진을 읽지 않는다.
   Future<void> _loadPhotos(MedicationHistorySnapshot snapshot) async {
     // 기기 전용 사진은 환자 본인의 화면에서만 읽고 보호자는 제공된 원격 사진을 본다.
     if (_readOnly) return;
@@ -184,6 +244,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     if (mounted) setState(() {});
   }
 
+  // 함수이름: _load
+  // 함수역할: 활성 세션에서 오늘 기록을 읽고 중복 작업 중의 갱신 요청은 나중에 다시 실행한다.
+  // 매개변수: 없음.
+  // 반환값: 현재 조회 시도 완료; 오류 표시는 제어기의 상태에 맡기며 예약된 갱신을 이어 실행한다.
   Future<void> _load() async {
     if (!mounted || !widget.isActive || _control.sessionInvalidated) return;
     if (_recording || _control.busy) {
@@ -199,12 +263,20 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     if (mounted && _reloadRequested) unawaited(_load());
   }
 
+  // 함수이름: _eligible
+  // 함수역할: 현재 필요시 복용 기록을 허용하는 약만 선택한다.
+  // 매개변수: snapshot: 서버가 반환한 기록·약 목록.
+  // 반환값: dosingMode가 as_needed이고 canRecordAsNeeded인 약의 새 목록.
   List<MedicationHistoryMedication> _eligible(
     MedicationHistorySnapshot snapshot,
   ) => snapshot.medications
       .where((m) => m.dosingMode == 'as_needed' && m.canRecordAsNeeded)
       .toList();
 
+  // Function Name: _confirmAdditional
+  // Description: Confirms another dose using the displayed count and last-dose time for each selected medication.
+  // Parameters: medications: Selected eligible drugs; snapshot: Counts being confirmed.
+  // Returns: True only for explicit confirmation; dismissal is false and session invalidation disables recording.
   Future<bool> _confirmAdditional(
     List<MedicationHistoryMedication> medications,
     MedicationHistorySnapshot snapshot,
@@ -252,6 +324,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
       ) ==
       true;
 
+  // Function Name: _record
+  // Description: Records selected as-needed doses or resumes pending intentions with stable operation IDs.
+  // Parameters: medicationId: One medication, or null to prefer not-yet-recorded medicines before adding another dose for all.
+  // Returns: Completion with UI feedback; rechecks counts/date after confirmation, blocks unavailable local storage, preserves uncertain requests and offers undo only for this action's current-day records.
   Future<void> _record({int? medicationId}) async {
     if (_readOnly || _locked) return;
     setState(() {
@@ -418,12 +494,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     }
   }
 
-  // 함수이름: _undo
-  // 함수역할: 잘못 누른 필요시 복용을 바로 되돌린다. 이번 동작으로 만든 기록만 최신 버전으로 다시 읽어
-  //   '미기록'으로 바꾸며, 다른 화면에서 이미 정정한 기록은 건드리지 않는다. 이미 보낸 보호자 알림은
-  //   회수되지 않지만 보호자 화면의 횟수는 다음 조회에서 바로잡힌다. 일정 화면을 떠난 뒤 눌러도
-  //   정기 복용의 실행 취소처럼 공유 기록 Control로 되돌린다. 화면이 만든 Control은 화면과 함께 닫혔다.
-  // 매개변수: keys: 되돌릴 기록 키, messenger: 안내를 띄운 메신저. 반환값: 없음.
+  // Function Name: _undo
+  // Description: Re-reads today's records and changes matching still-taken as-needed entries back to unrecorded.
+  // Parameters: keys: Record identities created by this action; messenger: Original feedback host.
+  // Returns: Completion with feedback; a shared controller permits undo after leaving the screen, but a screen-owned disposed controller does not. Already delivered caregiver alerts are not retracted.
   Future<void> _undo(Set<String> keys, ScaffoldMessengerState messenger) async {
     if ((!mounted && widget.control == null) ||
         _readOnly ||
@@ -431,6 +505,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
         keys.isEmpty) {
       return;
     }
+    // Function Name: update
+    // Description: Applies an undo-state change with a rebuild only while the widget remains mounted.
+    // Parameters: change: Synchronous state mutation.
+    // Returns: None; after navigation, the mutation runs without setState.
     void update(VoidCallback change) => mounted ? setState(change) : change();
     update(() {
       _recording = true;
@@ -484,6 +562,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     );
   }
 
+  // Function Name: _configureReminder
+  // Description: Opens a one-time check-reminder editor after checking ownership, permissions and concurrent work.
+  // Parameters: None.
+  // Returns: Completion after the dialog closes; save failures stay in the dialog and past clock selections advance to tomorrow.
   Future<void> _configureReminder() async {
     if (_readOnly || _reminderOpen || _locked || _reminder.busy) return;
     if (!widget.notificationsAllowed) {
@@ -610,6 +692,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     }
   }
 
+  // 함수이름: dispose
+  // 함수역할: 날짜 타이머와 생명주기 구독을 제거하고 화면이 만든 제어기만 해제한다.
+  // 매개변수: 없음.
+  // 반환값: 없음; 주입된 기록·알림 제어기는 유지한다.
   @override
   void dispose() {
     _dayTimer?.cancel();
@@ -619,6 +705,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     super.dispose();
   }
 
+  // 함수이름: build
+  // 함수역할: 필요시 약의 오늘 횟수와 대기 기록·오류·알림 조작을 제어기 변경에 맞춰 표시한다.
+  // 매개변수: context: 화면 구성 문맥.
+  // 반환값: 기록 영역 또는 최초 로딩·빈 화면; 재조회 중에는 같은 날짜의 이전 목록을 유지하고 보호자 조작을 제한한다.
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: _control,
@@ -789,6 +879,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     },
   );
 
+  // 함수이름: _row
+  // 함수역할: 약 한 건의 오늘 횟수·용량·사진과 기록 조작을 표시한다.
+  // 매개변수: medication: 표시 약; snapshot: 오늘 기록; pending: 미확인 저장 의도.
+  // 반환값: 약 행 위젯; 읽기 전용이면 기록 버튼을 숨기고 다른 약의 미확인 저장 중에는 조작을 막는다.
   Widget _row(
     MedicationHistoryMedication medication,
     MedicationHistorySnapshot snapshot,
@@ -885,10 +979,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     );
   }
 
-  // 함수이름: _lastTakenText
-  // 함수역할: 복용 간격이 정해진 필요시 약을 다시 먹기 전에 확인하도록 오늘 마지막 복용 시각과
-  //   지난 시간을 한국 시간으로 알린다. 실제 복용 시각이 없으면 기록한 시각을 쓴다.
-  // 매개변수: snapshot: 오늘 기록, medicationId: 약 ID. 반환값: 안내 문구, 복용 기록이 없으면 null.
+  // Function Name: _lastTakenText
+  // Description: Formats the latest taken record's clock time and elapsed duration using the configured history timezone.
+  // Parameters: snapshot: Current-day records; medicationId: Target medication.
+  // Returns: Localized last-dose guidance, or null without a usable taken timestamp; actual intake time takes precedence over recorded time.
   String? _lastTakenText(MedicationHistorySnapshot snapshot, int medicationId) {
     DateTime? last;
     for (final entry in snapshot.items) {
@@ -920,6 +1014,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     return tr('마지막 복용 $clock ($ago)', 'Last dose at $clock ($ago)');
   }
 
+  // 함수이름: _takenCount
+  // 함수역할: 스냅샷에서 지정 약의 필요시 복용 완료 기록 수를 센다.
+  // 매개변수: snapshot: 집계할 기록; medicationId: 약 ID.
+  // 반환값: 필요시이며 taken인 항목 수; 다른 상태는 제외한다.
   int _takenCount(MedicationHistorySnapshot snapshot, int medicationId) =>
       snapshot.items
           .where(
@@ -931,7 +1029,8 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
           .length;
 }
 
-// 함수이름: _englishDoses
-// 함수역할: 영어 복용 횟수를 단수·복수에 맞춰 표시한다("1 dose", "2 doses").
-// 매개변수: count: 횟수. 반환값: 횟수와 단위.
+// Function Name: _englishDoses
+// Description: Formats an English dose count with singular or plural units.
+// Parameters: count: Number of dose records.
+// Returns: 1 dose only for one, otherwise the count followed by doses.
 String _englishDoses(int count) => count == 1 ? '1 dose' : '$count doses';

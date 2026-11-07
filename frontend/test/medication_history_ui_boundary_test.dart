@@ -22,9 +22,17 @@ import 'package:medbuddy_frontend/services/manual_medication_image_store.dart';
 
 import 'medication_history_fixtures.dart';
 
+// 클래스명: _TestPhotoStore
+// 역할: 사진 요청에 사용한 환자·약 식별자를 기록하고 실제 앱 자산 경로를 돌려주는 저장소 대역이다.
+// 주요 책임: 필요시 약의 계정별 사진 조회와 기존 사진 보기 연결을 검증한다.
+// 속성: patient(String?)·medication(int?): 마지막 조회의 환자와 약 식별자.
 class _TestPhotoStore extends ManualMedicationImageStore {
   String? patient;
   int? medication;
+  // 함수이름: findImagePath
+  // 함수역할: 조회 인자를 보관하고 시험에 사용할 로고 파일의 절대 경로를 반환한다.
+  // 매개변수: patientHash(String)·medicationId(int): 사진을 요청한 환자와 약.
+  // 반환값: Future<String>: 로컬 앱 자산 경로이며 파일 존재 여부는 검사하지 않는다.
   @override
   Future<String> findImagePath({
     required String patientHash,
@@ -37,7 +45,9 @@ class _TestPhotoStore extends ManualMedicationImageStore {
 }
 
 // 클래스명: _HistoryServer
-// 역할: 이력 조회·쓰기 결과만 메모리에 재현하고 전송 의도를 검사한다.
+// 역할: 기록 조회·정정·필요시 복용 요청을 메모리에서 처리하는 HTTP 대역이다.
+// 주요 책임: 기간 필터와 기록 버전을 반영하고 지연·통신 실패·충돌·잘못된 응답을 선택적으로 재현한다.
+// 속성: items·writes(List<Map<String,dynamic>>): 기록·쓰기 내역; paths(List<String>)·reads(List<Uri>): 요청 이력; failRead/prnEligible/extraPrn/failFirstWrite/malformedFirstWrite(bool): 시나리오; failWriteNumber/rejectWrite(int?): 실패 순번·HTTP 상태; pendingWrite/pendingRead(Completer<http.Response>?): 지연 응답.
 class _HistoryServer {
   final items = <Map<String, dynamic>>[historyTestEntry(date: '2026-10-17')];
   final writes = <Map<String, dynamic>>[];
@@ -53,7 +63,10 @@ class _HistoryServer {
   Completer<http.Response>? pendingWrite;
   Completer<http.Response>? pendingRead;
 
-  // 함수역할: 요청 기간을 반영하고 PUT의 상태 변경을 응답에 적용한다. 실패는 선택적으로 주입한다.
+  // 함수이름: respond
+  // 함수역할: GET은 날짜 구간의 기록을 반환하고 쓰기는 상태·실제 복용 시각·사유와 버전을 반영한다. 설정된 지연·거절·통신 실패를 우선 적용한다.
+  // 매개변수: request(http.Request): 시험용 조회 또는 기록 변경 요청.
+  // 반환값: Future<http.Response>: 구성한 JSON 응답; 통신 실패 플래그에서는 ClientException을 발생시킨다.
   Future<http.Response> respond(http.Request request) async {
     if (request.method == 'GET') {
       reads.add(request.url);
@@ -131,7 +144,10 @@ class _HistoryServer {
   }
 }
 
-// 함수역할: 실제 테마·번역을 적용하고 부모와 동일한 화면 생성자로 테스트한다.
+// Function Name: _pumpHistory
+// Description: Mounts history with the real theme/localizations and an isolated HTTP/store double; optionally selects today's visible details and registers controller cleanup.
+// Parameters: tester (WidgetTester), server (_HistoryServer): Harness and responses; readOnly/isEnglish/openToday/initiallyShowExport/isActive (bool): View modes; textScale (double): Text scaling; onChanged (FutureOr<void> Function()?): Save callback; sessionChanges (Stream<String?>?): Session events; now (DateTime Function()?): Clock; recordChanges (Listenable?): External changes.
+// Returns: Future<MedicationHistoryControl>: Mounted controller; failed widget lookup or settling fails the test.
 Future<MedicationHistoryControl> _pumpHistory(
   WidgetTester tester,
   _HistoryServer server, {
@@ -204,7 +220,10 @@ Future<MedicationHistoryControl> _pumpHistory(
   return control;
 }
 
-// 화면 상단으로 돌아간 뒤 대상까지 스크롤하여 작은 화면에서도 실제 조작 경로를 사용한다.
+// 함수이름: _revealHistory
+// 함수역할: 목록 상단으로 돌아간 뒤 대상이 실제로 눌리는 위치까지 스크롤한다.
+// 매개변수: tester(WidgetTester): 위젯 실행기; target(Finder): 표시할 기록 화면 요소.
+// 반환값: Future<void>: 스크롤 완료; 대상이 없거나 스크롤 제한을 넘으면 테스트가 실패한다.
 Future<void> _revealHistory(WidgetTester tester, Finder target) async {
   await tester.drag(find.byType(ListView).first, const Offset(0, 10000));
   await tester.pumpAndSettle();
@@ -222,7 +241,10 @@ Future<void> _revealHistory(WidgetTester tester, Finder target) async {
   await tester.pumpAndSettle();
 }
 
-// 함수역할: 실제 스크롤 뒤 정정 버튼을 눌러 편집 대화상자를 연다.
+// 함수이름: _openEditor
+// 함수역할: 기록 수정 버튼이 눌리는 위치까지 최대 20회 스크롤한 뒤 편집창을 연다.
+// 매개변수: tester(WidgetTester): 위젯 실행기; isEnglish(bool): 수정 버튼 도구 설명 언어.
+// 반환값: Future<void>: 편집창 표시 완료; 수정 버튼이 정확히 하나가 아니면 실패한다.
 Future<void> _openEditor(WidgetTester tester, {bool isEnglish = true}) async {
   final edit = find.byTooltip(isEnglish ? 'Edit record' : '기록 수정');
   for (
@@ -238,7 +260,10 @@ Future<void> _openEditor(WidgetTester tester, {bool isEnglish = true}) async {
   await tester.pumpAndSettle();
 }
 
-// 함수역할: 기록 저장과 확인을 차례로 누르되 네트워크 완료는 호출자가 기다린다.
+// 함수이름: _confirmSave
+// 함수역할: 기록 저장 버튼과 확인창의 Save를 차례로 누르고 첫 프레임까지만 진행한다.
+// 매개변수: tester(WidgetTester): 영어 기록 편집창이 열린 실행기.
+// 반환값: Future<void>: 저장 요청 시작; 네트워크 응답 완료는 호출자가 추가로 기다린다.
 Future<void> _confirmSave(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('history-save')));
   await tester.pumpAndSettle();
@@ -246,7 +271,10 @@ Future<void> _confirmSave(WidgetTester tester) async {
   await tester.pump();
 }
 
-// 공유 창의 두 날짜 입력을 각각 선택하고 달력의 반환값을 검증 흐름에 전달한다.
+// 함수이름: _chooseExportDate
+// 함수역할: 공유 시작일 또는 종료일의 달력을 열어 지정 날짜나 취소 결과로 닫는다.
+// 매개변수: tester(WidgetTester): 실행기; endpoint(String): start 또는 end; date(DateTime?): 선택 날짜, null이면 취소.
+// 반환값: Future<void>: 날짜 선택 결과가 반영된 공유창.
 Future<void> _chooseExportDate(
   WidgetTester tester,
   String endpoint,
@@ -258,6 +286,10 @@ Future<void> _chooseExportDate(
   await tester.pumpAndSettle();
 }
 
+// 함수이름: _pumpAsNeeded
+// 함수역할: 필요시 복용 섹션을 실제 테마·번역과 시험용 저장소에 연결하여 표시하고 제어기 해제를 등록한다.
+// 매개변수: tester(WidgetTester)·server(_HistoryServer): 실행기·응답 대역; readOnly/isEnglish(bool): 표시 모드; textScale/leadingHeight(double): 글자 배율·앞쪽 높이; sessionChanges(Stream<String?>?)·now(DateTime Function()?): 세션·시각 대역; requestTimeout(Duration): 요청 제한; imageStore(ManualMedicationImageStore)·pendingStore(FakeAsNeededPendingStore?): 사진·대기 기록 저장소.
+// 반환값: Future<MedicationHistoryControl>: 표시한 섹션의 제어기; 비동기 정착 실패는 테스트로 전달한다.
 Future<MedicationHistoryControl> _pumpAsNeeded(
   WidgetTester tester,
   _HistoryServer server, {
@@ -314,9 +346,15 @@ Future<MedicationHistoryControl> _pumpAsNeeded(
   return control;
 }
 
-// 함수역할: 보호자·수정·내보내기와 실패 경로의 UI 회귀 테스트를 등록한다.
+// Function Name: main
+// Description: Registers history editing, period selection, export, PRN recovery and read-only/session-boundary widget regressions with isolated responses.
+// Parameters: None; individual callbacks receive the test runner's WidgetTester.
+// Returns: void; registers tests and fixtures without running them synchronously.
 void main() {
-  // 모든 기간에서 상세는 처음부터 열리고 사용자가 접은 상태는 탭별로 유지된다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 모든 기간 탭에서 일별 상세가 처음부터 펼쳐지고 사용자가 다시 접고 펼칠 수 있는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'daily details start open in every period and remain collapsible',
     (tester) async {
@@ -348,7 +386,10 @@ void main() {
     },
   );
 
-  // 날짜를 확정하면 바로 집계를 바꾸며 중복 기간 표시나 조회 버튼은 두지 않는다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 시작일·종료일 변경이 별도 조회 버튼 없이 적용되며 사용자 지정 기간에 임의 구간 막대그래프가 나타나지 않는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'custom period automatically applies dates and has no binned chart',
     (tester) async {
@@ -408,6 +449,10 @@ void main() {
     },
   );
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 달력이 시작일 이후의 종료일만 허용하고 탭별 접힘 상태가 서로 영향을 주지 않는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'custom picker prevents reversed ranges and folds are independent by tab',
     (tester) async {
@@ -449,7 +494,10 @@ void main() {
     },
   );
 
-  // 취소·동일 날짜는 요청하지 않고 종료일 변경은 한 번만 조회한다. 실패해도 이전 기간 자료를 남기지 않는다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 날짜 선택 취소는 재조회하지 않으며 자동 기간 조회 실패 후 재시도가 가능한지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'automatic range loading ignores cancellation and supports retry',
     (tester) async {
@@ -487,6 +535,10 @@ void main() {
   // 하루 기록을 불러오는 동안 뒤로가기를 누르면 무시하지 않고 화면을 닫는다(느린 연결에서 최대 25초).
   // 탭으로 유지되는 숨겨진 기록 화면은 앱 복귀마다 서버를 다시 읽지 않는다.
   for (final active in [true, false]) {
+    // Function Name: testWidgets callback
+    // Description: Checks that resume events reload history only when the parameterized active flag makes that view visible.
+    // Parameters: tester (WidgetTester): Drives the isolated widget tree and test clock.
+    // Returns: Future<void>; a failed expectation or widget interaction fails the case.
     testWidgets('resume reloads only a visible history: $active', (
       tester,
     ) async {
@@ -507,6 +559,10 @@ void main() {
 
   // 탭 위에 열린 일정 화면에서 기록하면 탭은 다시 만들어지지 않으므로 저장 신호로 다시 읽는다.
   for (final active in [true, false]) {
+    // Function Name: testWidgets callback
+    // Description: Checks that external record-change events trigger reads only for the parameterized visible history state.
+    // Parameters: tester (WidgetTester): Drives the isolated widget tree and test clock.
+    // Returns: Future<void>; a failed expectation or widget interaction fails the case.
     testWidgets('a dose saved elsewhere reloads only a visible history: $active', (
       tester,
     ) async {
@@ -527,7 +583,10 @@ void main() {
     });
   }
 
-  // 조회 중에 온 신호는 버리지 않고 그 조회가 끝난 뒤 한 번 더 읽는다.
+  // Function Name: testWidgets callback
+  // Description: Completes an in-flight read after an external dose event and requires a subsequent read so the saved dose is not lost.
+  // Parameters: tester (WidgetTester): Drives the isolated widget tree and test clock.
+  // Returns: Future<void>; a failed expectation or widget interaction fails the case.
   testWidgets('a dose saved during a read is read after it', (tester) async {
     final saved = ValueNotifier(0);
     addTearDown(saved.dispose);
@@ -551,7 +610,10 @@ void main() {
     expect(server.reads.length, reads + 1);
   });
 
-  // 정정 창이 열려 있는 동안에는 다시 읽지 않고, 닫은 뒤 한 번만 읽는다.
+  // Function Name: testWidgets callback
+  // Description: Signals an external dose change while editing and verifies that refresh waits until the editor closes.
+  // Parameters: tester (WidgetTester): Drives the isolated widget tree and test clock.
+  // Returns: Future<void>; a failed expectation or widget interaction fails the case.
   testWidgets('a dose saved while the editor is open is read after it closes', (
     tester,
   ) async {
@@ -572,7 +634,10 @@ void main() {
     expect(server.reads.length, afterClose);
   });
 
-  // 탭을 켜 둔 채 주가 바뀌면 지난주 대신 오늘이 속한 주를 다시 읽는다.
+  // Function Name: testWidgets callback
+  // Description: Advances the injected clock to a new week and verifies that resuming follows today's period.
+  // Parameters: tester (WidgetTester): Drives the isolated widget tree and test clock.
+  // Returns: Future<void>; a failed expectation or widget interaction fails the case.
   testWidgets('resume after a new week moves the period to today', (
     tester,
   ) async {
@@ -588,7 +653,10 @@ void main() {
     expect(server.reads.last.queryParameters['start_date'], '2026-10-19');
   });
 
-  // 저장 뒤 다른 화면을 갱신하는 동안에도 빈 화면 대신 진행을 표시한다.
+  // Function Name: testWidgets callback
+  // Description: Delays the post-save reload and checks that visible saving progress bridges the write and refresh stages.
+  // Parameters: tester (WidgetTester): Drives the isolated widget tree and test clock.
+  // Returns: Future<void>; a failed expectation or widget interaction fails the case.
   testWidgets('a saved edit shows progress until the reload starts', (
     tester,
   ) async {
@@ -606,6 +674,10 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 날짜별 기록 조회가 대기 중이어도 뒤로가기로 이력 화면을 닫고 늦은 응답이 새 화면에 영향을 주지 않는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('back while a day loads closes the history', (tester) async {
     final server = _HistoryServer();
     final control = MedicationHistoryControl(
@@ -668,7 +740,10 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  // 채팅 카드로 연 기간 화면은 앱이 다시 그려져도(토큰 갱신·언어 변경) 같은 기간이면 다시 시작하지 않는다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 채팅에서 연 기록 화면이 다시 빌드되어도 같은 세션을 유지하고 정상적으로 조회·종료하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('a rebuilt chat-shared history keeps its session', (
     tester,
   ) async {
@@ -730,7 +805,10 @@ void main() {
     expect(reads, 1);
   });
 
-  // 실행 취소 안내는 일정 화면을 떠난 뒤에도 남으므로, 그때 눌러도 실제로 되돌려야 한다.
+  // Function Name: testWidgets callback
+  // Description: Leaves the schedule after a PRN save and verifies that its undo still updates only the saved record through the retained action.
+  // Parameters: tester (WidgetTester): Drives the isolated widget tree and test clock.
+  // Returns: Future<void>; a failed expectation or widget interaction fails the case.
   testWidgets('the as-needed undo still works after leaving the schedule', (
     tester,
   ) async {
@@ -786,6 +864,10 @@ void main() {
   });
   for (final readOnly in [false, true]) {
     for (final isEnglish in [false, true]) {
+      // 함수이름: testWidgets 콜백
+      // 함수역할: 환자·보호자 및 한국어·영어 조합에서 필요시 약의 복용량이 누락되지 않는지 검증한다.
+      // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+      // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
       testWidgets('필요시 복용량 번역: 보호자=$readOnly 영어=$isEnglish', (tester) async {
         final server = _HistoryServer();
         final control = await _pumpAsNeeded(
@@ -803,7 +885,10 @@ void main() {
     }
   }
 
-  // 검색 바로가기는 최초 성공 조회 뒤 확인창만 열고 실제 전송·기록 변경을 하지 않는다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 공유 바로가기 진입 시 확인창을 한 번만 열고 취소하면 실제 전송 없이 닫히는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('공유 바로가기는 확인창만 한 번 열고 취소할 수 있다', (tester) async {
     final server = _HistoryServer();
     await _pumpHistory(
@@ -823,6 +908,10 @@ void main() {
   });
 
   for (final readOnly in [false, true]) {
+    // 함수이름: testWidgets 콜백
+    // 함수역할: 조회 실패나 읽기 전용 진입에서는 공유 바로가기 확인창이 자동으로 열리지 않는지 검증한다.
+    // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+    // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
     testWidgets('공유 바로가기는 조회 실패 또는 읽기 전용이면 자동으로 열지 않는다: $readOnly', (
       tester,
     ) async {
@@ -840,10 +929,18 @@ void main() {
     });
   }
   TestWidgetsFlutterBinding.ensureInitialized();
+  // 함수이름: setUp 콜백
+  // 함수역할: 각 사례가 이전 설정의 영향을 받지 않도록 메모리 환경설정을 빈 값으로 초기화한다.
+  // 매개변수: 없음.
+  // 반환값: void: 초기화 완료.
   setUp(() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 처음 진입하거나 다시 열어도 기록 안내창이 자동으로 나타나지 않는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('record notice never opens automatically on entry or reopening', (
     tester,
   ) async {
@@ -868,6 +965,10 @@ void main() {
     expect(find.byTooltip('About medication records'), findsNothing);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 일별 상태 요약의 여백·중앙 정렬과 시간대 카드의 내부 테두리를 확인하고 제거된 정보 버튼이 없는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('status summary has compact spacing without an info control', (
     tester,
   ) async {
@@ -915,7 +1016,10 @@ void main() {
     expect(find.byTooltip('복약 기록 안내'), findsNothing);
   });
 
-  // 안내 팝업 대신 그래프 표시만 바뀌며 조회 자료와 선택한 날짜는 유지된다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 원그래프 클릭이 기록률·건수 표시만 전환하고 조회·선택 날짜·실제 기록은 바꾸지 않는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'summary toggles count without changing history or selected day',
     (tester) async {
@@ -946,6 +1050,10 @@ void main() {
     },
   );
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 큰 글씨에서 원그래프의 비율·건수 전환을 수행해 레이아웃 예외가 없는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('large text ratio toggle has no overflow', (tester) async {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;
@@ -964,6 +1072,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 이전·다음 화살표와 달력으로 허용된 이력 구간 안의 날짜를 선택하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'daily arrows and calendar select one day within the history window',
     (tester) async {
@@ -1013,6 +1125,10 @@ void main() {
     },
   );
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 기간 변경 조회 중 이전 날짜의 행을 지우고 중복 날짜 이동을 차단하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'changing period clears rows and blocks duplicate navigation while loading',
     (tester) async {
@@ -1043,6 +1159,10 @@ void main() {
     },
   );
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 기록 카드를 일정의 시간대 순서로 정렬하고 필요시 기록은 별도 분류에 유지하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'slot cards follow the schedule order and keep PRN events separate',
     (tester) async {
@@ -1080,6 +1200,10 @@ void main() {
     },
   );
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 여러 날의 내보내기 기간을 선택해도 현재 보고 있는 일별 상세 날짜는 유지되는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'export can select several days without changing the visible day',
     (tester) async {
@@ -1108,7 +1232,10 @@ void main() {
     },
   );
 
-  // 보호자는 이력을 볼 수 있지만 정정이나 필요시 복용 생성 명령을 받지 않는다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 보호자 이력은 읽기 전용으로 표시하고 수정·새 기록 추가는 숨기되 공유 진입은 유지하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'caregiver history is read only with explicit self-report label',
     (tester) async {
@@ -1124,7 +1251,10 @@ void main() {
     },
   );
 
-  // 조회 실패에서 이전 자료나 성공 통계를 보여 주지 않고 재시도를 제공한다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 조회 통신 실패 시 재시도를 제공하고 조회 성공 전에는 공유를 막는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('offline read exposes retry and disables export', (tester) async {
     final server = _HistoryServer()..failRead = true;
     await _pumpHistory(tester, server);
@@ -1154,7 +1284,10 @@ void main() {
     expect(find.text('테스트 주간약'), findsOneWidget);
   });
 
-  // 예정일이 어제인 약도 실제 날짜를 오늘로 선택해 기록할 수 있다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 지난 일정의 정정에서 실제 복용일을 오늘로 선택해도 원래 예정일은 바뀌지 않는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'late dose can select today as actual date without moving scheduled day',
     (tester) async {
@@ -1197,7 +1330,10 @@ void main() {
     },
   );
 
-  // 미래 복용 시각 검증에 실패한 뒤 건너뜀을 선택하면 관련 없는 오류가 남지 않는다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 미래 복용 시각 오류가 난 뒤 상태를 건너뜀으로 바꾸면 해당 시각 오류가 해제되는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('future taken time error clears when status changes to skipped', (
     tester,
   ) async {
@@ -1227,6 +1363,10 @@ void main() {
 
   // 실제 날짜 또는 시각을 수정하면 오래된 검증 안내를 지우되 선택 취소에는 유지한다.
   for (final changeDate in [true, false]) {
+    // 함수이름: testWidgets 콜백
+    // 함수역할: 미래 시각 오류는 날짜나 시간의 실제 변경으로 해제되지만 달력 취소만으로는 사라지지 않는지 검증한다.
+    // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+    // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
     testWidgets(
       'future error clears on ${changeDate ? 'date' : 'time'} edit but not cancellation',
       (tester) async {
@@ -1271,6 +1411,10 @@ void main() {
 
   // 건너뜀을 선택할 때만 복용 미완료와 알림 유지 정책을 한국어·영어로 안내한다.
   for (final english in [false, true]) {
+    // 함수이름: testWidgets 콜백
+    // 함수역할: 한국어·영어의 건너뜀 안내가 기존 알림 설정을 변경하지 않는다는 점을 표시하는지 검증한다.
+    // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+    // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
     testWidgets(
       'skipped notice explains unchanged alerts in ${english ? 'English' : 'Korean'}',
       (tester) async {
@@ -1304,7 +1448,10 @@ void main() {
     );
   }
 
-  // 건너뜀 이유는 명시적으로 확인한 뒤 저장되며 실제 복용 시각은 보내지 않는다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 건너뜀 사유를 저장하기 전에 확인을 거치고 현재 기록 버전을 함께 보내는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'skipped reason requires confirmation and is saved with revision',
     (tester) async {
@@ -1332,7 +1479,10 @@ void main() {
     },
   );
 
-  // 실패 뒤 같은 기록 재시도는 추가 이벤트나 새 작업 ID를 만들지 않는다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 쓰기 통신 실패를 성공으로 표시하지 않고 재시도에 동일한 변경 의도를 사용하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'write failure never shows success and retries identical intent',
     (tester) async {
@@ -1353,7 +1503,10 @@ void main() {
     },
   );
 
-  // 잘못된 성공 응답도 전송 유실처럼 취급해 확인한 내용과 작업 ID를 유지한다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 잘못된 저장 승인 응답 뒤에는 확인한 입력을 잠가 동일 요청만 재시도하도록 하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'malformed acknowledgement keeps confirmed fields locked for retry',
     (tester) async {
@@ -1388,7 +1541,10 @@ void main() {
     },
   );
 
-  // 전송 도중 버튼을 다시 누르거나 편집창을 닫아 중복 저장하지 못하게 한다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 저장 응답 대기 중 중복 제출과 편집창 종료를 막는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('pending write disables duplicate submit and close', (
     tester,
   ) async {
@@ -1416,7 +1572,10 @@ void main() {
     expect(find.text('The record was saved.'), findsOneWidget);
   });
 
-  // 버전 충돌 후 재시도로 타 기기의 정정을 덮어쓰지 않는다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 버전 충돌에서는 동일 요청을 무조건 재전송하지 않고 닫기·최신 기록 조회를 제공하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'revision conflict offers close and refresh instead of blind retry',
     (tester) async {
@@ -1445,6 +1604,10 @@ void main() {
     },
   );
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 기록 조회 화면에서 새 필요시 복용을 추가하는 동작을 제공하지 않는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('history never offers new dose recording', (tester) async {
     await _pumpHistory(tester, _HistoryServer());
     await tester.drag(find.byType(ListView), const Offset(0, -1200));
@@ -1453,7 +1616,10 @@ void main() {
     expect(find.byTooltip('Edit record'), findsOneWidget);
   });
 
-  // 일정에서 한 날짜의 필요시 복용을 두 번 체크하면 두 개의 고유 이벤트가 된다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 같은 날 필요시 약을 두 번 기록할 때 각각 다른 시간대 UUID를 사용하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('two as-needed doses use different slot UUIDs on the same day', (
     tester,
   ) async {
@@ -1500,12 +1666,20 @@ void main() {
     expect(find.text('2 doses today'), findsOneWidget);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 현재 기록할 수 없는 필요시 약에는 새 복용 기록 동작이 나타나지 않는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('ineligible PRN cannot create a new dose', (tester) async {
     await _pumpAsNeeded(tester, _HistoryServer()..prnEligible = false);
     expect(find.byKey(const Key('schedule-prn-take-2')), findsNothing);
     expect(find.text('No medication today'), findsOneWidget);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 필요시 약 사진을 환자·약 식별자로 조회하고 클릭 시 기존 사진 보기 화면으로 연결하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'PRN uses patient-scoped local photo and opens existing image viewer',
     (tester) async {
@@ -1526,6 +1700,10 @@ void main() {
     },
   );
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 필요시 복용 직후 되돌리기는 방금 생성한 기록만 미기록으로 정정하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('undo right after a PRN dose marks only that record unrecorded', (
     tester,
   ) async {
@@ -1559,6 +1737,10 @@ void main() {
     expect(server.paths[2], isNot(server.paths[0]));
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 같은 약의 새 기록을 되돌려도 먼저 입력한 복용 기록은 유지되는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('undo leaves an earlier dose of the same day as it was', (
     tester,
   ) async {
@@ -1583,8 +1765,10 @@ void main() {
     expect(find.text('1 dose today'), findsOneWidget);
   });
 
-  // 재시작 전에 확인하지 못한 어제 기록을 이어 보내면, 오늘 목록에서 되돌릴 수 없는 실행 취소 대신
-  // 오늘 복용은 다시 누르라고 안내한다.
+  // Function Name: testWidgets callback
+  // Description: Retries an unconfirmed prior-day PRN operation and requires a separate explicit tap before recording another dose for today.
+  // Parameters: tester (WidgetTester): Drives the isolated widget tree and test clock.
+  // Returns: Future<void>; a failed expectation or widget interaction fails the case.
   testWidgets('resending an earlier day\'s PRN dose asks for a new tap today', (
     tester,
   ) async {
@@ -1619,7 +1803,10 @@ void main() {
     expect(store.batches['test-patient'], isEmpty);
   });
 
-  // 기기 저장소를 열지 못해도 필요시 목록과 횟수는 보이고, 중복될 수 있는 새 기록만 막는다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 대기 기록 저장소가 실패해도 필요시 약 목록은 유지하고 오류를 알리는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('PRN list stays visible when the pending store fails', (
     tester,
   ) async {
@@ -1643,6 +1830,10 @@ void main() {
     expect(server.writes, hasLength(1));
   });
 
+  // Function Name: testWidgets callback
+  // Description: Fails a PRN undo request and verifies that the feedback directs the user to correct the existing history record.
+  // Parameters: tester (WidgetTester): Drives the isolated widget tree and test clock.
+  // Returns: Future<void>; a failed expectation or widget interaction fails the case.
   testWidgets('a failed PRN undo explains where to correct the record', (
     tester,
   ) async {
@@ -1658,7 +1849,10 @@ void main() {
     expect(find.text('1 dose today'), findsOneWidget);
   });
 
-  // 복용 간격이 정해진 약을 다시 먹기 전에 오늘 마지막 복용 시각과 지난 시간을 함께 보여 준다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 추가 필요시 복용 확인창에 오늘의 마지막 복용 시각과 경과 시간을 표시하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('another PRN dose shows when the last one was taken', (
     tester,
   ) async {
@@ -1694,6 +1888,10 @@ void main() {
     expect(server.writes, isEmpty);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 마지막 필요시 복용 후 1분 미만인 경우 경과 시간을 방금 전으로 표시하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('a PRN dose taken under a minute ago reads just now', (
     tester,
   ) async {
@@ -1719,6 +1917,10 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  // Function Name: testWidgets callback
+  // Description: Cancels the additional-dose confirmation and requires the existing count and write history to stay unchanged.
+  // Parameters: tester (WidgetTester): Drives the isolated widget tree and test clock.
+  // Returns: Future<void>; a failed expectation or widget interaction fails the case.
   testWidgets('repeat dose cancellation does not change the count', (
     tester,
   ) async {
@@ -1735,6 +1937,10 @@ void main() {
     expect(find.text('1 dose today'), findsOneWidget);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 일괄 체크에서 아직 먹지 않은 약을 먼저 기록하고 추가 복용이 필요한 약은 확인창을 거치는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'bulk checks unchecked medicines before confirming additional doses',
     (tester) async {
@@ -1761,6 +1967,10 @@ void main() {
     },
   );
 
+  // Function Name: testWidgets callback
+  // Description: Injects partial bulk-save failure and verifies that retry submits only the remaining intent without duplicating successful doses.
+  // Parameters: tester (WidgetTester): Drives the isolated widget tree and test clock.
+  // Returns: Future<void>; a failed expectation or widget interaction fails the case.
   testWidgets('partially saved bulk retries only remaining intent', (
     tester,
   ) async {
@@ -1784,6 +1994,10 @@ void main() {
     expect(find.text('1 dose today'), findsNWidgets(2));
   });
 
+  // Function Name: testWidgets callback
+  // Description: Returns a definite server rejection and verifies that it releases the global pending lock instead of blocking every check.
+  // Parameters: tester (WidgetTester): Drives the isolated widget tree and test clock.
+  // Returns: Future<void>; a failed expectation or widget interaction fails the case.
   testWidgets('confirmed server rejection does not leave all checks blocked', (
     tester,
   ) async {
@@ -1798,6 +2012,10 @@ void main() {
     expect(find.text('1 dose today'), findsOneWidget);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 기록 상태는 조작 불가능한 체크 아이콘 없이 왼쪽 정렬된 문자로 표시되는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'history status is text aligned with record details without check icons',
     (tester) async {
@@ -1809,6 +2027,10 @@ void main() {
     },
   );
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 필요시 약 행에 사진과 원형 체크를 표시하고 예전 복용했어요 텍스트 버튼은 제거됐는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'PRN rows include medication thumbnail and no taken text button',
     (tester) async {
@@ -1823,6 +2045,10 @@ void main() {
     },
   );
 
+  // Function Name: testWidgets callback
+  // Description: Saves a PRN dose after scrolling and verifies that rebuilding its count does not jump the card to a different scroll position.
+  // Parameters: tester (WidgetTester): Drives the isolated widget tree and test clock.
+  // Returns: Future<void>; a failed expectation or widget interaction fails the case.
   testWidgets('saving a PRN dose keeps the scrolled card in place', (
     tester,
   ) async {
@@ -1854,6 +2080,10 @@ void main() {
     );
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 필요시 목록 조회 실패를 약 없음으로 표시하지 않고 새로고침을 제공하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('PRN loading failure offers refresh not an empty schedule', (
     tester,
   ) async {
@@ -1867,6 +2097,10 @@ void main() {
     expect(find.byKey(const Key('schedule-prn-take-2')), findsOneWidget);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 저장 응답을 잃은 필요시 기록은 재시도에도 같은 이벤트·작업 식별자를 사용하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('PRN retry preserves event and operation after lost response', (
     tester,
   ) async {
@@ -1887,6 +2121,10 @@ void main() {
     );
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 필요시 복용 연속 클릭과 응답 대기 중 클릭으로 중복 기록이 생성되지 않는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('PRN double tap and pending save cannot duplicate a dose', (
     tester,
   ) async {
@@ -1905,6 +2143,10 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  // Function Name: testWidgets callback
+  // Description: Reopens the schedule with shared pending storage and confirms that an uncertain PRN operation keeps its identity rather than becoming a second dose.
+  // Parameters: tester (WidgetTester): Drives the isolated widget tree and test clock.
+  // Returns: Future<void>; a failed expectation or widget interaction fails the case.
   testWidgets('uncertain PRN survives closing and reopening the schedule', (
     tester,
   ) async {
@@ -1948,6 +2190,10 @@ void main() {
     expect(find.text('1 dose today'), findsOneWidget);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 읽기 전용 필요시 섹션에서는 새 복용을 기록할 수 없는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('read-only PRN section cannot record', (tester) async {
     final server = _HistoryServer();
     await _pumpAsNeeded(tester, server, readOnly: true);
@@ -1965,6 +2211,10 @@ void main() {
     expect(server.writes, isEmpty);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 세션이 바뀌면 열린 필요시 상세를 숨기고 이전 계정의 저장 동작을 차단하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('session switch hides open PRN details and prevents save', (
     tester,
   ) async {
@@ -1988,6 +2238,10 @@ void main() {
     expect(server.writes, hasLength(1));
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 추가 복용 확인창이 열린 사이 날짜가 바뀌면 전날 기준 기록을 차단하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('day change while PRN confirmation is open blocks stale date', (
     tester,
   ) async {
@@ -2007,6 +2261,10 @@ void main() {
   });
 
   for (final english in [false, true]) {
+    // 함수이름: testWidgets 콜백
+    // 함수역할: 한국어·영어 큰 글씨에서 필요시 목록과 추가 복용 확인창이 넘치지 않는지 검증한다.
+    // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+    // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
     testWidgets(
       'PRN section and confirmation fit large text english=$english',
       (tester) async {
@@ -2032,9 +2290,15 @@ void main() {
     );
   }
 
-  // 기존 필요시 이벤트 정정은 새 복용을 만들지 않고 원래 키와 버전을 사용한다.
-  // 한 달 달력: 날짜별 정기 복용 기록 수·색, 필요시 표시, 날짜 진입과 복귀, 조회 가능 기간.
+  // Function Name: group callback
+  // Description: Groups monthly-calendar selection, allowed history windows, export defaults, semantics and responsive-layout regressions.
+  // Parameters: None; nested widget tests receive their own WidgetTester.
+  // Returns: void; registers the month-specific cases and local fixture helpers.
   group('month calendar', () {
+    // 함수이름: monthServer
+    // 함수역할: 월별 상태·필요시 표시를 검증할 여러 날짜의 복용·미기록 항목을 구성한다.
+    // 매개변수: 없음.
+    // 반환값: _HistoryServer: 정기 기록과 필요시 복용 한 건을 가진 독립 메모리 대역.
     _HistoryServer monthServer() {
       final server = _HistoryServer();
       server.items
@@ -2057,8 +2321,16 @@ void main() {
       return server;
     }
 
+    // Function Name: day
+    // Description: Locates the monthly cell by its complete date key without relying on duplicate day-number text.
+    // Parameters: date (String): YYYY-MM-DD date suffix used by the calendar key.
+    // Returns: Finder: Matching calendar cell; does not assert that it exists.
     Finder day(String date) => find.byKey(ValueKey('history-month-day-$date'));
 
+    // 함수이름: openMonth
+    // 함수역할: 이력 화면의 자동 오늘 선택을 생략하고 월간 탭이 보이도록 스크롤한 뒤 선택한다.
+    // 매개변수: tester(WidgetTester)·server(_HistoryServer): 실행기·응답 대역; textScale(double)·isEnglish(bool): 글자 배율·언어.
+    // 반환값: Future<void>: 월간 조회와 화면 정착 완료.
     Future<void> openMonth(
       WidgetTester tester,
       _HistoryServer server, {
@@ -2077,7 +2349,10 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    // 달력 칸은 하위 의미 정보를 제외하므로 화면 낭독기의 누르기가 날짜를 골라야 한다.
+    // Function Name: testWidgets callback
+    // Description: Invokes a calendar cell through its accessibility tap action and requires the selected-day details to update.
+    // Parameters: tester (WidgetTester): Drives the isolated widget tree and test clock.
+    // Returns: Future<void>; a failed expectation or widget interaction fails the case.
     testWidgets('a calendar day exposes its tap to screen readers', (
       tester,
     ) async {
@@ -2093,6 +2368,10 @@ void main() {
       handle.dispose();
     });
 
+    // 함수이름: testWidgets 콜백
+    // 함수역할: 월간 탭에서 한 달 구간을 조회하고 막대그래프 대신 건수 달력을 유지하는지 검증한다.
+    // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+    // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
     testWidgets('monthly tab reads the month and retains count calendar', (
       tester,
     ) async {
@@ -2135,6 +2414,10 @@ void main() {
             .top,
       );
     });
+    // 함수이름: testWidgets 콜백
+    // 함수역할: 이미 읽은 월의 날짜를 선택할 때 전체 기간을 재조회하지 않고 인라인 상세를 여는지 검증한다.
+    // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+    // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
     testWidgets(
       'day selection opens inline details without refetching the period',
       (tester) async {
@@ -2176,6 +2459,10 @@ void main() {
         expect(find.byKey(const Key('history-month-calendar')), findsNothing);
       },
     );
+    // 함수이름: testWidgets 콜백
+    // 함수역할: 이전 달 탐색이 허용된 90일 이력 구간을 넘어가지 않는지 검증한다.
+    // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+    // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
     testWidgets('earlier months stop at the 90-day history window', (
       tester,
     ) async {
@@ -2202,6 +2489,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('2026.08'), findsOneWidget);
     });
+    // 함수이름: testWidgets 콜백
+    // 함수역할: 월간 조회 실패 시 오래된 집계를 숨기고 재시도 뒤 새 자료를 표시하는지 검증한다.
+    // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+    // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
     testWidgets('a failed month read offers a retry with no stale chart', (
       tester,
     ) async {
@@ -2218,6 +2509,10 @@ void main() {
         findsOneWidget,
       );
     });
+    // 함수이름: testWidgets 콜백
+    // 함수역할: 월간 화면에서 공유를 열면 현재 보이는 달을 초기 내보내기 기간으로 사용하는지 검증한다.
+    // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+    // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
     testWidgets('export from month starts with the visible month', (
       tester,
     ) async {
@@ -2230,7 +2525,10 @@ void main() {
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
     });
-    // 짧은 범례는 기본 배율에서 한 줄 안에 모두 들어간다.
+    // 함수이름: testWidgets 콜백
+    // 함수역할: 월간 범례가 정기 상태와 필요시 분류를 한 줄 중앙 정렬로 표시하는지 검증한다.
+    // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+    // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
     testWidgets('month legend shows all categories in one compact row', (
       tester,
     ) async {
@@ -2269,6 +2567,10 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // 함수이름: testWidgets 콜백
+    // 함수역할: 좁은 화면과 큰 한국어 글씨에서도 월간 달력에 레이아웃 예외가 없는지 검증한다.
+    // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+    // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
     testWidgets('month fits narrow screens at large Korean text', (
       tester,
     ) async {
@@ -2285,6 +2587,10 @@ void main() {
     });
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 복용률의 분모·분자는 정기 일정만 집계하고 필요시 복용은 별도 항목으로 표시하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('record summary counts scheduled doses only, not PRN doses', (
     tester,
   ) async {
@@ -2330,6 +2636,10 @@ void main() {
     expect(tester.widget<Wrap>(summary).alignment, WrapAlignment.center);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 기존 필요시 기록의 시각·상태를 수정해도 원래 시간대 이벤트 식별자는 유지되는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('editing an existing PRN event preserves its original slot key', (
     tester,
   ) async {
@@ -2373,7 +2683,10 @@ void main() {
     expect(server.items, hasLength(1));
   });
 
-  // 공유 전 동의가 필요하고 공유 완료와 전송 완료를 혼동하지 않는다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 텍스트 공유는 확인창을 거친 뒤 네이티브 공유를 호출하고 공개되는 항목을 확인할 수 있는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'Text sharing asks privacy confirmation and calls native share safely',
     (tester) async {
@@ -2421,6 +2734,10 @@ void main() {
     },
   );
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 외부 공유의 날짜 순서를 검증하고 최대 90일 범위를 허용하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'export validates date order and allows up to 90 days for external sharing',
     (tester) async {
@@ -2467,6 +2784,10 @@ void main() {
     },
   );
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 공유 자료 조회 실패 후 대화상자를 유지하여 재시도할 수 있는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('export read failure stays in dialog and permits retry', (
     tester,
   ) async {
@@ -2497,6 +2818,10 @@ void main() {
   });
 
   for (final cancel in [true, false]) {
+    // 함수이름: testWidgets 콜백
+    // 함수역할: 자료 조회 중 공유 취소 또는 세션 변경이 발생하면 늦은 응답으로 전송하지 않는지 검증한다.
+    // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+    // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
     testWidgets(
       'pending export ${cancel ? 'cancellation' : 'session change'} prevents late sharing',
       (tester) async {
@@ -2565,6 +2890,10 @@ void main() {
   }
 
   for (final english in [true, false]) {
+    // 함수이름: testWidgets 콜백
+    // 함수역할: 좁은 화면에서 한국어·영어 큰 글씨로 공유 시작일·종료일을 표시해도 넘치지 않는지 검증한다.
+    // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+    // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
     testWidgets(
       'export date fields fit a narrow screen with large ${english ? 'English' : 'Korean'} text',
       (tester) async {
@@ -2594,6 +2923,10 @@ void main() {
     );
   }
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 공유 크기 제한을 넘으면 내용을 임의로 잘라 전송하지 않고 확인창에서 오류를 표시하는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'oversized text stays in the dialog without truncating or sharing',
     (tester) async {
@@ -2636,7 +2969,10 @@ void main() {
     },
   );
 
-  // 텍스트 공유 미지원 시 동의 없이 민감한 자료를 클립보드로 옮기지 않는다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 네이티브 공유 미지원 시 복사 대안을 별도로 확인받고 취소하면 클립보드를 변경하지 않는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'unsupported sharing asks before clipboard fallback and permits cancellation',
     (tester) async {
@@ -2673,7 +3009,10 @@ void main() {
     },
   );
 
-  // 정정 도중 계정이 바뀌면 대화상자에도 이전 약 이름이나 메모가 남지 않는다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 세션 변경 시 열린 기록 편집창의 민감 내용을 숨기고 저장을 막는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets('session change hides sensitive open editor and blocks saving', (
     tester,
   ) async {
@@ -2692,7 +3031,10 @@ void main() {
     expect(find.byKey(const Key('history-save')), findsNothing);
   });
 
-  // 작은 기기와 2배 글씨에서도 목록·날짜 선택·정정 내용을 스크롤할 수 있다.
+  // 함수이름: testWidgets 콜백
+  // 함수역할: 좁은 화면과 큰 글씨에서 기록 목록·편집창을 조작해도 레이아웃 예외가 없는지 검증한다.
+  // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
+  // 반환값: Future<void>; 기대 결과나 위젯 조작이 어긋나면 테스트가 실패한다.
   testWidgets(
     'narrow screen and large text have no overflow in history or editor',
     (tester) async {

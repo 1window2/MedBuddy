@@ -394,6 +394,13 @@ void main() {
             c.updateMedicationSlotStatus('morning', true),
       };
   for (final entry in requests.entries) {
+    // Function Name: test callback
+    // Description:
+    // - Preserves the rejected HTTP status and server detail in ApiRequestException for each schedule operation.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('${entry.key}: rejected response keeps status and detail', () async {
       final control = CheckSchedule(
         baseUrl: 'http://localhost',
@@ -423,6 +430,13 @@ void main() {
       );
     });
 
+    // Function Name: test callback
+    // Description:
+    // - Wraps each schedule operation's transport failure while retaining the original cause.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('${entry.key}: transport failure keeps its cause', () async {
       final control = CheckSchedule(
         baseUrl: 'http://localhost',

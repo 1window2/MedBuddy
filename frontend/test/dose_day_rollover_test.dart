@@ -1,6 +1,6 @@
-// 파일명: dose_day_rollover_test.dart
-// 역할: 앱 기준 날짜가 바뀐 뒤 첫 재개에서 만료된 복용 투영이 성공한 일정 조회로 취급되지 않는지,
-//   날짜가 바뀐 직후의 복용 기록이 새 날짜의 대기열에 저장되는지 검증한다.
+// File Name: dose_day_rollover_test.dart
+// Role: Verify that midnight recovery does not treat an expired projection as a successful load
+//   and that dose actions are durably assigned to the current schedule day.
 // Real SQLite/crypto regressions; synthetic data and mock HTTP only.
 import 'dart:convert';
 import 'dart:io';
@@ -16,9 +16,10 @@ import 'package:medbuddy_frontend/services/dose_outbox_store.dart';
 import 'package:medbuddy_frontend/services/dose_sync_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 
-// 함수이름: main
-// 함수역할: 날짜 변경 직후의 일정 조회·알림 동기화 경합 회귀 테스트를 등록한다.
-// 매개변수: 없음. 반환값: 없음.
+// Function Name: main
+// Description: Registers real SQLite and encryption regressions for midnight recovery, reminder preservation, and durable dose recording.
+// Parameters: None.
+// Returns: void; initializes test bindings and registers fixtures and cases.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
@@ -33,6 +34,10 @@ void main() {
   late int scheduledMedicationId;
   late http.Client client;
 
+  // Function Name: setUp callback
+  // Description: Creates an encrypted temporary outbox, resets the controlled day and connectivity, and installs delayed schedule responses plus recorded uploads and disable requests.
+  // Parameters: None.
+  // Returns: Future<void>; completes when the database, key, and mock client are ready, or propagates fixture setup failures.
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     directory = await Directory.systemTemp.createTemp('dose-rollover-');
@@ -133,15 +138,20 @@ void main() {
     });
   });
 
+  // Function Name: tearDown callback
+  // Description: Closes the mock HTTP client and SQLite database, then removes the temporary outbox directory.
+  // Parameters: None.
+  // Returns: Future<void>; completes after cleanup, or propagates a database-close or deletion failure.
   tearDown(() async {
     client.close();
     await db.close();
     await directory.delete(recursive: true);
   });
 
-  // 함수이름: signedInViewModelAfterDayOne
-  // 함수역할: 첫날 일정을 정상 조회해 캐시까지 채운 ViewModel을 만든다.
-  // 매개변수: 없음. 반환값: 첫날 조회를 마친 ViewModel.
+  // Function Name: signedInViewModelAfterDayOne
+  // Description: Attaches active dose synchronization to a patient view model, drains it, and loads the first day's schedule into its projection.
+  // Parameters: None.
+  // Returns: Future<MedBuddyViewModel>; the initialized model after asserting one schedule, no load error, and no reminder-disable request.
   Future<MedBuddyViewModel> signedInViewModelAfterDayOne() async {
     final viewModel = MedBuddyViewModel(
       patientHash: 'patient-a',
@@ -164,6 +174,10 @@ void main() {
     return viewModel;
   }
 
+  // Function Name: expired projection recovery test
+  // Description: Races resume-time draining with next-day recovery; an empty discarded result must remain a load error, and a later recovery must restore the schedule without disabling reminders.
+  // Parameters: None.
+  // Returns: Future<void>; fails if an empty projection is reported as success or subsequent recovery loses the schedule or reminder.
   test(
     'an expired projection on a new day is flagged for recovery, not shown as an empty schedule',
     () async {
@@ -189,6 +203,10 @@ void main() {
     },
   );
 
+  // Function Name: next-day refresh and drain race test
+  // Description: Verifies that a refresh overlapping the new day's first drain keeps the morning reminder enabled and a subsequent refresh restores the schedule.
+  // Parameters: None.
+  // Returns: Future<void>; fails if any disable request is sent or the final schedule is missing.
   test(
     'a refresh racing the first drain of a new day does not disable enabled reminders',
     () async {
@@ -213,10 +231,11 @@ void main() {
     },
   );
 
-  // 함수이름: 날짜 변경 직후 복용 기록 테스트
-  // 함수역할: 전날부터 살아 있던 앱에서 알림의 "복용했어요"가 재개와 겹쳐도 복용 기록이 저장되는지 검증한다.
-  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   for (final resumeFirst in [false, true]) {
+    // Function Name: dated dose action and resume ordering test
+    // Description: Runs a dated slot action before or after resume and verifies one upload for the new day's medication, followed by an empty outbox and no reminder disable.
+    // Parameters: None; resumeFirst selects the registration loop's ordering case.
+    // Returns: Future<void>; fails if the dose date, medication, completion state, or upload count differs.
     test(
       'a dose taken on the first resume of a new day is recorded (resumeFirst=$resumeFirst)',
       () async {
@@ -255,11 +274,11 @@ void main() {
     );
   }
 
-  // 함수이름: 날짜 변경 직후 개별 복용 체크 테스트
-  // 함수역할: 전날 목록이 그대로 보이는 화면에서 약 하나를 체크하면 기록하지 않고 오늘 일정을 다시 읽어
-  //   다시 누르도록 안내하며, 새 목록에서 다시 누르면 오늘 기록으로 대기열에 저장되는지 검증한다.
-  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   for (final resumeFirst in [false, true]) {
+    // Function Name: stale-list tap and durable retry test
+    // Description: Rejects a tap on yesterday's item and refreshes the list; a second tap queues today's dose offline, updates the projection, and reuses the same operation ID after reconnection.
+    // Parameters: None; resumeFirst selects whether resume precedes the stale-list tap.
+    // Returns: Future<void>; fails if the first tap records a dose, the retry uses the wrong day, or reconnection leaves pending work or duplicates operation identity.
     test(
       'a dose tapped on yesterday\'s list right after midnight is refused, then recorded from today\'s list (resumeFirst=$resumeFirst)',
       () async {
@@ -333,10 +352,10 @@ void main() {
     );
   }
 
-  // 함수이름: 날짜 변경 직후 시간대 전체 체크 테스트
-  // 함수역할: 전날 목록에서 시간대 전체를 체크해도 기록하지 않고, 알림처럼 날짜를 지정한 요청은 그대로
-  //   기록되는지 검증한다.
-  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // Function Name: undated versus dated slot action test
+  // Description: Rejects an undated whole-slot request from yesterday's list, then accepts an explicitly current-day request after another rollover and queues it under that date.
+  // Parameters: None.
+  // Returns: Future<void>; fails if the undated request queues work or the dated request is rejected or assigned another day.
   test(
     'a whole slot tapped on yesterday\'s list is refused; a dated request is recorded',
     () async {
@@ -367,10 +386,10 @@ void main() {
     },
   );
 
-  // 함수이름: 날짜 변경 뒤 일정 조회 실패 테스트
-  // 함수역할: 오늘 일정을 읽지 못하면 전날 목록으로 오늘 복용을 기록하지 않고, 화면에도 복용으로 표시하지
-  //   않으며 실패를 알리는지 검증한다.
-  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // Function Name: failed next-day schedule load test
+  // Description: Makes today's schedule unavailable and verifies that individual and whole-slot actions report the load failure without queuing, uploading, or displaying a taken dose.
+  // Parameters: None.
+  // Returns: Future<void>; fails if stale data records a dose or the connection failure is hidden.
   test(
     'a dose after midnight is neither queued nor shown as taken when today cannot be loaded',
     () async {
@@ -407,9 +426,10 @@ void main() {
     },
   );
 
-  // 함수이름: 날짜 변경 뒤 사라진 약 테스트
-  // 함수역할: 체크한 약이 오늘 일정에 없으면 다른 약이나 전날 약으로 기록하지 않는지 검증한다.
-  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // Function Name: medication removed after rollover test
+  // Description: Replaces today's medication ID and verifies that tapping yesterday's item only refreshes the list and asks for confirmation, without recording either medication.
+  // Parameters: None.
+  // Returns: Future<void>; fails if pending/uploads appear, the replacement list is wrong, or the replacement is shown as taken.
   test(
     'a medicine that is no longer scheduled today is not recorded',
     () async {
@@ -442,9 +462,10 @@ void main() {
     },
   );
 
-  // 함수이름: 같은 날 오프라인 복용 기록 테스트
-  // 함수역할: 연결이 없어도 복용 체크가 대기열에 먼저 저장되고 그 기록으로 화면에 복용이 표시되는지 검증한다.
-  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // Function Name: offline outbox-before-display test
+  // Description: Disables reads and uploads on the same day and verifies that every taken-state notification already has a pending outbox record with the correct medication, slot, and date.
+  // Parameters: None.
+  // Returns: Future<void>; fails if the UI reports a taken dose before durable queuing or omits the pending-upload message.
   test('an offline dose is in the outbox before it is shown as taken', () async {
     final viewModel = await signedInViewModelAfterDayOne();
     final tapped = viewModel.todayMedicationScheduleList.single;

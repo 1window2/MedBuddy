@@ -1,4 +1,5 @@
-// 실제 암호화 저장소와 두 전송 작업자로 계정별 순서 및 응답 역전을 검증한다.
+// 파일명: dose_sync_concurrency_test.dart
+// 역할: 실제 암호화 저장소와 두 전송 작업자로 계정별 순서 및 응답 역전을 검증한다.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -17,6 +18,14 @@ const _owner = 'synthetic-patient-a';
 const _day = '2026-10-16';
 final _now = DateTime.utc(2026, 10, 16, 3);
 
+// 함수이름: _operation
+// 함수역할:
+// - 고정 테스트 날짜에 한 시간대의 복용 완료를 기록하는 대기 작업을 만든다.
+// 매개변수:
+// - id(String): 전송·승인 순서를 추적할 작업 ID.
+// - slot(String): 시간대 키; morning이면 약 91, 그 외에는 약 92를 선택한다.
+// 반환값:
+// - Map<String, dynamic>: completed가 true인 암호화 저장소 입력 맵.
 Map<String, dynamic> _operation(String id, String slot) => {
   'operation_id': id,
   'schedule_date': _day,
@@ -25,6 +34,14 @@ Map<String, dynamic> _operation(String id, String slot) => {
   'completed': true,
 };
 
+// 함수이름: _cache
+// 함수역할:
+// - 아침·저녁 약의 시간대 상태와 약 전체 상태를 일치시킨 일정 캐시를 만든다.
+// 매개변수:
+// - morning(bool): 아침 약 91의 복용 완료 여부.
+// - evening(bool): 저녁 약 92의 복용 완료 여부.
+// 반환값:
+// - Map<String, dynamic>: 고정 날짜와 두 약의 JSON 일정을 포함한 캐시.
 Map<String, dynamic> _cache(bool morning, bool evening) => {
   'date': _day,
   'schedules': [
@@ -39,6 +56,13 @@ Map<String, dynamic> _cache(bool morning, bool evening) => {
   ],
 };
 
+// 함수이름: main
+// 함수역할:
+// - 두 작업자의 전송 대기·임대 충돌·늦은 승인 상황에서 복약 상태 보존을 검증한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - 없음; 등록된 사례와 준비·정리 훅은 테스트 프레임워크에서 실행한다.
 void main() {
   sqfliteFfiInit();
   late Directory directory;
@@ -46,6 +70,13 @@ void main() {
   late DoseOutboxStore foregroundStore;
   late DoseOutboxStore backgroundStore;
 
+  // 함수이름: setUp 콜백
+  // 함수역할:
+  // - 독립 DB와 암호화 키를 만들고 이를 공유하는 전경·백그라운드 저장소를 활성화한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 동일 계정과 DB를 공유하는 두 작업자의 저장소 준비 완료.
   setUp(() async {
     directory = await Directory.systemTemp.createTemp('dose-sync-race-');
     db = await databaseFactoryFfi.openDatabase(
@@ -61,12 +92,26 @@ void main() {
     await foregroundStore.activate(_owner);
   });
 
+  // 함수이름: tearDown 콜백
+  // 함수역할:
+  // - 공용 DB 연결을 닫고 테스트 전용 디렉터리를 제거한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 저장소 정리 완료.
   tearDown(() async {
     await db.close();
     await directory.delete(recursive: true);
   });
 
   for (final firstSlot in ['morning', 'evening']) {
+    // 함수이름: test callback
+    // 함수역할:
+    // - 첫 승인 응답을 보류하면 두 번째 작업자는 전송 대신 재시도하며, 해제 후 순차 승인으로 캐시·위젯 모두 2/2 완료와 빈 대기열을 유지하는지 검증한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     test('two workers retain 2/2 when the $firstSlot ACK is delayed', () async {
       final secondSlot = firstSlot == 'morning' ? 'evening' : 'morning';
       await foregroundStore.saveCache(_owner, _cache(false, false));
@@ -172,6 +217,13 @@ void main() {
     },
     'day': {'schedule_date': '2026-10-15'},
   }.entries) {
+    // 함수이름: test callback
+    // 함수역할:
+    // - 시간대·약·날짜가 다른 작업이라도 같은 계정의 활성 임대 동안 가져올 수 없고 첫 작업 완료 후에만 가져오는지 검증한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     test('an active lease also holds an unrelated ${distinct.key}', () async {
       await foregroundStore.enqueue(_owner, _operation('first', 'morning'));
       await foregroundStore.enqueue(_owner, {
@@ -193,6 +245,13 @@ void main() {
     });
   }
 
+  // 함수이름: test callback
+  // 함수역할:
+  // - 새 계정은 이전 계정의 임대에 막히지 않지만 이전 계정으로 돌아오면 그 임대가 끝날 때까지 다음 작업을 가져오지 않는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'active leases are isolated by account during an account switch',
     () async {
@@ -225,6 +284,13 @@ void main() {
     },
   );
 
+  // 함수이름: test callback
+  // 함수역할:
+  // - 만료 작업자의 승인·재시도 종료를 무시하고 새 임대에서 복용·취소·저녁 기록 순서를 지켜 최종 캐시와 리비전을 보존하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'expired lease retries keep ownership and same-dose undo order',
     () async {

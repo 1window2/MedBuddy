@@ -10,8 +10,14 @@ import '../entities/medication_history_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
 // Class Name: MedicationHistoryDaySummary
-// Role: Recorded scheduled doses of one day, and whether an as-needed dose was taken.
+// Role: Summarizes one day's scheduled doses separately from as-needed records.
+// Responsibilities: Provide taken/total progress and calendar mark selection without inventing an as-needed denominator.
+// Attributes: scheduled/taken: Regular dose counts; asNeededTaken: Separate as-needed completed count.
 class MedicationHistoryDaySummary {
+  // Function Name: MedicationHistoryDaySummary
+  // Description: Stores day-level scheduled and as-needed counts.
+  // Parameters: scheduled: Regular dose total; taken: Completed regular doses; asNeededTaken: Completed as-needed records.
+  // Returns: An immutable summary; counts are not validated by this constructor.
   const MedicationHistoryDaySummary({
     required this.scheduled,
     required this.taken,
@@ -54,8 +60,9 @@ class MedicationHistoryDaySummary {
   }
 
   // Function Name: color
-  // Description: Green when every scheduled dose is recorded as taken, amber when some
-  //   are, grey when none are. Null when the day had no scheduled dose.
+  // Description: Selects a calendar mark for scheduled-dose completion.
+  // Parameters: None.
+  // Returns: Null without scheduled doses; primary for all taken, reminder accent for some, muted for none.
   Color? get color => scheduled == 0
       ? null
       : taken == scheduled
@@ -65,9 +72,15 @@ class MedicationHistoryDaySummary {
       : MedBuddyColors.textMuted;
 }
 
-// Class Name: MedicationHistoryMonthCalendar
-// Role: Draws the day cells and legend of one month; the history screen owns month navigation.
+// 클래스명: MedicationHistoryMonthCalendar
+// 역할: 한 달의 복약 기록 날짜 칸과 범례를 표시한다.
+// 주요 책임: 보관 기간 내 날짜 선택과 정기·필요시 기록 표시를 제공하며 월 이동은 부모 화면에 맡긴다.
+// 속성: month/today/selected: UTC 달력 날짜; summaries: 날짜별 집계; isEnglish/enabled/onDaySelected: 언어와 선택 조건.
 class MedicationHistoryMonthCalendar extends StatelessWidget {
+  // Function Name: MedicationHistoryMonthCalendar
+  // Description: Configures one month of history with externally owned selection.
+  // Parameters: key: Widget identity; month/today/selected: UTC calendar dates; summaries: Daily counts; isEnglish: Language; enabled: Interaction gate; onDaySelected: Selection callback.
+  // Returns: A month calendar; navigation and selected state remain with its parent.
   const MedicationHistoryMonthCalendar({
     super.key,
     required this.month,
@@ -88,11 +101,22 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
   final bool enabled;
   final ValueChanged<DateTime> onDaySelected;
 
-  // The history keeps 90 days, so day 89 before today is the earliest reachable one.
+  // Function Name: earliest
+  // Description: Computes the earliest day in the inclusive history retention window.
+  // Parameters: None.
+  // Returns: The earliest retained calendar date relative to today.
   DateTime get earliest => MedicationHistoryDates.earliest(today);
 
+  // Function Name: _tr
+  // Description: Selects the calendar's display-language string.
+  // Parameters: ko/en: Korean and English text.
+  // Returns: The string selected by isEnglish.
   String _tr(String ko, String en) => isEnglish ? en : ko;
 
+  // Function Name: build
+  // Description: Builds a Sunday-first month grid and its status legend.
+  // Parameters: context: Flutter build context.
+  // Returns: The month view with leading/trailing blanks and one cell per date.
   @override
   Widget build(BuildContext context) {
     final first = DateTime.utc(month.year, month.month);
@@ -149,8 +173,9 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
   }
 
   // Function Name: _cell
-  // Description: One day: its number, taken/total of scheduled doses and a colour mark.
-  //   Unreachable days are drawn faintly and cannot be tapped.
+  // Description: Builds an accessible day cell with recorded counts and separate as-needed indication.
+  // Parameters: context: Build context; dayNumber: Candidate day; daysInMonth: Valid month length.
+  // Returns: A blank outside the month, otherwise a marked cell selectable only when enabled and within retention through today.
   Widget _cell(BuildContext context, int dayNumber, int daysInMonth) {
     if (dayNumber < 1 || dayNumber > daysInMonth) {
       return const SizedBox(height: 56);
@@ -281,9 +306,15 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
     );
   }
 
-  // Function Name: _legend
-  // Description: Explains the marks in one compact row, keeping large text scrollable.
+  // 함수이름: _legend
+  // 함수역할: 큰 글자에서도 가로로 스크롤 가능한 복약 상태 범례를 구성한다.
+  // 매개변수: 없음.
+  // 반환값: 모두·일부·미기록·필요시 표시를 설명하는 범례 위젯.
   Widget _legend() {
+    // 함수이름: item
+    // 함수역할: 한 상태의 색상 표식과 설명을 묶는다.
+    // 매개변수: colour: 표시색; text: 설명; ring: 채운 점 대신 테두리 원 사용 여부.
+    // 반환값: 작은 표식과 텍스트를 나란히 놓은 Row.
     Widget item(Color colour, String text, {bool ring = false}) => Row(
       mainAxisSize: MainAxisSize.min,
       children: [

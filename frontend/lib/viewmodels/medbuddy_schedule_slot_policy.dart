@@ -7,7 +7,7 @@ import '../entities/medication_schedule_entity.dart';
 // Parameters:
 // - schedule (MedicationSchedule): Medication course with name, dose, duration, and slots.
 // Returns:
-// - List<String>: Explicit slots, else the slots of the daily frequency, else the slots that carry a completion status, else the default slot.
+// - List<String>: Empty for as-needed medication; otherwise explicit slots, recorded supported slots when frequency is unknown, or the frequency-derived/default slots.
 List<String> resolveScheduleSlotKeys(MedicationSchedule schedule) {
   return schedule.slotKeys;
 }

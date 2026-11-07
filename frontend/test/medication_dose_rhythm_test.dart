@@ -43,8 +43,8 @@ void main() {
     }
   });
 
-  // Function Name: duration vector test
-  // Description: Every duration label yields the listed number of days.
+  // Function Name: custom interval translation test
+  // Description: Translates plain positive day intervals and rejects unsupported or compound labels.
   // Parameters: None. Returns: None; a mismatch fails the test.
   test('custom intervals from manual entry read in English', () {
     expect(englishDoseIntervalLabel('3일마다'), 'Every 3 days');
@@ -54,6 +54,13 @@ void main() {
     expect(englishDoseIntervalLabel('3일마다, 1일 2회'), isNull);
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Checks each shared duration vector against its expected day count, including units.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('duration labels are read with their unit', () {
     for (final vector in (vectors['duration'] as List).cast<Map>()) {
       final text = vector['text'] as String;
@@ -84,6 +91,13 @@ void main() {
   // Parameters: None. Returns: None; a mismatch fails the test.
   test('cycle arithmetic handles dates before the anchor', () {
     final anchor = DateTime(2026, 10, 7);
+    // Function Name: due
+    // Description:
+    // - Checks the given calendar day against a weekly cycle anchored to the captured date.
+    // Parameters:
+    // - date (DateTime): Day to evaluate.
+    // Returns:
+    // - bool: Whether the day belongs to offset zero of the seven-day cycle.
     bool due(DateTime date) => isDoseDayOfCycle(
       cycleDays: 7,
       offsets: const [0],
@@ -156,6 +170,16 @@ void main() {
   // Description: A saved medication reports a next dose day only when it is not taken every day, counting from the dispensing date or, without one, the registration date.
   // Parameters: None. Returns: None; a mismatch fails the test.
   test('saved medication reports the next dose day of a non-daily course', () {
+    // Function Name: medication
+    // Description:
+    // - Builds a saved-medication fixture with the requested cycle and course dates.
+    // Parameters:
+    // - frequency (String): Dose-frequency text.
+    // - prescriptionDate (DateTime?): Optional dispensing date.
+    // - createdDate (DateTime?): Fallback registration date.
+    // - totalDays (String): Course duration text; defaults to 28.
+    // Returns:
+    // - MedicationDetail with empty descriptive fields and the supplied course metadata.
     MedicationDetail medication(
       String frequency, {
       DateTime? prescriptionDate,

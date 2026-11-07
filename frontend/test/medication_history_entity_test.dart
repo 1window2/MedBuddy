@@ -6,8 +6,22 @@ import 'package:medbuddy_frontend/entities/medication_history_entity.dart';
 import 'medication_history_fixtures.dart';
 
 // 함수역할: 경계 날짜와 내보내기 계약에 대한 독립 회귀 테스트를 등록한다.
+// 함수이름: main
+// 함수역할:
+// - 이력 날짜·기간·서버 허용 상태·복용 시각과 변경 요청의 직렬화 경계를 검증한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - 없음; 등록한 테스트는 프레임워크가 실행한다.
 void main() {
   // 윤년·날짜 넘침을 느슨하게 보정하지 않고 명확히 거부한다.
+  // 함수이름: 엄격한 달력 날짜 해석
+  // 함수역할:
+  // - 윤년 날짜는 허용하되 존재하지 않는 날짜·시각 포함 문자열·다른 날짜 형식·빈 입력은 FormatException으로 거부하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('calendar parsing rejects rolled dates and timestamps', () {
     expect(
       MedicationHistoryDates.parse('2024-02-29'),
@@ -28,6 +42,13 @@ void main() {
   });
 
   // 기기 지역과 무관하게 한국 자정에서 조회 날짜가 전환되는지 확인한다.
+  // 함수이름: 한국 날짜와 UTC 순간 변환
+  // 함수역할:
+  // - 한국 자정 경계의 오늘 날짜·표시 시각·입력 시각 및 시간대 유무 ISO 문자열이 동일한 UTC 순간을 유지하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('Korea date and timestamp preserve UTC instant across midnight', () {
     expect(
       MedicationHistoryDates.today(DateTime.utc(2026, 10, 16, 15)),
@@ -52,6 +73,13 @@ void main() {
   });
 
   // 최근 90일과 31일 상한 모두 양 끝 날짜를 포함한다.
+  // 함수이름: 포함 날짜 범위 검증
+  // 함수역할:
+  // - 최대 31일과 최근 90일의 양 끝은 허용하고 기간 초과·조회 창 밖·미래·역순 범위는 거부하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('range validates inclusive 31 days and 90 day window', () {
     final today = MedicationHistoryDates.today(historyTestNow);
     MedicationHistoryRange(
@@ -71,6 +99,13 @@ void main() {
   });
 
   // 잘못된 상태를 미기록으로 숨기거나 중복 복용을 이중 집계하지 않는다.
+  // 함수이름: 손상 이력 스냅샷 거부
+  // 함수역할:
+  // - 정상 미기록 건수와 함께 알 수 없는 상태·시간대, 음수 버전, 잘못된 약 ID, 범위 밖 날짜와 중복 항목을 거부하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('snapshot rejects unknown status revision duplicates and dates', () {
     final body = historyTestBody();
     expect(
@@ -101,6 +136,13 @@ void main() {
   });
 
   // 기록 가능 여부는 앱의 날짜 추정 없이 서버가 명시한 참·거짓으로 보존한다.
+  // 함수이름: 서버의 필요시 기록 가능 상태
+  // 함수역할:
+  // - 서버의 true/false를 필요시 약에 그대로 반영하고 정기 약은 기록 가능으로 바꾸지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('history medication parses server recording eligibility', () {
     for (final allowed in [true, false]) {
       final body = historyTestBody();
@@ -112,6 +154,13 @@ void main() {
   });
 
   // 이전 서버의 누락 값과 직접 생성한 약은 필요시 모드여도 기록을 허용하지 않는다.
+  // 함수이름: 기록 가능 상태의 기본값
+  // 함수역할:
+  // - 직접 생성하거나 구형 서버의 허용 필드가 빠진 필요시 약은 처방 날짜가 있어도 기록을 허용하지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('history medication recording eligibility defaults to false', () {
     const medication = MedicationHistoryMedication(
       id: 2,
@@ -130,6 +179,13 @@ void main() {
   });
 
   // 참처럼 보이는 문자열·숫자·구조체를 불리언 참으로 변환하지 않는다.
+  // 함수이름: 불리언이 아닌 기록 허용 값
+  // 함수역할:
+  // - 문자열·숫자·null·배열·맵을 true로 강제 변환하지 않고 필요시 기록을 거부하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test(
     'history medication recording eligibility fails closed on non-booleans',
     () {
@@ -158,6 +214,13 @@ void main() {
   );
 
   // 다음 날 복용해도 예정일을 옮기지 않으며 미래 실제 복용 시각은 거부한다.
+  // 함수이름: 예정일과 실제 복용 시각 분리
+  // 함수역할:
+  // - 늦은 복용도 원래 예정일을 유지하며 실제 시각은 UTC로 전송하고 서버 기록 시각은 생략하되 미래 또는 누락 실제 시각은 거부하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('late weekly dose has distinct scheduled actual and recorded times', () {
     final entry = MedicationHistoryEntry.fromJson(historyTestEntry());
     final change = MedicationHistoryChange(
@@ -200,6 +263,13 @@ void main() {
   });
 
   // 동적 필요시 기록 키는 정기 복용 약에 허용하지 않는다.
+  // 함수이름: 필요시 이벤트 시간대 키
+  // 함수역할:
+  // - UUID 형식 이벤트 키를 필요시 약에서만 허용하며 서로 다른 이벤트는 같은 약이라도 독립 이력 두 건으로 유지하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('PRN event keys are unique slots only for as-needed medication', () {
     const slot = 'as_needed:12345678-1234-4234-8234-123456789012';
     expect(MedicationHistoryEntry.validSlot(slot, 'as_needed'), isTrue);
@@ -221,8 +291,24 @@ void main() {
     );
   });
 
-  // 같은 날 여러 번 먹은 필요시 약은 임의 UUID가 아니라 복용 시각 순서로 보이고 내보내진다.
+  // Ordering is verified on parsed items here; export formatting is covered separately.
+  // Function Name: same-day as-needed ordering
+  // Description:
+  // - Orders taken events chronologically rather than by UUID and places the event without an actual intake time last.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('same-day PRN doses are ordered by the time they were taken', () {
+    // Function Name: dose
+    // Description:
+    // - Builds an as-needed event whose completion state follows the presence of an actual intake time.
+    // Parameters:
+    // - uuid (String): Suffix of the event slot key.
+    // - taken (String?): Actual intake timestamp; null marks the event unrecorded.
+    // - recorded (String?): Server-recorded timestamp; defaults to taken.
+    // Returns:
+    // - Map<String, dynamic>: A revision-1 event on the fixed fixture day.
     Map<String, dynamic> dose(String uuid, String? taken, {String? recorded}) => {
       ...historyTestEntry(
         id: 2,
@@ -254,6 +340,13 @@ void main() {
   });
 
   // 건너뜀만 이유를 가지며 그 외 상태에 실제 복용 시각이 남지 않는다.
+  // 함수이름: 상태별 시각과 사유 검증
+  // 함수역할:
+  // - 건너뜀은 실제 복용 시각 없이 직렬화하고 201자 사유 또는 미기록 상태의 실제 복용 시각은 FormatException으로 거부하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('reason length and mutually exclusive status fields are validated', () {
     final entry = MedicationHistoryEntry.fromJson(historyTestEntry());
     const operation = '12345678-1234-4234-8234-123456789012';

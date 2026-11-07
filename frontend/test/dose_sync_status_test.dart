@@ -1,5 +1,5 @@
-// 파일명: dose_sync_status_test.dart
-// 역할: 전송 대기·서버 거부·유실된 복용 기록 안내가 실제 대기열 상태에 맞게 표시되고 조작되는지 검증한다.
+// File Name: dose_sync_status_test.dart
+// Role: Checks pending, rejected and lost-dose notices and actions against real outbox state.
 // The production DoseSyncService and outbox store on in-memory SQLite; synthetic data only.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,9 +19,13 @@ const _medication = MedicationSchedule(
   slotStatuses: {'morning': false},
 );
 
-// 함수이름: _queueMorningDose
-// 함수역할: 운영 경로의 동기화 서비스를 붙이고 아침 복용 기록 한 건을 전송 대기 상태로 만든다.
-// 매개변수: 없음. 반환값: 대기 기록 한 건이 있는 테스트 하네스.
+// Function Name: _queueMorningDose
+// Description:
+// - Attaches production dose synchronization, seeds one medication and queues its morning completion against the default offline responder.
+// Parameters:
+// - None.
+// Returns:
+// - Future<DoseSyncHarness>: Harness with one pending dose.
 Future<DoseSyncHarness> _queueMorningDose() async {
   final harness = await attachTestDoseSync(
     MedBuddyViewModel(
@@ -43,9 +47,15 @@ Future<DoseSyncHarness> _queueMorningDose() async {
   return harness;
 }
 
-// 함수이름: _pumpStatus
-// 함수역할: tester에 지정 언어의 전송 상태 줄을 표시한다.
-// 매개변수: tester, service - 표시할 동기화 서비스, isEnglish - 영어 표시 여부. 반환값: 표시 완료 Future.
+// Function Name: _pumpStatus
+// Description:
+// - Mounts the synchronization status widget at the bottom of a test scaffold and advances one frame.
+// Parameters:
+// - tester (WidgetTester): Widget driver.
+// - service (DoseSyncService): Live status source.
+// - isEnglish (bool): Selects the displayed language.
+// Returns:
+// - Future<void>: Widget is mounted and pumped.
 Future<void> _pumpStatus(
   WidgetTester tester,
   DoseSyncService service, {
@@ -64,11 +74,21 @@ Future<void> _pumpStatus(
   await tester.pump();
 }
 
-// 함수이름: main
-// 함수역할: 전송 상태 줄과 상세 시트의 회귀 테스트를 등록한다. 매개변수: 없음. 반환값: 없음.
+// Function Name: main
+// Description:
+// - Registers empty, pending, rejected, retried and lost-dose status UI cases.
+// Parameters:
+// - None.
+// Returns:
+// - No value; registers widget tests.
 void main() {
-  // 함수이름: 대기 기록이 없는 상태 테스트
-  // 함수역할: 전송할 기록도 유실 안내도 없으면 아무것도 표시하지 않는지 검증한다.
+  // Function Name: testWidgets callback
+  // Description:
+  // - Renders no list tile and takes zero height when there are no pending operations or losses.
+  // Parameters:
+  // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   testWidgets('nothing is shown while every record is on the server', (
     tester,
   ) async {
@@ -88,8 +108,13 @@ void main() {
   });
 
   for (final isEnglish in [false, true]) {
-    // 함수이름: 전송 대기 표시 테스트
-    // 함수역할: 대기 건수와 상세 시트의 약 이름·날짜·시간대 이름·상태를 언어에 맞게 표시하는지 검증한다.
+    // Function Name: testWidgets callback
+    // Description:
+    // - Shows one waiting dose and its medication, date, localized slot and taken status in the detail sheet without a delete action.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     testWidgets('a waiting record is listed with its slot name (english=$isEnglish)', (
       tester,
     ) async {
@@ -125,8 +150,13 @@ void main() {
     });
   }
 
-  // 함수이름: 서버 거부 기록 테스트
-  // 함수역할: 서버가 거부한 기록을 확인 필요로 표시하고, 확인 대화상자를 거쳐야만 지우는지 검증한다.
+  // Function Name: testWidgets callback
+  // Description:
+  // - Displays a rejected dose as needing attention, retains it after canceling deletion and removes it only after confirmation.
+  // Parameters:
+  // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   testWidgets('a rejected record needs attention and is removed only on confirmation', (
     tester,
   ) async {
@@ -164,8 +194,13 @@ void main() {
     await harness.close();
   });
 
-  // 함수이름: 다시 전송 테스트
-  // 함수역할: 시트의 다시 전송 버튼이 거부된 기록을 다시 보내고, 성공하면 목록에서 사라지는지 검증한다.
+  // Function Name: testWidgets callback
+  // Description:
+  // - Retries one rejected operation from the sheet and clears it after a successful receipt, displaying the saved confirmation.
+  // Parameters:
+  // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   testWidgets('retry sends a rejected record again', (tester) async {
     final harness = await _queueMorningDose();
     harness.respond = (_) async => http.Response('rejected', 409);
@@ -192,8 +227,13 @@ void main() {
   });
 
   for (final isEnglish in [false, true]) {
-    // 함수이름: 유실 기록 안내 테스트
-    // 함수역할: 기기 키 분실로 버려진 기록의 건수를 알리고, 확인하면 안내가 사라지는지 검증한다.
+    // Function Name: testWidgets callback
+    // Description:
+    // - Shows the account's two unrecoverable records in either language and clears the stored count when the notice is dismissed.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     testWidgets('lost records are announced until dismissed (english=$isEnglish)', (
       tester,
     ) async {

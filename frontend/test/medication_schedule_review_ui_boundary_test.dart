@@ -18,6 +18,13 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
   for (final confirms in [false, true]) {
+    // 함수이름: testWidgets callback
+    // 함수역할:
+    // - 확인·닫기 콜백을 두 번 호출해도 진입 화면은 남고 결과는 한 번만 전달되며 확인 때만 약 목록이 반환되는지 검증한다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets('검토창 연속 종료 콜백은 아래 화면을 닫지 않는다: $confirms', (tester) async {
       List<MedicationSchedule>? result;
       var completions = 0;
@@ -50,6 +57,13 @@ void main() {
   }
 
   for (final invalid in [false, true]) {
+    // 함수이름: testWidgets callback
+    // 함수역할:
+    // - 일반 편집 또는 잘못된 약 확인에서 콜백을 연속 호출해도 수정창 하나만 열리고 취소한 뒤 재진입할 수 있는지 검증한다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets('연속 편집 콜백은 수정창 하나만 열고 취소 후 다시 열린다: $invalid', (tester) async {
       await _openCallbackReview(tester, invalid: invalid);
       final openEditor = invalid
@@ -79,6 +93,13 @@ void main() {
   }
 
   for (final applies in [false, true]) {
+    // 함수이름: testWidgets callback
+    // 함수역할:
+    // - 수정창 적용·취소를 두 번 호출해도 검토창은 유지되며 최종 확인에서만 한 번 완료되고 복용량은 적용 여부에 맞는지 검증한다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets('수정창 연속 종료 콜백은 검토창을 닫지 않는다: $applies', (tester) async {
       List<MedicationSchedule>? result;
       var completions = 0;
@@ -482,6 +503,15 @@ Future<void> _setViewport(WidgetTester tester, Size size) async {
   addTearDown(tester.view.resetPhysicalSize);
 }
 
+// 함수이름: _openCallbackReview
+// 함수역할:
+// - 기본 화면 위에 진입 화면을 올린 뒤 약 한 건의 검토창을 열어 연속 종료·편집을 검사한다.
+// 매개변수:
+// - tester(WidgetTester): 화면 표시와 버튼 입력 도구.
+// - invalid(bool): true이면 약 이름을 비워 확인 시 수정창으로 유도한다.
+// - onReviewed(ValueChanged<List<MedicationSchedule>?>?): 확인 목록 또는 취소 null을 받을 관찰 콜백.
+// 반환값:
+// - Future<void>: 검토창의 진입 애니메이션 완료; 검토 결과 자체는 콜백으로 전달한다.
 Future<void> _openCallbackReview(
   WidgetTester tester, {
   bool invalid = false,
