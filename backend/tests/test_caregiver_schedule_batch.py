@@ -31,7 +31,9 @@ def test_batch_preserves_schedules_with_bounded_queries(count: int) -> None:
 
     # 함수이름: record
     # 함수역할: SELECT만 집계해 숨은 지연 조회를 탐지한다.
-    # 매개변수: SQLAlchemy 실행 event 인자. 반환값: 없음.
+    # 매개변수: statement (str): SQL 문장; conn/cursor/parameters/context (Any):
+    # 사용하지 않는 연결·커서·바인딩 값·실행 문맥; executemany (bool): 일괄 실행 여부.
+    # 반환값: 없음.
     def record(conn: Any, cursor: Any, statement: str, parameters: Any, context: Any, executemany: bool) -> None:
         if statement.lstrip().upper().startswith("SELECT"):
             selects.append(statement)

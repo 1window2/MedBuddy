@@ -82,8 +82,9 @@ class DoseCycle:
     weekday_anchored: bool = False
 
     # Function Name: is_daily
-    # Description: Tells whether the medication is taken every day.
-    # Parameters: None. Returns: True for the one-day cycle.
+    # Description: Identify rhythms with no multi-day spacing.
+    # Parameters: None.
+    # Returns: bool indicating cycle_days is at most one.
     @property
     def is_daily(self) -> bool:
         return self.cycle_days <= 1

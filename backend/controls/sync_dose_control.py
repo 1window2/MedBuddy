@@ -13,12 +13,14 @@ from schemas.dose_sync import DoseSyncRequest
 
 
 # 클래스명: SyncDose
-# 역할: 환자별 요청 ID로 재전송을 구분하고 복약 변경의 원자성을 유지한다.
-# 속성: db - 복약 기록과 처리 영수증을 함께 저장하는 SQLAlchemy 세션.
+# 역할: 환자별 요청 ID로 오프라인 복용 재전송을 구분한다.
+# 주요 책임: 복약 버전과 재시도 본문을 검증하고 복약 변경·선택적 채팅·작업 영수증을 함께 커밋한다.
+# 속성: db (Session)는 복약 기록과 요청 영수증을 함께 저장하는 세션이다.
 class SyncDose:
     # 함수이름: __init__
-    # 함수역할: 요청에 사용할 DB 세션을 보관한다.
-    # 매개변수: db - 인증된 요청의 세션. 반환값: 없음.
+    # 함수역할: 복용 동기화와 요청 영수증을 같은 트랜잭션으로 처리할 세션을 보관한다.
+    # 매개변수: db (Session)는 인증된 요청의 세션이다.
+    # 반환값: 없음.
     def __init__(self, db: Session) -> None:
         self.db = db
 
@@ -93,11 +95,11 @@ class SyncDose:
             self.db.rollback()
             raise
 
-    @staticmethod
     # 함수이름: _verify
     # 함수역할: 같은 요청 ID에 다른 복용 내용을 덮어쓰지 못하게 한다.
     # 매개변수: existing - 저장된 영수증, payload - 재전송 본문.
     # 반환값: 없음. 내용이 다르면 409 오류.
+    @staticmethod
     def _verify(existing: _DoseSyncOperation, payload: dict[str, object]) -> None:
         if existing.payload != payload:
             raise HTTPException(status_code=409, detail="Operation ID was reused with different data.")

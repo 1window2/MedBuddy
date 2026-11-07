@@ -84,13 +84,10 @@ class CheckSchedule:
         self._pending_completion_events: list[dict[str, str | int]] = []
         self._pending_care_audits: list[dict[str, object]] = []
 
-    # 함수이름: requestTodayMedicationSchedule
-    # 함수역할:
-    # - 오늘 유효한 환자 복약 목록과 시간대별 완료 기록을 일괄 조회한다.
-    # 매개변수:
-    # - patient_hash (str | None): 작업 대상 환자의 데이터 소유 범위 식별자.
-    # 반환값:
-    # - 오늘 일정과 시간대별 복용 상태를 담은 성공 응답.
+    # Function Name: requestTodayMedicationSchedule
+    # Description: Load today's active schedules and completion rows, applying dose-day filtering only for clients that support it.
+    # Parameters: patient_hash (str | None) is normalized to the patient scope.
+    # Returns: dict[str, object] containing today's schedule list; normalization and database failures propagate.
     def requestTodayMedicationSchedule(
         self,
         patient_hash: str | None = None,
@@ -160,15 +157,10 @@ class CheckSchedule:
                 ))
         return schedules
 
-    # Function Name: requestMedicationScheduleWindow
-    # Description:
-    # - Reads medication courses that overlap a bounded rolling date window.
-    # - This supports notification replenishment before a future course starts.
-    # Parameters:
-    # - patient_hash (str | None): Patient ownership key used to scope schedule lookup.
-    # - days (int): Inclusive rolling window length beginning today.
-    # Returns:
-    # - API-compatible schedule list response dictionary.
+    # 함수이름: requestMedicationScheduleWindow
+    # 함수역할: 오늘부터 지정 기간과 겹치는 정기 복용 약품을 조회한다. 기간은 1~14일이어야 하며 필요시 복용은 제외한다.
+    # 매개변수: patient_hash (str | None)는 환자 범위, days (int)는 오늘을 포함한 조회 일수이다.
+    # 반환값: dict[str, object]. 기간 시작·종료와 완료 행을 적용하지 않은 일정 정보를 반환하며 범위 밖 일수는 ValueError이다.
     def requestMedicationScheduleWindow(
         self,
         patient_hash: str | None = None,
@@ -332,20 +324,10 @@ class CheckSchedule:
             "data": schedule,
         }
 
-    # Function Name: updateMedicationSlotStatus
-    # Description:
-    # - Atomically applies one completion state to every active medication in the requested time slot for the authenticated patient.
-    # - Creates at most one caregiver-completion outbox event when the whole slot transitions from incomplete to complete.
-    # Parameters:
-    # - slot_key (str): Supported medication schedule time-slot key.
-    # - medication_status (bool): Completion state applied to every medication.
-    # - patient_hash (str | None): Patient ownership key used to scope the update.
-    # - expected_schedule_date (date | None): Reject a delayed action for another day.
-    # - selected_medication_ids (list[int] | None): Restrict a chat confirmation to selected medicines.
-    # - commit (bool): False lets an internal caller commit the dose and its receipt together;
-    #   that caller must dispatch consumed completion events only after committing.
-    # Returns:
-    # - API-compatible list of every updated medication schedule.
+    # 함수이름: updateMedicationSlotStatus
+    # 함수역할: 선택 시간대의 완료 상태·돌봄 이력·알림 대기 행을 원자적으로 갱신한다. 과거 동기화는 오늘부터 30일 전까지만 허용하고 새 복용 알림을 만들지 않는다.
+    # 매개변수: slot_key (str)는 시간대, medication_status (bool)는 완료 여부, patient_hash (str | None)는 환자이다. expected_schedule_date (date | None)는 대상 날짜, selected_medication_ids (list[int] | None)는 선택 약품, commit (bool)은 커밋 여부, allow_historical (bool)은 과거 날짜 허용 여부이다.
+    # 반환값: dict[str, object] 갱신 일정. 잘못된 시간대는 400, 없는 일정은 404, 날짜·약품 충돌은 409이며 저장 실패는 롤백 후 500이다.
     def updateMedicationSlotStatus(
         self,
         slot_key: str,
@@ -511,21 +493,10 @@ class CheckSchedule:
             "data": schedules,
         }
 
-    # 함수이름: _queue_slot_completion_events
-    # 함수역할:
-    # - 변경 전후의 시간대 완료 상태를 비교해 새로 완료된 시간대마다 알림 아웃박스 행을 하나씩 만든다.
-    # - 약 하나 변경과 시간대 전체 변경이 같은 규칙으로 완료 이벤트를 만들도록 한 곳에 둔다.
-    # - 그 시간대의 완료 알림이 이미 전송됐으면, 전송 뒤에 처음 연동된 보호자용 행만 따로 만든다.
-    # 매개변수:
-    # - patient_hash (str): 환자 소유권 hash
-    # - schedule_date (date): 복약 완료 날짜
-    # - target_slot_keys: 이번 요청에서 변경한 시간대 목록
-    # - active_medications: 해당 날짜에 복용 중인 약 목록
-    # - completion_rows_by_medication_id: 변경 후 약별 완료 기록
-    # - previous_slot_completion_states: 변경 전 시간대별 완료 상태
-    # - alertable (bool): 다른 날짜의 기록이면 False이며 알림 이벤트를 만들지 않는다.
-    # 반환값:
-    # - 아웃박스 행 ID가 채워진 새 완료 이벤트 목록
+    # Function Name: _queue_slot_completion_events
+    # Description: For alertable changes, create deduplicated outbox rows only for newly completed full slots and add alerts for caregivers linked after an earlier delivery.
+    # Parameters: patient_hash and schedule_date scope the event; target_slot_keys selects slots; active_medications and completion_rows_by_medication_id are loaded day data; previous_slot_completion_states supplies the before state; alertable suppresses historical alerts.
+    # Returns: list[dict[str, str | int]] of completion events with outbox IDs; does not commit.
     def _queue_slot_completion_events(
         self,
         *,
@@ -562,17 +533,10 @@ class CheckSchedule:
             self._queue_late_link_completion_alerts(outbox_row)
         return completion_events
 
-    # 함수이름: _queue_late_link_completion_alerts
-    # 함수역할:
-    # - 하루 한 번인 환자·시간대 완료 알림이 이미 전송된 뒤에 처음 연동된 보호자는 그 알림을
-    #   받지 못했으므로, 시간대가 다시 완료될 때 그 보호자 한 명만을 위한 아웃박스 행을 만든다.
-    # - 행의 키에 보호자가 들어가므로 보호자·시간대·날짜마다 한 번만 만들어지고, 전송 시각보다
-    #   먼저 만들어진 연동(해제 후 다시 연동한 경우 포함)은 이미 받았을 수 있어 제외한다.
-    # - 새 행은 반환하는 이벤트 목록에 넣지 않으며 아웃박스 작업자가 다음 주기에 전송한다.
-    # 매개변수:
-    # - sent_row (_CaregiverAlertOutbox): 이번 완료에 해당하는 환자·시간대 완료 알림 행.
-    # 반환값:
-    # - 없음; 행이 아직 전송 완료 상태가 아니면 아무것도 하지 않는다.
+    # Function Name: _queue_late_link_completion_alerts
+    # Description: For an already-sent event, create caregiver-specific completion rows for active links created after its send time.
+    # Parameters: sent_row (_CaregiverAlertOutbox) is the original slot event.
+    # Returns: None; unsent events are ignored and new rows remain in the caller's transaction.
     def _queue_late_link_completion_alerts(
         self,
         sent_row: _CaregiverAlertOutbox,
@@ -650,19 +614,10 @@ class CheckSchedule:
             )
         return completion_events
 
-    # 함수이름: _get_or_create_completion_outbox
-    # 함수역할:
-    # - DB 고유 제약과 원자적 삽입을 이용해 같은 완료 이벤트를 한 번만 저장한다.
-    # - 동시에 들어온 요청이 충돌해도 복약 상태 트랜잭션 전체를 되돌리지 않는다.
-    # - 완료 취소 때문에 전송 작업이 종결한 기존 행은 같은 트랜잭션에서 전송 대기로 되돌린다.
-    # 매개변수:
-    # - event_key (str): 환자·날짜·시간대 완료 이벤트의 중복 방지 키.
-    # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
-    # - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
-    # - schedule_date (date | None): 완료 이벤트의 복약 날짜; None이면 오늘.
-    # - caregiver_hash (str | None): 늦게 연동된 보호자 한 명에게만 보낼 행이면 그 보호자; None이면 환자·시간대 행.
-    # 반환값:
-    # - 새로 만들었거나 동일 이벤트 키로 이미 존재하는 완료 알림 아웃박스 행.
+    # Function Name: _get_or_create_completion_outbox
+    # Description: Insert an event idempotently and reload it; revive a dead-letter event only when it was previously canceled because completion was no longer current.
+    # Parameters: event_key deduplicates the event; patient_hash and slot_key identify its scope; schedule_date defaults to today; caregiver_hash optionally creates a late-link event.
+    # Returns: _CaregiverAlertOutbox without committing; raises RuntimeError if the inserted/existing row cannot be loaded.
     def _get_or_create_completion_outbox(
         self,
         *,
@@ -744,16 +699,10 @@ class CheckSchedule:
         self._pending_completion_events.clear()
         return completion_events
 
-    # 함수이름: isMedicationSlotIncomplete
-    # 함수역할:
-    # - 지정 날짜에 실제 복약 대상이 하나 이상 있으면서 전체 완료되지 않은 시간대인지 확인한다.
-    # - 서버 주도 미복약 알림이 화면 DTO를 다시 해석하지 않고 일정 규칙을 재사용하게 한다.
-    # 매개변수:
-    # - patient_hash (str): 확인할 환자의 소유 범위 식별자.
-    # - schedule_date (date): 완료 상태를 확인할 날짜.
-    # - slot_key (str): morning, lunch, evening, bedtime 중 복약 시간대 키.
-    # 반환값:
-    # - 활성 복약 대상이 있고 아직 전체 완료되지 않았으면 True, 아니면 False.
+    # Function Name: isMedicationSlotIncomplete
+    # Description: Check whether an active slot on the specified date contains any unfinished medication.
+    # Parameters: patient_hash (str) identifies the patient; schedule_date (date) selects the day; slot_key (str) selects the normalized slot.
+    # Returns: bool; False for unsupported or empty slots, otherwise the inverse of full-slot completion.
     def isMedicationSlotIncomplete(
         self,
         *,
@@ -795,15 +744,10 @@ class CheckSchedule:
             normalize_patient_hash(patient_hash), schedule_date, [slot_key],
         ).get(slot_key, False)
 
-    # 함수이름: _slot_completion_states_for_patient
-    # 함수역할:
-    # - 환자의 지정일 활성 약과 완료 기록을 읽어 각 시간대가 모두 완료되었는지 계산한다.
-    # 매개변수:
-    # - patient_hash (str): 환자 소유권 hash
-    # - schedule_date (date): 완료 상태를 확인할 날짜
-    # - slot_keys (list[str]): 확인할 복약 시간대 목록
-    # 반환값:
-    # - 시간대 키별 전체 완료 여부
+    # Function Name: _slot_completion_states_for_patient
+    # Description: Load one patient's active medications and completions once, then compute full-slot completion states.
+    # Parameters: patient_hash (str) and schedule_date (date) scope the load; slot_keys (list[str]) selects slots.
+    # Returns: dict[str, bool] with False for slots with no active medications; database failures propagate.
     def _slot_completion_states_for_patient(
         self,
         patient_hash: str,
@@ -864,17 +808,10 @@ class CheckSchedule:
             schedule_date,
         )
 
-    # 함수이름: _slot_completion_states
-    # 함수역할:
-    # - 미리 읽은 활성 약과 완료 기록만으로 각 시간대가 모두 완료되었는지 계산한다.
-    # - 대상 약이 하나도 없는 시간대는 완료로 간주하지 않는다.
-    # 매개변수:
-    # - active_medications (list[_SavedMedication]): 지정일에 복용 중인 저장 약 목록
-    # - completion_rows_by_medication_id (dict[int, list[_MedicationCompletion]]): 약 ID별 지정일 완료 기록
-    # - schedule_date (date): 완료 상태를 확인할 날짜
-    # - slot_keys (list[str]): 확인할 복약 시간대 목록
-    # 반환값:
-    # - 시간대 키별 전체 완료 여부; DB를 조회하지 않는다.
+    # Function Name: _slot_completion_states
+    # Description: Mark a slot complete only when it has eligible medications and every one is complete, including legacy completion interpretation.
+    # Parameters: active_medications supplies the day's rows; completion_rows_by_medication_id groups explicit completion rows; schedule_date is the reference day; slot_keys selects output keys.
+    # Returns: dict[str, bool] computed entirely from the supplied rows.
     def _slot_completion_states(
         self,
         active_medications: list[_SavedMedication],
@@ -932,15 +869,10 @@ class CheckSchedule:
             )
         return medication
 
-    # Function Name: _to_schedule_dict
-    # Description:
-    # - Converts a saved medication row into a JSON-compatible schedule DTO.
-    # Parameters:
-    # - medication (_SavedMedication): Saved medication row.
-    # - schedule_date (date | None): Date whose dose slots and completion records are requested.
-    # - completion_rows (list[_MedicationCompletion] | None): Prefetched dose-completion rows for the medication/date.
-    # Returns:
-    # - JSON-compatible medication schedule dictionary.
+    # 함수이름: _to_schedule_dict
+    # 함수역할: 일정 모델을 응답으로 바꾸고 중단·변경된 복약 기간, 건너뜀 기록, 반복 주기와 안전한 이미지 주소를 함께 전달한다.
+    # 매개변수: medication (_SavedMedication)은 약품 행, schedule_date (date | None)는 기준일이며 기본은 오늘, completion_rows (list[_MedicationCompletion] | None)는 해당 날짜의 완료 기록이다.
+    # 반환값: dict[str, object] 일정 응답. 중단 또는 변경된 과정은 표시 기간을 실제 종료일에 맞춘다.
     def _to_schedule_dict(
         self,
         medication: _SavedMedication,
@@ -1032,13 +964,10 @@ class CheckSchedule:
             schedule_slot_keys=self._slot_keys_for_medication(medication),
         )
 
-    # 함수이름: _slot_keys_for_medication
-    # 함수역할:
-    # - 사용자가 확인한 시간대를 우선하고 없으면 일일 복용 횟수로 시간대를 계산한다.
-    # 매개변수:
-    # - medication (_SavedMedication): 환자 소유로 저장된 약품 스냅샷과 복용 기간 정보.
-    # 반환값:
-    # - 약에 적용할 순서 있는 복용 시간대 목록.
+    # Function Name: _slot_keys_for_medication
+    # Description: Resolve explicit schedule slots through the course policy, using frequency as the fallback.
+    # Parameters: medication (_SavedMedication) supplies encoded slots and frequency.
+    # Returns: list[str] of resolved schedule keys.
     def _slot_keys_for_medication(self, medication: _SavedMedication) -> list[str]:
         return list(
             self.course_policy.read_slot_keys(
@@ -1237,8 +1166,9 @@ class CheckSchedule:
         )
 
     # 함수이름: _flush_care_audits
-    # 함수역할: 통합 완료·취소의 약별 감사 이력을 한 번의 INSERT로 저장한다.
-    # 매개변수: 없음. 반환값: 없음. 기존 요청 트랜잭션과 함께 롤백된다.
+    # 함수역할: 대기 중인 돌봄 이력을 일괄 삽입한 뒤 메모리 대기 목록을 비운다. 삽입 실패 시 목록은 유지되고 오류를 전파한다.
+    # 매개변수: 없음.
+    # 반환값: 없음. 커밋은 호출자가 담당한다.
     def _flush_care_audits(self) -> None:
         if self._pending_care_audits:
             self.db.execute(_MedicationCareAudit.__table__.insert(), self._pending_care_audits)

@@ -11,8 +11,9 @@ depends_on = None
 
 
 # 함수이름: upgrade
-# 함수역할: 기존 행은 정기 복용·버전 0으로 유지하고 새 필드와 환자 소유 감사 테이블을 추가한다.
-# 매개변수: 없음. 반환값: 없음.
+# 함수역할: 저장 약품에 복약 버전·중단 정보를, 완료 기록에 보고·수정 정보를 추가하고 중복 작업 영수증 및 변경 감사 테이블과 인덱스를 생성한다.
+# 매개변수: 없음. Alembic의 현재 연결을 사용한다.
+# 반환값: 없음. 기존 약품은 정기 복용·초기 버전 기본값을 받으며 DDL 실패는 전파한다.
 def upgrade() -> None:
     for column in (
         sa.Column("dosing_mode", sa.String(16), nullable=False, server_default="scheduled"),
@@ -56,8 +57,9 @@ def upgrade() -> None:
 
 
 # 함수이름: downgrade
-# 함수역할: 새 테이블·열을 제거한다. 필요시 약의 자동 일정 복귀 위험 때문에 운영 롤백에는 백업 검토가 필요하다.
-# 매개변수: 없음. 반환값: 없음.
+# 함수역할: 돌봄 감사·작업 영수증 테이블과 복약 버전·완료 보고 열을 제거한다. SQLite 자식 외래키를 보존하도록 직접 열 삭제를 사용한다.
+# 매개변수: 없음. Alembic의 현재 연결을 사용한다.
+# 반환값: 없음. 추가 이력 데이터는 삭제되며 DDL 실패는 전파한다.
 def downgrade() -> None:
     op.drop_table("medication_care_audits")
     op.drop_table("medication_care_operations")

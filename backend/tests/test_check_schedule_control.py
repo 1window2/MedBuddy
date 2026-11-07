@@ -85,20 +85,12 @@ class _CompletionEventRecorder:
         )
 
 
-# Class Name: CheckScheduleTest
-# Role: Database-backed schedule tests covering treatment windows, dose transitions, and
-#   completion-event atomicity.
-# Responsibilities:
-# - Persists and refreshes a medication with configurable course dates, dose slots, and legacy
-#   completion state.
-# - Requires UML-named completion attributes to map correctly to the persisted medication,
-#   patient, date, slot, and completion fields.
-# - Adds required completion fields, deduplicates legacy rows with default ownership and slot
-#   values, and rejects a duplicate completion key.
-# Attributes:
-# - engine (Engine): Isolated in-memory SQLite engine.
-# - db (Session): SQLAlchemy session holding only this test's database state.
-# - control (CheckSchedule): Use-case control under test, isolated from production state.
+# 클래스명: CheckScheduleTest
+# 역할: 치료 기간, 복용 상태 전이와 완료 이벤트의 원자성을 검증하는 DB 기반 테스트 모음이다.
+# 주요 책임:
+# - 환자·날짜·슬롯 범위, 복용 주기, 완료 키 중복 방지와 레거시 상태 호환성을 검증한다.
+# 속성:
+# - engine (Engine): 격리 SQLite 엔진. db (Session): 테스트 세션. control (CheckSchedule): 검사할 일정 제어 객체.
 class CheckScheduleTest(unittest.TestCase):
     # Function Name: setUp
     # Description:
@@ -487,10 +479,10 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(completions[0].slot_key, "morning")
         self.assertTrue(completions[0].completed)
 
-    # Function Name: test_whole_slot_update_is_atomic_scoped_and_reversible
+    # Function Name: test_stale_notification_cannot_complete_today
     # Description:
-    # - Completes and reverses every medication in one patient's slot atomically, emits one
-    #   outbox event, and leaves another patient's rows untouched.
+    # - Rejects yesterday's and tomorrow's reminder dates with HTTP 409 before writing
+    #   any medication completion or caregiver outbox row.
     # Parameters:
     # - None.
     # Returns:
@@ -508,6 +500,13 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(self.db.query(_MedicationCompletion).count(), 0)
         self.assertEqual(self.db.query(_CaregiverAlertOutbox).count(), 0)
 
+    # Function Name: test_whole_slot_update_is_atomic_scoped_and_reversible
+    # Description:
+    # - Checks whole-slot completion and reversal for one patient, with one dated outbox event and no changes to another patient.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_whole_slot_update_is_atomic_scoped_and_reversible(self) -> None:
         first_medication = self._saved_medication(
             patient_hash="patient-a",
@@ -614,13 +613,13 @@ class CheckScheduleTest(unittest.TestCase):
             )
         self.assertEqual(empty_context.exception.status_code, 404)
 
-    # 함수이름: test_completion_event_is_emitted_only_when_slot_becomes_fully_completed
-    # 함수역할:
-    # - 시간대의 마지막 약이 완료될 때만 대기 상태 outbox 이벤트를 한 번 만들고 부분 완료·반복 완료에는 알림을 만들지 않는지 검증한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음 (None).
+    # Function Name: test_completion_event_is_emitted_only_when_slot_becomes_fully_completed
+    # Description:
+    # - Create one pending completion event only when the last medication in the slot is completed, not on partial or repeated completion.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_completion_event_is_emitted_only_when_slot_becomes_fully_completed(
         self,
     ) -> None:
@@ -881,15 +880,12 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertTrue(response["data"]["slot_statuses"]["morning"])
         self.assertEqual(self.db.query(_MedicationCompletion).count(), 1)
 
-    # Function Name: test_recompleted_slot_revives_its_retired_completion_event
-    # Description:
-    # - A slot is completed, unchecked, and its event is retired by the outbox worker as no
-    #   longer current. Completing the slot again must put the same event back to pending
-    #   with a fresh attempt budget, so the worker delivers it instead of skipping it for
-    #   the rest of the day.
-    # Parameters:
-    # - None.
-    # Returns:
+    # 함수이름: test_recompleted_slot_revives_its_retired_completion_event
+    # 함수역할:
+    # - 완료 취소로 폐기된 슬롯을 다시 완료하면 같은 이벤트를 새 시도 횟수의 대기 상태로 되살리는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
     # - None.
     def test_recompleted_slot_revives_its_retired_completion_event(self) -> None:
         self._saved_medication(

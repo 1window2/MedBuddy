@@ -8,9 +8,9 @@ from entities.medication_completion_entity import utc_now
 
 
 # 클래스명: _DoseSyncOperation
-# 역할: 환자와 요청 ID의 복합 키로 같은 요청의 중복 반영을 막는다.
-# 속성: patient_hash - 소유 환자, operation_id - 요청 ID,
-#       payload - 원본 요청, created_at - 서버 저장 시각.
+# 역할: 환자별 오프라인 복용 동기화 요청의 처리 영수증을 보관한다.
+# 주요 책임: 환자와 작업 ID의 복합 키로 재전송을 식별하고 저장된 요청 본문과 비교할 수 있게 한다.
+# 속성: patient_hash와 operation_id는 식별 키, payload는 적용된 JSON 요청 본문, created_at은 생성 UTC 시각이다.
 class _DoseSyncOperation(Base):
     __tablename__ = "dose_sync_operations"
 

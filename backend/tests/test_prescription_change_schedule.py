@@ -16,6 +16,13 @@ from schemas.prescription_change import (
 )
 
 
+# 함수이름: control
+# 함수역할:
+# - 실제 데이터베이스 대신 세션·저장소 대역을 주입해 일정 비교만 실행한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - CheckPrescriptionChange; 격리된 처방 비교 컨트롤.
 @pytest.fixture
 def control() -> CheckPrescriptionChange:
     # 실제 저장소나 외부 서비스에 연결하지 않고 비교 로직만 실행한다.
@@ -25,6 +32,16 @@ def control() -> CheckPrescriptionChange:
     )
 
 
+# 함수이름: test_equivalent_schedule_labels_are_unchanged
+# 함수역할:
+# - 동등한 횟수·기간 단위와 공백·대소문자 차이는 변경으로 계산하지 않는지 확인한다.
+# 매개변수:
+# - control: CheckPrescriptionChange; 저장소가 대체된 비교 컨트롤.
+# - field_name: str; 비교할 용량·횟수·기간 필드.
+# - previous_value: str; 이전 처방의 원래 표기.
+# - current_value: str; 새 처방의 원래 표기.
+# 반환값:
+# - None.
 @pytest.mark.parametrize(
     ("field_name", "previous_value", "current_value"),
     [
@@ -64,6 +81,16 @@ def test_equivalent_schedule_labels_are_unchanged(
     assert unchanged_count == 1
 
 
+# 함수이름: test_meaningful_schedule_changes_preserve_original_values
+# 함수역할:
+# - 실제 수치·단위·지시 변경은 해당 필드만 변경으로 표시하고 이전·현재 원문 값을 보존하는지 확인한다.
+# 매개변수:
+# - control: CheckPrescriptionChange; 저장소가 대체된 비교 컨트롤.
+# - field_name: str; 비교할 용량·횟수·기간 필드.
+# - previous_value: str; 이전 처방의 원래 표기.
+# - current_value: str; 새 처방의 원래 표기.
+# 반환값:
+# - None.
 @pytest.mark.parametrize(
     ("field_name", "previous_value", "current_value"),
     [
@@ -118,6 +145,14 @@ def test_meaningful_schedule_changes_preserve_original_values(
     assert getattr(change.current, field_name) == current_value
 
 
+# 함수이름: test_response_reports_only_meaningful_changes
+# 함수역할:
+# - 이전 처방 선택부터 응답 집계까지 표기 차이는 무시하고 실제 용량 변경만 보고하는지 확인한다.
+# 매개변수:
+# - control: CheckPrescriptionChange; 저장소가 대체된 비교 컨트롤.
+# - current_dosage: str; 변경하지 않거나 절반으로 줄인 1회 용량.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("current_dosage", ["1정", "0.5정"])
 def test_response_reports_only_meaningful_changes(
     control: CheckPrescriptionChange,

@@ -16,6 +16,10 @@ from entities.medication_completion_entity import _MedicationCompletion
 from entities.saved_medication_entity import _SavedMedication
 
 
+# 함수이름: as_needed_taken_event_key
+# 함수역할: 수정 시각·버전에 의존하지 않는 필요시 복용 알림 식별자를 만든다.
+# 매개변수: patient_hash (str)는 환자, medication_id (int)는 약, schedule_date (date)는 복용일, record_slot_key (str)는 기록 슬롯이다.
+# 반환값: 네 식별 요소를 SHA-256으로 해시한 64자리 str.
 def as_needed_taken_event_key(
     patient_hash: str, medication_id: int, schedule_date: date, record_slot_key: str,
 ) -> str:
@@ -24,6 +28,10 @@ def as_needed_taken_event_key(
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()
 
 
+# 함수이름: load_as_needed_taken_event_keys
+# 함수역할: 삭제되지 않은 소유 약의 필요시 taken 기록을 한 번에 조회한다.
+# 매개변수: db (Session)는 조회 세션, patient_hashes (list[str])는 환자 범위, schedule_date (date)는 대상 날짜다.
+# 반환값: 환자별 정렬된 이벤트 키 목록. 기록이 없는 환자는 빈 목록이며 DB 오류는 전달한다.
 def load_as_needed_taken_event_keys(
     db: Session, patient_hashes: list[str], schedule_date: date,
 ) -> dict[str, list[str]]:
@@ -52,6 +60,10 @@ def load_as_needed_taken_event_keys(
     return {owner: sorted(keys) for owner, keys in result.items()}
 
 
+# 함수이름: queue_as_needed_taken_event
+# 함수역할: 복용 저장 트랜잭션 안에서 고유 outbox 이벤트를 재사용하거나 savepoint로 삽입한다.
+# 매개변수: db (Session)는 열린 트랜잭션, row (_MedicationCompletion)는 알림 대상 복용 기록이다.
+# 반환값: 기존 또는 신규 이벤트 ID (int). 중복 삽입 경합은 재조회하고 다른 DB 오류는 전달하며 commit하지 않는다.
 def queue_as_needed_taken_event(db: Session, row: _MedicationCompletion) -> int:
     """복용 저장 트랜잭션에 고유 이벤트를 추가하며 재전송·재체크는 기존 행을 유지한다."""
     key = as_needed_taken_event_key(
