@@ -33,6 +33,10 @@ cut = max(gaps)[1]
 # Ink colour and alpha: the mark is one green drawn over white.
 inks = [px[x, y][:3] for y in range(0, cut, 2) for x in range(W) if px[x, y][3] > 250 and px[x, y][0] < 40]
 ink = tuple(sorted(c[i] for c in inks)[len(inks) // 2] for i in range(3))
+# Function Name: alpha
+# Description: Recovers the green mark's opacity by unblending its red channel from white; nonopaque source pixels are treated as outside the tile.
+# Parameters: p is an RGBA pixel tuple; the sampled global ink color provides the contrast reference.
+# Returns: Opacity between 0.0 and 1.0, assuming the sampled ink differs from white in its red channel.
 def alpha(p):
     if p[3] < 255:
         return 0.0  # outside the tile
@@ -111,6 +115,10 @@ print('ink', ink, 'cut', cut, 'bbox', bbox, 'radius px %.1f' % radius)
 print('heart notch x %.1f (cross centre x %.1f), centre of mass y %.1f (height midpoint %.1f), anchor y %.1f, reach px %.1f' % (
     hx, (min(x for x, _ in cross) + max(x for x, _ in cross)) / 2, centre_of_mass, (heart_top + heart_bottom) / 2, hy, far))
 
+# Function Name: layer
+# Description: Scales the extracted mark onto a transparent canvas and places the heart anchor at its center, optionally shrinking to a clear-margin bound.
+# Parameters: canvas_dp, radius_dp and optional half_dp are logical sizes; density converts them to pixels; colour is an RGB tuple.
+# Returns: (RGBA image, mark width dp, mark height dp, farthest reach dp); requires the previously extracted global mark/anchor geometry.
 def layer(canvas_dp, radius_dp, density, colour, half_dp=None):
     size = int(round(canvas_dp * density))
     scale = radius_dp * density / radius

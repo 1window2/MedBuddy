@@ -21,10 +21,10 @@ def _read(relative_path: str) -> str:
     return ROOT.joinpath(relative_path).read_text(encoding="utf-8")
 
 
-# Function Name: main
-# Description: Compares the declared app version with release documents and checks required signing/build gates.
-# Parameters: None; reads version and workflow files from the repository root.
-# Returns: Exit code 0 when consistent, or 1 after reporting all detected mismatches.
+# 함수이름: main
+# 함수역할: 앱 버전·문서·API 계약의 일치를 확인하고 서명·ABI별 APK·앱 번들·공개 접속·App Check 검사 항목이 워크플로에 있는지 검사한다.
+# 매개변수: 없음. 저장소 루트 기준 버전·문서·워크플로 파일을 읽는다.
+# 반환값: 일치하면 종료 코드 0, 발견된 불일치를 stderr에 모두 출력하면 1. 파일 읽기 오류는 전달하며 실제 빌드는 실행하지 않는다.
 def main() -> int:
     errors: list[str] = []
     pubspec = _read("frontend/pubspec.yaml")

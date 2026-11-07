@@ -26,6 +26,7 @@ ROUTES = {
 # Class Name: NoRedirect
 # Role: Keep probes on the requested API route.
 # Responsibilities: Treat redirects to login, challenge or other destinations as release failures.
+# Attributes: No additional state; inherits urllib redirect-handler configuration.
 class NoRedirect(HTTPRedirectHandler):
     # Function Name: redirect_request
     # Description: Disable automatic redirect following for route verification.
