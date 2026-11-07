@@ -229,8 +229,17 @@ Before tagging a release candidate, also verify the distributable path:
 
 ```powershell
 cd frontend
-flutter build apk --release --no-pub --target-platform android-arm,android-arm64
+flutter build apk --release --no-pub --target-platform android-arm
+if ($LASTEXITCODE -ne 0) { throw 'ARM 32-bit APK build failed' }
+Move-Item -LiteralPath build/app/outputs/flutter-apk/app-release.apk -Destination build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk -Force
+flutter build apk --release --no-pub --target-platform android-arm64
+if ($LASTEXITCODE -ne 0) { throw 'ARM 64-bit APK build failed' }
+Move-Item -LiteralPath build/app/outputs/flutter-apk/app-release.apk -Destination build/app/outputs/flutter-apk/app-arm64-v8a-release.apk -Force
 ```
+
+Build each target independently to preserve the normal Android version code.
+Direct APK users install only the file matching their device; Play distribution
+continues to use the app bundle. See [Android APK distribution](frontend/README.md#android-apk-distribution).
 
 Before committing, also check:
 

@@ -243,8 +243,9 @@ Owner prerequisites, to configure when enrollment resumes:
   account's read-only IAM permissions.
 - Set `APP_CHECK_RELEASE_DISTRIBUTION` to `play` (default, Play-only licensing
   required) or `both` (Play and recognized direct installs). Protected `play`
-  builds produce and verify only an AAB. `both` additionally builds an APK, but
-  its upload/APK certificate must equal the Play app-signing certificate:
+  builds produce and verify only an AAB. `both` additionally builds separate
+  ARM 32-bit and ARM 64-bit APKs, but each upload/APK certificate must equal the
+  Play app-signing certificate:
   [Play recognition checks the delivered app and certificate](https://developer.android.com/google/play/integrity/verdicts#application-integrity-field).
   Registering a different upload certificate in Firebase cannot make that APK
   Play-recognized. Matching certificates still do not prove that this version
@@ -257,9 +258,14 @@ Owner prerequisites, to configure when enrollment resumes:
   before choosing these values; the script never changes the provider policy.
 
 The `medbuddy-android-<commit>` artifact contains the AAB and its checksum.
-The separate `medbuddy-android-apk-<commit>` artifact is uploaded only when the
-normalized policy permits a direct APK. This prevents an old or unverified APK
-from being included in a Play-only artifact. Off-Play beta builds keep the APK
+The separate `medbuddy-android-apk-arm32-<commit>` and
+`medbuddy-android-apk-arm64-<commit>` artifacts are uploaded only when the
+normalized policy permits direct APKs. They contain
+`app-armeabi-v7a-release.apk` and `app-arm64-v8a-release.apk`, respectively, each
+with its checksum. Install one matching the device's Android ABI, not both.
+Both keep the normal app version code; a new published update still needs a
+higher build number and a compatible signing certificate. This prevents an old
+or unverified APK from being included in a Play-only artifact. Off-Play beta builds keep the APKs
 with App Check disabled and the AAB with App Check enabled; their AAB is not
 publication-ready merely because compilation succeeds.
 
