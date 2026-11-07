@@ -23,7 +23,7 @@ from entities.patient_hash_entity import (
     PatientHash,
     normalize_patient_hash,
 )
-from entities.user_account_entity import utc_now
+from entities.user_account_entity import _UserAccount, utc_now
 from repositories.patient_caregiver_link_repository import (
     PatientCaregiverLinkRepository,
 )
@@ -266,6 +266,21 @@ class LinkPatientCaregiver:
         try:
             lock_account_operations(self.db, (patient_hash, caregiver_hash))
             self.db.expire_all()
+            # 잠금 전환 사이에 보호자가 삭제돼도 등록 중이던 환자 코드는 남아 있을 수 있다.
+            # 코드 예약 전에 두 계정의 삭제 표식을 다시 확인한다.
+            deleted_account = (
+                self.db.query(_UserAccount.user_hash)
+                .filter(
+                    _UserAccount.user_hash.in_((patient_hash, caregiver_hash)),
+                    _UserAccount.deletion_requested_at.is_not(None),
+                )
+                .first()
+            )
+            if deleted_account is not None:
+                raise HTTPException(
+                    status_code=410,
+                    detail="This MedBuddy account has been deleted.",
+                )
             link_code = self._get_valid_link_code(patient_code)
         except OperationalError as exc:
             self.db.rollback()
