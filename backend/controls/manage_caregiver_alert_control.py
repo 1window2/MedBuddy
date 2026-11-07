@@ -16,6 +16,7 @@ from core.application_clock import application_today
 from entities.caregiver_alert_outbox_entity import (
     _CaregiverAlertOutbox, CAREGIVER_ALERT_EVENT_MISSED_DEADLINE, utc_now,
 )
+from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from repositories.patient_caregiver_link_repository import (
     PatientCaregiverLinkRepository,
 )
@@ -40,7 +41,9 @@ class ManageCaregiverAlert:
     # Description: Resolves an owned missed-dose delivery, its original event and an active caregiver link.
     # Parameters: alert_id (int) identifies this delivery; caregiver_hash (str) is the authorized caller's scope.
     # Returns: (delivery, original event, link); HTTP 404 for missing/foreign deliveries or inactive links, 410 for an expired original.
-    def requireSource(self, alert_id: int, caregiver_hash: str):
+    def requireSource(
+        self, alert_id: int, caregiver_hash: str,
+    ) -> tuple[_CaregiverAlertOutbox, _CaregiverAlertOutbox, _PatientCaregiverLink]:
         """Resolve an owned delivery and its original event under an active link."""
         row = self.db.get(_CaregiverAlertOutbox, alert_id)
         if (row is None or row.event_type != CAREGIVER_ALERT_EVENT_MISSED_DEADLINE
