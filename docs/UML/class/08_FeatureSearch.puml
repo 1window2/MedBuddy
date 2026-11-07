@@ -47,6 +47,8 @@ package "기존 목적 화면·제어 경계" {
     +initiallyShowExport : bool
   }
   class MedicationHistoryControl <<Control>>
+  class MedicationSearchUI <<UI>>
+  class CheckMedicationDetail <<Control>>
   class ManageChatList <<Control>>
   class CheckCaregiverMedicationUI <<UI>>
 }
@@ -54,7 +56,14 @@ package "기존 목적 화면·제어 경계" {
 HomeScreen --> FeatureSearchUI : 열기 / 선택한 AppFeature 반환
 FeatureSearchUI --> FindAppFeature : 로컬 검색
 FindAppFeature --> FeatureSearchEntry : 정적 목록 매칭·정렬
-FeatureSearchEntry --> AppFeature : 허용된 목적지 27개
+FeatureSearchEntry --> AppFeature : 허용된 목적지 28개
+HomeScreen --> MedicationSearchUI : 약 검색 목적지
+MedicationSearchUI --> CheckMedicationDetail : 약명 제출 후 기존 조회 API
+note bottom of MedicationSearchUI
+  로컬 기능 찾기와 약품 조회는 별개의 검색이다.
+  독립 검색은 상세 조회만 하며 저장 약·일정을 만들지 않는다.
+  직접 등록·채팅은 같은 화면의 품목 확인·선택 모드를 사용한다.
+end note
 HomeScreen --> ManageUserSettingUI : 설정 분류·항목 위치
 ManageUserSettingUI --> UserSettingDestination
 HomeScreen --> MedicationHistoryUI : 본인 기록 / 공유 확인창 요청
@@ -80,7 +89,7 @@ end note
 
 note bottom of MedicationHistoryUI
   같은 세션의 최초 조회 성공 후 공유 확인창만 연다.
-  읽기 전용·조회 실패·세션 변경이면 자동으로 열지 않는다.
+  이 본인 기록 진입에서는 읽기 전용·조회 실패·세션 변경 시 열지 않는다.
   공유·복용·삭제·설정 변경은 별도 명시적 동작이 필요하다.
 end note
 @enduml

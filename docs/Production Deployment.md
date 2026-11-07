@@ -427,6 +427,23 @@ and plan for this one-time quota reset. Do not point old and new workers at
 different counter stores while both serve traffic. Monitor counter memory/OOM
 errors and increase capacity rather than enabling eviction or flushing counters.
 
+### Slot-check action capability migration
+
+Revision `f7a2c9e4b610`, after `e6b4d2a9f031`, adds the non-null
+`device_push_tokens.supports_slot_check_actions` boolean with a false default.
+Back up the database and apply it before starting the updated backend; distribute
+the matching app afterward. Existing tokens keep ordinary OS notifications until
+a capable Android app registers again. Missing capability on old-client
+registration, or a non-Android platform, stores false; it is independent of the
+existing caregiver-alert action capability.
+
+Only eligible, current-day caregiver slot-check requests sent to capable Android
+tokens use data-only delivery and an app-rendered Taken action. Verify both token
+groups, active-account/date rejection, process-restart outbox recovery and
+idempotent dose sync. FCM delivery and locked/background device behavior still
+require device checks. A downgrade drops only this capability column, not dose
+records, but must be coordinated with stopping the backend that reads it.
+
 ### Medication receipt migration
 
 The same application update also includes Alembic revision `e6b4d2a9f031`, after
@@ -624,8 +641,9 @@ docker compose --env-file deploy/.env -f compose.self-hosted.yml \
   exec -T backend alembic current
 ```
 
-The reported head must be `e6b4d2a9f031` for this source revision (after
-`c8d3e7a92104`, the medication care migration, and `ab29d71c4e60`, the settings
+The reported head must be `f7a2c9e4b610` for this source revision (after
+`e6b4d2a9f031`, the medication receipt migration, `c8d3e7a92104`, the medication
+care migration, and `ab29d71c4e60`, the settings
 revision migration). The
 v0.2.0 tail adds the shared pharmacy catalog (`8f2c6d4a1b90`), pharmacy schedule provenance and holiday
 cache (`b6d14f8c2a70`), and structured chat message/context columns

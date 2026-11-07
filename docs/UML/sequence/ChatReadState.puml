@@ -15,7 +15,7 @@ participant "LinkedChatRealtimeService" as Realtime
 participant "Chat API / Repository" as API
 participant "Other participant" as Peer
 
-== Grouped chat alert (one per conversation) ==
+== 일반 채팅의 대화별 알림 ==
 Control -> API : requestNotificationSummary()\nGET unread-count?include_notification_preview=true
 API --> Control : unread_count + notification\n(build_chat_notification_summary: 최근 최대 세 건·표시 정책·group_tag)
 Control --> Notification : ChatNotificationSummary (deliverLinkedChatAlert)
@@ -27,6 +27,29 @@ note over Notification,API
   기기에 수신 메시지를 누적해 개수를 추정하지 않는다.
 end note
 
+== 오늘 보호자 확인 요청의 실행 알림 ==
+API -> API : 저장된 slot_check_request의 보호자→환자 역할·오늘 날짜·정기 시간대 확인
+alt supports_slot_check_actions를 등록한 Android
+  API -> Notification : FCM data-only → SlotCheckNotificationService.display()\naction_version=1 + 원래 날짜·환자·연동·메시지 ID
+  Notification -> Notification : 현재 기기 계정·오늘 날짜 검사\n메시지별 태그 + 화면 없는 복용 완료 버튼
+  opt 환자가 복용 완료 버튼 선택
+    User -> Notification : 복용 완료
+    Notification -> Notification : SlotCheckNotificationService.handle()\n계정·날짜 재검사 후 암호화 outbox 저장·기존 동기화
+    note right of Notification
+      소비 표식과 완료 의도를 함께 저장한다.
+      세부 복구·서버 계약은 OfflineDoseSync.puml을 따른다.
+      버튼 처리는 채팅 읽음이나 즉시 서버 반영을 뜻하지 않는다.
+    end note
+else 구버전·미지원 기기 또는 실행 조건 없는 메시지
+  API -> Notification : 기존 OS 채팅 알림; 복용 버튼 없음
+end
+note over Notification,API
+  전경 연동 감시도 현재 보호자→환자 요청의 날짜를 확인해 같은 실행 문맥을 쓴다.
+  capability 기본값은 false이며 새 Android 등록 때만 활성화한다.
+  f7a2c9e4b610 마이그레이션은 서버보다 먼저 적용한다.
+end note
+
+== 본문 선택과 읽음 처리 ==
 User -> Notification : Tap chat notification / inbox entry
 Notification -> Notification : validate recipient and destination type
 alt Same linked conversation already open

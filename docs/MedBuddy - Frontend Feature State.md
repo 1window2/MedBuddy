@@ -94,8 +94,10 @@ Resume, day rollover and explicit parent refresh reload the PRN data.
 During an initial schedule read with no regular schedule yet, `CheckScheduleUI`
 keeps the content mounted but offstage and shows one loading indicator, so the
 PRN read continues without exposing a partial card. The PRN section independently
-shows loading until its first snapshot or error. Later reads retain a same-day
-snapshot; an error or a confirmed PRN-only day is not treated as initial loading.
+shows loading until its first snapshot or error. Later reads retain a nonempty
+same-day snapshot; when the eligible list is empty, an active refresh shows
+loading instead of an empty card and intake controls. A completed empty result
+and an error remain distinct; PRN-only schedules do not require regular slots.
 Additional-dose confirmation includes today's latest intake time and elapsed
 time. If the pending store is unavailable, readable counts remain visible but
 new intake is blocked.
