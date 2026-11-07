@@ -1,3 +1,5 @@
+# 파일명: review_guides.py
+# 역할: 설명서 전체 쪽의 문자 경계를 검사하고 시각 검토용 이미지를 생성한다.
 """Render every guide page and report text bounds for visual review."""
 
 from pathlib import Path
@@ -9,6 +11,10 @@ from PIL import Image, ImageDraw
 import pypdfium2 as pdfium
 
 
+# 함수이름: review
+# 함수역할: PDF의 모든 문자를 검사하고 페이지·모아보기 이미지와 검토 기록을 저장한다.
+# 매개변수: pdf(Path)는 입력 문서, output(Path)은 검토 결과 디렉터리다.
+# 반환값: None. 문자 경계 검사와 별개로 실제 시각 검토는 미완료 상태로 기록한다.
 def review(pdf, output):
     output.mkdir(parents=True, exist_ok=True)
     data = pdf.read_bytes()

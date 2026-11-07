@@ -1,3 +1,5 @@
+# 파일명: build_landscape.py
+# 역할: 공통 설명서 원문을 누락 없이 4열 가로 PDF로 배치하고 구조를 검증한다.
 """Build the full four-column landscape guide from the portrait's content manifest."""
 
 from collections import OrderedDict
@@ -34,6 +36,10 @@ MAX_IMAGE_HEIGHT = 366
 REG, BOLD = guide_layout.REG, guide_layout.BOLD
 
 
+# 함수이름: para
+# 함수역할: 일반 문장을 줄바꿈 가능한 문단으로 변환하고 높이를 측정한다.
+# 매개변수: text(str), width·size·leading(float, pt), bold(bool)는 문장과 서식이다.
+# 반환값: (Paragraph, 높이 float). 재분할용 원문은 문단의 guide_text에 보관한다.
 def para(text, width=COL, bold=False, size=11, leading=15):
     style = ParagraphStyle('guide', fontName=BOLD if bold else REG,
                            fontSize=size, leading=leading, wordWrap='CJK',
@@ -44,6 +50,10 @@ def para(text, width=COL, bold=False, size=11, leading=15):
     return p, h
 
 
+# 함수이름: consume
+# 함수역할: 주어진 높이까지 문단을 배치하고 넘치는 내용은 다음 칸으로 이월한다.
+# 매개변수: blocks(list)는 문단·간격 목록, width·available(float, pt)은 가용 영역이다.
+# 반환값: (배치된 목록, 남은 목록, 사용 높이 float). 제목만 단독으로 남기지 않는다.
 def consume(blocks, width, available):
     """Keep overflow as measured paragraph fragments for the next column."""
     placed, pending, used = [], list(blocks), 0
@@ -87,6 +97,10 @@ def consume(blocks, width, available):
     return placed, pending, used
 
 
+# 함수이름: step_slots
+# 함수역할: 단계의 캡처·제목·설명을 한 칸에 맞추고 긴 설명은 이어지는 칸으로 나눈다.
+# 매개변수: step(dict)은 이미지와 설명을 포함한 단계다.
+# 반환값: 칸별 list[dict]. 제목·캡처가 허용 범위에 들어가지 않으면 검증 오류를 발생시킨다.
 def step_slots(step):
     guide_layout.image_info(step, ROOT)
     title, th = para(f'{step["number"]}. {step["label"]}', bold=True, size=12, leading=16)
@@ -121,6 +135,10 @@ def step_slots(step):
     return slots
 
 
+# 함수이름: notes_pages
+# 함수역할: 장별 참고 설명을 두 열로 나누고 긴 항목의 제목을 다음 쪽에도 유지한다.
+# 매개변수: notes(list[tuple[str, str]])는 소절·참고 문장 쌍, chapter(str)는 장 제목이다.
+# 반환값: 참고 페이지의 list[dict].
 def notes_pages(notes, chapter):
     pages, slots = [], []
     width = (W - 2 * MARGIN - GAP) / 2
@@ -151,6 +169,10 @@ def notes_pages(notes, chapter):
     return pages
 
 
+# 함수이름: make_pages
+# 함수역할: 소절별 단계·계속 설명·참고를 쪽으로 나누고 목차 목적지를 확정한다.
+# 매개변수: content(list[dict])는 공통 설명서 페이지 원문이다.
+# 반환값: (본문 페이지, 목차 항목, 목차 쪽 묶음, 소절별 그룹).
 def make_pages(content):
     groups = OrderedDict()
     for page in content:
@@ -205,6 +227,10 @@ def make_pages(content):
     return pages, entries, toc_chunks, groups
 
 
+# 함수이름: draw_screenshot
+# 함수역할: 단계 번호의 왼쪽 선에 캡처를 맞추고 강조 상자·번호 표식을 그린다.
+# 매개변수: c(Canvas), slot(dict), left(float, pt), report(dict)는 대상·배치·기준선·기록이다.
+# 반환값: None. report에 이미지 영역과 원본 자르기 좌표를 기록한다.
 def draw_screenshot(c, slot, left, report):
     step, crop = slot['step'], slot['step']['crop']
     height, top = slot['image_height'], slot['image_top']
@@ -245,6 +271,10 @@ def draw_screenshot(c, slot, left, report):
     report.update(image_rect=[x, bottom, x + width, top], image=step['image'], crop=crop)
 
 
+# 함수이름: footer
+# 함수역할: 문서명·쪽 번호·소제목을 바닥글에 배치한다.
+# 매개변수: c(Canvas), number·total(int), label(str)은 대상·현재/전체 쪽·소제목이다.
+# 반환값: None. 긴 소제목의 글자 크기는 가용 폭에 맞게 줄인다.
 def footer(c, number, total, label):
     c.setFillColorRGB(0.25, 0.28, 0.27)
     c.setFont(REG, 9)
@@ -255,6 +285,10 @@ def footer(c, number, total, label):
     c.drawRightString(W - MARGIN, 14, label)
 
 
+# 함수이름: build
+# 함수역할: 가로 PDF를 생성한 뒤 단계 누락·링크·페이지 경계·공개 경로를 검증한다.
+# 매개변수: font_dir(Path)은 승인 글꼴 위치, output(Path)은 PDF 출력 경로다.
+# 반환값: None. 검증을 통과하면 PDF와 감사 기록을 저장하며 실패 시 예외를 전달한다.
 def build(font_dir, output):
     guide_layout.FONT_DIR = font_dir
     guide_layout.register_fonts()
@@ -357,6 +391,10 @@ def build(font_dir, output):
             if annotation.get('/Subtype') == '/Link':
                 actual_targets.append(page_numbers[annotation['/Dest'][0].idnum])
     assert actual_targets == [entry['page'] for entry in entries]
+    # 함수이름: flatten_outline
+    # 함수역할: 중첩된 PDF 책갈피의 항목을 깊이 우선 순서로 펼친다.
+    # 매개변수: items(list)는 책갈피와 하위 목록이다.
+    # 반환값: 개별 책갈피를 순서대로 내보내는 Iterator.
     def flatten_outline(items):
         for item in items:
             if isinstance(item, list):

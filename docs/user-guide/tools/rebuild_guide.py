@@ -1,3 +1,5 @@
+# 파일명: rebuild_guide.py
+# 역할: 저장소 원문·캡처로 설명서를 재생성하고 검토가 끝난 산출물만 배포 위치에 반영한다.
 """Rebuild the full illustrated guide from README and repository-local source assets."""
 from collections import OrderedDict
 from copy import deepcopy
@@ -23,21 +25,37 @@ PDF = "MedBuddy_User_Guide_ko_portrait.pdf"
 SOURCE = ROOT / "source"
 
 
+# 함수이름: read_json
+# 함수역할: 이전 BOM 파일을 포함한 UTF-8 JSON을 읽는다.
+# 매개변수: path(Path)는 입력 파일이다.
+# 반환값: 역직렬화한 object. 파일 접근·JSON 오류는 호출자에게 전달한다.
 def read_json(path):
     """Read the reviewed UTF-8 layout data, including legacy BOM files."""
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
+# 함수이름: dump
+# 함수역할: 생성 데이터와 검증 기록을 UTF-8 JSON으로 저장한다.
+# 매개변수: path(Path)는 출력 파일, value(object)는 직렬화 가능한 값이다.
+# 반환값: None. 쓰기·직렬화 오류는 호출자에게 전달한다.
 def dump(path, value):
     """Write generated authoring or verification data inside the guide directory."""
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
+# 함수이름: digest
+# 함수역할: 검토 입력과 출력이 바뀌지 않았는지 대조할 파일 해시를 계산한다.
+# 매개변수: path(Path)는 검사할 파일이다.
+# 반환값: SHA-256의 16진수 str. 파일 접근 오류는 호출자에게 전달한다.
 def digest(path):
     """Identify the exact input or output used for this build."""
     return sha256(path.read_bytes()).hexdigest()
 
 
+# 함수이름: parse_markdown
+# 함수역할: 원문의 소절·단계·강조 설명·참고를 읽어 작성 순서대로 묶는다.
+# 매개변수: text(str)는 설명서 Markdown 원문이다.
+# 반환값: 소절별 OrderedDict. 소절 수나 필수 형식이 맞지 않으면 AssertionError.
 def parse_markdown(text):
     """Parse this manual's explicit headings, numbered steps and linked reference notes."""
     sections = OrderedDict()
@@ -100,6 +118,10 @@ def parse_markdown(text):
     return sections
 
 
+# 함수이름: engine
+# 함수역할: 저장소의 배치 모듈을 불러와 빌드 경로·글꼴·출력 이름을 설정한다.
+# 매개변수: font_dir(Path)는 승인된 글꼴 디렉터리다.
+# 반환값: 설정된 guide_layout 모듈. 모듈 로딩 오류는 호출자에게 전달한다.
 def engine(font_dir):
     """Load the checked-in typesetter and explicitly supplied portable font directory."""
     path = ROOT / "tools/guide_layout.py"
@@ -112,6 +134,10 @@ def engine(font_dir):
     return module
 
 
+# 함수이름: collect_content
+# 함수역할: 최신 문장을 기존 캡처 좌표에 결합하고 배치 가능 여부에 따라 페이지를 나눈다.
+# 매개변수: groups(OrderedDict)는 소절별 문장, layout(module)은 설정된 배치 엔진이다.
+# 반환값: 페이지 list[dict]. 원본 해시·단계가 달라지거나 배치가 불가능하면 예외를 발생시킨다.
 def collect_content(groups, layout):
     """Join authoritative Markdown copy with reviewed, repository-relative image geometry."""
     old = OrderedDict()
@@ -153,6 +179,10 @@ def collect_content(groups, layout):
     return output
 
 
+# 함수이름: build
+# 함수역할: 표지·본문·탐색 정보를 재생성하고 Markdown 왕복 변환과 단계 누락을 검증한다.
+# 매개변수: font_dir(Path)는 승인된 글꼴 디렉터리다.
+# 반환값: None. 산출물은 .build에 저장하며 검증·입출력 실패는 호출자에게 전달한다.
 def build(font_dir):
     """Create a candidate full PDF plus synchronized Markdown and structural checks."""
     BUILD.mkdir(exist_ok=True)
@@ -214,6 +244,10 @@ def build(font_dir):
     print(json.dumps({key: audit[key] for key in ("pages", "steps", "subsections", "verified_internal_links", "verified_bookmarks", "pdf_sha256", "visual_qa")}, ensure_ascii=False))
 
 
+# 함수이름: render
+# 함수역할: 빌드한 PDF의 모든 쪽을 이미지와 모아보기 이미지로 렌더링한다.
+# 매개변수: poppler(Path)는 PDF 이미지 변환 프로그램의 디렉터리다.
+# 반환값: None. 결과는 검토 폴더에 저장하며 외부 프로그램 실패는 예외로 전달한다.
 def render(poppler):
     """Render all pages and build numbered contact sheets for visual inspection."""
     review = BUILD / "review"
@@ -233,6 +267,10 @@ def render(poppler):
     print(json.dumps(dict(rendered_pages=len(pages), contact_sheets=(len(pages) + 15) // 16)))
 
 
+# 함수이름: publish
+# 함수역할: 시각 검토 완료와 입력·출력 해시를 확인한 뒤 PDF와 README를 반영한다.
+# 매개변수: 없음. .build의 검토 기록과 원본 파일을 사용한다.
+# 반환값: None. 검토 누락이나 검토 후 변경이 있으면 AssertionError로 반영을 막는다.
 def publish():
     """Publish reviewed candidates without staging or committing any repository file."""
     audit = read_json(BUILD / "audit.json")
