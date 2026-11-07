@@ -1,8 +1,25 @@
+// File Name: android_recovery_manifest_test.dart
+// Role: Checks Android recovery receiver declarations, backup exclusions and widget API compatibility.
+
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+// Function Name: main
+// Description:
+// - Register source-level manifest and widget guards; these do not exercise a physical Android device.
+// Parameters:
+// - None.
+// Returns:
+// - No value; the framework runs the registered cases.
 void main() {
+  // 함수이름: test callback
+  // 함수역할:
+  // - 알림 동작 수신기를 매니페스트에서 찾아 외부 앱에 공개되지 않는 선언인지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('notification action receiver is private to the app', () {
     final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
     final receiver = RegExp(
@@ -12,6 +29,13 @@ void main() {
     expect(receiver, contains('android:exported="false"'));
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Require boot permission, private rescheduling receiver actions for boot/package replacement, and the scheduled alarm receiver.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('Android persists alarms across boot and package updates', () {
     final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
     expect(manifest, contains('android.permission.RECEIVE_BOOT_COMPLETED'));

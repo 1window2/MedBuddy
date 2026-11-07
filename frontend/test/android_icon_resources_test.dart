@@ -25,6 +25,13 @@ const _densities = {'mdpi': 1, 'hdpi': 1.5, 'xhdpi': 2, 'xxhdpi': 3, 'xxxhdpi': 
 // Description: Registers the adaptive icon, density and small-icon checks.
 // Parameters: None. Returns: No value.
 void main() {
+  // Function Name: test callback
+  // Description:
+  // - Require adaptive foreground, monochrome and background references, density-scaled 108dp PNG layers, and a legacy icon file at every density.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('the launcher icon is adaptive with foreground and monochrome layers', () {
     final xml = File('$_res/mipmap-anydpi-v26/ic_launcher.xml').readAsStringSync();
     expect(xml, contains('<adaptive-icon'));
@@ -41,6 +48,13 @@ void main() {
     }
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Require 24dp density-scaled notification PNGs and the same drawable reference in local notification initialization and FCM manifest metadata; pixel transparency is not inspected.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('reminders and FCM pushes use the transparent small icon', () {
     for (final MapEntry(key: name, value: density) in _densities.entries) {
       final size = (24 * density).round();

@@ -5,13 +5,29 @@ import 'package:flutter/material.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/medbuddy_page_header.dart';
 
+// Class Name: DataUseInfoUI
+// Role: Displays the implemented data-use disclosures without inventing release terms or retention promises.
+// Responsibilities: Groups notices into expandable sections with scalable text.
+// Attributes: isEnglish (bool): disclosure language.
 class DataUseInfoUI extends StatelessWidget {
   final bool isEnglish;
 
+  // 함수이름: DataUseInfoUI
+  // 함수역할: 데이터 이용 안내의 표시 언어를 받는다.
+  // 매개변수: key (Key?): 식별 키; isEnglish (bool): 영어 여부.
+  // 반환값: 새 DataUseInfoUI.
   const DataUseInfoUI({super.key, required this.isEnglish});
 
+  // 함수이름: _text
+  // 함수역할: 데이터 이용 설명의 언어를 선택한다.
+  // 매개변수: ko/en (String): 한국어·영어 문구.
+  // 반환값: 선택한 문구.
   String _text(String ko, String en) => isEnglish ? en : ko;
 
+  // Function Name: _section
+  // Description: Creates an initially collapsed disclosure section with an accessible heading and wrapping body.
+  // Parameters: title/body (String): section heading and disclosure text.
+  // Returns: Padded expandable Material section.
   Widget _section(String title, String body) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 6),
     // 항목을 누른 효과가 보이도록 장식 상자가 아닌 Material로 그린다.
@@ -60,6 +76,10 @@ class DataUseInfoUI extends StatelessWidget {
     ),
   );
 
+  // Function Name: build
+  // Description: Builds the navigable, scrollable data-use notice with grouped disclosures.
+  // Parameters: context (BuildContext): Navigation and layout location.
+  // Returns: Data-use Scaffold.
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: MedBuddyColors.pageBackground,

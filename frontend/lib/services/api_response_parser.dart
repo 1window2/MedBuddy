@@ -44,13 +44,9 @@ class ApiRequestException extends StateError {
 }
 
 // Class Name: ApiResponseParser
-// Role: Centralizes JSON body decoding and FastAPI error detail extraction.
-// Responsibilities:
-// - Decode response bytes using UTF-8.
-// - Convert JSON response bodies into Map<String, dynamic>.
-// - Extract a server-provided error detail when an API request fails.
-// - Build the typed failure for rejected responses and transport errors.
-// - Guard API requests so StateErrors pass through and other errors are logged and wrapped.
+// Role: Centralize HTTP response decoding and request-failure reporting.
+// Responsibilities: Decode UTF-8 JSON objects, extract server details and preserve request failure causes through guarded operations.
+// Attributes: No instance state; static helpers operate on supplied responses and request callbacks.
 class ApiResponseParser {
   // Function Name: ApiResponseParser._
   // Description: Prevents instances of the shared static HTTP-response decoding utility.

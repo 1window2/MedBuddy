@@ -21,6 +21,13 @@ void main() {
     ('Pixel 7 gesture', const Size(411, 914), 52.0, 24.0, 'en'),
     ('Galaxy Note10 buttons', const Size(412, 869), 24.0, 48.0, 'ko'),
   ]) {
+    // Function Name: home fits without scrolling at default text
+    // Description:
+    // - Checks default-scale content has zero scroll extent, a usable caregiver hint and nonoverlapping header actions; then checks the narrow large-text layout and search callback.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     testWidgets('홈은 $name 기본 글씨에서 스크롤 없이 보인다 ($language)', (tester) async {
       // 기본 글씨 전용 검증이므로 전체 테스트의 접근성 배율과 입력을 분리한다.
       setTestViewport(tester, size, textScale: 1);

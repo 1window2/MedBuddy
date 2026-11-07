@@ -8,15 +8,19 @@ import '../widgets/keep_words_text.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../widgets/medbuddy_search_field.dart';
 
-// 클래스명: FeatureSearchUI
-// 역할: 계정 데이터 조회 없이 기능 검색·초기화·결과 선택을 제공한다.
+// Class Name: FeatureSearchUI
+// Role: Searches app destinations without fetching account data.
+// Responsibilities: Filters unsupported device features and delegates the chosen destination to its parent.
+// Attributes: isEnglish/widgetSupported (bool): language/device support; onFeatureSelected (Future<void> Function(BuildContext,AppFeature)): destination action.
 class FeatureSearchUI extends StatefulWidget {
   final bool isEnglish;
   final bool widgetSupported;
   final Future<void> Function(BuildContext, AppFeature) onFeatureSelected;
 
-  // 함수이름: FeatureSearchUI
-  // 함수역할: 표시 언어와 기기 기능 지원 범위를 받아 검색 화면을 만든다.
+  // Function Name: FeatureSearchUI
+  // Description: Binds the display language, device support and asynchronous destination action.
+  // Parameters: key (Key?): widget identity; isEnglish/widgetSupported (bool): language/support; onFeatureSelected (Future<void> Function(BuildContext,AppFeature)): selection action.
+  // Returns: New FeatureSearchUI.
   const FeatureSearchUI({
     super.key,
     this.isEnglish = false,
@@ -24,23 +28,41 @@ class FeatureSearchUI extends StatefulWidget {
     required this.onFeatureSelected,
   });
 
+  // 함수이름: createState
+  // 함수역할: 현재 화면에서만 검색어와 기능 열기 잠금을 보관할 상태를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 새 _FeatureSearchUIState.
   @override
   State<FeatureSearchUI> createState() => _FeatureSearchUIState();
 }
 
 // 클래스명: _FeatureSearchUIState
-// 역할: 현재 화면에만 검색어를 보관하며 종료할 때 폐기한다.
+// 역할: 검색어를 화면 수명 동안만 보관하고 기능 선택의 중복 실행을 막는다.
+// 주요 책임: 검색어가 없으면 범주별 기능을, 있으면 일치 결과를 표시한다.
+// 속성: _query (TextEditingController): 검색어; _openingFeature (bool): 선택 처리 중.
 class _FeatureSearchUIState extends State<FeatureSearchUI> {
   final _query = TextEditingController();
   bool _openingFeature = false;
+  // 함수이름: _english
+  // 함수역할: 부모 화면의 언어 설정을 읽는다.
+  // 매개변수: 없음.
+  // 반환값: 영어이면 true.
   bool get _english => widget.isEnglish;
 
+  // 함수이름: dispose
+  // 함수역할: 화면에만 보관하던 검색 입력 제어기를 해제한다.
+  // 매개변수: 없음.
+  // 반환값: 없음.
   @override
   void dispose() {
     _query.dispose();
     super.dispose();
   }
 
+  // 함수이름: build
+  // 함수역할: 지원되는 기능을 검색하거나 범주별로 나누어 표시하며 빈 검색 결과를 구분한다.
+  // 매개변수: context (BuildContext): 표시·선택 명령 위치.
+  // 반환값: 기능 검색 Scaffold.
   @override
   Widget build(BuildContext context) {
     final hasQuery = _query.text.trim().isNotEmpty;
@@ -143,6 +165,10 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
     );
   }
 
+  // 함수이름: _categoryPanel
+  // 함수역할: 기능 범주 제목과 결과 행을 구분선으로 묶고 빈 범주는 숨긴다.
+  // 매개변수: category (_FeatureCategory): 범주; entries (List<FeatureSearchEntry>): 범주 결과.
+  // 반환값: 범주 패널 또는 SizedBox.shrink.
   Widget _categoryPanel(
     _FeatureCategory category,
     List<FeatureSearchEntry> entries,
@@ -171,6 +197,10 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
     );
   }
 
+  // 함수이름: _category
+  // 함수역할: 기능 목적지를 약 관리·기록·가족·의료·알림·표시·계정 범주로 분류한다.
+  // 매개변수: feature (AppFeature): 목적지.
+  // 반환값: 해당 _FeatureCategory.
   _FeatureCategory _category(AppFeature feature) => switch (feature) {
     AppFeature.medicationSearch ||
     AppFeature.manualMedication ||
@@ -202,7 +232,9 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
   };
 
   // 함수이름: _heading
-  // 함수역할: 결과 구역의 제목을 기존 설정 화면과 같은 크기로 표시한다.
+  // 함수역할: 기능 결과 구역의 제목을 일정한 굵기·여백으로 표시한다.
+  // 매개변수: title (String): 제목.
+  // 반환값: 여백이 있는 Text 위젯.
   Widget _heading(String title) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 8),
     child: Text(
@@ -217,8 +249,10 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
     ),
   );
 
-  // 함수이름: _result
-  // 함수역할: 아이콘·기능명·기존 메뉴 위치를 표시하고 선택한 항목만 반환한다.
+  // Function Name: _result
+  // Description: Displays a feature name/menu path and serializes its asynchronous parent action so repeated taps cannot open duplicate destinations.
+  // Parameters: entry (FeatureSearchEntry): feature result and labels.
+  // Returns: Result row; the opening lock is released after the action finishes.
   Widget _result(FeatureSearchEntry entry) => Column(
     children: [
       ListTile(
@@ -246,7 +280,9 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
   );
 
   // 함수이름: _icon
-  // 함수역할: 기존 화면과 일관된 Material 아이콘으로 목적지를 구분한다.
+  // 함수역할: 기능 목적지를 기존 화면과 일관된 Material 아이콘으로 구분한다.
+  // 매개변수: feature (AppFeature): 목적지.
+  // 반환값: 해당 기능의 IconData.
   IconData _icon(AppFeature feature) => switch (feature) {
     AppFeature.manualMedication => Icons.add_circle_outline,
     AppFeature.medicationSearch => Icons.search,
@@ -278,6 +314,10 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
   };
 }
 
+// 클래스명: _FeatureCategory
+// 역할: 기능 검색의 표시 범주와 양언어 제목.
+// 주요 책임: 기능을 사용 목적별로 묶는 고정 범주를 제공한다.
+// 속성: ko/en (String): 한국어·영어 범주명.
 enum _FeatureCategory {
   medications('약 등록·관리', 'Add & manage medications'),
   records('복용 일정·기록', 'Schedules & records'),
@@ -287,6 +327,10 @@ enum _FeatureCategory {
   display('화면·음성·위젯', 'Display, voice & widgets'),
   account('계정·개인정보', 'Account & privacy');
 
+  // 함수이름: _FeatureCategory
+  // 함수역할: 범주별 두 언어 제목을 저장한다.
+  // 매개변수: ko/en (String): 한국어·영어 제목.
+  // 반환값: _FeatureCategory 열거값.
   const _FeatureCategory(this.ko, this.en);
   final String ko;
   final String en;

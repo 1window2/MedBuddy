@@ -8,14 +8,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/app_language_resolver.dart';
 
-// 클래스명: AppLanguageControl
-// 역할: 인증 화면과 로그인 후 화면이 하나의 저장된 언어 설정을 사용하게 한다.
-// 주요 책임:
-// - 앱 시작을 지연하지 않고 마지막 언어 설정을 불러온다.
-// - 한국어 또는 영어 선택값을 검증하고 기기에 저장한다.
-// - 언어 변경 시 앱 루트에 알려 현재 화면을 다시 구성한다.
-// 속성:
-// - _languageMode (String): system·ko·en 언어 선택 모드
+// Class Name: AppLanguageControl
+// Role: Share the persisted language choice across authentication and signed-in screens.
+// Responsibilities: Restore preferences without blocking startup, validate selections and notify listeners on language or system-locale changes.
+// Attributes: _languageMode (String): system/ko/en; _selectionRevision (int): prevents stale loads from replacing newer selections.
 class AppLanguageControl extends ChangeNotifier with WidgetsBindingObserver {
   static const String preferenceKey = appLanguagePreferenceKey;
 
@@ -119,23 +115,18 @@ class AppLanguageControl extends ChangeNotifier with WidgetsBindingObserver {
     return resolveLanguage(normalizeLanguageMode(language));
   }
 
-  // 함수이름: normalizeLanguageMode
-  // 함수역할: 공백과 대소문자를 정리하고 system·en 이외의 선택값을 ko로 제한한다.
-  // 매개변수:
-  // - languageMode (String): system·ko·en 언어 선택 모드
-  // 반환값:
-  // - String: 공백과 대소문자를 정리하고 system·en 이외의 선택값을 ko로 제한한다.
+  // Function Name: normalizeLanguageMode
+  // Description: Normalize whitespace and case, accepting system and en and falling back to ko.
+  // Parameters: languageMode (String): requested mode.
+  // Returns: String: supported language mode.
   static String normalizeLanguageMode(String languageMode) {
     return normalizeAppLanguageMode(languageMode);
   }
 
-  // 함수이름: resolveLanguage
-  // 함수역할: 언어 모드를 현재 기기 언어에 맞는 실제 앱 언어 코드로 변환한다.
-  // 매개변수:
-  // - languageMode (String): system·ko·en 언어 선택 모드
-  // - locale (Locale?): 시스템 언어 해석에 사용할 기기 로케일
-  // 반환값:
-  // - String: 언어 모드를 현재 기기 언어에 맞는 실제 앱 언어 코드로 변환한다.
+  // Function Name: resolveLanguage
+  // Description: Resolve a selected mode against the supplied locale or current platform locale.
+  // Parameters: languageMode (String): system/ko/en; locale (Locale?): optional device-locale override.
+  // Returns: String: supported ko or en display language.
   static String resolveLanguage(String languageMode, {Locale? locale}) {
     return resolveAppLanguage(languageMode, locale: locale);
   }

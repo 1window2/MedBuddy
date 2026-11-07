@@ -7,7 +7,9 @@ import 'keep_words_text.dart';
 // 역할: 오늘의 복약 일정과 동일한 초록색 헤더·제목·탐색 명령을 제공한다.
 
 // 클래스명: MedBuddyPageHeader
-// 역할: 화면별 동작은 유지하면서 제목과 안전 영역의 시각적 기준을 통일한다.
+// 역할: 페이지 제목·뒤로 가기·작업 버튼을 공통 상단 영역으로 배치한다.
+// 주요 책임: 안전 영역과 큰 글씨 배치를 반영하고 사용자 지정 leading·bottom을 지원한다.
+// 속성: title/subtitle: 표시 문구; onBackRequested/actions/leading/bottom: 탐색·추가 UI; 툴팁·키·줄 수: 접근성 및 배치 설정; titleStyle/titleStrutStyle: 공통 제목 서식.
 class MedBuddyPageHeader extends StatelessWidget {
   // 일정 화면도 같은 줄 높이를 사용해 한글·영문 제목의 시작점과 기준선을 맞춘다.
   static const titleStyle = TextStyle(
@@ -25,9 +27,9 @@ class MedBuddyPageHeader extends StatelessWidget {
     forceStrutHeight: true,
   );
   // 함수이름: MedBuddyPageHeader
-  // 함수역할: 제목·부제·탐색 명령을 받아 공통 헤더를 초기화한다.
-  // 매개변수: prominent는 최상위 화면 여부, titleKey는 제목 식별자이다.
-  // 반환값: 안전 영역과 큰 글씨에 대응하는 헤더 위젯.
+  // 함수역할: 제목·부제·탐색 동작과 추가 위젯을 보관하여 공통 상단 영역을 구성한다.
+  // 매개변수: title (String)/subtitle (String?): 제목·부제; onBackRequested (VoidCallback?): 뒤로 가기; actions (List<Widget>): 작업 버튼; prominent (bool): 상위 화면 표시값(현재 빌드에는 미사용); backTooltip (String?): 접근성 뒤로 가기 문구; backButtonKey/titleKey/key (Key?): 버튼·제목·위젯 식별자; leading/bottom (Widget?): 선행·하단 추가 내용; titleMaxLines/subtitleMaxLines (int?): 제목·부제 줄 제한.
+  // 반환값: MedBuddyPageHeader: 구성된 헤더 위젯.
   const MedBuddyPageHeader({
     required this.title,
     this.subtitle,
@@ -58,10 +60,10 @@ class MedBuddyPageHeader extends StatelessWidget {
   final int? subtitleMaxLines;
   final Widget? bottom;
 
-  // 함수이름: build
-  // 함수역할: 일정 화면의 색상·21px 제목·하단 라운드를 적용하고 좁은 화면의 도구는 아래 줄에 배치한다.
-  // 매개변수: context는 테마·글씨 배율·안전 영역을 제공한다.
-  // 반환값: 상단 안전 영역을 포함한 헤더. 부모는 상단 SafeArea를 중복 적용하지 않는다.
+  // Function Name: build
+  // Description: Build the header with optional leading/back control, subtitle and bottom content; stack multiple actions on narrow layouts with large text.
+  // Parameters: context (BuildContext): theme, localization and text scale source.
+  // Returns: Widget: safe-area page header.
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);

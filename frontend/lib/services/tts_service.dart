@@ -7,15 +7,10 @@ import '../entities/user_setting_entity.dart';
 // 파일명: tts_service.dart
 // 역할: 휴대폰/에뮬레이터의 내장 TTS 엔진으로 약 안내 문장을 읽어준다.
 
-// 클래스명: TTSService
-// 역할: Flutter TTS 플러그인을 감싸 사용자 설정과 음성 안내 호출을 분리한다.
-// 주요 책임:
-// - 사용자 언어와 읽기 속도를 TTS 엔진 설정으로 변환한다.
-// - 상세정보 화면에서 재생/정지 요청을 단순한 메서드로 제공한다.
-// - 플랫폼 음성 오류와 사용자의 중지를 구분해 대기 중인 재생 요청을 끝낸다.
-// 속성:
-// - _flutterTts (FlutterTts): 실제 재생을 수행할 기기 TTS 엔진
-// - _playbackGeneration (int): 새 재생이나 중지가 요청될 때마다 늘어나 이전 재생 요청이 취소되었는지 알려 주는 번호
+// Class Name: TTSService
+// Role: Play medication guidance using user-selected language and reading speed.
+// Responsibilities: Coordinate playback cancellation and surface platform playback failures.
+// Attributes: _flutterTts (FlutterTts): injected engine; _playbackGeneration (int): invalidates superseded requests.
 class TTSService {
   final FlutterTts _flutterTts;
   int _playbackGeneration = 0;
@@ -29,14 +24,10 @@ class TTSService {
   TTSService({FlutterTts? flutterTts})
     : _flutterTts = flutterTts ?? FlutterTts();
 
-  // 함수이름: speak
-  // 함수역할: 전달받은 문장을 사용자 설정에 맞는 언어와 속도로 읽는다. 플랫폼이 재생 오류를 알리면 기다리지 않고 StateError로 끝내며, 재생 중 중지되거나 새 재생으로 바뀐 요청은 오류 없이 끝낸다.
-  // 매개변수:
-  // - text (String): 읽을 안내 문장
-  // - userSetting (UserSetting): 언어와 읽기 속도 설정
-  // - onComplete (void Function()?): 읽기가 끝났거나 취소·오류로 멈췄을 때 호출할 콜백
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future. 엔진이 재생을 시작하지 못했거나 재생 오류를 알리면 StateError.
+  // Function Name: speak
+  // Description: Trim text, stop prior speech and configure playback; skip superseded requests and reject platform errors or unsuccessful start results.
+  // Parameters: text (String): speech content; userSetting (UserSetting): language and speed; onComplete (void Function()?): completion/cancellation/error or pre-playback supersession callback.
+  // Returns: Future<void>: playback request completion; blank text is a no-op and platform failures propagate.
   Future<void> speak(
     String text,
     UserSetting userSetting, {
@@ -138,23 +129,19 @@ class TTSService {
     }
   }
 
-  // 함수이름: stop
-  // 함수역할: 현재 음성 읽기를 플랫폼 TTS 엔진에서 중지한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: stop
+  // Description: Invalidate pending playback configuration and stop the speech engine.
+  // Parameters: None.
+  // Returns: Future<void>: platform stop completion.
   Future<void> stop() async {
     _playbackGeneration += 1;
     await _flutterTts.stop();
   }
 
-  // 함수이름: _languageCode
-  // 함수역할: 앱 공통 기준으로 영어인 언어를 en-US로, 그 외 언어를 ko-KR 음성 로케일로 변환한다.
-  // 매개변수:
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - String: 앱 공통 기준으로 영어인 언어를 en-US로, 그 외 언어를 ko-KR 음성 로케일로 변환한다.
+  // Function Name: _languageCode
+  // Description: Map supported app language to a TTS locale.
+  // Parameters: language (String): app language code.
+  // Returns: String: en-US for English, otherwise ko-KR.
   String _languageCode(String language) {
     return isEnglishLanguage(language) ? 'en-US' : 'ko-KR';
   }

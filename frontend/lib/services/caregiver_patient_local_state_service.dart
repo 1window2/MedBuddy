@@ -5,12 +5,10 @@ import '../entities/patient_hash_entity.dart';
 // 파일명: caregiver_patient_local_state_service.dart
 // 역할: 서버 환자 별칭의 오프라인 캐시와 알림 중복 방지 상태를 관리한다.
 
-// 클래스명: CaregiverPatientLocalStateService
-// 역할: 한 보호자와 연결된 여러 환자의 기기 캐시가 서로 섞이지 않게 분리한다.
-// 주요 책임:
-// - 서버에서 받은 환자 표시 이름을 오프라인 확인용으로 환자별 저장한다.
-// - 별칭이 없으면 개인식별정보 노출을 줄인 짧은 환자 식별명을 만든다.
-// - 연결이 해제된 환자의 알림 스냅샷과 표시 이름을 정리한다.
+// Class Name: CaregiverPatientLocalStateService
+// Role: Persist caregiver-scoped patient aliases and alert-state cleanup.
+// Responsibilities: Normalize labels, reconcile linked patients and remove state for detached patients.
+// Attributes: patientLabelKeyPrefix/linkedPatientsKeyPrefix/alertKeyPrefix (String): storage namespaces; maximumLabelLength (int): 20-code-unit alias limit.
 class CaregiverPatientLocalStateService {
   // 함수이름: CaregiverPatientLocalStateService._
   // 함수역할: 환자별 별칭·숨김·알림 기록의 정적 저장 API만 사용하도록 외부 생성을 막는다.
@@ -26,15 +24,10 @@ class CaregiverPatientLocalStateService {
   static const String alertKeyPrefix = 'caregiver_alert.';
   static const int maximumLabelLength = 20;
 
-  // 함수이름: resolveLabel
-  // 함수역할: 저장된 환자 별칭을 읽고 없으면 짧은 식별명을 반환한다.
-  // 매개변수:
-  // - preferences (SharedPreferences): 보호자 기기의 로컬 저장소
-  // - caregiverHash (String): 현재 보호자 식별 hash
-  // - patientHash (String): 표시할 환자 식별 hash
-  // - isEnglish (bool): 별칭이 없을 때 기본 식별명을 영어로 만들지 여부
-  // 반환값:
-  // - 보호자 화면과 알림에 사용할 환자 표시 이름
+  // Function Name: resolveLabel
+  // Description: Read a nonblank cached alias or derive a localized patient label.
+  // Parameters: preferences (SharedPreferences): storage; caregiverHash/patientHash (String): identity scope; isEnglish (bool): fallback language.
+  // Returns: String: trimmed alias or fallback label.
   static String resolveLabel(
     SharedPreferences preferences, {
     required String caregiverHash,
@@ -50,13 +43,10 @@ class CaregiverPatientLocalStateService {
     return fallbackLabel(patientHash, isEnglish: isEnglish);
   }
 
-  // 함수이름: fallbackLabel
-  // 함수역할: 환자 hash 전체를 노출하지 않고 마지막 네 글자로 기본 식별명을 만든다. 기본 식별명은 저장하지 않으므로 언어를 바꾸면 그 언어로 다시 만들어진다.
-  // 매개변수:
-  // - patientHash (String): 환자 식별 hash
-  // - isEnglish (bool): 영어 식별명(Patient ABCD)을 만들지 여부; false이면 한국어
-  // 반환값:
-  // - 환자 ABCD 또는 Patient ABCD 형식의 기본 표시 이름
+  // Function Name: fallbackLabel
+  // Description: Build a patient label using the uppercase final four hash characters; use a generic linked-patient label for a blank hash.
+  // Parameters: patientHash (String): patient identity; isEnglish (bool): English instead of Korean.
+  // Returns: String: fallback label.
   static String fallbackLabel(String patientHash, {bool isEnglish = false}) {
     final normalized = patientHash.trim();
     if (normalized.isEmpty) {
@@ -68,16 +58,10 @@ class CaregiverPatientLocalStateService {
     return '${isEnglish ? 'Patient' : '환자'} ${suffix.toUpperCase()}';
   }
 
-  // 함수이름: saveLabel
-  // 함수역할: 보호자가 입력한 환자 별칭을 정리해 환자별 키로 저장한다. 빈 값을 저장하면 사용자 별칭을 제거하고 기본 식별명으로 되돌린다. 저장된 값과 같으면 저장소에 다시 쓰지 않는다.
-  // 매개변수:
-  // - preferences (SharedPreferences): 보호자 기기의 로컬 저장소
-  // - caregiverHash (String): 현재 보호자 식별 hash
-  // - patientHash (String): 별칭을 지정할 환자 식별 hash
-  // - label (String): 보호자가 입력한 표시 이름
-  // - isEnglish (bool): 별칭을 지웠을 때 돌려줄 기본 식별명을 영어로 만들지 여부
-  // 반환값:
-  // - 저장 후 실제 화면에 표시할 이름
+  // Function Name: saveLabel
+  // Description: Collapse whitespace and cap aliases at the length limit; blank input removes the alias and unchanged input avoids a write.
+  // Parameters: preferences (SharedPreferences): storage; caregiverHash/patientHash (String): scope; label (String): requested alias; isEnglish (bool): reset-label language.
+  // Returns: Future<String>: persisted bounded alias or localized fallback.
   static Future<String> saveLabel(
     SharedPreferences preferences, {
     required String caregiverHash,
@@ -106,14 +90,10 @@ class CaregiverPatientLocalStateService {
     return boundedLabel;
   }
 
-  // 함수이름: synchronizeLinkedPatients
-  // 함수역할: 직전 연동 목록과 현재 목록을 비교해 해제된 환자의 로컬 상태를 정리한다.
-  // 매개변수:
-  // - preferences (SharedPreferences): 보호자 기기의 로컬 저장소
-  // - caregiverHash (String): 현재 보호자 식별 hash
-  // - patientHashes (Iterable<String>): 서버가 반환한 현재 활성 환자 hash 목록
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: synchronizeLinkedPatients
+  // Description: Normalize the current patient set, remove state for previously linked patients that disappeared, and save the sorted set.
+  // Parameters: preferences (SharedPreferences): storage; caregiverHash (String): owner; patientHashes (Iterable<String>): current links.
+  // Returns: Future<void>: reconciliation completion; storage errors propagate.
   static Future<void> synchronizeLinkedPatients(
     SharedPreferences preferences, {
     required String caregiverHash,
@@ -141,14 +121,10 @@ class CaregiverPatientLocalStateService {
     await preferences.setStringList(linkedPatientsKey, sortedPatients);
   }
 
-  // 함수이름: clearPatientState
-  // 함수역할: 연결 해제된 환자의 별칭과 알림 중복 방지 상태를 모두 제거한다.
-  // 매개변수:
-  // - preferences (SharedPreferences): 보호자 기기의 로컬 저장소
-  // - caregiverHash (String): 현재 보호자 식별 hash
-  // - patientHash (String): 정리할 환자 식별 hash
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: clearPatientState
+  // Description: Remove only the selected caregiver-patient alias and alert-state keys.
+  // Parameters: preferences (SharedPreferences): storage; caregiverHash/patientHash (String): normalized cleanup scope.
+  // Returns: Future<void>: selected-key removal completion.
   static Future<void> clearPatientState(
     SharedPreferences preferences, {
     required String caregiverHash,
@@ -164,7 +140,7 @@ class CaregiverPatientLocalStateService {
         .where(/* 함수이름: where 콜백
          * 함수역할: 선택한 환자의 표시 이름 키와 알림 재확인 키만 정리 대상으로 선택한다.
          * 매개변수:
-         * - key (String): Flutter 위젯의 동일성 키
+         * - key (String): 검사할 SharedPreferences 저장 키
          * 반환값:
          * - 해당 환자의 이름 또는 알림 기록 키이면 true.
          */(key) => key == labelKey || key.startsWith(alertPrefix))
@@ -174,13 +150,10 @@ class CaregiverPatientLocalStateService {
     }
   }
 
-  // 함수이름: _labelKey
-  // 함수역할: 정규화한 보호자·환자 해시를 결합해 해당 관계의 표시 별칭 전용 저장 키를 만든다.
-  // 매개변수:
-  // - caregiverHash (String): 조회·저장 범위를 제한할 보호자 해시
-  // - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
-  // 반환값:
-  // - String: 정규화한 보호자·환자 해시를 결합해 해당 관계의 표시 별칭 전용 저장 키를 만든다.
+  // Function Name: _labelKey
+  // Description: Build a patient-label key from normalized participant identities.
+  // Parameters: caregiverHash/patientHash (String): participant identities.
+  // Returns: String: pair-scoped preference key.
   static String _labelKey(String caregiverHash, String patientHash) {
     final normalizedCaregiver = PatientHash.normalizePatientHash(caregiverHash);
     final normalizedPatient = PatientHash.normalizePatientHash(patientHash);

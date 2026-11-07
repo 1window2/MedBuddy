@@ -41,6 +41,13 @@ void main() {
     (width: 411.0, scale: 1.0),
     (width: 320.0, scale: 2.0),
   ]) {
+    // 함수이름: testWidgets 콜백
+    // 함수역할:
+    // - 환자 이름 길이가 달라도 화살표 좌표를 유지하고 연속·비활성 화살표 탭은 상세 진입을 만들지 않으며 이름 탭만 환자를 선택하는지 확인한다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets('이름 길이가 달라도 같은 좌표의 연속 환자 탐색은 상세로 가지 않는다: $viewport', (
       tester,
     ) async {
@@ -130,6 +137,13 @@ void main() {
     });
   }
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 새로고침 중 버튼 위치와 비활성 상태를 유지해 같은 좌표의 재탭이 추가 조회나 상세 진입을 만들지 않고 완료 후 다시 사용 가능한지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('새로고침 직후 같은 좌표를 다시 눌러도 환자 일정으로 가지 않는다', (tester) async {
     tester.view.physicalSize = const Size(411, 900);
     tester.view.devicePixelRatio = 1;
@@ -185,6 +199,13 @@ void main() {
   });
 
   for (final loading in [false, true]) {
+    // 함수이름: testWidgets 콜백
+    // 함수역할:
+    // - 일정 조회 중·완료 상태 모두에서 환자 전환 직후 원래 이전 버튼 좌표를 눌러 첫 환자로 돌아오고 상세 콜백은 호출하지 않는지 확인한다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets('환자 전환 직후 원래 이전 화살표 좌표를 눌러도 상세로 가지 않는다: $loading', (tester) async {
       tester.view.physicalSize = const Size(411, 900);
       tester.view.devicePixelRatio = 1;
@@ -237,6 +258,13 @@ void main() {
 
   // 같은 목록은 갱신하지 않고 연동 변경만 화면에 알린다.
   // 자정 전에 받은 현황이 다음 날 홈에 "오늘의 복약 진행률"로 남지 않아야 한다.
+  // Function Name: test callback
+  // Description:
+  // - Invalidates the prior-day home snapshot and widget schedules at Korean midnight, then restores them only after a fresh read.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   test('자정이 지나면 어제 받은 보호자 현황을 오늘 진행률로 보여주지 않는다', () async {
     final client = MockClient((request) async => http.Response(jsonEncode({
       'success': true,
@@ -270,6 +298,13 @@ void main() {
     expect(control.snapshotFor(1)?.schedules, hasLength(1));
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 동일한 연동 목록의 반복 전달은 리스너를 다시 부르지 않고 실제 목록 변경만 알리는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('동일한 연동 목록의 변경 알림을 생략한다', () {
     final control = CheckCaregiverHome(userHash: 'owner');
     addTearDown(control.dispose);
@@ -281,6 +316,13 @@ void main() {
     control.updateLinks([]);
     expect(changes, 2);
   });
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 알림 설정이 없어도 통합 홈 조회가 상세 조회와 같은 일정 시간대를 반환하고 두 지정 경로만 요청하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('알림이 꺼져 있어도 홈은 상세 화면과 같은 환자 일정을 조회한다', () async {
     final paths = <String>[];
     final client = MockClient((request) async {
@@ -335,6 +377,13 @@ void main() {
     (caregiver: 'someone', patient: 'patient'),
     (caregiver: 'owner', patient: 'other'),
   ]) {
+    // 함수이름: test 콜백
+    // 함수역할:
+    // - 보호자·환자 범위가 어긋난 응답을 받으면 로딩을 끝내고 오류 상태로 전환하며 해당 환자의 스냅샷을 남기지 않는지 확인한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     test('상세 응답의 보호자와 환자 범위가 다르면 오류로 표시한다: $scope', () async {
       final client = MockClient((request) async => http.Response(jsonEncode({
         'data': {
@@ -811,6 +860,13 @@ void main() {
     for (final scale in [1.0, 2.0]) {
       for (final english in [false, true]) {
         // 정상·조회 중·오류·미연동 모두 같은 카드 틀과 내부 동작을 유지한다.
+        // Function Name: testWidgets callback
+        // Description:
+        // - Keeps loading, error and unlinked states inside the normal card frame, enables only valid actions and restores progress after recovery across sizes and languages.
+        // Parameters:
+        // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+        // Returns:
+        // - Future<void>: Completes the checks; an unexpected result fails the test.
         testWidgets('보호자 상태 안내는 기존 카드 안에 표시된다: $width $scale $english', (
           tester,
         ) async {
@@ -827,6 +883,14 @@ void main() {
           var refreshes = 0;
           var linkRequests = 0;
 
+          // 함수이름: showSummary
+          // 함수역할:
+          // - 현재 제어기와 언어·글씨 배율을 사용해 연동 조회 상태를 표시하고 새로고침·연동 동작 횟수를 기록하는 화면을 올린다.
+          // 매개변수:
+          // - loading (bool): 연동 조회 중 여부; 기본 false.
+          // - failed (bool): 연동 조회 오류 여부; 기본 false.
+          // 반환값:
+          // - Future<void>: 테스트 화면을 펌프한 뒤 완료한다.
           Future<void> showSummary({
             bool loading = false,
             bool failed = false,
@@ -1047,8 +1111,22 @@ CaregiverMonitoringSnapshot _snapshot(PatientCaregiverLink link) =>
 
 // 클래스명: _Monitoring
 // 역할: 환자 조회 실패·지연과 다른 계정 결과를 재현한다.
+// 주요 책임:
+// - 조회 횟수를 기록하고 지정된 응답, 지연 게이트 또는 오류를 홈 제어기에 전달한다.
+// 속성:
+// - calls (int): 일정 조회 호출 횟수.
+// - failure (bool): 조회 시 StateError를 발생시킬지 여부.
+// - snapshots (List<CaregiverMonitoringSnapshot>?): 지정 응답; null이면 기본 두 계정 자료.
+// - gate (Completer<List<CaregiverMonitoringSnapshot>>?): 응답 완료를 제어하는 선택적 게이트.
 class _Monitoring extends CheckCaregiverMedication {
   // Bind the fake API to the same caregiver as the Home under test.
+  // Function Name: _Monitoring
+  // Description:
+  // - Binds the recording schedule fake to the caregiver used by the home tests.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - _Monitoring with the owner scope and default recording state.
   _Monitoring() : super(caregiverHash: 'owner');
   int calls = 0;
   bool failure = false;
