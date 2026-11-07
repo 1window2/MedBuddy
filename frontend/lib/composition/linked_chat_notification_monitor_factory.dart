@@ -10,6 +10,8 @@ import '../services/authenticated_api_client.dart';
 import '../services/linked_chat_notification_monitor_service.dart';
 import '../services/linked_chat_realtime_service.dart';
 import '../services/notification_service.dart';
+import '../services/dose_sync_service.dart';
+import '../services/slot_check_notification_context.dart';
 
 // 함수이름: deliverLinkedChatAlert
 // 함수역할: 최신 사용자 설정을 읽어 채팅 알림이 꺼져 있으면 아무것도 표시하지 않고, 켜져 있으면 알림 상세 표시 설정을 적용한 뒤 연동·메시지에서 계산한 알림 ID로 로컬 알림을 표시한다.
@@ -33,6 +35,8 @@ Future<void> deliverLinkedChatAlert({
   required String messageBody,
   required ChatMessageKind messageKind,
   required String? slotKey,
+  SlotCheckNotificationContext? slotCheck,
+  DateTime Function()? clock,
   Future<ChatNotificationSummary?> Function()? loadSummary,
 }) async {
   final setting = await loadSetting();
@@ -45,6 +49,27 @@ Future<void> deliverLinkedChatAlert({
   try {
     summary = await loadSummary?.call();
   } catch (_) {}
+  if (summary?.count == 0) return;
+  if (slotCheck != null &&
+      slotCheck.owner == userHash &&
+      slotCheck.linkId == linkId &&
+      slotCheck.messageId == messageId &&
+      messageKind == ChatMessageKind.slotCheckRequest &&
+      slotCheck.scheduleDate == doseScheduleDay((clock ?? DateTime.now)())) {
+    return notifications.showSlotCheckAlert(
+      request: slotCheck,
+      id: LinkedChatNotificationMonitorFactory._notificationId(
+        linkId,
+        messageId,
+      ),
+      language: setting.language,
+      messagePreview:
+          setting.showNotificationDetails && (summary?.showDetails ?? true)
+          ? messageBody
+          : null,
+      recordHistory: true,
+    );
+  }
   return notifications.showLinkedChatAlert(
     historyUserHash: userHash,
     id: LinkedChatNotificationMonitorFactory._notificationId(linkId, messageId),
@@ -129,6 +154,7 @@ class LinkedChatNotificationMonitorFactory {
             required messageBody,
             required messageKind,
             required slotKey,
+            slotCheck,
           }) => deliverLinkedChatAlert(
             loadSetting: settingControl.requestUserSetting,
             notifications: NotificationService.instance,
@@ -138,6 +164,7 @@ class LinkedChatNotificationMonitorFactory {
             messageBody: messageBody,
             messageKind: messageKind,
             slotKey: slotKey,
+            slotCheck: slotCheck,
             loadSummary: () =>
                 chatControl.requestNotificationSummary(linkId: linkId),
           ),

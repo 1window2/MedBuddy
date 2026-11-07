@@ -9,10 +9,12 @@ import 'package:sqflite/sqflite.dart';
 import '../entities/dose_widget_state.dart';
 import '../entities/user_setting_entity.dart';
 import 'dose_store_open_gate.dart';
+import 'slot_check_notification_context.dart';
 
 part 'dose_widget_store.dart';
 part 'dose_history_pending_store.dart';
 part 'dose_offline_schedule_store.dart';
+part 'slot_check_notification_store.dart';
 
 // 클래스명: DoseOutboxStore
 // 역할: 계정별 기록과 캐시를 암호화하고 저장·전송·응답 반영 순서를 보장한다.
@@ -567,6 +569,11 @@ class DoseOutboxStore {
     final token = await ownerKey(owner);
     await db.transaction((tx) async {
       await tx.delete('operations', where: 'owner = ?', whereArgs: [token]);
+      await tx.delete(
+        'metadata',
+        where: 'name = ?',
+        whereArgs: ['slot-check:$token'],
+      );
       await tx.delete(
         'metadata',
         where: 'name = ?',

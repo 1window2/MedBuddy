@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/entities/patient_caregiver_link_entity.dart';
 import 'package:medbuddy_frontend/services/linked_chat_notification_monitor_service.dart';
 import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
+import 'package:medbuddy_frontend/services/slot_check_notification_context.dart';
 
 // 함수이름: main
 // 함수역할:
@@ -65,6 +66,7 @@ void main() {
             required messageBody,
             required messageKind,
             required slotKey,
+            slotCheck,
           }) async {
             alerts.add('$linkId:$messageId:$messageBody');
           },
@@ -145,6 +147,7 @@ void main() {
             required messageBody,
             required messageKind,
             required slotKey,
+            slotCheck,
           }) async {
             alertCount += 1;
           },
@@ -219,6 +222,7 @@ void main() {
             required messageBody,
             required messageKind,
             required slotKey,
+            slotCheck,
           }) async {},
       // 함수이름: permissionRequester 콜백
       // 함수역할:
@@ -286,6 +290,7 @@ void main() {
             required messageBody,
             required messageKind,
             required slotKey,
+            slotCheck,
           }) async {
             alertCount += 1;
           },
@@ -361,6 +366,7 @@ void main() {
             required messageBody,
             required messageKind,
             required slotKey,
+            slotCheck,
           }) async {
             alertCount += 1;
           },
@@ -388,6 +394,52 @@ void main() {
     hasLink = false;
     expect(await monitor.refreshNow(), isTrue);
     expect(source.disposed, isTrue);
+  });
+
+  test('보호자 확인 요청은 환자 연동과 날짜를 포함해 전달한다', () async {
+    final source = _FakeLinkedChatEventSource();
+    final requests = <SlotCheckNotificationContext?>[];
+    final monitor = LinkedChatNotificationMonitorService(
+      currentUserHash: 'patient_test',
+      loadLinks: () async => [_activeLink(7)],
+      eventSourceFactory: (_) => source,
+      permissionRequester: () async => true,
+      sendAlert:
+          ({
+            required linkId,
+            required messageId,
+            required messageBody,
+            required messageKind,
+            required slotKey,
+            slotCheck,
+          }) async {
+            requests.add(slotCheck);
+          },
+    );
+    addTearDown(monitor.dispose);
+    await monitor.start();
+    for (var i = 0; i < 3; i++) {
+      final event = _messageEvent(
+        messageId: 90 + i,
+        linkId: 7,
+        senderHash: i == 2 ? 'unrelated' : 'caregiver_test',
+      );
+      final message = event['message'] as Map<String, dynamic>;
+      message['message_kind'] = i == 1 ? 'text' : 'slot_check_request';
+      message['context'] = {
+        'schedule_context': {
+          'schedule_date': '2026-11-07',
+          'slot_key': 'morning',
+        },
+      };
+      source.emit(event);
+    }
+    await _flushEvents();
+    expect(requests, hasLength(3));
+    expect(requests.first!.owner, 'patient_test');
+    expect(requests.first!.scheduleDate, '2026-11-07');
+    expect(requests.first!.eventId, 'chat:7:90');
+    expect(requests.skip(1), everyElement(isNull));
   });
 }
 

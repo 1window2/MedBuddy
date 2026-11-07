@@ -11,6 +11,7 @@ import '../entities/chat_message_entity.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import 'linked_chat_realtime_service.dart';
+import 'slot_check_notification_context.dart';
 
 // 함수이름: LinkedChatLinkLoader
 // 함수역할: 현재 사용자가 참여한 활성 가족 연동 목록을 조회하는 경계이다.
@@ -44,6 +45,7 @@ typedef LinkedChatAlertSender =
       required String messageBody,
       required ChatMessageKind messageKind,
       required String? slotKey,
+      SlotCheckNotificationContext? slotCheck,
     });
 // 함수이름: LinkedChatPermissionRequester
 // 함수역할: 가족 채팅 로컬 알림의 표시 권한을 요청하고 허용 여부를 제공하는 계약이다.
@@ -82,6 +84,7 @@ class LinkedChatNotificationMonitorService {
   final VoidCallback? _onDispose;
 
   final Map<int, _LinkedChatWatcher> _watchers = <int, _LinkedChatWatcher>{};
+  final Map<int, PatientCaregiverLink> _activeLinks = {};
   final LinkedHashSet<String> _notifiedMessageKeys = LinkedHashSet<String>();
 
   Timer? _refreshTimer;
@@ -162,6 +165,13 @@ class LinkedChatNotificationMonitorService {
         return false;
       }
       final activeLinkIds = _activeLinkIds(links);
+      _activeLinks
+        ..clear()
+        ..addEntries(
+          links
+              .where((link) => activeLinkIds.contains(link.linkId))
+              .map((link) => MapEntry(link.linkId!, link)),
+        );
       await _removeStaleWatchers(activeLinkIds);
       for (final linkId in activeLinkIds) {
         if (!_watchers.containsKey(linkId)) {
@@ -216,7 +226,8 @@ class LinkedChatNotificationMonitorService {
          * - link (PatientCaregiverLink): 해당 환자·보호자 연동 관계
          * 반환값:
          * - null이 아닌 활성 연결 ID.
-         */ (link) => link.linkId!,
+         */
+          (link) => link.linkId!,
         )
         .toSet();
   }
@@ -236,7 +247,8 @@ class LinkedChatNotificationMonitorService {
          * - linkId (int): 조회·전송·감시 대상 연동 ID
          * 반환값:
          * - 현재 활성 연결 집합에 없으면 true.
-         */ (linkId) => !activeLinkIds.contains(linkId),
+         */
+          (linkId) => !activeLinkIds.contains(linkId),
         )
         .toList(growable: false);
     for (final linkId in staleLinkIds) {
@@ -340,12 +352,33 @@ class LinkedChatNotificationMonitorService {
         return;
       }
       try {
+        final link = _activeLinks[watchedLinkId];
+        if (_isDisposed || link == null) return;
+        // 복용 버튼은 이 연동의 보호자가 환자에게 보낸 구조화된 요청에만 붙인다.
+        final slotCheck =
+            message.messageKind == ChatMessageKind.slotCheckRequest &&
+                PatientHash.normalizePatientHash(message.senderHash) ==
+                    PatientHash.normalizePatientHash(link.caregiverHash)
+            ? SlotCheckNotificationContext.fromData({
+                'type': 'linked_chat_message',
+                'message_kind': message.messageKind.wireName,
+                'action_version': '1',
+                'recipient_hash': currentUserHash,
+                'patient_hash': link.patientHash,
+                'link_id': watchedLinkId,
+                'message_id': message.messageId,
+                'event_id': 'chat:$watchedLinkId:${message.messageId}',
+                'schedule_date': message.scheduleContext?.scheduleDate,
+                'slot_key': message.scheduleContext?.slotKey,
+              })
+            : null;
         await _sendAlert(
           linkId: watchedLinkId,
           messageId: message.messageId,
           messageBody: message.body,
           messageKind: message.messageKind,
           slotKey: message.scheduleContext?.slotKey,
+          slotCheck: slotCheck,
         );
       } catch (error, stackTrace) {
         _notifiedMessageKeys.remove(messageKey);
@@ -420,6 +453,7 @@ class LinkedChatNotificationMonitorService {
     _refreshTimer = null;
     final watchers = _watchers.values.toList(growable: false);
     _watchers.clear();
+    _activeLinks.clear();
     for (final watcher in watchers) {
       await watcher.dispose();
     }

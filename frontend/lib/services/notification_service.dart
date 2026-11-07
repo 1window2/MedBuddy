@@ -26,6 +26,8 @@ import 'medication_notification_payload_codec.dart';
 import 'medication_reminder_action_tag.dart';
 import 'app_language_resolver.dart';
 import 'notification_inbox_store.dart';
+import 'slot_check_notification_context.dart';
+import 'slot_check_notification_service.dart';
 
 // Preserve existing imports while keeping the action contract platform-neutral.
 export '../entities/medication_notification_selection_entity.dart';
@@ -561,17 +563,15 @@ class NotificationService {
           ),
         ),
         onDidReceiveNotificationResponse: _handleNotificationResponse,
+        onDidReceiveBackgroundNotificationResponse:
+            medBuddySlotCheckNotificationBackground,
       );
       _isInitialized = true;
       await _ensureAndroidNotificationChannels();
 
       if (launchDetails?.didNotificationLaunchApp ?? false) {
         final response = launchDetails?.notificationResponse;
-        handleNotificationPayload(
-          response?.payload,
-          actionId: response?.actionId,
-          notificationId: response?.id,
-        );
+        if (response != null) _handleNotificationResponse(response);
       }
     } catch (_) {
       _initializationFuture = null;
@@ -668,6 +668,10 @@ class NotificationService {
   // Returns:
   // - No return value.
   static void _handleNotificationResponse(NotificationResponse response) {
+    if (response.actionId == SlotCheckNotificationContext.actionId) {
+      unawaited(medBuddySlotCheckNotificationBackground(response));
+      return;
+    }
     handleNotificationPayload(
       response.payload,
       actionId: response.actionId,
@@ -1437,6 +1441,69 @@ class NotificationService {
                 patientHash.trim(),
               ),
           category: NotificationInboxCategory.medication,
+          occurredAt: DateTime.now(),
+        ),
+      );
+    }
+  }
+
+  // 확인 요청은 메시지별 알림을 사용해 다른 날짜·시간대의 버튼으로 교체되지 않게 한다.
+  Future<void> showSlotCheckAlert({
+    required SlotCheckNotificationContext request,
+    required int id,
+    required String language,
+    String? messagePreview,
+    bool recordHistory = false,
+  }) async {
+    await initialize();
+    final preferences = await preferencesLoader();
+    await preferences.reload();
+    if (preferences.getString(NotificationInboxStore.activeUserKey) !=
+        request.owner) {
+      return;
+    }
+    final english = isEnglishLanguage(language);
+    await _plugin.show(
+      id: id,
+      title: english ? 'Medication check request' : '복약 확인 요청',
+      body: buildLinkedChatNotificationBody(
+        messagePreview: messagePreview,
+        language: language,
+      ),
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          _chatChannelId,
+          english ? 'Family chat' : '가족 채팅',
+          importance: Importance.high,
+          priority: Priority.high,
+          tag: request.eventId,
+          onlyAlertOnce: true,
+          actions: [
+            AndroidNotificationAction(
+              SlotCheckNotificationContext.actionId,
+              english ? 'Taken' : '복용 완료',
+              showsUserInterface: false,
+              cancelNotification: false,
+            ),
+          ],
+        ),
+      ),
+      payload: request.payload,
+    );
+    if (recordHistory) {
+      await _recordInbox(
+        request.owner,
+        NotificationInboxEntry(
+          id: 'chat:${request.linkId}:$id',
+          title: english ? 'Medication check request' : '복약 확인 요청',
+          body: buildLinkedChatNotificationBody(
+            messagePreview: messagePreview,
+            language: language,
+          ),
+          payload: MedicationNotificationPayloadCodec.chatPayload(
+            request.linkId,
+          ),
+          category: NotificationInboxCategory.chat,
           occurredAt: DateTime.now(),
         ),
       );

@@ -13,6 +13,7 @@
 
 import 'package:medbuddy_frontend/entities/caregiver_alert_context_entity.dart';
 import 'package:medbuddy_frontend/services/notification_service.dart';
+import 'package:medbuddy_frontend/services/slot_check_notification_context.dart';
 
 // One registerNotification call.
 typedef RecordedReminderRegistration = ({
@@ -93,6 +94,34 @@ typedef RecordedHistoryUser = ({String? userHash, bool persistSession});
 //   cancelAllMedicationRemindersCount, cancelAllScheduledMedicationRemindersCount (int): Call
 //   counters.
 class RecordingNotificationService implements NotificationService {
+  final List<
+    ({
+      SlotCheckNotificationContext request,
+      int id,
+      String language,
+      String? messagePreview,
+      bool recordHistory,
+    })
+  >
+  slotCheckAlerts = [];
+
+  @override
+  Future<void> showSlotCheckAlert({
+    required SlotCheckNotificationContext request,
+    required int id,
+    required String language,
+    String? messagePreview,
+    bool recordHistory = false,
+  }) async {
+    slotCheckAlerts.add((
+      request: request,
+      id: id,
+      language: language,
+      messagePreview: messagePreview,
+      recordHistory: recordHistory,
+    ));
+  }
+
   // Function Name: RecordingNotificationService
   // Description: Creates a fake that succeeds unless a failure switch is set.
   // Parameters: failRegistration, failSnooze, permissionGranted - see the class attributes.

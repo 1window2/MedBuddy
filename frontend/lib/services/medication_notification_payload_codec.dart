@@ -4,6 +4,7 @@
 import '../entities/caregiver_alert_context_entity.dart';
 import '../entities/caregiver_notification_entity.dart';
 import '../entities/medication_notification_selection_entity.dart';
+import 'slot_check_notification_context.dart';
 
 // Class Name: MedicationNotificationPayloadCodec
 // Role: Owns the shared notification payload and action-identifier protocol.
@@ -50,6 +51,15 @@ class MedicationNotificationPayloadCodec {
     String? actionId,
     int? notificationId,
   }) {
+    if (payload?.startsWith(SlotCheckNotificationContext.prefix) ?? false) {
+      final request = SlotCheckNotificationContext.fromPayload(payload);
+      if (request == null) return null;
+      // 본문 선택은 채팅만 열고, 완료 버튼은 별도 백그라운드 처리기만 실행한다.
+      return MedicationNotificationSelection(
+        destination: MedicationNotificationDestination.linkedChat,
+        linkId: request.linkId,
+      );
+    }
     if (payload?.startsWith('caregiver-v1:') ?? false) {
       final alert = CaregiverAlertContext.fromPayload(payload!);
       if (alert == null) return null;
@@ -146,6 +156,7 @@ class MedicationNotificationPayloadCodec {
   // Parameters: payload (String?): Stored platform notification payload.
   // Returns: Whether session cleanup owns the notification.
   static bool isSessionPayload(String? payload) =>
+      payload?.startsWith(SlotCheckNotificationContext.prefix) == true ||
       payload?.startsWith('schedule:') == true ||
       payload?.startsWith('caregiver-v1:') == true ||
       payload?.startsWith(caregiverPayloadPrefix) == true ||

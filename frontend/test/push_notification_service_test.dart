@@ -652,8 +652,10 @@ void main() {
 
     expect(bodies[0]['platform'], 'android');
     expect(bodies[0]['supports_caregiver_actions'], isTrue);
+    expect(bodies[0]['supports_slot_check_actions'], isTrue);
     expect(bodies[1]['platform'], 'ios');
     expect(bodies[1]['supports_caregiver_actions'], isFalse);
+    expect(bodies[1]['supports_slot_check_actions'], isFalse);
   });
 
   test('strict stop retries a push token after server rejection', () async {

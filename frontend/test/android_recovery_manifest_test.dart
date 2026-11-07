@@ -3,6 +3,15 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('notification action receiver is private to the app', () {
+    final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+    final receiver = RegExp(
+      r'<receiver\b[^>]*ActionBroadcastReceiver[^>]*>',
+    ).firstMatch(manifest)?.group(0);
+    expect(receiver, isNotNull);
+    expect(receiver, contains('android:exported="false"'));
+  });
+
   test('Android persists alarms across boot and package updates', () {
     final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
     expect(manifest, contains('android.permission.RECEIVE_BOOT_COMPLETED'));

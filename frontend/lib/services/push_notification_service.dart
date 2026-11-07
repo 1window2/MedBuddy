@@ -22,6 +22,8 @@ import 'notification_service.dart';
 import 'medication_notification_payload_codec.dart';
 import 'notification_inbox_store.dart';
 import 'user_setting_preference_keys.dart';
+import 'slot_check_notification_context.dart';
+import 'slot_check_notification_service.dart';
 
 // 재전송된 필요시 복용 푸시는 FCM 메시지 ID가 달라도 같은 알림으로 묶는다.
 String? _asNeededPushIdentity(RemoteMessage message) {
@@ -153,6 +155,11 @@ Future<void> recordPushNotificationHistory(
 // 매개변수: message. 반환값: 기록 완료. Firebase API는 사용하지 않는다.
 @pragma('vm:entry-point')
 Future<void> medBuddyPushBackgroundHandler(RemoteMessage message) async {
+  if (SlotCheckNotificationContext.fromData(message.data) != null) {
+    await recordPushNotificationHistory(message);
+    await SlotCheckNotificationService.display(message.data);
+    return;
+  }
   if (message.data['type'] == 'caregiver_slot_missed' &&
       message.data['action_version'] == '1') {
     await CaregiverAlertDeliveryService.display(message.data);
@@ -700,6 +707,7 @@ class PushNotificationService {
             'token': normalizedToken,
             'platform': _platformName,
             'supports_caregiver_actions': _isAndroid,
+            'supports_slot_check_actions': _isAndroid,
           }),
         )
         .timeout(_requestTimeout);
@@ -717,6 +725,15 @@ class PushNotificationService {
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> _showForegroundMessage(RemoteMessage message) async {
     if (message.data['recipient_hash'] != userHash) return;
+    if (SlotCheckNotificationContext.fromData(message.data) != null) {
+      await recordPushNotificationHistory(
+        message,
+        userHash: userHash,
+        language: _languageProvider(),
+      );
+      await SlotCheckNotificationService.display(message.data);
+      return;
+    }
     if (message.data['type'] == 'caregiver_slot_missed' &&
         message.data['action_version'] == '1') {
       await CaregiverAlertDeliveryService.display(message.data);

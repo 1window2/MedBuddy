@@ -13,6 +13,7 @@ import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/main.dart';
 import 'package:medbuddy_frontend/services/notification_service.dart';
+import 'package:medbuddy_frontend/services/slot_check_notification_context.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -45,6 +46,15 @@ class _EmptySetNotification extends SetNotification {
 }
 
 class _NoopNotificationService implements NotificationService {
+  @override
+  Future<void> showSlotCheckAlert({
+    required SlotCheckNotificationContext request,
+    required int id,
+    required String language,
+    String? messagePreview,
+    bool recordHistory = false,
+  }) async {}
+
   @override
   Future<void> updateLanguage(String language) async {}
 
