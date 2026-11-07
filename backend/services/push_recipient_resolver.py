@@ -17,20 +17,11 @@ logger = logging.getLogger(__name__)
 _TYPE_ONLY_DETAIL_MODE = "type_only"
 
 
-# Class Name: PushRecipient
-# Role: Everything a dispatcher needs to push to one account, detached from the session.
-# Responsibilities:
-# - Hold plain values only, so it stays readable after the session released its connection.
-# Attributes:
-# - user_hash (str): Recipient account.
-# - tokens (tuple[str, ...]): Enabled device tokens of the account.
-# - action_tokens (frozenset[str]): The tokens whose device renders caregiver action data itself.
-# - slot_check_action_tokens (frozenset[str]): The Android tokens whose app draws a caregiver
-#   slot-check request with its own Taken action.
-# - language (str): Notification language, "en" or "ko".
-# - show_details (bool): False when the account chose the "type_only" privacy mode.
-# - caregiver_enabled (bool): Whether caregiver medication alerts are wanted.
-# - chat_enabled (bool): Whether chat notifications are wanted.
+# 클래스명: PushRecipient
+# 역할: 세션 연결 해제 뒤에도 읽을 수 있는 수신 계정의 푸시 정보를 보관한다.
+# 주요 책임: 일반 토큰과 보호자 행동·환자 복용 확인 행동 지원 토큰 및 표시 설정을 분리한다.
+# 속성: user_hash는 str, tokens는 tuple[str], action_tokens·slot_check_action_tokens는 frozenset[str]다.
+#   language는 en/ko, show_details·caregiver_enabled·chat_enabled는 미리보기·보호자·채팅 허용 bool이다.
 @dataclass(frozen=True)
 class PushRecipient:
     user_hash: str
@@ -74,26 +65,20 @@ class _RecipientPreferences:
 # Note: Use one instance for one dispatch only. A longer-lived instance would not see a
 #   preference change or a token that moved to another account in the meantime.
 class PushRecipientResolver:
-    # Function Name: __init__
-    # Description:
-    # - Binds the session and starts with nothing read.
-    # Parameters:
-    # - db (Session): SQLAlchemy session of the current work.
-    # Returns:
-    # - None.
+    # 함수이름: __init__
+    # 함수역할: 요청 세션을 연결하고 설정·토큰·등록 세대 캐시를 빈 상태로 시작한다.
+    # 매개변수: db (Session)는 현재 전송 작업의 세션이다.
+    # 반환값: None. 생성 시 DB를 조회하지 않는다.
     def __init__(self, db: Session) -> None:
         self.db = db
         self._preferences: dict[str, _RecipientPreferences] = {}
         self._tokens: dict[str, tuple[tuple[str, bool, bool], ...]] = {}
         self._token_versions: dict[str, tuple[int, str, str]] = {}
 
-    # Function Name: resolve
-    # Description:
-    # - Returns the preferences and enabled device tokens of one account as plain values.
-    # Parameters:
-    # - user_hash (str): Recipient account.
-    # Returns:
-    # - PushRecipient; tokens is empty when the account has no enabled device.
+    # 함수이름: resolve
+    # 함수역할: 수신 계정의 설정·활성 토큰을 재사용 가능한 일반 값으로 묶고 행동 지원 토큰을 별도 집합으로 구분한다.
+    # 매개변수: user_hash (str)는 수신 계정이다.
+    # 반환값: PushRecipient. 활성 기기가 없으면 tokens는 빈 tuple이며 DB 오류는 전달한다.
     def resolve(self, user_hash: str) -> PushRecipient:
         preferences = self._read_preferences(user_hash)
         tokens = self._read_tokens(user_hash)
@@ -133,16 +118,10 @@ class PushRecipientResolver:
         preferences = self._read_preferences(user_hash)
         return preferences.language, preferences.show_details
 
-    # Function Name: disable_invalid
-    # Description:
-    # - Disables tokens Firebase rejected as expired or mismatched and commits at once.
-    # - Runs after the push has left, so a database error is logged and not raised: raising
-    #   would make the caller send the same notification again. A token left enabled is
-    #   rejected and cleaned up on the next send.
-    # Parameters:
-    # - invalid_tokens (tuple[str, ...]): Tokens rejected by Firebase.
-    # Returns:
-    # - None.
+    # 함수이름: disable_invalid
+    # 함수역할: 전송 전에 관찰한 동일 ID·소유 계정·등록 세대의 무효 토큰만 비활성화해 이후 재등록·계정 전환을 보존한다.
+    # 매개변수: invalid_tokens (tuple[str])는 제공자가 영구 무효로 거절한 토큰이다.
+    # 반환값: None. 관찰한 등록이 없으면 생략하며 DB·롤백 오류는 기록하고 삼켜 이미 보낸 알림이 재전송되지 않게 한다.
     def disable_invalid(self, invalid_tokens: tuple[str, ...]) -> None:
         rejected_tokens = tuple(dict.fromkeys(invalid_tokens))
         if not rejected_tokens:
@@ -224,13 +203,10 @@ class PushRecipientResolver:
         self._preferences[user_hash] = preferences
         return preferences
 
-    # Function Name: _read_tokens
-    # Description:
-    # - Reads the enabled device tokens of one account and remembers the result.
-    # Parameters:
-    # - user_hash (str): Recipient account.
-    # Returns:
-    # - (token, supports caregiver actions, supports slot-check actions) triples.
+    # 함수이름: _read_tokens
+    # 함수역할: 계정의 활성 토큰과 행동 기능을 한 번 읽어 캐시하고 나중의 무효 정리를 위해 등록 세대를 기억한다.
+    # 매개변수: user_hash (str)는 수신 계정이다.
+    # 반환값: (토큰 str, 보호자 행동 bool, 복용 확인 행동 bool) tuple. 복용 확인 행동은 Android 기기만 허용한다.
     def _read_tokens(self, user_hash: str) -> tuple[tuple[str, bool, bool], ...]:
         tokens = self._tokens.get(user_hash)
         if tokens is not None:

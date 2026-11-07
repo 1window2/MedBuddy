@@ -1,3 +1,6 @@
+# 파일명: test_disabled_reminder_time.py
+# 역할: 알림 해제 시 시간 보존·변경의 원자성, 환자 범위와 이전 요청 호환성을 검증한다.
+
 from unittest.mock import patch
 
 import pytest
@@ -19,6 +22,13 @@ from entities.medication_alarm_entity import _MedicationAlarm
 from support.db import seed_account
 
 
+# 함수이름: alarm_api
+# 함수역할:
+# - 두 환자 계정과 실제 권한·알림 컨트롤을 구성하고 patient-a로 인증된 HTTP 클라이언트를 제공·종료한다.
+# 매개변수:
+# - fk_db: Session; 외래 키가 활성화된 격리 데이터베이스.
+# 반환값:
+# - Iterator[tuple]; 클라이언트와 알림 컨트롤.
 @pytest.fixture
 def alarm_api(fk_db):
     seed_account(fk_db, "patient-a", "patient-b")
@@ -37,6 +47,14 @@ def alarm_api(fk_db):
         yield client, control
 
 
+# 함수이름: test_disable_saves_time_atomically_and_keeps_patient_scope
+# 함수역할:
+# - 알림 해제와 변경 시간을 한 번에 커밋하고 위조 환자 쿼리와 무관하게 인증된 환자만 수정하는지 확인한다.
+# 매개변수:
+# - alarm_api: tuple[TestClient, SetNotification]; 인증된 환자의 알림 HTTP 클라이언트와 컨트롤.
+# - initially_enabled: bool | None; 기존 활성·비활성 설정 또는 행 없음.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("initially_enabled", [None, False, True])
 def test_disable_saves_time_atomically_and_keeps_patient_scope(alarm_api, initially_enabled):
     client, control = alarm_api
@@ -64,6 +82,14 @@ def test_disable_saves_time_atomically_and_keeps_patient_scope(alarm_api, initia
     assert (other["hour"], other["minute"], other["is_enabled"]) == (8, 15, True)
 
 
+# 함수이름: test_legacy_disable_without_time_preserves_saved_time
+# 함수역할:
+# - 시간을 생략한 이전 형식의 해제 요청은 저장된 시·분을 유지하는지 확인한다.
+# 매개변수:
+# - alarm_api: tuple[TestClient, SetNotification]; 인증된 환자의 알림 HTTP 클라이언트와 컨트롤.
+# - body: dict | None; 비활성화 요청의 시간 필드.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("body", [None, {}, {"hour": None, "minute": None}])
 def test_legacy_disable_without_time_preserves_saved_time(alarm_api, body):
     client, control = alarm_api
@@ -74,6 +100,14 @@ def test_legacy_disable_without_time_preserves_saved_time(alarm_api, body):
     assert (saved["hour"], saved["minute"], saved["is_enabled"]) == (18, 55, False)
 
 
+# 함수이름: test_invalid_disabled_time_is_rejected_before_mutation
+# 함수역할:
+# - 잘못된 해제 시간은 HTTP 422로 거부하고 기존 시간과 활성 상태는 유지하는지 확인한다.
+# 매개변수:
+# - alarm_api: tuple[TestClient, SetNotification]; 인증된 환자의 알림 HTTP 클라이언트와 컨트롤.
+# - body: dict | None; 비활성화 요청의 시간 필드.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("body", [
     {"hour": -1, "minute": 0},
     {"hour": 24, "minute": 0},
@@ -92,6 +126,14 @@ def test_invalid_disabled_time_is_rejected_before_mutation(alarm_api, body):
     assert (saved["hour"], saved["minute"], saved["is_enabled"]) == (18, 55, True)
 
 
+# 함수이름: test_control_also_validates_disabled_time
+# 함수역할:
+# - 내부 컨트롤도 잘못된 시간을 400으로 거부하고 설정 행을 생성하지 않는지 확인한다.
+# 매개변수:
+# - alarm_api: tuple[TestClient, SetNotification]; 인증된 환자의 알림 HTTP 클라이언트와 컨트롤.
+# - time: tuple; 내부 컨트롤에 전달할 잘못된 시·분.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("time", [(24, 0), (19, 60), (None, 5)])
 def test_control_also_validates_disabled_time(alarm_api, time):
     _, control = alarm_api
@@ -101,6 +143,15 @@ def test_control_also_validates_disabled_time(alarm_api, time):
     assert control.db.query(_MedicationAlarm).count() == 0
 
 
+# 함수이름: test_hour_only_disable_defaults_to_zero_minutes
+# 함수역할:
+# - 시만 지정한 해제는 기존 설정 유무와 무관하게 분을 0으로 저장하는지 확인한다.
+# 매개변수:
+# - alarm_api: tuple[TestClient, SetNotification]; 인증된 환자의 알림 HTTP 클라이언트와 컨트롤.
+# - initially_enabled: bool | None; 기존 활성·비활성 설정 또는 행 없음.
+# - body: dict | None; 비활성화 요청의 시간 필드.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("initially_enabled", [None, False, True])
 @pytest.mark.parametrize("body", [{"hour": 19}, {"hour": 19, "minute": None}])
 def test_hour_only_disable_defaults_to_zero_minutes(alarm_api, initially_enabled, body):
@@ -116,6 +167,13 @@ def test_hour_only_disable_defaults_to_zero_minutes(alarm_api, initially_enabled
     assert client.get("/notification/settings/morning").json()["data"] == saved
 
 
+# 함수이름: test_control_hour_only_disable_keeps_upstream_positional_contract
+# 함수역할:
+# - 기존 위치 인수로 시만 넘겨도 분 0의 비활성 설정을 저장하는지 확인한다.
+# 매개변수:
+# - alarm_api: tuple[TestClient, SetNotification]; 인증된 환자의 알림 HTTP 클라이언트와 컨트롤.
+# 반환값:
+# - None.
 def test_control_hour_only_disable_keeps_upstream_positional_contract(alarm_api):
     _, control = alarm_api
     control.saveNotificationSetting("patient-a", "morning", 18, 55)
@@ -123,12 +181,27 @@ def test_control_hour_only_disable_keeps_upstream_positional_contract(alarm_api)
     assert (saved["hour"], saved["minute"], saved["is_enabled"]) == (19, 0, False)
 
 
+# 함수이름: test_disable_conflict_recovery_keeps_new_time
+# 함수역할:
+# - 설정 삽입 경합을 복구할 때도 새 시·분과 비활성 상태를 한 행에 저장하는지 확인한다.
+# 매개변수:
+# - alarm_api: tuple[TestClient, SetNotification]; 인증된 환자의 알림 HTTP 클라이언트와 컨트롤.
+# 반환값:
+# - None.
 def test_disable_conflict_recovery_keeps_new_time(alarm_api):
     _, control = alarm_api
     control.saveNotificationSetting("patient-a", "morning", 18, 55)
     find = control._find_setting
     calls = 0
 
+    # 함수이름: miss_first
+    # 함수역할:
+    # - 첫 설정 조회만 누락으로 반환하여 기존 행 삽입 충돌 후 재조회 경로를 재현한다.
+    # 매개변수:
+    # - patient: str; 설정 소유 환자.
+    # - slot: str; 알림 시간대 키.
+    # 반환값:
+    # - 첫 호출은 None, 이후에는 실제 설정 조회 결과.
     def miss_first(patient, slot):
         nonlocal calls
         calls += 1
@@ -142,6 +215,13 @@ def test_disable_conflict_recovery_keeps_new_time(alarm_api):
     assert control.db.query(_MedicationAlarm).count() == 1
 
 
+# 함수이름: test_failed_commit_rolls_back_both_time_and_enabled_state
+# 함수역할:
+# - 커밋 실패는 500으로 반환하고 시간 변경과 알림 해제를 함께 롤백하는지 확인한다.
+# 매개변수:
+# - alarm_api: tuple[TestClient, SetNotification]; 인증된 환자의 알림 HTTP 클라이언트와 컨트롤.
+# 반환값:
+# - None.
 def test_failed_commit_rolls_back_both_time_and_enabled_state(alarm_api):
     _, control = alarm_api
     control.saveNotificationSetting("patient-a", "morning", 18, 55)

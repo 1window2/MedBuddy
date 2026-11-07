@@ -1,3 +1,5 @@
+# File Name: manage_caregiver_alert_control.py
+# Role: Authorizes missed-dose alert actions and persists idempotent snooze deliveries.
 """Authorize missed-dose actions and schedule durable, idempotent deliveries."""
 
 import hashlib
@@ -19,13 +21,25 @@ from repositories.patient_caregiver_link_repository import (
 )
 
 
+# Class Name: ManageCaregiverAlert
+# Role: Coordinates actions on caregiver-owned missed-dose deliveries without changing medication records.
+# Responsibilities: Recheck active links and current missed status, deduplicate snoozes and expose eligible demo deliveries.
+# Attributes: db (Session) is the transaction session; link_repository resolves current patient-caregiver links.
 class ManageCaregiverAlert:
     """Keep account authority on the server; never update medication or alarm rows."""
 
+    # Function Name: __init__
+    # Description: Binds delivery actions and link authorization to the same database session.
+    # Parameters: db (Session) is the caller's session.
+    # Returns: None; does not query or commit.
     def __init__(self, db: Session) -> None:
         self.db = db
         self.link_repository = PatientCaregiverLinkRepository(db)
 
+    # Function Name: requireSource
+    # Description: Resolves an owned missed-dose delivery, its original event and an active caregiver link.
+    # Parameters: alert_id (int) identifies this delivery; caregiver_hash (str) is the authorized caller's scope.
+    # Returns: (delivery, original event, link); HTTP 404 for missing/foreign deliveries or inactive links, 410 for an expired original.
     def requireSource(self, alert_id: int, caregiver_hash: str):
         """Resolve an owned delivery and its original event under an active link."""
         row = self.db.get(_CaregiverAlertOutbox, alert_id)
@@ -45,6 +59,10 @@ class ManageCaregiverAlert:
             raise HTTPException(410, "The original caregiver alert has expired.")
         return row, root, link
 
+    # Function Name: requireActionable
+    # Description: Requires an already-released delivery whose date, link, settings, deadline and incomplete slot still permit action.
+    # Parameters: row (_CaregiverAlertOutbox) is a previously authorized missed-dose event.
+    # Returns: None when actionable; raises HTTP 409 otherwise. Does not send a push.
     def requireActionable(self, row: _CaregiverAlertOutbox) -> None:
         """Only already released, still-current missed events accept a new action."""
         released = row.status in ("sent", "processing") or (
@@ -57,6 +75,10 @@ class ManageCaregiverAlert:
                 )):
             raise HTTPException(409, "This missed-dose alert is no longer actionable.")
 
+    # Function Name: context
+    # Description: Revalidates delivery ownership and builds action data with both root-event and current-delivery identities.
+    # Parameters: row (_CaregiverAlertOutbox) supplies the delivery ID and caregiver scope.
+    # Returns: String-valued action context; source/link validation errors propagate.
     def context(self, row: _CaregiverAlertOutbox) -> dict[str, str]:
         """Carry both the original event and this delivery through FCM/local actions."""
         row, root, link = self.requireSource(int(row.id), str(row.caregiver_hash))
@@ -69,6 +91,10 @@ class ManageCaregiverAlert:
             "link_id": str(link.id),
         }
 
+    # Function Name: snooze
+    # Description: Reuses one child per delivered event or commits a new actionable child available ten minutes later, recovering duplicate-insert races.
+    # Parameters: alert_id (int) is the source delivery; caregiver_hash (str) is its authorized owner.
+    # Returns: Success receipt with created flag; authority/actionability errors and unrecoverable database errors propagate.
     def snooze(self, alert_id: int, caregiver_hash: str) -> dict[str, object]:
         """One child per delivered event; a delivered child can itself be snoozed."""
         source, _, _ = self.requireSource(alert_id, caregiver_hash)
@@ -94,12 +120,20 @@ class ManageCaregiverAlert:
         self.db.commit()
         return self._receipt(row, created=created)
 
+    # Function Name: _receipt
+    # Description: Formats a snooze delivery without exposing medication data.
+    # Parameters: row (_CaregiverAlertOutbox) supplies persisted delivery fields; created (bool) distinguishes creation from replay.
+    # Returns: Success envelope with alert/event IDs, status and UTC availability timestamp.
     def _receipt(self, row: _CaregiverAlertOutbox, *, created: bool) -> dict[str, object]:
         return {"success": True, "created": created, "data": {
             "alert_id": row.id, "event_id": row.event_key, "status": row.status,
             "available_at": row.available_at.isoformat() + "Z",
         }}
 
+    # Function Name: localDeliveries
+    # Description: Reads up to 200 recent sent deliveries for today and excludes events that no longer have valid actions or source links.
+    # Parameters: caregiver_hash (str) is the authorized scope; the router must restrict this operation to disabled-auth demo mode.
+    # Returns: Action contexts in descending delivery order; skips HTTP validation failures and propagates database errors.
     def localDeliveries(self, caregiver_hash: str) -> list[dict[str, str]]:
         """Expose released server events for the explicitly disabled-auth demo only."""
         rows = self.db.query(_CaregiverAlertOutbox).filter(

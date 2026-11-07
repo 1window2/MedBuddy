@@ -88,7 +88,7 @@ class _CaregiverNotification(Base):
 # 속성:
 # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
 # - caregiver_hash (str): 환자와 연동된 보호자 계정 식별자.
-# - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
+# - slot_key (str): morning, lunch, evening, bedtime 또는 필요시 복용 알림용 as_needed 키.
 # - notification_enabled (bool): 해당 알림 설정의 활성 여부.
 # - notification_type (str): 기존 enable/disable 별칭을 포함하는 지원 알림 모드.
 # - deadline_hour (int | None): 선택적인 미복용 마감 시.
@@ -110,7 +110,7 @@ class CaregiverNotification(BaseModel):
     # - deadline_hour (int | None): 선택적인 미복용 마감 시.
     # - deadline_minute (int | None): 선택적인 미복용 마감 분.
     # 반환값:
-    # - 갱신된 CaregiverNotification 복사본; 원본은 변경하지 않는다.
+    # - 갱신된 CaregiverNotification 복사본. 원본은 유지하며 잘못된 모드, 마감 누락, 필요시 복용의 마감 모드는 ValueError이다.
     def updateNotificationSetting(
         self,
         notification_option: str | bool,
@@ -214,7 +214,7 @@ def normalize_notification_mode(notification_option: str | bool) -> str:
 # 함수역할:
 # - 알림 시간대의 공백과 대소문자를 정리하고 지원 목록에 포함되는지 확인한다.
 # 매개변수:
-# - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
+# - slot_key (str): morning, lunch, evening, bedtime 또는 필요시 복용 알림용 as_needed 키.
 # 반환값:
 # - 지원 시간대 키; 잘못된 값은 ValueError.
 def normalize_notification_slot(slot_key: str) -> str:

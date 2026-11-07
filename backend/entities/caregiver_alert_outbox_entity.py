@@ -28,17 +28,10 @@ CAREGIVER_ALERT_EVENT_AS_NEEDED_COMPLETED = "as_needed_dose_completed"
 CAREGIVER_ALERT_EVENT_LATE_LINK_COMPLETED = "dose_completed_late_link"
 
 
-# 클래스명: _CaregiverAlertOutbox
-# 역할:
-# - 복약 완료와 같은 트랜잭션에서 생성되는 보호자 알림 전송 요청이다.
-# 주요 책임:
-# - 서버 재시작이나 일시적인 푸시 장애에도 전송 요청을 보존한다.
-# - 같은 환자·날짜·시간대 이벤트가 중복 전송되지 않게 식별한다.
-# - 재시도 횟수와 다음 시도 시각, 종료 상태를 기록한다.
-# 속성:
-# - event_key (String(64)): 환자·날짜·시간대 완료 이벤트의 중복 방지 키.
-# - patient_hash (String): 작업 대상 환자의 데이터 소유 범위 식별자.
-# - slot_key (String(32)): morning, lunch, evening, bedtime 중 복용 시간대 키.
+# Class Name: _CaregiverAlertOutbox
+# Role: Persist caregiver alerts for deduplicated, retryable delivery.
+# Responsibilities: Track event identity, optional recipient targeting, availability, processing leases and delivery outcomes.
+# Attributes: id/event_key identify the row/event; patient_hash, caregiver_hash, slot_key, event_type and schedule_date define scope; status, attempt_count, available_at, processing_started_at, created_at, sent_at and last_error track delivery.
 class _CaregiverAlertOutbox(Base):
     __tablename__ = "caregiver_alert_outbox"
     __table_args__ = (

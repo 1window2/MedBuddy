@@ -25,6 +25,10 @@ from services.caregiver_alert_outbox_insert import (
 )
 
 
+# Function Name: missed_event_key
+# Description: Hashes the original missed-dose identity independently of delivery attempts and snoozes.
+# Parameters: caregiver_hash, patient_hash (str) are participant scopes; schedule_date (date) is the event day; slot_key (str) identifies the slot.
+# Returns: Stable SHA-256 hexadecimal event key (str).
 def missed_event_key(caregiver_hash: str, patient_hash: str, schedule_date, slot_key: str) -> str:
     """Return the stable original missed-dose identity, independent of deliveries."""
     source = f"missed_deadline:{caregiver_hash}:{patient_hash}:{schedule_date.isoformat()}:{slot_key}"
@@ -44,6 +48,10 @@ def missed_event_key(caregiver_hash: str, patient_hash: str, schedule_date, slot
 # - check_schedule: Schedule control used to evaluate the current completion state.
 class QueueMissedDoseAlerts:
 
+    # Function Name: __init__
+    # Description: Binds outbox creation and current schedule evaluation to the same session.
+    # Parameters: db (Session) is the transaction session; check_schedule (CheckSchedule | None) overrides the default schedule control.
+    # Returns: None; no events are evaluated or written during construction.
     def __init__(
         self,
         db: Session,

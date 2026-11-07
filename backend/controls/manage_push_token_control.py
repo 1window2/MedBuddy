@@ -34,14 +34,11 @@ class ManagePushToken:
         self.db = db
 
     # 함수이름: registerPushToken
-    # 함수역할:
-    # - 기기 토큰을 현재 인증 사용자에게 등록하고 기존 토큰이면 소유권과 상태를 갱신한다.
-    # 매개변수:
-    # - user_hash (str): 현재 인증 사용자의 식별 hash
-    # - token (str): Firebase Cloud Messaging이 발급한 기기 토큰
-    # - platform (str): 토큰이 발급된 모바일 플랫폼
-    # 반환값:
-    # - 등록 성공 여부와 활성 상태
+    # 함수역할: 토큰을 현재 계정에 등록·재활성화하고 새 등록 세대를 발급하며 취소된 세션에 속한 오래된 다른 토큰을 비활성화한다.
+    # 매개변수: user_hash (str)는 인증 계정, token (str)은 FCM 토큰, platform (str)은 기기 플랫폼이다.
+    #   supports_caregiver_actions·supports_slot_check_actions (bool)는 행동 지원이며 복용 확인 행동은 Android만 허용한다.
+    #   sessions_valid_after (datetime | None)는 다른 토큰의 오래된 등록을 차단할 세션 유효 기준이다.
+    # 반환값: platform·enabled 성공 응답. commit·refresh 오류는 전달하며 입력 형식·권한은 상위 경계에서 검증한다.
     def registerPushToken(
         self,
         user_hash: str,

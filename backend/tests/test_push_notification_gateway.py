@@ -10,6 +10,13 @@ from firebase_admin import messaging
 from boundaries.push_notification_boundary import FirebasePushNotificationBoundary
 
 
+# 함수이름: gateway
+# 함수역할:
+# - Firebase 초기화 없이 앱 대역을 주입한 경계를 만들어 전송 메시지 구성을 검사한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - FirebasePushNotificationBoundary; 전송 함수만 테스트에서 교체할 경계.
 @pytest.fixture
 def gateway():
     boundary = FirebasePushNotificationBoundary.__new__(FirebasePushNotificationBoundary)
@@ -17,6 +24,15 @@ def gateway():
     return boundary
 
 
+# 함수이름: test_completion_retry_reuses_platform_identifiers_but_new_event_is_distinct
+# 함수역할:
+# - 완료 재시도는 같은 Android tag·APNs collapse ID를 쓰고 새 이벤트는 분리하며 부분 실패와 원본 데이터를 보존하는지 확인한다.
+# 매개변수:
+# - gateway: FirebasePushNotificationBoundary; 실제 Firebase 초기화 없이 만든 전송 경계.
+# - kind: str; 정기 슬롯 또는 필요시 복용 완료 종류.
+# - slot: str; 알림 복용 슬롯.
+# 반환값:
+# - None.
 @pytest.mark.parametrize(("kind", "slot"), [
     ("caregiver_dose_completed", "as_needed"),
     *[("caregiver_slot_completed", slot) for slot in ("morning", "lunch", "evening", "bedtime")],
@@ -57,6 +73,16 @@ def test_completion_retry_reuses_platform_identifiers_but_new_event_is_distinct(
     assert payload == original
 
 
+# 함수이름: test_invalid_or_missing_completion_key_leaves_platform_identifiers_unset
+# 함수역할:
+# - 잘못된 완료 키는 기기별 식별자로 사용하지 않고 원래 알림·데이터를 유지하는지 확인한다.
+# 매개변수:
+# - gateway: FirebasePushNotificationBoundary; 실제 Firebase 초기화 없이 만든 전송 경계.
+# - event_key: str | None; 누락되거나 잘못된 완료 이벤트 키.
+# - kind: str; 정기 슬롯 또는 필요시 복용 완료 종류.
+# - slot: str; 알림 복용 슬롯.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("event_key", [None, "", "a" * 63, "a" * 65, "A" * 64, "g" * 64, "a" * 64 + "\n", " " + "a" * 64])
 @pytest.mark.parametrize(("kind", "slot"), [
     ("caregiver_dose_completed", "as_needed"), ("caregiver_slot_completed", "morning"),
@@ -75,6 +101,14 @@ def test_invalid_or_missing_completion_key_leaves_platform_identifiers_unset(gat
     assert (message.notification.title, message.notification.body) == ("title", "body")
 
 
+# 함수이름: test_non_prn_payload_behavior_is_unchanged_even_with_valid_key
+# 함수역할:
+# - 완료 종류·슬롯 조합이 대상이 아니면 유효한 키가 있어도 기존 일반·동작 알림 구성을 유지하는지 확인한다.
+# 매개변수:
+# - gateway: FirebasePushNotificationBoundary; 실제 Firebase 초기화 없이 만든 전송 경계.
+# - payload: dict; 완료 식별자 적용 대상이 아닌 알림 데이터.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("payload", [
     {"type": "caregiver_slot_completed", "slot_key": "as_needed"},
     {"type": "caregiver_slot_completed", "slot_key": "unknown"},
@@ -104,6 +138,13 @@ def test_non_prn_payload_behavior_is_unchanged_even_with_valid_key(gateway, payl
         assert (message.notification.title, message.notification.body) == ("title", "body")
 
 
+# 함수이름: test_chat_updates_one_notification_per_conversation_with_count
+# 함수역할:
+# - 같은 대화의 푸시는 Android 알림 tag와 APNs thread ID를 유지하면서 메시지 수를 갱신하는지 확인한다.
+# 매개변수:
+# - gateway: FirebasePushNotificationBoundary; 실제 Firebase 초기화 없이 만든 전송 경계.
+# 반환값:
+# - None.
 def test_chat_updates_one_notification_per_conversation_with_count(gateway):
     response = SimpleNamespace(success_count=1, responses=[SimpleNamespace(success=True)])
     tag = "medbuddy-chat-" + "a1" * 16

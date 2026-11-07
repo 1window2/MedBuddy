@@ -51,6 +51,8 @@ from entities.user_setting_entity import _UserSetting
 
 # Class Name: _RecordingPushBoundary
 # Role: Captures push requests without contacting Firebase.
+# Responsibilities:
+# - Record notification payloads and report successful delivery to every supplied token.
 # Attributes:
 # - calls: Ordered push request payloads observed by the test.
 class _RecordingPushBoundary:
@@ -86,6 +88,10 @@ class _RecordingPushBoundary:
 
 # Class Name: MissedDoseAlertTest
 # Role: Exercises queue idempotency and delivery-time state revalidation.
+# Responsibilities:
+# - Check one-time queuing and suppress delivery when completion makes an already queued alert stale.
+# Attributes:
+# - engine (Engine): isolated SQLite database. db (Session): test session. schedule_date (date), current_time (datetime): fixed deadline inputs. medication (_SavedMedication): seeded lunch dose.
 class MissedDoseAlertTest(unittest.TestCase):
     # Function Name: setUp
     # Description: Creates an active caregiver link, deadline, token, and medication.
@@ -163,10 +169,13 @@ class MissedDoseAlertTest(unittest.TestCase):
         self.db.close()
         self.engine.dispose()
 
-    # Function Name: test_due_missed_slot_is_queued_once_and_delivered
-    # Description: Verifies one due event and one correctly routed caregiver push.
-    # Parameters: None.
-    # Returns: None; assertions fail the test when behavior differs.
+    # 함수이름: test_due_missed_slot_is_queued_once_and_delivered
+    # 함수역할:
+    # - 기한이 지난 미복용 슬롯에 이벤트를 한 번만 생성하고 올바른 보호자에게 푸시를 전달하는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - None.
     def test_due_missed_slot_is_queued_once_and_delivered(self) -> None:
         queue = QueueMissedDoseAlerts(self.db)
 
@@ -235,9 +244,22 @@ class MissedDoseAlertTest(unittest.TestCase):
         self.assertEqual(push.calls, [])
 
 
+# 클래스명: CaregiverMissedActionTest
+# 역할: 실제 저장 행과 전달 작업자로 미복용 알림 동작의 권한·지연·재시도를 검사한다.
+# 주요 책임:
+# - 재알림과 채팅 요청의 멱등성, 전달 전 재검증 및 이전 복구를 확인한다.
+# 속성:
+# - now (datetime): 고정 UTC 시각; root (_CaregiverAlertOutbox): 원본 알림; actions (ManageCaregiverAlert): 동작 컨트롤; DB·복용 자료는 부모 클래스 상속.
 class CaregiverMissedActionTest(MissedDoseAlertTest):
     """Exercise real rows, action authorization and the existing delivery worker."""
 
+    # Function Name: setUp
+    # Description:
+    # - Extends the parent scene with fixed action clocks, one delivered missed-dose source and an action control.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def setUp(self):
         super().setUp()
         self.now = self.current_time.astimezone(UTC).replace(tzinfo=None)
@@ -260,6 +282,13 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     test_due_missed_slot_is_queued_once_and_delivered = None
     test_completion_after_queue_suppresses_stale_delivery = None
 
+    # Function Name: complete
+    # Description:
+    # - Persists completion of the fixture medication in the lunch slot on its schedule date.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def complete(self):
         self.db.add(_MedicationCompletion(
             saved_medication_id=self.medication.id, patient_hash="patient-a",
@@ -267,9 +296,23 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         ))
         self.db.commit()
 
+    # Function Name: snooze
+    # Description:
+    # - Requests a ten-minute snooze of the original alert as its authorized caregiver.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - dict; snooze receipt, or HTTPException when the action is no longer valid.
     def snooze(self):
         return self.actions.snooze(self.root.id, "caregiver-a")
 
+    # Function Name: chat
+    # Description:
+    # - Sends a lunch-check message tied to the source alert, applying supplied overrides for authorization tests.
+    # Parameters:
+    # - overrides: dict; fields replacing the default alert-linked message request.
+    # Returns:
+    # - Chat send result; invalid source or scope raises HTTPException.
     def chat(self, **overrides):
         values = dict(
             link_id=self.db.query(_PatientCaregiverLink).one().id,
@@ -280,6 +323,14 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         values.update(overrides)
         return ManageLinkedChat(self.db).send_message(**values)
 
+    # Function Name: deliver
+    # Description:
+    # - Processes the selected event ten minutes later, checking its expected outcome and stale-event dead-letter reason.
+    # Parameters:
+    # - row_id: int; queued alert ID.
+    # - outcome: str; expected sent or skipped processing result.
+    # Returns:
+    # - list[dict]; captured push calls.
     def deliver(self, row_id, outcome="sent"):
         push = _RecordingPushBoundary()
         with patch("controls.process_caregiver_alert_outbox_control.utc_now",
@@ -294,6 +345,13 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
             self.assertEqual(row.last_error, "MissedDoseNoLongerCurrent")
         return push.calls
 
+    # Function Name: test_repeat_snooze_is_one_new_row_without_completion_or_setting_changes
+    # Description:
+    # - Requires repeated snooze requests to reuse one child due in ten minutes without changing completion or notification settings.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_repeat_snooze_is_one_new_row_without_completion_or_setting_changes(self):
         setting = self.db.query(_CaregiverNotification).one().slot_settings
         first, repeat = self.snooze(), self.snooze()
@@ -307,6 +365,13 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         self.assertEqual(child.available_at, self.now + timedelta(minutes=10))
         self.assertEqual(self.root.status, "sent")
 
+    # Function Name: test_snooze_child_cannot_be_snoozed_until_released_then_has_new_cycle
+    # Description:
+    # - Rejects snoozing an unreleased child; after delivery a new cycle gets its own event ID while retaining the original source.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_snooze_child_cannot_be_snoozed_until_released_then_has_new_cycle(self):
         child = self.snooze()["data"]["alert_id"]
         with self.assertRaises(HTTPException):
@@ -321,12 +386,26 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         self.assertEqual(len({c["source_event_id"] for c in contexts}), 1)
         self.assertEqual(len({c["event_id"] for c in contexts}), 3)
 
+    # Function Name: test_completion_within_ten_minutes_suppresses_fcm_and_retry_is_idempotent
+    # Description:
+    # - Requires completion during the snooze delay to suppress delivery while duplicate snooze remains idempotent.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_completion_within_ten_minutes_suppresses_fcm_and_retry_is_idempotent(self):
         receipt = self.snooze()
         self.complete()
         self.assertFalse(self.snooze()["created"])
         self.assertEqual(self.deliver(receipt["data"]["alert_id"], outcome="skipped"), [])
 
+    # Function Name: test_completed_source_rejects_both_new_actions
+    # Description:
+    # - Requires a completed source to reject new snooze and chat actions with 409 and persist no message.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_completed_source_rejects_both_new_actions(self):
         self.complete()
         for action in (self.snooze, self.chat):
@@ -335,6 +414,13 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
             self.assertEqual(error.exception.status_code, 409)
         self.assertEqual(self.db.query(_ChatMessage).count(), 0)
 
+    # Function Name: test_next_day_rejects_actions_and_suppresses_queued_delivery
+    # Description:
+    # - Requires next-day or stale-date actions to fail and queued missed-dose delivery to be abandoned.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_next_day_rejects_actions_and_suppresses_queued_delivery(self):
         child = self.snooze()["data"]["alert_id"]
         with patch("controls.dispatch_caregiver_alert_control.application_now",
@@ -347,6 +433,13 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         with self.assertRaises(HTTPException):
             self.snooze()
 
+    # Function Name: test_unlinked_source_rejects_actions_and_queued_delivery
+    # Description:
+    # - Requires unlinking to reject both actions and suppress the already queued child notification.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_unlinked_source_rejects_actions_and_queued_delivery(self):
         child = self.snooze()["data"]["alert_id"]
         self.db.query(_PatientCaregiverLink).one().linked = False
@@ -356,6 +449,13 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
                 action()
         self.assertEqual(self.deliver(child, outcome="skipped"), [])
 
+    # Function Name: test_owner_and_slot_cannot_be_forged
+    # Description:
+    # - Rejects forged caregiver ownership, schedule slot or conversation ID for alert actions.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_owner_and_slot_cannot_be_forged(self):
         with self.assertRaises(HTTPException):
             self.actions.snooze(self.root.id, "patient-a")
@@ -363,6 +463,13 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
             with self.assertRaises(HTTPException):
                 self.chat(**overrides)
 
+    # Function Name: test_chat_retries_and_snooze_cycles_share_original_message
+    # Description:
+    # - Requires chat retries and later snooze cycles to reuse the original message even after completion.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_chat_retries_and_snooze_cycles_share_original_message(self):
         first = self.chat()
         self.assertTrue(first.created)
@@ -376,18 +483,39 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         self.assertEqual(self.db.query(_ChatMessage).count(), 1)
         self.assertEqual(first.message.context_payload["schedule_context"]["schedule_date"], "2026-09-09")
 
+    # Function Name: test_delivery_rechecks_global_preference_and_active_tokens
+    # Description:
+    # - Requires delivery-time global opt-out to abandon the pending child without a push.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_delivery_rechecks_global_preference_and_active_tokens(self):
         child = self.snooze()["data"]["alert_id"]
         self.db.add(_UserSetting(user_hash="caregiver-a", caregiver_notifications_enabled=False))
         self.db.commit()
         self.assertEqual(self.deliver(child, outcome="skipped"), [])
 
+    # Function Name: test_no_active_tokens_means_no_fcm
+    # Description:
+    # - Requires a released child with no active device token to finish without calling FCM.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_no_active_tokens_means_no_fcm(self):
         child = self.snooze()["data"]["alert_id"]
         self.db.query(_DevicePushToken).one().enabled = False
         self.db.commit()
         self.assertEqual(self.deliver(child), [])
 
+    # Function Name: test_capable_devices_get_context_and_legacy_devices_keep_os_notification
+    # Description:
+    # - Requires action-capable Android devices to receive source context while legacy devices retain ordinary notification data.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_capable_devices_get_context_and_legacy_devices_keep_os_notification(self):
         self.db.add(_DevicePushToken(user_hash="caregiver-a", token="new-device-token", platform="android",
                                      enabled=True, supports_caregiver_actions=True))
@@ -401,6 +529,13 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         self.assertNotEqual(modern["data"]["alert_id"], str(self.root.id))
         self.assertEqual(modern["data"]["schedule_date"], "2026-09-09")
 
+    # Function Name: test_local_delivery_reader_only_exposes_released_current_events
+    # Description:
+    # - Exposes only released, still-current events to local delivery readers and removes them after completion.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_local_delivery_reader_only_exposes_released_current_events(self):
         child = self.snooze()["data"]["alert_id"]
         self.assertEqual(len(self.actions.localDeliveries("caregiver-a")), 1)
@@ -410,6 +545,13 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         self.complete()
         self.assertEqual(self.actions.localDeliveries("caregiver-a"), [])
 
+    # 함수이름: test_migration_alone_recovers_missing_capability_and_local_snooze_delivery
+    # 함수역할:
+    # - 과거 스키마의 누락 기능으로 실패한 알림이 실제 이전 후 복구되며 토큰 없이도 로컬 전달·재알림 주기를 유지하는지 확인한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - None.
     def test_migration_alone_recovers_missing_capability_and_local_snooze_delivery(self):
         from alembic import command
         from alembic.config import Config
@@ -468,6 +610,13 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
             self.assertTrue(self.actions.snooze(child_id, "caregiver-a")["created"])
         self.assertEqual(self.db.query(_MedicationCompletion).count(), 0)
 
+    # Function Name: test_partial_delivery_failure_still_allows_received_notification_action
+    # Description:
+    # - Allows an action after partial delivery failure because some devices may already have received the alert.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_partial_delivery_failure_still_allows_received_notification_action(self):
         self.root.status = "failed"
         self.root.attempt_count = 1
@@ -475,6 +624,13 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         self.db.commit()
         self.assertTrue(self.snooze()["created"])
 
+    # Function Name: test_snooze_http_uses_verified_principal_and_checks_auth_app_check
+    # Description:
+    # - Checks App Check, authentication and verified ownership for HTTP snooze, including idempotent retries and the absent local-delivery route.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_snooze_http_uses_verified_principal_and_checks_auth_app_check(self):
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
@@ -502,6 +658,13 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
                 principal = principal.model_copy(update={"user_hash": "patient-a"})
                 self.assertEqual(client.post(path, params={"user_hash": "caregiver-a"}).status_code, 404)
 
+    # Function Name: test_chat_http_broadcasts_and_queues_durable_push_once
+    # Description:
+    # - Requires a new HTTP check request to broadcast and queue one durable push; retries consume admission quota but create neither again.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_chat_http_broadcasts_and_queues_durable_push_once(self):
         from fastapi import FastAPI
         from fastapi.testclient import TestClient

@@ -39,6 +39,10 @@ _MAX_RETRY_DELAY_SECONDS = 15 * 60
 _MAX_DELIVERY_ATTEMPTS = 8
 
 
+# Function Name: _delivery_error_summary
+# Description: Keeps only the exception class and allowlisted database codes or missing-table/column diagnostics, omitting SQL parameters and patient data.
+# Parameters: exc (Exception) is a failed delivery's exception.
+# Returns: Diagnostic string capped at 500 characters; arbitrary exception messages are not included.
 def _delivery_error_summary(exc: Exception) -> str:
     """Expose schema diagnostics without logging SQL parameters, tokens or patient data."""
     summary = type(exc).__name__
@@ -55,10 +59,9 @@ def _delivery_error_summary(exc: Exception) -> str:
 
 
 # 클래스명: _RetryablePushDeliveryError
-# 역할:
-# - 유효한 일부 기기에 푸시가 전달되지 않아 아웃박스 재시도가 필요함을 표시한다.
-# 주요 책임:
-# - 일부 유효 기기 전송 실패를 아웃박스 재시도 상태로 전달한다.
+# 역할: 재시도 가능한 푸시 전송 실패를 아웃박스 처리기에 전달한다.
+# 주요 책임: 일시적 전송 실패를 재시도 경로로 분류한다.
+# 속성: 상속받은 args에 실패 설명을 보관한다.
 class _RetryablePushDeliveryError(RuntimeError):
     pass
 
@@ -77,14 +80,10 @@ class _RetryablePushDeliveryError(RuntimeError):
 # - push_boundary (PushNotificationBoundary): 인증 모드에 맞춰 선택된 기기 푸시 전송 경계.
 # - dispatcher (DispatchCaregiverAlert): 이 처리기가 다루는 모든 요청이 함께 쓰는 보호자 알림 전송 제어.
 class ProcessCaregiverAlertOutbox:
-    # 함수이름: __init__
-    # 함수역할:
-    # - 완료 알림 아웃박스를 처리할 DB 세션과 푸시 전송 경계를 연결한다.
-    # 매개변수:
-    # - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
-    # - push_boundary (PushNotificationBoundary): 인증 모드에 맞춰 선택된 기기 푸시 전송 경계.
-    # 반환값:
-    # - 없음.
+    # Function Name: __init__
+    # Description: Bind the outbox session and push adapter and create the caregiver dispatcher using the same dependencies.
+    # Parameters: db (Session) owns outbox state; push_boundary (PushNotificationBoundary) delivers notifications.
+    # Returns: None.
     def __init__(
         self,
         db: Session,
@@ -97,14 +96,10 @@ class ProcessCaregiverAlertOutbox:
             push_boundary=push_boundary,
         )
 
-    # 함수이름: _claimable_condition
-    # 함수역할:
-    # - 대기·실패 상태로 재시도 시각이 된 요청과 처리 중에 시간 제한을 넘겨 멈춘 요청을 고르는 조건을 만든다.
-    # - 후보 조회와 선점 갱신이 같은 기준을 쓰게 한다.
-    # 매개변수:
-    # - now (datetime): 재시도 가능 시각과 처리 중 시간 제한을 비교할 기준 UTC 시각.
-    # 반환값:
-    # - 지금 선점할 수 있는 아웃박스 행을 고르는 SQL 조건.
+    # Function Name: _claimable_condition
+    # Description: Build the SQL condition for available pending/failed rows or processing rows whose lease has timed out.
+    # Parameters: now (datetime) is the UTC availability and lease-expiry reference.
+    # Returns: ColumnElement[bool] without executing a query.
     @staticmethod
     def _claimable_condition(now: datetime) -> ColumnElement[bool]:
         stale_before = now - _PROCESSING_TIMEOUT
@@ -128,13 +123,10 @@ class ProcessCaregiverAlertOutbox:
             ),
         )
 
-    # 함수이름: processDue
-    # 함수역할:
-    # - 지금 처리 가능한 알림 요청을 제한된 개수만큼 전송한다.
-    # 매개변수:
-    # - limit (int): 한 번에 처리할 최대 요청 수
-    # 반환값:
-    # - 처리 결과별 요청 개수
+    # Function Name: processDue
+    # Description: Select the oldest claimable outbox IDs and process each through the single-row delivery flow.
+    # Parameters: limit (int) caps candidates, clamped to 1 through 200.
+    # Returns: dict[str, int] of sent, failed and skipped outcomes; selection or unhandled processing failures propagate.
     def processDue(self, limit: int = 50) -> dict[str, int]:
         now = utc_now()
         candidate_ids = [
@@ -345,14 +337,10 @@ class ProcessCaregiverAlertOutbox:
             )
             return "failed"
 
-    # 함수이름: _mark_sent
-    # 함수역할:
-    # - 전달이 끝난 알림 요청을 전송 완료로 기록하고 바로 커밋한다.
-    # - 전송 전에 세션을 반환해 만료된 행을 다시 읽지 않도록 기본키 조건의 UPDATE 한 문장으로 쓴다.
-    # 매개변수:
-    # - outbox_id (int): 이 처리기가 선점해 전송을 마친 아웃박스 기본키.
-    # 반환값:
-    # - 없음.
+    # Function Name: _mark_sent
+    # Description: Set the outbox row to sent, record the current UTC send time, clear its processing timestamp, and commit.
+    # Parameters: outbox_id (int) identifies the processed event.
+    # Returns: None; database failures propagate.
     def _mark_sent(self, outbox_id: int) -> None:
         self.db.execute(
             update(_CaregiverAlertOutbox)
