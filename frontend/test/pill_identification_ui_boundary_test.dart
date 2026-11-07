@@ -720,6 +720,44 @@ Future<void> _reviewAndConfirm(
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  testWidgets('후보 확인 연속 호출은 검토창 하나만 열고 취소 후 다시 열린다', (tester) async {
+    _setTallPillViewport(tester);
+    var saves = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(),
+          control: _FakeIdentifyPill(),
+          onSaveRequested: (_, _) async {
+            saves++;
+            return const MedicationSaveResult(
+              status: MedicationSaveStatus.saved,
+              message: 'saved',
+            );
+          },
+        ),
+      ),
+    );
+    await _addPillPhoto(tester, 0);
+    await _tapVisible(tester, find.byKey(const Key('identify-pill-button')));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('페라트라정2.5밀리그램(레트로졸)'));
+    await tester.pump();
+    final confirm = _confirmButton(tester).onPressed!;
+    confirm();
+    confirm();
+    await tester.pumpAndSettle();
+    final review = find.byKey(const Key('schedule-review-confirm'));
+    Navigator.of(tester.element(review)).pop();
+    await tester.pumpAndSettle();
+    expect(review, findsNothing);
+    expect(saves, 0);
+    expect(_confirmButton(tester).onPressed, isNotNull);
+    await _reviewAndConfirm(tester);
+    expect(saves, 1);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final language in ['ko', 'en']) {
     // 함수이름: 빈 알약 입력 추가 테스트
     // 함수역할: 사진 없이도 앞·뒷면 입력을 10개까지 추가하고 새 영역으로 이동하는지 확인한다.

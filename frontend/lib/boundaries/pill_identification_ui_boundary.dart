@@ -174,6 +174,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   bool _isAnalyzing = false;
   bool _isSelectingImage = false;
   bool _isSaving = false;
+  bool _isConfirmingCandidates = false;
   int _analysisCompletedCount = 0;
   int _analysisTotalCount = 0;
   int _retryingRequestCount = 0;
@@ -193,7 +194,8 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get _isBusy => _isAnalyzing || _isSelectingImage || _isSaving;
+  bool get _isBusy =>
+      _isAnalyzing || _isSelectingImage || _isSaving || _isConfirmingCandidates;
 
   // 함수이름: _isBatchSaved
   // 함수역할: 작업이 하나 이상 있고 모든 작업이 저장됐는지 확인한다. 저장 여부는 작업별 isSaved만 근거로 삼는다.
@@ -1550,6 +1552,18 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   // - text (_PillIdentificationText): 해당 화면 구역의 언어별 표시 문구.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _confirmCandidates(_PillIdentificationText text) async {
+    if (_isBusy || !mounted || ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
+    setState(() => _isConfirmingCandidates = true);
+    try {
+      await _reviewCandidates(text);
+    } finally {
+      if (mounted) setState(() => _isConfirmingCandidates = false);
+    }
+  }
+
+  Future<void> _reviewCandidates(_PillIdentificationText text) async {
     final pendingDrafts = <_PillPhotoDraft>[];
     final candidates = <PillIdentificationCandidate>[];
     for (final draft in _drafts) {
