@@ -126,6 +126,20 @@ class _MedicationScheduleReviewSheetState
     extends State<_MedicationScheduleReviewSheet> {
   late List<MedicationSchedule> _schedules;
   String _validationMessage = '';
+  bool _isEditing = false;
+  bool _isClosing = false;
+
+  bool get _canAct =>
+      mounted &&
+      !_isEditing &&
+      !_isClosing &&
+      ModalRoute.of(context)?.isCurrent == true;
+
+  void _closeReview([List<MedicationSchedule>? result]) {
+    if (!_canAct) return;
+    _isClosing = true;
+    Navigator.pop(context, result);
+  }
 
   // 함수이름: initState
   // 함수역할: 호출자가 전달한 일정을 별도 수정 가능한 목록으로 복사한다.
@@ -163,7 +177,7 @@ class _MedicationScheduleReviewSheetState
                   // 매개변수:
                   // - 없음.
                   // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => _closeReview(),
                   icon: const Icon(Icons.close),
                 ),
                 const SizedBox(width: 4),
@@ -257,23 +271,27 @@ class _MedicationScheduleReviewSheetState
   // - index (int): 대상 약품·사진·행의 0부터 시작하는 목록 위치.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _editSchedule(int index) async {
-    final updatedSchedule = await showMedicationScheduleEditor(
-      context: context,
-      medicationSchedule: _schedules[index],
-      userSetting: widget.userSetting,
-    );
-    if (!mounted || updatedSchedule == null) {
-      return;
+    if (!_canAct) return;
+    _isEditing = true;
+    try {
+      final updatedSchedule = await showMedicationScheduleEditor(
+        context: context,
+        medicationSchedule: _schedules[index],
+        userSetting: widget.userSetting,
+      );
+      if (!mounted || updatedSchedule == null) return;
+      // 함수이름: _editSchedule.setState callback
+      // 함수역할: 여러 약의 복용 일정 비교와 저장 전 확인의 입력·요청 상태를 `_schedules[index] = updatedSchedule; _validationMessage = ''`로 갱신한다.
+      // 매개변수:
+      // - 없음.
+      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+      setState(() {
+        _schedules[index] = updatedSchedule;
+        _validationMessage = '';
+      });
+    } finally {
+      _isEditing = false;
     }
-    // 함수이름: _editSchedule.setState callback
-    // 함수역할: 여러 약의 복용 일정 비교와 저장 전 확인의 입력·요청 상태를 `_schedules[index] = updatedSchedule; _validationMessage = ''`로 갱신한다.
-    // 매개변수:
-    // - 없음.
-    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-    setState(() {
-      _schedules[index] = updatedSchedule;
-      _validationMessage = '';
-    });
   }
 
   // 함수이름: _confirmReview
@@ -282,6 +300,7 @@ class _MedicationScheduleReviewSheetState
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _confirmReview() async {
+    if (!_canAct) return;
     final invalidIndex = _schedules.indexWhere(
       // 함수이름: _confirmReview.indexWhere callback
       // 함수역할: 여러 약의 복용 일정 비교와 저장 전 확인에 대해 `!_isScheduleComplete(schedule)` 조건으로 컬렉션 항목을 판별한다.
@@ -308,7 +327,7 @@ class _MedicationScheduleReviewSheetState
       return;
     }
 
-    Navigator.pop(context, List<MedicationSchedule>.unmodifiable(_schedules));
+    _closeReview(List<MedicationSchedule>.unmodifiable(_schedules));
   }
 }
 
@@ -604,6 +623,16 @@ class _MedicationScheduleEditorDialogState
   late bool _asNeeded;
   late Set<String> _selectedSlotKeys;
   bool _showSlotValidationError = false;
+  bool _isClosing = false;
+
+  bool get _canAct =>
+      mounted && !_isClosing && ModalRoute.of(context)?.isCurrent == true;
+
+  void _closeEditor([MedicationSchedule? result]) {
+    if (!_canAct) return;
+    _isClosing = true;
+    Navigator.pop(context, result);
+  }
 
   // 함수이름: initState
   // 함수역할: 약명·용량·일수를 입력란에 넣고 1~4회 범위의 횟수와 시간대를 일치시킨다.
@@ -851,7 +880,7 @@ class _MedicationScheduleEditorDialogState
           // 매개변수:
           // - 없음.
           // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => _closeEditor(),
           child: Text(text.cancel),
         ),
         FilledButton(
@@ -956,6 +985,7 @@ class _MedicationScheduleEditorDialogState
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   void _submit() {
+    if (!_canAct) return;
     final hasValidSlots =
         _asNeeded ||
         (_selectedSlotKeys.isNotEmpty &&
@@ -973,8 +1003,7 @@ class _MedicationScheduleEditorDialogState
       return;
     }
 
-    Navigator.pop(
-      context,
+    _closeEditor(
       widget.medicationSchedule.copyWith(
         medicationName: _nameController.text.trim(),
         prescriptionDate: _startDate,

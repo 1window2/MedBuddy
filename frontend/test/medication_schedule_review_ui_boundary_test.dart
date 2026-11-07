@@ -1,6 +1,8 @@
 // 파일명: medication_schedule_review_ui_boundary_test.dart
 // 역할: 분석 후 복용 시작일, 기간, 횟수와 시간대 검토 화면을 검증한다.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/medication_schedule_review_ui_boundary.dart';
@@ -15,6 +17,109 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  for (final confirms in [false, true]) {
+    testWidgets('검토창 연속 종료 콜백은 아래 화면을 닫지 않는다: $confirms', (tester) async {
+      List<MedicationSchedule>? result;
+      var completions = 0;
+      await _openCallbackReview(
+        tester,
+        onReviewed: (value) {
+          result = value;
+          completions++;
+        },
+      );
+      final close = confirms
+          ? tester
+                .widget<FilledButton>(
+                  find.byKey(const Key('schedule-review-confirm')),
+                )
+                .onPressed!
+          : tester
+                .widget<IconButton>(
+                  find.byKey(const Key('schedule-review-close')),
+                )
+                .onPressed!;
+      close();
+      close();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('review-launcher')), findsOneWidget);
+      expect(completions, 1);
+      expect(result, confirms ? hasLength(1) : isNull);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final invalid in [false, true]) {
+    testWidgets('연속 편집 콜백은 수정창 하나만 열고 취소 후 다시 열린다: $invalid', (tester) async {
+      await _openCallbackReview(tester, invalid: invalid);
+      final openEditor = invalid
+          ? tester
+                .widget<FilledButton>(
+                  find.byKey(const Key('schedule-review-confirm')),
+                )
+                .onPressed!
+          : tester
+                .widget<IconButton>(
+                  find.byKey(const Key('schedule-review-edit-0')),
+                )
+                .onPressed!;
+      openEditor();
+      openEditor();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog, skipOffstage: false), findsOneWidget);
+      await tester.tap(find.byKey(const Key('schedule-edit-cancel')));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byKey(const Key('schedule-review-confirm')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('schedule-review-edit-0')));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog, skipOffstage: false), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final applies in [false, true]) {
+    testWidgets('수정창 연속 종료 콜백은 검토창을 닫지 않는다: $applies', (tester) async {
+      List<MedicationSchedule>? result;
+      var completions = 0;
+      await _openCallbackReview(
+        tester,
+        onReviewed: (value) {
+          result = value;
+          completions++;
+        },
+      );
+      await tester.tap(find.byKey(const Key('schedule-review-edit-0')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('schedule-edit-dosage')),
+        '0.5정',
+      );
+      final close = applies
+          ? tester
+                .widget<FilledButton>(
+                  find.byKey(const Key('schedule-edit-apply')),
+                )
+                .onPressed!
+          : tester
+                .widget<TextButton>(
+                  find.byKey(const Key('schedule-edit-cancel')),
+                )
+                .onPressed!;
+      close();
+      close();
+      await tester.pumpAndSettle();
+      expect(completions, 0);
+      expect(find.byKey(const Key('schedule-review-confirm')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('schedule-review-confirm')));
+      await tester.pumpAndSettle();
+      expect(completions, 1);
+      expect(result?.single.dosage, applies ? '0.5정' : '1정');
+      expect(find.byKey(const Key('review-launcher')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   // 함수이름: testWidgets 콜백
   // 함수역할:
   // - 기대 동작: OCR 기본값을 수정한 뒤 확인 결과로 반환한다.
@@ -375,4 +480,51 @@ Future<void> _setViewport(WidgetTester tester, Size size) async {
   tester.view.physicalSize = size;
   addTearDown(tester.view.resetDevicePixelRatio);
   addTearDown(tester.view.resetPhysicalSize);
+}
+
+Future<void> _openCallbackReview(
+  WidgetTester tester, {
+  bool invalid = false,
+  ValueChanged<List<MedicationSchedule>?>? onReviewed,
+}) async {
+  await _setViewport(tester, const Size(390, 900));
+  final navigator = GlobalKey<NavigatorState>();
+  await tester.pumpWidget(
+    MaterialApp(
+      navigatorKey: navigator,
+      home: const Scaffold(body: Text('기본 화면')),
+    ),
+  );
+  unawaited(
+    navigator.currentState!.push<void>(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          key: const Key('review-launcher'),
+          body: TextButton(
+            onPressed: () async {
+              final result = await showMedicationScheduleReview(
+                context: context,
+                initialSchedules: [
+                  MedicationSchedule(
+                    medicationName: invalid ? '' : '시험약',
+                    prescriptionDate: DateTime(2026, 11, 7),
+                    dosage: '1정',
+                    intakeTime: '1회',
+                    medicationTime: 3,
+                    scheduleSlotKeys: const ['morning'],
+                  ),
+                ],
+                userSetting: const UserSetting(),
+              );
+              onReviewed?.call(result);
+            },
+            child: const Text('검토 열기'),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('검토 열기'));
+  await tester.pumpAndSettle();
 }
