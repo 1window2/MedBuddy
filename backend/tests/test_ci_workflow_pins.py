@@ -15,7 +15,7 @@ REF_CONDITION = (
     "    if: >-\n      github.ref == 'refs/heads/main' ||\n"
     "      github.ref == 'refs/heads/beta/v1.0.0'\n"
 )
-APK_ABI_CHECK = '"${APK_NATIVE_ABIS}" != "arm64-v8a,armeabi-v7a" || "${APK_ENGINE_ABIS}" != "${APK_NATIVE_ABIS}"'
+APK_ABI_CHECK = '"${APK_NATIVE_ABIS}" != "${ABI}" || "${APK_ENGINE_ABIS}" != "${ABI}"'
 
 
 # Function Name: _workflow
@@ -86,7 +86,7 @@ def test_ci_and_release_keep_their_verification_commands() -> None:
         "run: flutter pub get --enforce-lockfile\n",
         "run: flutter analyze --no-pub\n",
         "run: flutter test --no-pub\n",
-        "run: flutter build apk --release --no-pub --target-platform android-arm,android-arm64\n",
+        'flutter build apk --release --no-pub --target-platform "${TARGET}"\n',
         "- name: Verify APK native ABIs\n",
         APK_ABI_CHECK,
         "script: ./gradlew :app:connectedDebugAndroidTest -Ptarget-platform=android-x64\n",
@@ -97,9 +97,16 @@ def test_ci_and_release_keep_their_verification_commands() -> None:
     assert "python -m alembic -c alembic.ini downgrade base\n" in backend
     release = _workflow("release-android.yml")
     assert "run: flutter pub get --enforce-lockfile\n" in release
-    assert "flutter build apk --release --no-pub \\\n              --target-platform android-arm,android-arm64 \\\n" in release
+    assert 'flutter build apk --release --no-pub \\\n                --target-platform "${TARGET}" \\\n' in release
     assert APK_ABI_CHECK in release
-    assert release.count("if-no-files-found: error") == 2
+    assert release.count("if-no-files-found: error") == 3
+    for workflow in (frontend, release):
+        assert workflow.count("for ABI in armeabi-v7a arm64-v8a; do") == 2
+        assert "armeabi-v7a) TARGET=android-arm ;;" in workflow
+        assert "arm64-v8a) TARGET=android-arm64 ;;" in workflow
+        assert "--split-per-abi" not in workflow
+        assert "--build-number" not in workflow
+        assert "--target-platform android-arm,android-arm64" not in workflow
 
 
 # Function Name: test_dormant_cloud_workflows_stay_disabled

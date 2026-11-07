@@ -355,14 +355,21 @@ else
   printf 'fake-aab' > build/app/outputs/bundle/release/app-release.aab
 fi
 ''')
-    # Lists two native libraries per ABI for 'lib/*' and one engine library per ABI otherwise,
-    # except for the ABI named by TEST_APK_ENGINELESS_ABI.
+    # 각 APK 이름에 맞는 ABI만 반환하고 지정한 파일에만 오류를 주입한다.
     _fake_tool(tools / "unzip", '''
 test -f "$2"
-for abi in ${TEST_APK_ABIS:-arm64-v8a armeabi-v7a}; do
+expected="${2##*/app-}"
+expected="${expected%-release.apk}"
+abis="$expected"
+engineless=""
+if [[ "$expected" == "${TEST_APK_FAILURE_ABI:-}" ]]; then
+  abis="${TEST_APK_ABIS:-$expected}"
+  engineless="${TEST_APK_ENGINELESS_ABI:-}"
+fi
+for abi in $abis; do
   case "$3" in
     'lib/*') printf 'lib/%s/libflutter.so\nlib/%s/libnavermap.so\n' "$abi" "$abi" ;;
-    *) [[ "$abi" == "${TEST_APK_ENGINELESS_ABI:-}" ]] || printf 'lib/%s/libflutter.so\n' "$abi" ;;
+    *) [[ "$abi" == "$engineless" ]] || printf 'lib/%s/libflutter.so\n' "$abi" ;;
   esac
 done
 ''')
@@ -380,31 +387,45 @@ exit "${TEST_JAR_VERIFY_STATUS:-0}"
     _fake_tool(tmp_path / "android/build-tools/1/apksigner", '''
 test -f "$4"
 printf 'apksigner\n' >> "$TOOL_CALLS"
-printf 'Signer #1: certificate SHA-256 digest: %s\n' "${TEST_APK_CERT:-$EXPECTED_SIGNING_CERT_SHA256}"
-exit "${TEST_APK_VERIFY_STATUS:-0}"
+abi="${4##*/app-}"
+abi="${abi%-release.apk}"
+cert="$EXPECTED_SIGNING_CERT_SHA256"
+status=0
+if [[ "$abi" == "${TEST_APK_FAILURE_ABI:-}" ]]; then
+  cert="${TEST_APK_CERT:-$cert}"
+  status="${TEST_APK_VERIFY_STATUS:-0}"
+fi
+printf 'Signer #1: certificate SHA-256 digest: %s\n' "$cert"
+exit "$status"
 ''')
     subprocess.run(["bash", "-c", _workflow_bash("Build signed APK and app bundle")], cwd=frontend, env=environment, check=True, capture_output=True)
-    apk = frontend / "build/app/outputs/flutter-apk/app-release.apk"
-    assert apk.exists() is (build_apk == "true")
-    assert (frontend / "build/app-release.apk.sha256").exists() is (build_apk == "true")
+    abis = ("armeabi-v7a", "arm64-v8a")
+    apks = [frontend / f"build/app/outputs/flutter-apk/app-{abi}-release.apk" for abi in abis]
+    for abi, apk in zip(abis, apks):
+        assert apk.exists() is (build_apk == "true")
+        assert (frontend / f"build/app-{abi}-release.apk.sha256").exists() is (build_apk == "true")
+    assert not (frontend / "build/app/outputs/flutter-apk/app-release.apk").exists()
     assert (frontend / "build/app-release.aab.sha256").exists()
     subprocess.run(["bash", "-c", _workflow_bash("Verify signed release artifacts")], cwd=frontend, env=environment, check=True, capture_output=True)
     recorded = calls.read_text().splitlines()
     bundle_call = next(line for line in recorded if line.startswith("build appbundle"))
     assert "MEDBUDDY_FIREBASE_APP_CHECK_REQUIRED=true" in bundle_call
     assert "--target-platform" not in bundle_call
-    assert ("apksigner" in recorded) is (build_apk == "true")
+    assert recorded.count("apksigner") == (2 if build_apk == "true" else 0)
     failures = [
         {"TEST_AAB_CERT": PLAY}, {"TEST_AAB_CERT": "malformed"},
         {"TEST_JAR_VERIFY_STATUS": "1"}, {"TEST_UNSIGNED_AAB": "true"},
         {"TEST_JAR_VERIFIED": "false"},
     ]
     if build_apk == "true":
-        failures.extend([
-            {"TEST_APK_CERT": PLAY}, {"TEST_APK_VERIFY_STATUS": "1"},
-            {"TEST_APK_ABIS": "arm64-v8a armeabi-v7a x86_64"}, {"TEST_APK_ABIS": "arm64-v8a"},
-            {"TEST_APK_ABIS": "arm64-v8a armeabi-v7a x86_64", "TEST_APK_ENGINELESS_ABI": "x86_64"},
-        ])
+        for abi in abis:
+            for failure in (
+                {"TEST_APK_CERT": PLAY}, {"TEST_APK_CERT": "malformed"},
+                {"TEST_APK_VERIFY_STATUS": "1"},
+                {"TEST_APK_ABIS": "arm64-v8a armeabi-v7a"},
+                {"TEST_APK_ABIS": "x86_64"}, {"TEST_APK_ENGINELESS_ABI": abi},
+            ):
+                failures.append({"TEST_APK_FAILURE_ABI": abi, **failure})
     for failure in failures:
         rejected = subprocess.run(
             ["bash", "-c", _workflow_bash("Verify signed release artifacts")],
@@ -412,15 +433,28 @@ exit "${TEST_APK_VERIFY_STATUS:-0}"
         )
         assert rejected.returncode != 0, failure
     if build_apk == "true":
-        apk_call = next(line for line in recorded if line.startswith("build apk"))
-        assert f"MEDBUDDY_FIREBASE_APP_CHECK_REQUIRED={policy}" in apk_call
-        assert "--target-platform android-arm,android-arm64" in apk_call
-        apk.unlink()
-        missing_apk = subprocess.run(["bash", "-c", _workflow_bash("Verify signed release artifacts")], cwd=frontend, env=environment, capture_output=True)
-        assert missing_apk.returncode != 0
+        apk_calls = [line for line in recorded if line.startswith("build apk")]
+        assert len(apk_calls) == 2
+        for target, apk_call in zip(("android-arm", "android-arm64"), apk_calls):
+            assert f"MEDBUDDY_FIREBASE_APP_CHECK_REQUIRED={policy}" in apk_call
+            assert apk_call.split("--target-platform ", 1)[1].split()[0] == target
+            assert "--split-per-abi" not in apk_call and "--build-number" not in apk_call
+        for apk in apks:
+            content = apk.read_bytes()
+            apk.unlink()
+            missing_apk = subprocess.run(["bash", "-c", _workflow_bash("Verify signed release artifacts")], cwd=frontend, env=environment, capture_output=True)
+            assert missing_apk.returncode != 0
+            apk.write_bytes(content)
+    else:
+        assert not any(line.startswith("build apk") for line in recorded)
     assert f"Direct APK included: {build_apk}" in summary.read_text()
     workflow = (ROOT / ".github/workflows/release-android.yml").read_text()
-    upload_apk = workflow.split("- name: Upload signed direct APK", 1)[1]
-    assert "if: env.MEDBUDDY_BUILD_DIRECT_APK == 'true'" in upload_apk
+    for bitness, abi in zip((32, 64), abis):
+        upload_apk = workflow.split(f"- name: Upload signed direct APK (ARM {bitness}-bit)", 1)[1].split("\n      - name:", 1)[0]
+        assert "if: env.MEDBUDDY_BUILD_DIRECT_APK == 'true'" in upload_apk
+        assert f"name: medbuddy-android-apk-arm{bitness}-" in upload_apk
+        assert f"frontend/build/app/outputs/flutter-apk/app-{abi}-release.apk\n" in upload_apk
+        assert f"frontend/build/app-{abi}-release.apk.sha256" in upload_apk
+        assert "app-release.apk" not in upload_apk
     bundle_upload = workflow.split("- name: Upload signed Play bundle", 1)[1].split("- name: Upload signed direct APK", 1)[0]
     assert "app-release.apk" not in bundle_upload

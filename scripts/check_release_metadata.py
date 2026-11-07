@@ -79,7 +79,10 @@ def main() -> int:
         "mandatory release signing": "MEDBUDDY_REQUIRE_RELEASE_SIGNING: 'true'",
         "APK build": "flutter build apk --release --no-pub",
         "app bundle build": "flutter build appbundle --release --no-pub",
-        "direct APK ABI set": "--target-platform android-arm,android-arm64",
+        "direct APK pair": "for ABI in armeabi-v7a arm64-v8a; do",
+        "32-bit APK target": "armeabi-v7a) TARGET=android-arm ;;",
+        "64-bit APK target": "arm64-v8a) TARGET=android-arm64 ;;",
+        "single-ABI APK build": '--target-platform "${TARGET}"',
         "public feature ingress": "python3 ../scripts/check_release_ingress.py",
         "live App Check preflight": "python3 ../scripts/check_release_app_check.py",
     }
