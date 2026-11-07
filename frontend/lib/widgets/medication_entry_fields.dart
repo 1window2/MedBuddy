@@ -19,11 +19,13 @@ class MedicationEntrySectionTitle extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Row(
+  Widget build(BuildContext context) => Wrap(
+    spacing: 8,
+    runSpacing: 4,
+    crossAxisAlignment: WrapCrossAlignment.center,
     children: [
-      Flexible(child: Text(title, style: MedBuddyTextStyles.formSectionTitle)),
+      Text(title, style: MedBuddyTextStyles.formSectionTitle),
       if (optional != null) ...[
-        const SizedBox(width: 8),
         Text(
           optional!,
           style: const TextStyle(
@@ -45,6 +47,7 @@ class MedicationEntryNameField extends StatelessWidget {
   final String hint;
   final String? Function(String?) validator;
   final bool showCounter;
+  final Widget? titleAction;
 
   const MedicationEntryNameField({
     super.key,
@@ -55,13 +58,20 @@ class MedicationEntryNameField extends StatelessWidget {
     required this.hint,
     required this.validator,
     this.showCounter = false,
+    this.titleAction,
   });
 
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      MedicationEntrySectionTitle(title: title),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(child: MedicationEntrySectionTitle(title: title)),
+          ?titleAction,
+        ],
+      ),
       const SizedBox(height: 10),
       TextFormField(
         key: fieldKey,
@@ -273,6 +283,7 @@ class MedicationEntryCycleChoices extends StatelessWidget {
   final String value;
   final String Function(String) label;
   final ValueChanged<String>? onChanged;
+  final List<String> extraChoices;
 
   const MedicationEntryCycleChoices({
     super.key,
@@ -280,6 +291,7 @@ class MedicationEntryCycleChoices extends StatelessWidget {
     required this.value,
     required this.label,
     required this.onChanged,
+    this.extraChoices = const [],
   });
 
   @override
@@ -287,7 +299,7 @@ class MedicationEntryCycleChoices extends StatelessWidget {
     spacing: 8,
     runSpacing: 8,
     children: [
-      for (final choice in {...doseDayChoices, value})
+      for (final choice in {...doseDayChoices, ...extraChoices, value})
         ChoiceChip(
           key: Key('$keyPrefix-$choice'),
           label: Text(label(choice)),

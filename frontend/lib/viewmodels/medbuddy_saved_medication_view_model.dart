@@ -342,13 +342,21 @@ class MedBuddySavedMedicationViewModel {
     if (_disposed) return _cancelledSaveResult();
     final generation = _saveGeneration;
     final schedule = entry.toMedicationSchedule();
-    MedicationDetail? medicationDetail;
-    try {
-      medicationDetail = await checkMedicationDetail.requestMedicationDetail(
-        schedule,
-      );
-    } catch (_) {
-      // 직접 등록은 외부 약품 조회가 잠시 실패해도 사용할 수 있어야 한다.
+    final selected = entry.catalogMedication;
+    MedicationDetail? medicationDetail =
+        selected != null &&
+            selected.itemName.trim() == entry.medicationName.trim()
+        ? selected
+        : null;
+    // 사용자가 선택한 품목은 다시 이름 검색으로 다른 약에 연결하지 않는다.
+    if (medicationDetail == null) {
+      try {
+        medicationDetail = await checkMedicationDetail.requestMedicationDetail(
+          schedule,
+        );
+      } catch (_) {
+        // 직접 등록은 외부 약품 조회가 잠시 실패해도 사용할 수 있어야 한다.
+      }
     }
     if (!_isCurrentSave(generation)) return _cancelledSaveResult();
     medicationDetail ??= MedicationDetail(

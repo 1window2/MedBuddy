@@ -8,6 +8,7 @@ class MedicationDosingModeSelector extends StatelessWidget {
   final bool isEnglish;
   final ValueChanged<bool>? onChanged;
   final String keyPrefix;
+  final bool showDescription;
 
   const MedicationDosingModeSelector({
     super.key,
@@ -15,6 +16,7 @@ class MedicationDosingModeSelector extends StatelessWidget {
     required this.isEnglish,
     required this.onChanged,
     required this.keyPrefix,
+    this.showDescription = true,
   });
 
   @override
@@ -44,7 +46,7 @@ class MedicationDosingModeSelector extends StatelessWidget {
           ),
         ],
       ),
-      if (isAsNeeded) ...[
+      if (isAsNeeded && showDescription) ...[
         const SizedBox(height: 8),
         Text(
           isEnglish

@@ -755,6 +755,36 @@ void main() {
   });
 
   group('manual entry', () {
+    test(
+      'selected catalog product is preserved without another lookup',
+      () async {
+        final selected = _catalogDetail('200000001');
+        final harness = _Harness(
+          (_) async => throw StateError('must not look up'),
+        );
+        addTearDown(harness.model.dispose);
+        final result = await harness.model.saveManualMedication(
+          ManualMedicationEntry(
+            medicationName: selected.itemName,
+            dosageAmount: '2',
+            dosageUnit: '정',
+            startDate: DateTime(2026, 10, 1),
+            endDate: DateTime(2026, 10, 3),
+            scheduleSlotKeys: const ['evening'],
+            catalogMedication: selected,
+          ),
+        );
+        expect(result.status, MedicationSaveStatus.saved);
+        expect(harness.lookup.requestedNames, isEmpty);
+        expect(harness.saved.savedDetails.single.itemSeq, selected.itemSeq);
+        expect(harness.saved.savedDetails.single.imageUrl, selected.imageUrl);
+        expect(harness.saved.savedSchedules.single!.dosage, '2정');
+        expect(harness.saved.savedSchedules.single!.scheduleSlotKeys, [
+          'evening',
+        ]);
+      },
+    );
+
     final entry = ManualMedicationEntry(
       medicationName: ' 직접 입력약 ',
       dosageAmount: '1',

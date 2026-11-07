@@ -11,6 +11,7 @@ import 'package:image_picker/image_picker.dart';
 import '../controls/check_saved_medication_control.dart';
 import '../entities/json_value_reader.dart';
 import '../entities/manual_medication_entry_entity.dart';
+import '../entities/medication_detail_entity.dart';
 import '../entities/medication_dose_rhythm.dart';
 import '../widgets/medication_dosing_mode_selector.dart';
 import '../widgets/medication_entry_fields.dart';
@@ -21,6 +22,8 @@ import '../entities/user_setting_entity.dart';
 import '../services/app_temp_file.dart';
 import '../theme/medbuddy_theme.dart';
 import 'medication_photo_source_sheet.dart';
+import 'medication_search_ui_boundary.dart';
+import '../widgets/medication_thumbnail.dart';
 
 // 파일명: manual_medication_entry_ui_boundary.dart
 // 역할: 사진이나 처방전이 없는 약을 사용자가 직접 등록하는 화면을 제공한다.
@@ -62,154 +65,36 @@ class ManualMedicationEntryUI extends StatefulWidget {
   // - 없음.
   // 반환값: 새 _ManualMedicationEntryUIState 인스턴스.
   @override
-  State<ManualMedicationEntryUI> createState() =>
-      _ManualMedicationEntryUIState();
+  State<ManualMedicationEntryUI> createState() => _ManualMedicationBatchState();
 }
 
-// 클래스명: _ManualMedicationEntryUIState
-// 역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력의 화면 상태를 관리한다.
-// 주요 책임:
-// - 사용자가 입력한 정보로 일정을 저장한다는 안내를 표시한다.
-// - 선택 사진 또는 빈 사진 영역과 사진 추가 동작을 배치한다.
-// - 직접 입력 약품에 선택 사진을 추가할 수 있는 빈 영역을 표시한다.
-// 속성:
-// - _imagePicker (ImagePicker): 카메라·갤러리 이미지 선택 의존성.
-// - _endDate (DateTime): 복용 기간의 마지막 날짜.
-// - _doseDays (String): 선택한 복용 주기 지시. 빈 문자열은 매일 복용.
-// - _isSaving (bool): 해당 저장·분석·복약 갱신 요청이 진행 중인지 여부.
-// - _isSaveRequestPending (bool): 저장 콜백의 응답을 기다리는 중인지 여부.
-class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
-  static const List<String> _dosageUnits = medicationEntryDoseUnits;
-
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  final TextEditingController _medicationNameController =
-      TextEditingController();
-  final TextEditingController _dosageController = TextEditingController(
-    text: '1',
-  );
-  late final ImagePicker _imagePicker;
-  DateTime _startDate = _dateOnly(DateTime.now());
-  DateTime _endDate = _dateOnly(DateTime.now());
-  String _doseDays = '';
-  bool _asNeeded = false;
-  final Set<String> _selectedSlotKeys = {defaultMedicationScheduleSlotKey};
-  String _dosageUnit = _dosageUnits.first;
-  String _selectedImagePath = '';
-  String _errorMessage = '';
+class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
+  final _forms = [GlobalKey<_ManualMedicationEntryUIState>()];
+  final _completed = <GlobalKey<_ManualMedicationEntryUIState>>{};
   bool _isSaving = false;
   bool _isPickingImage = false;
-  // 저장 콜백을 기다리는 동안에만 true. 화면 잠금용 _isSaving과 달리 저장 성공 뒤에는 바로 내려간다.
-  bool _isSaveRequestPending = false;
 
-  // 함수이름: _isEnglish
-  // 함수역할: 사용자 설정의 공통 언어 판정으로 영어 여부를 판별한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
   bool get _isEnglish => widget.userSetting.isEnglish;
-
-  // 함수이름: _text
-  // 함수역할: 현재 언어에 맞는 약품명·사진·기간·복약 시간대 직접 입력 문구 객체를 만든다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: _ManualMedicationText: 현재 화면 언어의 문구 제공 객체.
   _ManualMedicationText get _text => _ManualMedicationText(_isEnglish);
 
-  // 함수이름: initState
-  // 함수역할: 주입된 이미지 선택기를 사용하거나 기본 선택기를 만든다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
-  @override
-  void initState() {
-    super.initState();
-    _imagePicker = widget.imagePicker ?? ImagePicker();
-  }
-
-  // 함수이름: dispose
-  // 함수역할: _medicationNameController, _dosageController 관련 자원을 정리하고 선택 사진의 임시 사본을 지운 뒤 화면 수명 종료 처리를 수행한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
-  @override
-  void dispose() {
-    // 저장 요청이 진행 중이면 저장 흐름이 아직 사진을 읽을 수 있으므로 _submit이 끝난 뒤에 지운다.
-    if (!_isSaveRequestPending) {
-      _discardPickedImage(_selectedImagePath);
-    }
-    _medicationNameController.dispose();
-    _dosageController.dispose();
-    super.dispose();
-  }
-
-  // 함수이름: build
-  // 함수역할: 안전 안내와 필수 약품명·복용량을 먼저 배치하고 선택 사진과 일정을 제공한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: MedBuddyColors.pageBackground,
-      body: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            MedBuddyPageHeader(
-              title: _text.title,
-              subtitle: _isEnglish
-                  ? 'Enter medication details.'
-                  : '약 이름과 복용 일정을 입력합니다.',
-              onBackRequested: () => Navigator.maybePop(context),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildIntroNotice(),
-                      const SizedBox(height: 20),
-                      _buildMedicationNameField(),
-                      const SizedBox(height: 18),
-                      _buildDosageFields(),
-                      const SizedBox(height: 24),
-                      _buildPhotoSection(),
-                      const SizedBox(height: 24),
-                      _buildDateSection(),
-                      const SizedBox(height: 24),
-                      MedicationDosingModeSelector(
-                        keyPrefix: 'manual-medication',
-                        isAsNeeded: _asNeeded,
-                        isEnglish: _isEnglish,
-                        onChanged: _isSaving
-                            ? null
-                            : (value) => setState(() {
-                                _asNeeded = value;
-                                _errorMessage = '';
-                              }),
-                      ),
-                      if (!_asNeeded) ...[
-                        const SizedBox(height: 24),
-                        _buildDoseDaysSection(),
-                        const SizedBox(height: 24),
-                        _buildScheduleSlotSection(),
-                      ],
-                      if (_errorMessage.isNotEmpty) ...[
-                        const SizedBox(height: 18),
-                        _buildErrorNotice(),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            _buildSaveBar(),
-          ],
-        ),
-      ),
+  Future<void> _reveal(GlobalKey<_ManualMedicationEntryUIState> key) async {
+    await WidgetsBinding.instance.endOfFrame;
+    final formContext = key.currentContext;
+    if (!mounted || formContext == null || !formContext.mounted) return;
+    BuildContext target = formContext;
+    // 새 입력란으로 이동할 때 약 번호와 삭제 버튼도 함께 보이게 한다.
+    formContext.visitAncestorElements((element) {
+      if (element.widget.key == ObjectKey(key)) {
+        target = element;
+        return false;
+      }
+      return true;
+    });
+    if (!target.mounted) return;
+    await Scrollable.ensureVisible(
+      target,
+      duration: const Duration(milliseconds: 200),
+      alignment: 0,
     );
   }
 
@@ -242,6 +127,362 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  // 함수이름: _buildSaveBar
+  // 함수역할: 저장 진행 중 중복 입력을 막는 고정 저장 버튼을 구성한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 쓰는 위젯 트리.
+  Widget _buildSaveBar() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: MedBuddyColors.divider)),
+      ),
+      child: FilledButton.icon(
+        key: const Key('manual-medication-save'),
+        onPressed: _isSaving || _isPickingImage ? null : _saveAll,
+        style: FilledButton.styleFrom(
+          minimumSize: const Size.fromHeight(56),
+          backgroundColor: MedBuddyColors.primary,
+        ),
+        icon: _isSaving
+            ? const SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2.5,
+                ),
+              )
+            : const Icon(Icons.save_outlined),
+        label: Text(
+          _isSaving
+              ? _text.saving
+              : _forms.length == 1
+              ? _text.save
+              : _isEnglish
+              ? 'Save all medications'
+              : '전체 복약 정보 저장',
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveAll() async {
+    if (_isSaving || _isPickingImage) return;
+    FocusScope.of(context).unfocus();
+    final pending = _forms.where((key) => !_completed.contains(key)).toList();
+    GlobalKey<_ManualMedicationEntryUIState>? firstInvalid;
+    for (final key in pending) {
+      if (key.currentState?._validate() != true) firstInvalid ??= key;
+    }
+    if (firstInvalid != null) {
+      await _reveal(firstInvalid);
+      return;
+    }
+    setState(() => _isSaving = true);
+    MedicationSaveResult? lastResult;
+    // 이미 저장한 약은 남겨 두고 실패한 약부터 재시도해 중복 요청을 막는다.
+    for (final key in pending) {
+      lastResult = await key.currentState?._submit();
+      if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+      if (lastResult?.isCompleted != true) {
+        setState(() => _isSaving = false);
+        await _reveal(key);
+        return;
+      }
+      setState(() => _completed.add(key));
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _forms.length == 1 &&
+                  lastResult?.status == MedicationSaveStatus.duplicate
+              ? _text.duplicate
+              : _forms.length == 1
+              ? _text.saved
+              : _isEnglish
+              ? '${_completed.length} medications saved.'
+              : '약 ${_completed.length}개의 복약 정보를 저장했습니다.',
+        ),
+      ),
+    );
+    Navigator.pop(context, true);
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: MedBuddyColors.pageBackground,
+    body: SafeArea(
+      top: false,
+      child: Column(
+        children: [
+          MedBuddyPageHeader(
+            title: _text.title,
+            subtitle: _isEnglish
+                ? 'Enter medication details.'
+                : '약 이름과 복용 일정을 입력합니다.',
+            onBackRequested: () => Navigator.maybePop(context),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildIntroNotice(),
+                  const SizedBox(height: 16),
+                  for (var index = 0; index < _forms.length; index++) ...[
+                    Container(
+                      key: ObjectKey(_forms[index]),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: MedBuddyColors.outline),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _isEnglish
+                                      ? 'Medication ${index + 1}'
+                                      : '약 ${index + 1}',
+                                  style: MedBuddyTextStyles.formSectionTitle
+                                      .copyWith(color: MedBuddyColors.primary),
+                                ),
+                              ),
+                              if (_completed.contains(_forms[index]))
+                                Text(
+                                  _isEnglish ? 'Saved' : '저장 완료',
+                                  style: const TextStyle(
+                                    color: MedBuddyColors.primary,
+                                  ),
+                                )
+                              else if (_forms.length > 1)
+                                IconButton(
+                                  tooltip: _isEnglish
+                                      ? 'Remove medication'
+                                      : '약 입력 삭제',
+                                  onPressed: _isSaving || _isPickingImage
+                                      ? null
+                                      : () {
+                                          setState(
+                                            () => _forms.removeAt(index),
+                                          );
+                                        },
+                                  icon: const Icon(Icons.close),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          if (_completed.contains(_forms[index]))
+                            Text(
+                              _forms[index]
+                                      .currentState
+                                      ?._medicationNameController
+                                      .text ??
+                                  '',
+                            ),
+                          Offstage(
+                            offstage: _completed.contains(_forms[index]),
+                            child: AbsorbPointer(
+                              absorbing: _isSaving,
+                              child: _ManualMedicationForm(
+                                key: _forms[index],
+                                userSetting: widget.userSetting,
+                                onSaveRequested: widget.onSaveRequested,
+                                imagePicker: widget.imagePicker,
+                                onImageBusyChanged: (value) {
+                                  if (mounted) {
+                                    setState(() => _isPickingImage = value);
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  OutlinedButton.icon(
+                    key: const Key('manual-medication-add'),
+                    onPressed:
+                        _isSaving || _isPickingImage || _forms.length >= 10
+                        ? null
+                        : () {
+                            final key =
+                                GlobalKey<_ManualMedicationEntryUIState>();
+                            setState(() => _forms.add(key));
+                            unawaited(_reveal(key));
+                          },
+                    icon: const Icon(Icons.add),
+                    label: Text(_isEnglish ? 'Add another medication' : '약 추가'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          _buildSaveBar(),
+        ],
+      ),
+    ),
+  );
+}
+
+class _ManualMedicationForm extends StatefulWidget {
+  final UserSetting userSetting;
+  final Future<MedicationSaveResult> Function(ManualMedicationEntry)
+  onSaveRequested;
+  final ImagePicker? imagePicker;
+  final ValueChanged<bool> onImageBusyChanged;
+
+  const _ManualMedicationForm({
+    super.key,
+    required this.userSetting,
+    required this.onSaveRequested,
+    required this.onImageBusyChanged,
+    this.imagePicker,
+  });
+
+  @override
+  State<_ManualMedicationForm> createState() => _ManualMedicationEntryUIState();
+}
+
+// 클래스명: _ManualMedicationEntryUIState
+// 역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력의 화면 상태를 관리한다.
+// 주요 책임:
+// - 사용자가 입력한 정보로 일정을 저장한다는 안내를 표시한다.
+// - 선택 사진 또는 빈 사진 영역과 사진 추가 동작을 배치한다.
+// - 직접 입력 약품에 선택 사진을 추가할 수 있는 빈 영역을 표시한다.
+// 속성:
+// - _imagePicker (ImagePicker): 카메라·갤러리 이미지 선택 의존성.
+// - _endDate (DateTime): 복용 기간의 마지막 날짜.
+// - _doseDays (String): 선택한 복용 주기 지시. 빈 문자열은 매일 복용.
+// - _isSaving (bool): 해당 저장·분석·복약 갱신 요청이 진행 중인지 여부.
+// - _isSaveRequestPending (bool): 저장 콜백의 응답을 기다리는 중인지 여부.
+class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
+  static const List<String> _dosageUnits = medicationEntryDoseUnits;
+
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final TextEditingController _medicationNameController =
+      TextEditingController();
+  final TextEditingController _dosageController = TextEditingController(
+    text: '1',
+  );
+  late final ImagePicker _imagePicker;
+  DateTime _startDate = _dateOnly(DateTime.now());
+  DateTime _endDate = _dateOnly(DateTime.now());
+  String _doseDays = '';
+  bool _customCycle = false;
+  final _intervalController = TextEditingController();
+  bool _asNeeded = false;
+  final Set<String> _selectedSlotKeys = {defaultMedicationScheduleSlotKey};
+  String _dosageUnit = _dosageUnits.first;
+  String _selectedImagePath = '';
+  MedicationDetail? _catalogMedication;
+  String _errorMessage = '';
+  bool _isSaving = false;
+  bool _isPickingImage = false;
+  // 저장 콜백을 기다리는 동안에만 true. 화면 잠금용 _isSaving과 달리 저장 성공 뒤에는 바로 내려간다.
+  bool _isSaveRequestPending = false;
+
+  // 함수이름: _isEnglish
+  // 함수역할: 사용자 설정의 공통 언어 판정으로 영어 여부를 판별한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  bool get _isEnglish => widget.userSetting.isEnglish;
+
+  // 함수이름: _text
+  // 함수역할: 현재 언어에 맞는 약품명·사진·기간·복약 시간대 직접 입력 문구 객체를 만든다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: _ManualMedicationText: 현재 화면 언어의 문구 제공 객체.
+  _ManualMedicationText get _text => _ManualMedicationText(_isEnglish);
+
+  // 함수이름: initState
+  // 함수역할: 주입된 이미지 선택기를 사용하거나 기본 선택기를 만든다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  @override
+  void initState() {
+    super.initState();
+    _imagePicker = widget.imagePicker ?? ImagePicker();
+    _medicationNameController.addListener(_invalidateCatalogSelection);
+  }
+
+  // 함수이름: dispose
+  // 함수역할: _medicationNameController, _dosageController 관련 자원을 정리하고 선택 사진의 임시 사본을 지운 뒤 화면 수명 종료 처리를 수행한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  @override
+  void dispose() {
+    // 저장 요청이 진행 중이면 저장 흐름이 아직 사진을 읽을 수 있으므로 _submit이 끝난 뒤에 지운다.
+    if (!_isSaveRequestPending) {
+      _discardPickedImage(_selectedImagePath);
+    }
+    _medicationNameController.dispose();
+    _dosageController.dispose();
+    _intervalController.dispose();
+    super.dispose();
+  }
+
+  // 함수이름: build
+  // 함수역할: 안전 안내와 필수 약품명·복용량을 먼저 배치하고 선택 사진과 일정을 제공한다.
+  // 매개변수:
+  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
+  // 반환값: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 쓰는 위젯 트리.
+  @override
+  Widget build(BuildContext context) {
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildMedicationNameField(),
+          const SizedBox(height: 18),
+          _buildDosageFields(),
+          const SizedBox(height: 24),
+          _buildPhotoSection(),
+          const SizedBox(height: 24),
+          _buildDateSection(),
+          const SizedBox(height: 24),
+          MedicationDosingModeSelector(
+            keyPrefix: 'manual-medication',
+            isAsNeeded: _asNeeded,
+            isEnglish: _isEnglish,
+            showDescription: false,
+            onChanged: _isSaving
+                ? null
+                : (value) => setState(() {
+                    _asNeeded = value;
+                    _errorMessage = '';
+                  }),
+          ),
+          if (!_asNeeded) ...[
+            const SizedBox(height: 24),
+            _buildDoseDaysSection(),
+            const SizedBox(height: 24),
+            _buildScheduleSlotSection(),
+          ],
+          if (_errorMessage.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            _buildErrorNotice(),
+          ],
         ],
       ),
     );
@@ -282,6 +523,9 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
         if (_selectedImagePath.isNotEmpty) ...[
           const SizedBox(height: 12),
           _buildSelectedPhoto(),
+        ] else if (_catalogMedication?.imageUrl.isNotEmpty ?? false) ...[
+          const SizedBox(height: 12),
+          MedicationThumbnail(imageUrl: _catalogMedication!.imageUrl, size: 96),
         ],
       ],
     );
@@ -382,6 +626,14 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
       controller: _medicationNameController,
       enabled: !_isSaving,
       showCounter: true,
+      titleAction: IconButton(
+        key: const Key('manual-medication-search'),
+        tooltip: _isEnglish ? 'Find medication' : '약 검색',
+        alignment: Alignment.bottomCenter,
+        padding: const EdgeInsets.only(bottom: 2),
+        onPressed: _isSaving ? null : _searchMedication,
+        icon: const Icon(Icons.search, color: MedBuddyColors.primary),
+      ),
       // 함수이름: _buildMedicationNameField.validator callback
       // 함수역할: 입력값을 `_text.nameRequired; null` 조건으로 검증한다.
       // 매개변수:
@@ -394,6 +646,30 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
         return null;
       },
     );
+  }
+
+  void _invalidateCatalogSelection() {
+    if (_catalogMedication != null &&
+        _medicationNameController.text.trim() !=
+            _catalogMedication!.itemName.trim()) {
+      setState(() => _catalogMedication = null);
+    }
+  }
+
+  Future<void> _searchMedication() async {
+    final selected = await Navigator.push<MedicationDetail>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MedicationSearchUI(
+          userSetting: widget.userSetting,
+          selectionMode: true,
+          initialQuery: _medicationNameController.text.trim(),
+        ),
+      ),
+    );
+    if (!mounted || selected == null || _isSaving) return;
+    _medicationNameController.text = selected.itemName;
+    setState(() => _catalogMedication = selected);
   }
 
   // 함수이름: _buildDosageFields
@@ -477,16 +753,14 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         MedicationEntrySectionTitle(title: _text.doseDaysTitle),
-        const SizedBox(height: 8),
-        Text(
-          _text.doseDaysDescription,
-          style: const TextStyle(color: MedBuddyColors.textMuted, height: 1.4),
-        ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         MedicationEntryCycleChoices(
           keyPrefix: 'manual-medication-dose-days',
-          value: _doseDays,
-          label: _text.doseDaysValue,
+          value: _customCycle ? 'custom' : _doseDays,
+          extraChoices: const ['custom'],
+          label: (value) => value == 'custom'
+              ? (_isEnglish ? 'Custom' : '기타')
+              : _text.doseDaysValue(value),
           // 함수이름: _buildDoseDaysSection.onSelected callback
           // 함수역할: 고른 복용 주기를 화면 상태에 반영한다.
           // 매개변수:
@@ -494,23 +768,32 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
           // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
           onChanged: _isSaving
               ? null
-              : (doseDays) => setState(() => _doseDays = doseDays),
+              : (doseDays) => setState(() {
+                  _customCycle = doseDays == 'custom';
+                  if (!_customCycle) _doseDays = doseDays;
+                }),
         ),
-        if (_doseDays.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            describeDoseCycle(
-              readDoseCycle(_doseDays),
-              isEnglish: _text.isEnglish,
-              startDate: _startDate,
-              courseDays: inclusiveMedicationCourseDays(_startDate, _endDate),
+        if (_customCycle) ...[
+          const SizedBox(height: 12),
+          TextFormField(
+            key: const Key('manual-medication-interval'),
+            controller: _intervalController,
+            enabled: !_isSaving,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: _isEnglish ? 'Interval (days)' : '복용 간격 (일)',
+              hintText: '1~$maxDoseIntervalDays',
+              suffixText: _isEnglish ? 'days' : '일마다',
+              border: const OutlineInputBorder(),
             ),
-            key: const Key('manual-medication-dose-days-notice'),
-            style: const TextStyle(
-              color: MedBuddyColors.textMuted,
-              fontSize: 13,
-              height: 1.4,
-            ),
+            validator: (value) {
+              final days = int.tryParse(value ?? '');
+              return days != null && days >= 1 && days <= maxDoseIntervalDays
+                  ? null
+                  : _isEnglish
+                  ? 'Enter 1 to $maxDoseIntervalDays days.'
+                  : '1~$maxDoseIntervalDays 사이의 일수를 입력해주세요.';
+            },
           ),
         ],
       ],
@@ -527,12 +810,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         MedicationEntrySectionTitle(title: _text.slotTitle),
-        const SizedBox(height: 8),
-        Text(
-          _text.slotDescription,
-          style: const TextStyle(color: MedBuddyColors.textMuted, height: 1.4),
-        ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         MedicationEntrySlotChoices(
           keyPrefix: 'manual-medication-slot',
           values: _selectedSlotKeys,
@@ -592,43 +870,6 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
     );
   }
 
-  // 함수이름: _buildSaveBar
-  // 함수역할: 저장 진행 중 중복 입력을 막는 고정 저장 버튼을 구성한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 쓰는 위젯 트리.
-  Widget _buildSaveBar() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: MedBuddyColors.divider)),
-      ),
-      child: FilledButton.icon(
-        key: const Key('manual-medication-save'),
-        onPressed: _isSaving || _isPickingImage ? null : _submit,
-        style: FilledButton.styleFrom(
-          minimumSize: const Size.fromHeight(56),
-          backgroundColor: MedBuddyColors.primary,
-        ),
-        icon: _isSaving
-            ? const SizedBox.square(
-                dimension: 20,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2.5,
-                ),
-              )
-            : const Icon(Icons.save_outlined),
-        label: Text(
-          _isSaving ? _text.saving : _text.save,
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-        ),
-      ),
-    );
-  }
-
   // 함수이름: _validateDosage
   // 함수역할: 1회 복용량이 0보다 크고 10000 이하인 숫자인지 검증한다.
   // 매개변수:
@@ -650,10 +891,14 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   Future<void> _selectImageSource() async {
     if (!mounted || _isSaving || _isPickingImage) return;
     setState(() => _isPickingImage = true);
+    widget.onImageBusyChanged(true);
     try {
       await _pickImage();
     } finally {
-      if (mounted) setState(() => _isPickingImage = false);
+      if (mounted) {
+        setState(() => _isPickingImage = false);
+        widget.onImageBusyChanged(false);
+      }
     }
   }
 
@@ -792,11 +1037,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   // 매개변수:
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _submit() async {
-    if (!mounted || _isSaving || _isPickingImage) {
-      return;
-    }
-    FocusScope.of(context).unfocus();
+  bool _validate() {
     final isFormValid = _formKey.currentState?.validate() ?? false;
     if (!_asNeeded && _selectedSlotKeys.isEmpty) {
       // 함수이름: _submit.setState callback
@@ -805,11 +1046,13 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
       // - 없음.
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() => _errorMessage = _text.slotRequired);
-      return;
+      return false;
     }
-    if (!isFormValid) {
-      return;
-    }
+    return isFormValid;
+  }
+
+  Future<MedicationSaveResult?> _submit() async {
+    if (!mounted || _isSaving || _isPickingImage || !_validate()) return null;
 
     // 함수이름: _submit.setState callback
     // 함수역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력의 입력·요청 상태를 `_isSaving = true; _errorMessage = ''`로 갱신한다.
@@ -832,9 +1075,14 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
           startDate: _startDate,
           endDate: _endDate,
           scheduleSlotKeys: _selectedSlotKeys.toList(growable: false),
-          doseDays: _doseDays,
+          doseDays: _asNeeded
+              ? ''
+              : _customCycle
+              ? '${int.parse(_intervalController.text)}일마다'
+              : _doseDays,
           dosingMode: _asNeeded ? 'as_needed' : 'scheduled',
           localImagePath: submittedImagePath,
+          catalogMedication: _catalogMedication,
         ),
       );
     } catch (_) {
@@ -845,10 +1093,10 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
     if (!mounted) {
       // 저장 도중 화면을 닫아 dispose가 남겨 둔 임시 사본을 저장 흐름이 끝난 지금 지운다.
       _discardPickedImage(submittedImagePath);
-      return;
+      return result;
     }
     // 뒤로가기 전환 중에는 mounted가 참이어도 아래 화면을 다시 닫으면 안 된다.
-    if (ModalRoute.of(context)?.isCurrent != true) return;
+    if (ModalRoute.of(context)?.isCurrent != true) return result;
     final completedResult = result;
     if (completedResult == null || !completedResult.isCompleted) {
       // 함수이름: _submit.setState callback
@@ -862,20 +1110,11 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
           completedResult?.failureKind ?? MedicationSaveFailureKind.other,
         );
       });
-      return;
+      return result;
     }
 
     // 저장에 성공하면 화면이 닫힐 때까지 _isSaving을 유지해 닫히는 동안의 중복 저장을 막는다.
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          completedResult.status == MedicationSaveStatus.duplicate
-              ? _text.duplicate
-              : _text.saved,
-        ),
-      ),
-    );
-    Navigator.pop(context, true);
+    return result;
   }
 
   // 함수이름: _dateOnly

@@ -1,4 +1,5 @@
 import 'medication_dose_rhythm.dart';
+import 'medication_detail_entity.dart';
 import 'medication_schedule_entity.dart';
 
 // 파일명: manual_medication_entry_entity.dart
@@ -46,6 +47,7 @@ class ManualMedicationEntry {
   final String doseDays;
   final String localImagePath;
   final String dosingMode;
+  final MedicationDetail? catalogMedication;
 
   // 함수이름: ManualMedicationEntry
   // 함수역할: 직접 입력한 약명·복용량·단위·기간·시간대와 선택적 기기 사진 경로를 보존한다.
@@ -70,6 +72,7 @@ class ManualMedicationEntry {
     this.doseDays = '',
     this.localImagePath = '',
     this.dosingMode = 'scheduled',
+    this.catalogMedication,
   });
 
   // 함수이름: totalDays

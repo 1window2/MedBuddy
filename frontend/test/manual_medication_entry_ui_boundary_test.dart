@@ -180,6 +180,72 @@ Future<MedicationSaveResult> _keepManualEntryOpen(
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  testWidgets('여러 약의 이름과 사진은 각 입력에 따로 보존한다', (tester) async {
+    tester.view.physicalSize = const Size(390, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sandbox = _PhotoSandbox.create();
+    final first = sandbox.cachePhoto('first.png');
+    final second = sandbox.cachePhoto('second.png');
+    final picker = _PhotoPicker()..path = first.path;
+    final entries = <ManualMedicationEntry>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ManualMedicationEntryUI(
+          userSetting: const UserSetting(language: 'ko'),
+          imagePicker: picker,
+          onSaveRequested: (entry) async {
+            entries.add(entry);
+            return MedicationSaveResult(
+              status: entries.length == 1
+                  ? MedicationSaveStatus.saved
+                  : MedicationSaveStatus.failed,
+              message: '',
+            );
+          },
+        ),
+      ),
+    );
+    await tester.enterText(
+      find.byKey(const Key('manual-medication-name')),
+      '사진 시험약 1',
+    );
+    await _pickManualPhoto(tester);
+    final add = find.byKey(const Key('manual-medication-add'));
+    await tester.ensureVisible(add);
+    await tester.pumpAndSettle();
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('manual-medication-name')).at(1),
+      '사진 시험약 2',
+    );
+    picker.path = second.path;
+    final photo = find.byKey(const Key('manual-medication-photo')).at(1);
+    await tester.ensureVisible(photo);
+    await tester.pumpAndSettle();
+    await tester.tap(photo);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('카메라로 촬영'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('manual-medication-save')));
+    await tester.pumpAndSettle();
+    expect(entries.map((entry) => entry.localImagePath), [
+      first.path,
+      second.path,
+    ]);
+    expect(entries.map((entry) => entry.medicationName), [
+      '사진 시험약 1',
+      '사진 시험약 2',
+    ]);
+    expect(first.existsSync(), isTrue);
+    expect(second.existsSync(), isTrue);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _settleFileCleanup(tester, first);
+    await _settleFileCleanup(tester, second);
+  });
+
   testWidgets('저장 응답이 뒤로가기 전환 중 도착해도 아래 화면을 닫지 않는다', (tester) async {
     final pending = Completer<MedicationSaveResult>();
     await tester.pumpWidget(
@@ -593,12 +659,8 @@ void main() {
     await tester.tap(weekly);
     await tester.pumpAndSettle();
     expect(
-      tester
-          .widget<Text>(
-            find.byKey(const Key('manual-medication-dose-days-notice')),
-          )
-          .data,
-      contains('매일 복용하는 약이 아닙니다'),
+      find.byKey(const Key('manual-medication-dose-days-notice')),
+      findsNothing,
     );
     final eveningSlot = find.byKey(const Key('manual-medication-slot-evening'));
     await tester.ensureVisible(eveningSlot);
@@ -707,7 +769,9 @@ void main() {
   // 함수역할: 저장 실패 시 서버 원문(한국어) 대신 화면 언어의 저장 한도·연결·일반 실패 안내를 보여 주는지 검증한다.
   // 매개변수: tester. 반환값: 검증 완료.
   for (final english in [false, true]) {
-    testWidgets('저장 실패는 범주별로 화면 언어의 안내를 보여 준다: english=$english', (tester) async {
+    testWidgets('저장 실패는 범주별로 화면 언어의 안내를 보여 준다: english=$english', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(390, 1400);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
