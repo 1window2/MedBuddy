@@ -29,6 +29,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import FastAPI, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.websockets import WebSocketDisconnect
@@ -767,7 +768,7 @@ def test_revoked_credential_closes_an_open_stream(
     # - credentials: Bearer credentials of the stream.
     # Returns:
     # - The verified principal while no refusal is queued.
-    def verdict(credentials):
+    def verdict(credentials: HTTPAuthorizationCredentials | None) -> AuthenticatedPrincipal:
         if verdicts:
             raise HTTPException(status_code=verdicts.pop(0), detail="refused")
         return real_principal(credentials)

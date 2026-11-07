@@ -3,17 +3,21 @@
 
 """이력 공유와 연동 해제·계정 삭제가 같은 잠금 순서로 직렬화되는지 검증한다."""
 
+from collections.abc import Iterable, Iterator
+from datetime import date
+from pathlib import Path
 from threading import Event, Thread
 from unittest.mock import Mock
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session, sessionmaker
 
 from controls import manage_linked_chat_control
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.manage_account_control import ManageAccount
-from controls.manage_linked_chat_control import ManageLinkedChat
+from controls.manage_linked_chat_control import ChatSendResult, ManageLinkedChat
 from controls.manage_medication_care_control import ManageMedicationCare
 from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operations
 from core.application_clock import application_today
@@ -32,7 +36,7 @@ from support.db import make_engine, make_session_factory, seed_account
 # 반환값:
 # - Iterator[tuple]; 세션 팩터리와 연동 ID.
 @pytest.fixture
-def scene(tmp_path):
+def scene(tmp_path: Path) -> Iterator[tuple[sessionmaker[Session], int]]:
     engine = make_engine(tmp_path)
     factory = make_session_factory(engine)
     with factory() as db:
@@ -55,7 +59,7 @@ def scene(tmp_path):
 # - link_id: int; 활성 연동 ID.
 # 반환값:
 # - 채팅 전송 결과; 계정·잠금 오류는 전파.
-def send_history(db, link_id):
+def send_history(db: Session, link_id: int) -> ChatSendResult:
     return ManageLinkedChat(db).send_message(
         link_id=link_id, sender_hash="caregiver-a", client_message_id="history_lock_001",
         body="복약 기록을 공유해요.", message_kind="medication_history_share",
@@ -73,7 +77,7 @@ def send_history(db, link_id):
 # - action: str; unlink·delete·tombstone 중 철회 방식.
 # 반환값:
 # - None.
-def revoke(db, link_id, actor, action):
+def revoke(db: Session, link_id: int, actor: str, action: str) -> None:
     if action == "unlink":
         LinkPatientCaregiver(db).requestUnlink(link_id, actor)
     elif action == "delete":
@@ -95,7 +99,7 @@ def revoke(db, link_id, actor, action):
 # - None.
 @pytest.mark.parametrize("actor", ["patient-a", "caregiver-a"])
 @pytest.mark.parametrize("action", ["unlink", "delete", "tombstone"])
-def test_revocation_after_preflight_is_rechecked_before_snapshot(scene, monkeypatch, actor, action):
+def test_revocation_after_preflight_is_rechecked_before_snapshot(scene: tuple[sessionmaker[Session], int], monkeypatch: pytest.MonkeyPatch, actor: str, action: str) -> None:
     """초기 연동 조회가 성공해도 잠금 전 해제·삭제가 완료되면 공유를 만들지 않는다."""
     factory, link_id = scene
     calls = []
@@ -108,7 +112,7 @@ def test_revocation_after_preflight_is_rechecked_before_snapshot(scene, monkeypa
     # - participants: Iterable[str]; 잠금 대상 양측 계정.
     # 반환값:
     # - None.
-    def lock_after_revocation(db, participants):
+    def lock_after_revocation(db: Session, participants: Iterable[str]) -> None:
         assert not db.in_transaction()
         assert set(participants) == {"patient-a", "caregiver-a"}
         calls.append(participants)
@@ -144,7 +148,7 @@ def test_revocation_after_preflight_is_rechecked_before_snapshot(scene, monkeypa
 # - None.
 @pytest.mark.parametrize("actor", ["patient-a", "caregiver-a"])
 @pytest.mark.parametrize("action", ["unlink", "delete"])
-def test_revocation_waits_for_snapshot_commit_then_removes_message(scene, monkeypatch, actor, action):
+def test_revocation_waits_for_snapshot_commit_then_removes_message(scene: tuple[sessionmaker[Session], int], monkeypatch: pytest.MonkeyPatch, actor: str, action: str) -> None:
     """공유가 먼저 잠그면 해제·삭제가 커밋까지 기다린 뒤 메시지와 알림을 함께 제거한다."""
     factory, link_id = scene
     reading = Event()
@@ -160,7 +164,7 @@ def test_revocation_waits_for_snapshot_commit_then_removes_message(scene, monkey
     # - args: tuple; 원래 이력 집계 함수에 전달할 인수.
     # 반환값:
     # - dict; 원래 함수가 생성한 이력 집계 문맥.
-    def snapshot_while_locked(self, *args):
+    def snapshot_while_locked(self, *args: str | date) -> dict[str, object]:
         reading.set()
         assert attempted.wait(3)
         assert not acquired.wait(0.1)
@@ -173,7 +177,7 @@ def test_revocation_waits_for_snapshot_commit_then_removes_message(scene, monkey
     # - 없음.
     # 반환값:
     # - None.
-    def mutation():
+    def mutation() -> None:
         try:
             assert reading.wait(3)
             with factory() as db:
@@ -207,7 +211,7 @@ def test_revocation_waits_for_snapshot_commit_then_removes_message(scene, monkey
 # - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
 # 반환값:
 # - None.
-def test_lock_timeout_is_retryable_without_partial_snapshot(scene, monkeypatch):
+def test_lock_timeout_is_retryable_without_partial_snapshot(scene: tuple[sessionmaker[Session], int], monkeypatch: pytest.MonkeyPatch) -> None:
     factory, link_id = scene
     monkeypatch.setattr(manage_linked_chat_control, "lock_account_operations", Mock(
         side_effect=OperationalError("lock", {}, Exception("timeout")),

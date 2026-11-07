@@ -5,7 +5,7 @@
 
 import sys
 import unittest
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -555,7 +555,7 @@ class ManageLinkedChatTest(unittest.TestCase):
         *,
         patient_hash: str = "patient-a",
         item_name: str = "테스트정",
-        prescription_date=None,
+        prescription_date: date | None = None,
         total_days: str = "7일",
     ) -> _SavedMedication:
         """채팅 검증에 사용할 복약정보를 현재 테스트 DB에 저장한다."""

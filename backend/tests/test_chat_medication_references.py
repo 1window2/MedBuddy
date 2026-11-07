@@ -5,10 +5,12 @@
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
+from sqlalchemy.orm import Session
+from typing import Any
 
 from datetime import timedelta
 
-from controls.manage_linked_chat_control import ManageLinkedChat
+from controls.manage_linked_chat_control import ChatSendResult, ManageLinkedChat
 from entities.chat_message_entity import _ChatMessage
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.medication_detail_entity import MedicationDetail, MedicationSearchCacheRecord
@@ -32,7 +34,7 @@ OTHER = {"item_seq": "202600002", "item_name": "다른정 5mg", "manufacturer": 
 # - references: tuple[dict, ...]; public product references to remember.
 # Returns:
 # - None.
-def remember(db, *references):
+def remember(db: Session, *references: dict[str, str]) -> None:
     MedicationSearchCacheRepository(db).remember([
         MedicationDetail(item_seq=item["item_seq"], item_name=item["item_name"],
                          manufacturer=item["manufacturer"], image_url=item["image_url"],
@@ -49,7 +51,7 @@ def remember(db, *references):
 # Returns:
 # - tuple[ManageLinkedChat, _PatientCaregiverLink]; isolated control and active link.
 @pytest.fixture
-def chat(fk_db):
+def chat(fk_db: Session) -> tuple[ManageLinkedChat, _PatientCaregiverLink]:
     seed_account(fk_db, "patient-a", "caregiver-a", "outsider")
     link = _PatientCaregiverLink(patient_hash="patient-a", caregiver_hash="caregiver-a", linked=True)
     fk_db.add(link)
@@ -66,7 +68,7 @@ def chat(fk_db):
 # - changes: dict; 전송 인수에 덮어쓸 값.
 # 반환값:
 # - 채팅 전송 결과; 권한·검증·멱등 충돌 오류는 전파.
-def send(chat, **changes):
+def send(chat: tuple[ManageLinkedChat, _PatientCaregiverLink], **changes: Any) -> ChatSendResult:
     control, link = chat
     return control.send_message(**{
         "link_id": link.id, "sender_hash": "patient-a",
@@ -84,7 +86,7 @@ def send(chat, **changes):
 # 반환값:
 # - None.
 @pytest.mark.parametrize("sender", ["patient-a", "caregiver-a"])
-def test_reference_roundtrip_without_medication_or_dose_creation(chat, sender):
+def test_reference_roundtrip_without_medication_or_dose_creation(chat: tuple[ManageLinkedChat, _PatientCaregiverLink], sender: str) -> None:
     result = send(chat, sender_hash=sender)
     response = result.message.to_response_dict()
     assert response["context"]["medication_references"] == [REFERENCE]
@@ -103,7 +105,7 @@ def test_reference_roundtrip_without_medication_or_dose_creation(chat, sender):
 # - chat: tuple[ManageLinkedChat, _PatientCaregiverLink]; 격리 컨트롤과 활성 연동.
 # 반환값:
 # - None.
-def test_reference_keeps_saved_medication_authorization(chat):
+def test_reference_keeps_saved_medication_authorization(chat: tuple[ManageLinkedChat, _PatientCaregiverLink]) -> None:
     other = seed_medication(chat[0].db, patient_hash="outsider")
     with pytest.raises(HTTPException) as failure:
         send(chat, medication_ids=[other.id])
@@ -125,7 +127,7 @@ def test_reference_keeps_saved_medication_authorization(chat):
 # - chat: tuple; isolated chat control and active link.
 # Returns:
 # - None.
-def test_reference_retry_cannot_change_snapshot(chat):
+def test_reference_retry_cannot_change_snapshot(chat: tuple[ManageLinkedChat, _PatientCaregiverLink]) -> None:
     send(chat)
     with pytest.raises(HTTPException) as failure:
         send(chat, medication_references=[OTHER])
@@ -139,7 +141,7 @@ def test_reference_retry_cannot_change_snapshot(chat):
 # - chat: tuple; isolated chat control and active link.
 # Returns:
 # - None.
-def test_reference_card_is_rebuilt_from_the_server_search_result(chat):
+def test_reference_card_is_rebuilt_from_the_server_search_result(chat: tuple[ManageLinkedChat, _PatientCaregiverLink]) -> None:
     forged = {**REFERENCE, "item_name": "식약처 안내: 하루 6정까지", "manufacturer": "MedBuddy 공식 확인",
               "image_url": "https://nedrug.mfds.go.kr/pbp/cmn/itemImageDownload/other"}
     result = send(chat, medication_references=[forged, forged])
@@ -155,7 +157,7 @@ def test_reference_card_is_rebuilt_from_the_server_search_result(chat):
 # Returns:
 # - None.
 @pytest.mark.parametrize("age", [None, timedelta(hours=25)])
-def test_reference_needs_a_search_from_the_last_day(chat, age):
+def test_reference_needs_a_search_from_the_last_day(chat: tuple[ManageLinkedChat, _PatientCaregiverLink], age: timedelta | None) -> None:
     db = chat[0].db
     if age is None:
         reference = {**REFERENCE, "item_seq": "NOT_SEARCHED"}
@@ -176,7 +178,7 @@ def test_reference_needs_a_search_from_the_last_day(chat, age):
 # - fk_db: Session; isolated database with foreign keys enabled.
 # Returns:
 # - None.
-def test_search_cache_keeps_public_fields_only_and_prunes_old_rows(fk_db):
+def test_search_cache_keeps_public_fields_only_and_prunes_old_rows(fk_db: Session) -> None:
     remember(fk_db, REFERENCE)
     fk_db.get(MedicationSearchCacheRecord, REFERENCE["item_seq"]).fetched_at = utc_now() - timedelta(days=2)
     fk_db.commit()
@@ -200,7 +202,7 @@ def test_search_cache_keeps_public_fields_only_and_prunes_old_rows(fk_db):
     {"dosage_per_time": "1정"}, {"schedule_slot_keys": ["morning"]},
     {"item_seq": ""}, {"item_name": " "},
 ])
-def test_reference_schema_rejects_ownership_dose_and_invalid_fields(extra):
+def test_reference_schema_rejects_ownership_dose_and_invalid_fields(extra: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         ChatMessageCreate(client_message_id="reference_request_001", body="질문",
                           medication_references=[{**REFERENCE, **extra}])
@@ -219,7 +221,7 @@ def test_reference_schema_rejects_ownership_dose_and_invalid_fields(extra):
     {"slot_key": "morning"}, {"message_kind": "medication_shortage"},
     {"medication_ids": list(range(1, 11))},
 ])
-def test_reference_rejects_dose_context_and_combined_limit(chat, changes):
+def test_reference_rejects_dose_context_and_combined_limit(chat: tuple[ManageLinkedChat, _PatientCaregiverLink], changes: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         ChatMessageCreate(client_message_id="reference_request_001", body="질문",
                           medication_references=[REFERENCE], **changes)
@@ -235,7 +237,7 @@ def test_reference_rejects_dose_context_and_combined_limit(chat, changes):
 # - chat: tuple; isolated chat control and active link.
 # Returns:
 # - None.
-def test_reference_image_is_sanitized_and_delete_redacts_snapshot(chat):
+def test_reference_image_is_sanitized_and_delete_redacts_snapshot(chat: tuple[ManageLinkedChat, _PatientCaregiverLink]) -> None:
     remember(chat[0].db, {**REFERENCE, "image_url": "https://tracking.example/x"})
     result = send(chat)
     assert result.message.context_payload["medication_references"][0]["image_url"] == ""

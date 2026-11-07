@@ -3,9 +3,11 @@
 
 """병원 공유의 신뢰 경계·공휴일 시간표·권한·재전송 및 삭제를 검증한다."""
 
+from collections.abc import Iterator
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 from xml.etree import ElementTree as ET
 
@@ -36,7 +38,7 @@ from schemas.chat import ChatMessageCreate
 # 반환값:
 # - str; asyncio.
 @pytest.fixture
-def anyio_backend():
+def anyio_backend() -> str:
     return "asyncio"
 
 
@@ -48,7 +50,7 @@ def anyio_backend():
 # 반환값:
 # - Iterator[tuple]; 채팅 컨트롤과 연동 ID.
 @pytest.fixture
-def chat():
+def chat() -> Iterator[tuple[ManageLinkedChat, int]]:
     """실제 사용자·대화와 분리된 DB에서 환자와 보호자를 연결한다."""
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
@@ -67,7 +69,7 @@ def chat():
 # - changes: dict; 공유 요청에 덮어쓸 필드.
 # 반환값:
 # - ChatMessageCreate; 필드가 유효하지 않으면 ValidationError.
-def payload(**changes):
+def payload(**changes: Any) -> ChatMessageCreate:
     """클라이언트는 병원 ID와 날짜만 보낸다."""
     return ChatMessageCreate(**dict({
         "client_message_id": "hospital_share_001", "body": "병원 정보를 공유해요.",
@@ -82,7 +84,7 @@ def payload(**changes):
 # - 없음.
 # 반환값:
 # - dict; 병원 공유 문맥.
-def context():
+def context() -> dict[str, str | float | list[str]]:
     return {"hospital_id": "A123", "name": "서버 확인 병원", "address": "서울",
             "telephone": "02-000-0000", "latitude": 37.55, "longitude": 126.92,
             "departments": ["내과"], "schedule_date": "2026-10-05", "today_hours": "10:00 - 13:00",
@@ -101,8 +103,8 @@ def context():
 # - hospital_quota: AsyncMock | None; hospital quota checker.
 # Returns:
 # - dict; route response. Authorization, quota and provider errors propagate.
-async def send(chat, monkeypatch, *, sender="patient-a", request=None, provider=None,
-               hospital_quota=None):
+async def send(chat: tuple[ManageLinkedChat, int], monkeypatch: pytest.MonkeyPatch, *, sender: str = "patient-a", request: ChatMessageCreate | None = None, provider: SimpleNamespace | None = None,
+               hospital_quota: AsyncMock | None = None) -> dict[str, Any]:
     """외부 통신만 대역으로 바꾸고 실제 저장·멱등 처리 경로를 실행한다."""
     control, link_id = chat
     quota = AsyncMock()
@@ -132,7 +134,7 @@ async def send(chat, monkeypatch, *, sender="patient-a", request=None, provider=
 # - None.
 @pytest.mark.parametrize("sender", ["patient-a", "caregiver-a"])
 @pytest.mark.anyio
-async def test_share_uses_server_snapshot_and_retry_skips_provider(chat, monkeypatch, sender):
+async def test_share_uses_server_snapshot_and_retry_skips_provider(chat: tuple[ManageLinkedChat, int], monkeypatch: pytest.MonkeyPatch, sender: str) -> None:
     """양측 모두 공유 가능하며 응답 유실 후 재시도는 제공자 장애에도 중복 저장하지 않는다."""
     lookup = AsyncMock(return_value=context())
     request = payload(hospital_context={"name": "위조 병원"})
@@ -155,7 +157,7 @@ async def test_share_uses_server_snapshot_and_retry_skips_provider(chat, monkeyp
 # Returns:
 # - None.
 @pytest.mark.anyio
-async def test_share_spends_the_hospital_search_quota_but_its_retry_does_not(chat, monkeypatch):
+async def test_share_spends_the_hospital_search_quota_but_its_retry_does_not(chat: tuple[ManageLinkedChat, int], monkeypatch: pytest.MonkeyPatch) -> None:
     """병원 공유는 공공 병원 API를 조회하므로 병원 검색 하루 한도를 쓰고, 이미 저장된 공유의 재시도는 쓰지 않는다."""
     hospital_quota = AsyncMock()
     lookup = AsyncMock(return_value=context())
@@ -176,7 +178,7 @@ async def test_share_spends_the_hospital_search_quota_but_its_retry_does_not(cha
 # Returns:
 # - None.
 @pytest.mark.anyio
-async def test_exhausted_hospital_quota_refuses_the_share_before_any_lookup(chat, monkeypatch):
+async def test_exhausted_hospital_quota_refuses_the_share_before_any_lookup(chat: tuple[ManageLinkedChat, int], monkeypatch: pytest.MonkeyPatch) -> None:
     """하루 한도를 다 쓴 계정의 병원 공유는 제공자 조회 전에 429로 거절된다."""
     from fastapi import HTTPException
     lookup = AsyncMock(return_value=context())
@@ -198,7 +200,7 @@ async def test_exhausted_hospital_quota_refuses_the_share_before_any_lookup(chat
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_unauthorized_share_does_not_lookup_hospital(chat, monkeypatch):
+async def test_unauthorized_share_does_not_lookup_hospital(chat: tuple[ManageLinkedChat, int], monkeypatch: pytest.MonkeyPatch) -> None:
     """다른 연동의 사용자는 외부 API 호출 전에 거절한다."""
     lookup = AsyncMock(return_value=context())
     with pytest.raises(HTTPException) as caught:
@@ -215,7 +217,7 @@ async def test_unauthorized_share_does_not_lookup_hospital(chat, monkeypatch):
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_unlinked_during_lookup_cannot_send(chat, monkeypatch):
+async def test_unlinked_during_lookup_cannot_send(chat: tuple[ManageLinkedChat, int], monkeypatch: pytest.MonkeyPatch) -> None:
     """조회 중 연동 해제도 저장 직전 다시 확인한다."""
     # 함수이름: lookup
     # 함수역할:
@@ -224,7 +226,7 @@ async def test_unlinked_during_lookup_cannot_send(chat, monkeypatch):
     # - _: tuple; 사용하지 않는 상세 조회 인수.
     # 반환값:
     # - dict; 연동 해제 이후의 병원 문맥.
-    async def lookup(*_):
+    async def lookup(*_: str | date) -> dict[str, str | float | list[str]]:
         chat[0].db.query(_PatientCaregiverLink).filter_by(id=chat[1]).update({"linked": False})
         chat[0].db.commit()
         return context()
@@ -243,7 +245,7 @@ async def test_unlinked_during_lookup_cannot_send(chat, monkeypatch):
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_provider_failure_is_retryable_without_partial_message(chat, monkeypatch):
+async def test_provider_failure_is_retryable_without_partial_message(chat: tuple[ManageLinkedChat, int], monkeypatch: pytest.MonkeyPatch) -> None:
     """제공자 오류 세부정보를 노출하거나 불완전한 카드를 저장하지 않는다."""
     lookup = AsyncMock(side_effect=HospitalApiUnavailableError("private provider URL"))
     with pytest.raises(HTTPException) as caught:
@@ -261,7 +263,7 @@ async def test_provider_failure_is_retryable_without_partial_message(chat, monke
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_deleted_share_has_no_hospital_context(chat, monkeypatch):
+async def test_deleted_share_has_no_hospital_context(chat: tuple[ManageLinkedChat, int], monkeypatch: pytest.MonkeyPatch) -> None:
     """공유 메시지 삭제 후 병원 정보도 상대방에게 반환하지 않는다."""
     result = await send(chat, monkeypatch, provider=SimpleNamespace(requestShareContext=AsyncMock(return_value=context())))
     chat[0].delete_messages(link_id=chat[1], user_hash="patient-a",
@@ -281,7 +283,7 @@ async def test_deleted_share_has_no_hospital_context(chat, monkeypatch):
     {"hospital_id": None}, {"hospital_schedule_date": None}, {"hospital_id": "../../other"},
     {"pharmacy_id": "P123"}, {"message_kind": "text"}, {"hospital_schedule_date": "9999-01-01"},
 ])
-def test_invalid_hospital_requests_rejected(changes):
+def test_invalid_hospital_requests_rejected(changes: dict[str, str | None]) -> None:
     """필수 문맥 누락·다른 공유 유형 혼합·비정상 ID를 거절한다."""
     with pytest.raises(ValidationError):
         payload(**changes)
@@ -297,7 +299,7 @@ def test_invalid_hospital_requests_rejected(changes):
 # - None.
 @pytest.mark.parametrize("holiday,expected", [(True, "10:00 - 13:00"), (False, "09:00 - 19:00"), (None, "")])
 @pytest.mark.anyio
-async def test_shared_hours_follow_selected_date_not_current_time(holiday, expected):
+async def test_shared_hours_follow_selected_date_not_current_time(holiday: bool | None, expected: str) -> None:
     """공휴일 판단 실패 시 평일표를 대신 공유하지 않는다."""
     detail = HospitalDetails("A123", departments=("내과",),
         weekly_hours=(("1", "0900", "1900"), ("8", "1000", "1300")),
@@ -327,7 +329,7 @@ async def test_shared_hours_follow_selected_date_not_current_time(holiday, expec
     date(2026, 9, 22), date(2027, 10, 4), date(1, 1, 1), date(9999, 12, 31),
 ])
 @pytest.mark.anyio
-async def test_share_date_outside_the_search_window_is_rejected_before_any_lookup(schedule_date):
+async def test_share_date_outside_the_search_window_is_rejected_before_any_lookup(schedule_date: date) -> None:
     """검색이 받는 날짜 범위 밖이면 병원 상세도 공휴일도 조회하지 않고 거절한다."""
     boundary = SimpleNamespace(fetchDetails=AsyncMock())
     control = CheckNearbyHospital(boundary, clock=lambda: datetime(2026, 10, 1, 9, tzinfo=UTC))
@@ -345,7 +347,7 @@ async def test_share_date_outside_the_search_window_is_rejected_before_any_looku
 # - 없음.
 # 반환값:
 # - None.
-def test_detail_identity_is_parsed_from_provider():
+def test_detail_identity_is_parsed_from_provider() -> None:
     """공유용 이름·전화·좌표는 공식 상세 응답에서 추출한다."""
     root = ET.fromstring('''<response><body><totalCount>1</totalCount><items><item>
       <hpid>A123</hpid><dutyName>병원</dutyName><dutyAddr>서울</dutyAddr>

@@ -3,9 +3,11 @@
 
 """병원·약국 공유의 서버 전송 시각, 정확한 운영 구간과 JSON 보존을 검증한다."""
 
+from collections.abc import Iterator
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 from zoneinfo import ZoneInfo
 
@@ -43,7 +45,7 @@ NOW = datetime(2026, 10, 27, 17, 45, tzinfo=KST)
 # 반환값:
 # - str; asyncio.
 @pytest.fixture
-def anyio_backend():
+def anyio_backend() -> str:
     return "asyncio"
 
 
@@ -61,7 +63,7 @@ def anyio_backend():
     ("17:30:00", "closing_soon"), ("17:59:59", "closing_soon"),
     ("18:00:00", "closed"), ("23:59:59", "closed"),
 ])
-def test_exact_status_boundaries_without_inferred_lunch(time, status):
+def test_exact_status_boundaries_without_inferred_lunch(time: str, status: str) -> None:
     now = datetime.fromisoformat(f"2026-10-27T{time}+09:00")
     snapshot = build_operating_snapshot(
         now=now, today_hours=("0900", "1800"), previous_hours=None,
@@ -86,7 +88,7 @@ def test_exact_status_boundaries_without_inferred_lunch(time, status):
     ("0900", "2460"), ("2400", "0200"), ("0900", "0900"),
     ("0000", "0000"), ("0900 lunch", "1800"), (900, 1800),
 ])
-def test_missing_or_ambiguous_times_are_unknown(hours):
+def test_missing_or_ambiguous_times_are_unknown(hours: tuple[str | int, ...] | None) -> None:
     assert build_operating_snapshot(
         now=NOW, today_hours=hours, previous_hours=None,
         today_calendar_verified=True, previous_calendar_verified=True,
@@ -117,7 +119,7 @@ def test_missing_or_ambiguous_times_are_unknown(hours):
     ("2026-10-27T12:00:00+09:00", ("0000", "2400"), None, "open",
      "2026-10-27T00:00:00+09:00", None),
 ])
-def test_overnight_and_midnight_use_actual_dates(now, today, previous, status, opens, closes):
+def test_overnight_and_midnight_use_actual_dates(now: str, today: tuple[str, str] | None, previous: tuple[str, str] | None, status: str, opens: str, closes: str | None) -> None:
     assert build_operating_snapshot(
         now=datetime.fromisoformat(now), today_hours=today, previous_hours=previous,
         today_calendar_verified=True, previous_calendar_verified=True,
@@ -134,7 +136,7 @@ def test_overnight_and_midnight_use_actual_dates(now, today, previous, status, o
 # - None.
 @pytest.mark.parametrize("time", ["00:00:00", "12:00:00", "23:45:00", "23:59:00"])
 @pytest.mark.parametrize("previous", [("0000", "2400"), ("2200", "0200"), None])
-def test_all_day_hours_stay_open_without_closing_time(time, previous):
+def test_all_day_hours_stay_open_without_closing_time(time: str, previous: tuple[str, str] | None) -> None:
     now = datetime.fromisoformat(f"2026-10-27T{time}+09:00")
     snapshot = build_operating_snapshot(
         now=now, today_hours=("0000", "2400"), previous_hours=previous,
@@ -162,7 +164,7 @@ def test_all_day_hours_stay_open_without_closing_time(time, previous):
     (("2000", "1000"), ("0900", "1900"), "19:00:00", "closed", "2026-10-27T19:00:00+09:00"),
     (("2000", "1000"), ("0900", "0800"), "09:50:00", "open", "2026-10-28T08:00:00+09:00"),
 ])
-def test_overlapping_and_touching_intervals_are_merged(previous, today, time, status, closing_date):
+def test_overlapping_and_touching_intervals_are_merged(previous: tuple[str, str], today: tuple[str, str], time: str, status: str, closing_date: str) -> None:
     now = datetime.fromisoformat(f"2026-10-27T{time}+09:00")
     snapshot = build_operating_snapshot(
         now=now, today_hours=today, previous_hours=previous,
@@ -179,7 +181,7 @@ def test_overlapping_and_touching_intervals_are_merged(previous, today, time, st
 # - 없음.
 # 반환값:
 # - None.
-def test_snapshot_rejects_naive_clock():
+def test_snapshot_rejects_naive_clock() -> None:
     with pytest.raises(ValueError, match="timezone-aware"):
         build_operating_snapshot(
             now=NOW.replace(tzinfo=None), today_hours=("0900", "1800"), previous_hours=None,
@@ -195,7 +197,7 @@ def test_snapshot_rejects_naive_clock():
 # 반환값:
 # - Iterator[SimpleNamespace]; 시계·채팅 컨트롤·HTTP 클라이언트·제공자 대역.
 @pytest.fixture
-def flow(monkeypatch):
+def flow(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
     """외부 조회만 대체하고 실제 전송·저장·공개 응답을 격리 DB에서 실행한다."""
     monkeypatch.setattr(settings, "APPLICATION_TIME_ZONE", "Asia/Seoul")
     clock = SimpleNamespace(now=NOW)
@@ -255,7 +257,7 @@ def flow(monkeypatch):
 # - kind: str; hospital_share, pharmacy_share 또는 pharmacy_phone_verified.
 # 반환값:
 # - dict; 공유 메시지 요청 필드.
-def share_payload(kind):
+def share_payload(kind: str) -> dict[str, str]:
     values = {"client_message_id": "operating-snapshot-001", "body": "Shared care location",
               "message_kind": kind}
     if kind == "hospital_share":
@@ -274,7 +276,7 @@ def share_payload(kind):
 # - extra: dict; 공유 요청에 덮어쓸 필드.
 # 반환값:
 # - dict; 병원 또는 약국 공유 문맥. 실패 응답은 AssertionError.
-def shared_context(flow, kind, **extra):
+def shared_context(flow: SimpleNamespace, kind: str, **extra: Any) -> dict[str, Any]:
     response = flow.client.post(flow.url, json={**share_payload(kind), **extra})
     assert response.status_code == 200, response.text
     key = "hospital_context" if kind == "hospital_share" else "pharmacy_context"
@@ -291,7 +293,7 @@ def shared_context(flow, kind, **extra):
 # 반환값:
 # - None.
 @pytest.mark.parametrize("kind", ["hospital_share", "pharmacy_share", "pharmacy_phone_verified"])
-def test_public_json_is_server_trusted_and_frozen_across_history_and_retry(flow, kind, monkeypatch):
+def test_public_json_is_server_trusted_and_frozen_across_history_and_retry(flow: SimpleNamespace, kind: str, monkeypatch: pytest.MonkeyPatch) -> None:
     forged = {"status": "open", "as_of": "2099-01-01T00:00:00Z",
               "opens_at": "2099-01-01T00:00:00Z", "closes_at": None}
     key = "hospital_context" if kind == "hospital_share" else "pharmacy_context"
@@ -348,7 +350,7 @@ def test_public_json_is_server_trusted_and_frozen_across_history_and_retry(flow,
     ("12:00:00", "open", "2026-10-27T09:00:00+09:00", "2026-10-27T18:00:00+09:00"),
     ("18:00:00", "closed", "2026-10-27T09:00:00+09:00", "2026-10-27T18:00:00+09:00"),
 ])
-def test_both_share_types_use_current_day_and_overnight_hours(flow, kind, time, status, opens, closes):
+def test_both_share_types_use_current_day_and_overnight_hours(flow: SimpleNamespace, kind: str, time: str, status: str, opens: str, closes: str) -> None:
     flow.clock.now = datetime.fromisoformat(f"2026-10-27T{time}+09:00")
     snapshot = shared_context(flow, kind)["operating_snapshot"]
     assert snapshot == {"status": status, "as_of": flow.clock.now.isoformat(),
@@ -371,7 +373,7 @@ def test_both_share_types_use_current_day_and_overnight_hours(flow, kind, time, 
     ("1000", "09:50:00", "open"), ("0900", "08:50:00", "open"),
     ("1000", "19:00:00", "closed"),
 ])
-def test_share_merges_verified_intervals_and_keeps_past_closed_bounds(flow, kind, previous_end, time, status):
+def test_share_merges_verified_intervals_and_keeps_past_closed_bounds(flow: SimpleNamespace, kind: str, previous_end: str, time: str, status: str) -> None:
     hours = {"1": ("2000", previous_end), "2": ("0900", "1900")}
     flow.boundary.fetchDetails.return_value = replace(
         flow.detail, weekly_hours=tuple((key, *value) for key, value in hours.items()),
@@ -398,7 +400,7 @@ def test_share_merges_verified_intervals_and_keeps_past_closed_bounds(flow, kind
 # - None.
 @pytest.mark.parametrize("kind", ["hospital_share", "pharmacy_share"])
 @pytest.mark.parametrize("hour,status", [(1, "unknown"), (12, "open")])
-def test_previous_holiday_only_blocks_status_that_needs_overnight_evidence(flow, kind, hour, status):
+def test_previous_holiday_only_blocks_status_that_needs_overnight_evidence(flow: SimpleNamespace, kind: str, hour: int, status: str) -> None:
     previous = NOW.date() - timedelta(days=1)
     flow.calendar.isHoliday.side_effect = lambda value: value == previous
     flow.chat.pharmacy_repository.replace_korean_holidays(2026, 10, frozenset({previous}))
@@ -420,7 +422,7 @@ def test_previous_holiday_only_blocks_status_that_needs_overnight_evidence(flow,
 # - None.
 @pytest.mark.parametrize("kind", ["hospital_share", "pharmacy_share"])
 @pytest.mark.parametrize("calendar_state", ["holiday", "missing", "expired", "timeout"])
-def test_holidays_and_calendar_failure_do_not_claim_regular_hours(flow, kind, calendar_state):
+def test_holidays_and_calendar_failure_do_not_claim_regular_hours(flow: SimpleNamespace, kind: str, calendar_state: str) -> None:
     if calendar_state == "holiday":
         holiday = NOW.date()
         flow.calendar.isHoliday.side_effect = lambda value: value == holiday
@@ -448,7 +450,7 @@ def test_holidays_and_calendar_failure_do_not_claim_regular_hours(flow, kind, ca
 # - flow: SimpleNamespace; 격리 DB·채팅 앱·제공자·시계 대역.
 # 반환값:
 # - None.
-def test_hospital_break_notes_do_not_infer_precise_availability(flow):
+def test_hospital_break_notes_do_not_infer_precise_availability(flow: SimpleNamespace) -> None:
     flow.boundary.fetchDetails.return_value = replace(flow.detail, operating_notes="점심시간 전화 문의")
     assert shared_context(flow, "hospital_share")["operating_snapshot"]["status"] == "unknown"
 
@@ -462,7 +464,7 @@ def test_hospital_break_notes_do_not_infer_precise_availability(flow):
 # 반환값:
 # - None.
 @pytest.mark.parametrize("kind", ["hospital_share", "pharmacy_share"])
-def test_unknown_current_hours_remain_unknown_even_with_future_hours(flow, kind):
+def test_unknown_current_hours_remain_unknown_even_with_future_hours(flow: SimpleNamespace, kind: str) -> None:
     flow.boundary.fetchDetails.return_value = replace(flow.detail, weekly_hours=(("3", "1000", "1300"),))
     pharmacy = flow.db.get(PharmacyCatalogRecord, "P123")
     pharmacy.weekly_hours = {"3": ["1000", "1300"]}
@@ -485,7 +487,7 @@ def test_unknown_current_hours_remain_unknown_even_with_future_hours(flow, kind)
 # - None.
 @pytest.mark.parametrize("kind", ["hospital_share", "pharmacy_share"])
 @pytest.mark.parametrize("hour,status", [(1, "unknown"), (12, "open")])
-def test_previous_calendar_failure_does_not_discard_verified_today(flow, monkeypatch, kind, hour, status):
+def test_previous_calendar_failure_does_not_discard_verified_today(flow: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, kind: str, hour: int, status: str) -> None:
     flow.clock.now = datetime(2026, 11, 1, hour, tzinfo=KST)
     hours = {"6": ("2000", "1000"), "7": ("0900", "1800")}
     flow.boundary.fetchDetails.return_value = replace(
@@ -502,7 +504,7 @@ def test_previous_calendar_failure_does_not_discard_verified_today(flow, monkeyp
     # - value: date; 공휴일 조회 날짜.
     # 반환값:
     # - bool; 전월에는 PharmacyApiUnavailableError.
-    async def holiday(value):
+    async def holiday(value: date) -> bool:
         if value.month == 10:
             raise PharmacyApiUnavailableError("Previous calendar unavailable")
         return False
@@ -525,7 +527,7 @@ def test_previous_calendar_failure_does_not_discard_verified_today(flow, monkeyp
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_hospital_server_utc_clock_is_normalized_and_calendar_dates_deduplicated(flow):
+async def test_hospital_server_utc_clock_is_normalized_and_calendar_dates_deduplicated(flow: SimpleNamespace) -> None:
     local_now = NOW.replace(hour=1, minute=30)
     flow.clock.now = local_now.astimezone(UTC)
     context = await flow.hospital.requestShareContext("H123", NOW.date())
@@ -543,7 +545,7 @@ async def test_hospital_server_utc_clock_is_normalized_and_calendar_dates_dedupl
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_hospital_reads_server_clock_after_provider_and_calendar_work(flow):
+async def test_hospital_reads_server_clock_after_provider_and_calendar_work(flow: SimpleNamespace) -> None:
     # 함수이름: details
     # 함수역할:
     # - 상세 조회 중 시계를 마감 직전으로 옮기고 준비된 병원 상세를 반환한다.
@@ -551,7 +553,7 @@ async def test_hospital_reads_server_clock_after_provider_and_calendar_work(flow
     # - _: object; 사용하지 않는 제공자 조회 인수.
     # 반환값:
     # - HospitalDetails; 고정 병원 상세.
-    async def details(_):
+    async def details(_: str) -> HospitalDetails:
         flow.clock.now = NOW.replace(hour=17, minute=59, second=59)
         return flow.detail
 
@@ -562,7 +564,7 @@ async def test_hospital_reads_server_clock_after_provider_and_calendar_work(flow
     # - _: object; 사용하지 않는 제공자 조회 인수.
     # 반환값:
     # - bool; False.
-    async def holiday(_):
+    async def holiday(_: date) -> bool:
         flow.clock.now = NOW.replace(hour=18, minute=0, second=0)
         return False
 
@@ -582,7 +584,7 @@ async def test_hospital_reads_server_clock_after_provider_and_calendar_work(flow
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_crossing_midnight_during_calendar_lookup_does_not_guess_new_day(flow):
+async def test_crossing_midnight_during_calendar_lookup_does_not_guess_new_day(flow: SimpleNamespace) -> None:
     flow.clock.now = NOW.replace(hour=23, minute=59, second=59)
 
     # 함수이름: holiday
@@ -592,7 +594,7 @@ async def test_crossing_midnight_during_calendar_lookup_does_not_guess_new_day(f
     # - _: object; 사용하지 않는 제공자 조회 인수.
     # 반환값:
     # - bool; False.
-    async def holiday(_):
+    async def holiday(_: date) -> bool:
         flow.clock.now = datetime(2026, 10, 28, tzinfo=KST)
         return False
 
@@ -611,7 +613,7 @@ async def test_crossing_midnight_during_calendar_lookup_does_not_guess_new_day(f
 # - flow: SimpleNamespace; 격리 DB·채팅 앱·제공자·시계 대역.
 # 반환값:
 # - None.
-def test_future_holiday_selection_does_not_replace_current_hospital_status(flow):
+def test_future_holiday_selection_does_not_replace_current_hospital_status(flow: SimpleNamespace) -> None:
     flow.calendar.isHoliday.side_effect = lambda value: value == date(2026, 10, 28)
     context = shared_context(flow, "hospital_share")
     assert context["schedule_date"] == "2026-10-28"
@@ -628,7 +630,7 @@ def test_future_holiday_selection_does_not_replace_current_hospital_status(flow)
 # - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
 # 반환값:
 # - None.
-def test_pharmacy_reuses_calendar_month_without_provider_work(flow, monkeypatch):
+def test_pharmacy_reuses_calendar_month_without_provider_work(flow: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
     lookup = Mock(wraps=flow.chat.pharmacy_repository.get_cached_korean_holidays)
     monkeypatch.setattr(flow.chat.pharmacy_repository, "get_cached_korean_holidays", lookup)
     assert shared_context(flow, "pharmacy_share")["operating_snapshot"]["status"] == "closing_soon"
