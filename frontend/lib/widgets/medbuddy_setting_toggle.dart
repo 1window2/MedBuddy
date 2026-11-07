@@ -28,6 +28,7 @@ class MedBuddySettingToggle extends StatelessWidget {
   // - description (String): 주 표시 아래에 제공할 설명 또는 계정 상세.
   // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
   // - onChanged (ValueChanged<bool>?): 변경된 값 또는 선택 상태를 소유 화면에 전달할 콜백.
+  // - key (Key?): 전체 설정 행의 위젯 식별자.
   // 반환값: 입력 설정이 반영된 MedBuddySettingToggle 인스턴스.
   const MedBuddySettingToggle({
     super.key,

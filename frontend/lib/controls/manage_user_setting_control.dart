@@ -57,20 +57,16 @@ class ManageUserSetting {
   static int _pendingTokenSequence = 0;
   static final Map<String, Future<void>> _localWrites = {};
 
-  // 함수이름: lastLookupReachedServer
-  // 함수역할: 가장 최근 설정 조회가 서버 사본을 받았는지 알려 준다. 캐시만으로 채운 설정을 자동 저장해 서버의 더 새로운 값을 덮어쓰지 않게 하는 데 쓴다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - bool: 최근 requestUserSetting이 서버 응답으로 끝났으면 true, 캐시로 대체했거나 아직 조회하지 않았으면 false.
+  // Function Name: lastLookupReachedServer
+  // Description: Reports whether the latest settings lookup obtained a server copy rather than relying on cache.
+  // Parameters: None.
+  // Returns: True after a server-backed lookup; false before lookup or after cache fallback, preventing unintended remote overwrite.
   bool get lastLookupReachedServer => _lastLookupReachedServer;
 
-  // 함수이름: hasPendingSave
-  // 함수역할: 기기에 저장했지만 아직 서버에 반영하지 못한 설정이 남아 있는지 알려 준다. 표시는 계정별 저장소에 보관되어 앱 재시작과 백그라운드 작업에서도 유지된다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - bool: 최근 조회·저장 뒤 서버 반영 대기 표시가 남아 있으면 true.
+  // Function Name: hasPendingSave
+  // Description: Exposes whether locally saved preferences still await server synchronization.
+  // Parameters: None.
+  // Returns: The latest locally observed pending flag; durable account storage retains the marker across restarts.
   bool get hasPendingSave => _hasPendingSave;
 
   // Function Name: ManageUserSetting
@@ -315,7 +311,10 @@ class ManageUserSetting {
     }
   }
 
-  // 함수역할: 오래된 전송의 완료·실패가 최신 기기 저장 결과를 되돌리지 않게 한다.
+  // 함수이름: _currentSaveResult
+  // 함수역할: 현재 저장소 상태로 결과를 다시 만들어 늦게 끝난 요청이 최신 저장 상태를 되돌리지 않게 한다.
+  // 매개변수: preferences: 최신 계정 설정을 읽을 저장소.
+  // 반환값: 현재 설정과 대기 토큰 유무에 따른 서버 동기화 결과.
   UserSettingSaveResult _currentSaveResult(SharedPreferences preferences) {
     final current = _readState(preferences);
     _hasPendingSave = current.pendingToken != null;
@@ -325,14 +324,19 @@ class ManageUserSetting {
     );
   }
 
-  // 함수역할: 서버가 확정한 설정 버전을 읽는다. 구형 서버에는 이 필드가 없다.
+  // 함수이름: _responseRevision
+  // 함수역할: 서버 응답에서 유효한 설정 리비전만 읽는다.
+  // 매개변수: responseBody: JSON 응답 본문.
+  // 반환값: 0 이상의 정수 리비전 또는 구형·잘못된 필드의 경우 null; JSON 디코딩 오류는 전파한다.
   int? _responseRevision(String responseBody) {
     final revision = ApiResponseParser.decodeMap(responseBody)['revision'];
     return revision is int && revision >= 0 ? revision : null;
   }
 
-  // 함수역할: 같은 isolate의 계정별 컨트롤이 검사와 저장 사이에 끼어들지 못하게 한다.
-  // 네트워크 대기는 잠금 밖에서 수행한다. 백그라운드 작업은 원격 저장 없이 스냅샷만 읽는다.
+  // 함수이름: _withPreferences
+  // 함수역할: 같은 isolate 안에서 계정별 저장소 검사와 쓰기를 직렬화한다.
+  // 매개변수: action: 갱신한 SharedPreferences로 수행할 동기 또는 비동기 작업.
+  // 반환값: 작업 결과 Future; 실패해도 후속 작업 잠금을 해제한다. 네트워크 대기는 호출자가 잠금 밖에서 수행한다.
   Future<T> _withPreferences<T>(
     FutureOr<T> Function(SharedPreferences) action,
   ) async {
@@ -351,7 +355,10 @@ class ManageUserSetting {
     }
   }
 
-  // 함수역할: 새 저장은 한 스냅샷에서 읽고, 아직 이행하지 않은 계정만 기존 키로 복원한다.
+  // Function Name: _readState
+  // Description: Reads the account snapshot, falling back to legacy keys when absent or malformed.
+  // Parameters: preferences: Account-keyed local storage.
+  // Returns: Settings, pending intent and server revision; snapshot format/type failures preserve the legacy copy.
   _SettingState _readState(SharedPreferences preferences) {
     final snapshot = preferences.getString(
       _key(UserSettingPreference.snapshot),
@@ -384,7 +391,10 @@ class ManageUserSetting {
     );
   }
 
-  // 함수역할: 값·전송 표시·버전을 먼저 원자적으로 게시하고 구형 기기 설정 키를 보완한다.
+  // 함수이름: _writeState
+  // 함수역할: 설정·대기 토큰·리비전을 하나의 스냅샷으로 먼저 저장한 뒤 호환 키를 갱신한다.
+  // 매개변수: preferences: 대상 저장소; state: 함께 저장할 계정 상태.
+  // 반환값: 완료 Future; 스냅샷 저장 거절은 StateError, 이후 호환 키 기록 실패는 전파한다.
   Future<void> _writeState(
     SharedPreferences preferences,
     _SettingState state,
@@ -420,24 +430,20 @@ class ManageUserSetting {
     await _cacheUserSetting(state.setting);
   }
 
-  // 함수이름: _loadFreshPreferences
-  // 함수역할: 백그라운드 작업 등 다른 isolate가 쓴 값까지 보이도록 저장소를 다시 읽어 돌려준다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<SharedPreferences>: 최신 값으로 갱신을 시도한 저장소.
+  // Function Name: _loadFreshPreferences
+  // Description: Obtains preferences and attempts to reload writes made by other isolates.
+  // Parameters: None.
+  // Returns: A preferences instance after the reload attempt; instance acquisition errors propagate.
   Future<SharedPreferences> _loadFreshPreferences() async {
     final preferences = await SharedPreferences.getInstance();
     await _reloadPreferences(preferences);
     return preferences;
   }
 
-  // 함수이름: _reloadPreferences
-  // 함수역할: 저장소를 다시 읽고, 다시 읽기에 실패하면 메모리 사본을 그대로 쓴다.
-  // 매개변수:
-  // - preferences (SharedPreferences): 다시 읽을 저장소.
-  // 반환값:
-  // - Future<void>: 다시 읽기를 시도한 뒤 완료되는 Future.
+  // Function Name: _reloadPreferences
+  // Description: Attempts a disk reload while retaining the in-memory copy on reload failure.
+  // Parameters: preferences: Store instance to refresh.
+  // Returns: Completion after success or a logged failure.
   Future<void> _reloadPreferences(SharedPreferences preferences) async {
     try {
       await preferences.reload();
@@ -451,12 +457,10 @@ class ManageUserSetting {
     }
   }
 
-  // 함수이름: _nextPendingToken
-  // 함수역할: 저장마다 다른 서버 반영 대기 표시 값을 만든다. 늦게 끝난 전송이 더 새로운 저장의 표시를 지우지 않게 구분한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - String: 시각과 일련번호로 만든 표시 값.
+  // Function Name: _nextPendingToken
+  // Description: Creates a per-save marker so an older completion cannot clear a newer pending intent.
+  // Parameters: None.
+  // Returns: A timestamp-and-sequence string; not a cryptographic identifier.
   static String _nextPendingToken() =>
       '${DateTime.now().microsecondsSinceEpoch}-${_pendingTokenSequence++}';
 
@@ -648,12 +652,10 @@ class ManageUserSetting {
   // - String: Normalizes the current user hash before creating preference keys or scoped API requests.
   String get _normalizedUserHash => PatientHash.normalizePatientHash(userHash);
 
-  // 함수이름: _key
-  // 함수역할: 현재 사용자 범위의 설정 저장 키를 만든다. 해시는 _normalizedUserHash로 정규화한다.
-  // 매개변수:
-  // - preference (UserSettingPreference): 저장할 설정 항목
-  // 반환값:
-  // - String: 'user_setting_<정규화한 사용자 해시>_<항목 이름>' 형식의 저장 키.
+  // Function Name: _key
+  // Description: Builds the preference key within the normalized current account scope.
+  // Parameters: preference: UserSettingPreference to address.
+  // Returns: The account-specific persistence key.
   String _key(UserSettingPreference preference) =>
       preference.keyFor(_normalizedUserHash);
 

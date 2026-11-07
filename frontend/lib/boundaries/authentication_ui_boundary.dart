@@ -65,11 +65,10 @@ class _AuthenticationUIState extends State<AuthenticationUI>
   late final AppLanguageControl _languageControl;
   late final bool _ownsLanguageControl;
 
-  // Function Name: initState
-  // Description: Connects a supplied language controller or creates an owned one, then subscribes to language changes.
-  // Parameters:
-  // - None.
-  // Returns: None; updates state or performs the documented action.
+  // 함수이름: initState
+  // 함수역할: 입력·언어·인증 상태를 연결하고 세션 복구 및 앱 생명주기 변화를 관찰한다. 외부 언어 제어기가 없으면 화면 소유 제어기를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 없음.
   @override
   void initState() {
     super.initState();
@@ -91,11 +90,10 @@ class _AuthenticationUIState extends State<AuthenticationUI>
     _languageControl.addListener(_handleLanguageChanged);
   }
 
-  // Function Name: dispose
-  // Description: Releases _emailController, _passwordController, _languageControl and detaches this screen from active updates.
-  // Parameters:
-  // - None.
-  // Returns: None; updates state or performs the documented action.
+  // 함수이름: dispose
+  // 함수역할: 인증·언어·복구 상태 리스너와 생명주기 관찰을 해제하고 입력 제어기 및 화면이 소유한 언어 제어기를 정리한다.
+  // 매개변수: 없음.
+  // 반환값: 없음.
   @override
   void dispose() {
     widget.control.removeListener(_handleAuthenticationChanged);
@@ -110,6 +108,10 @@ class _AuthenticationUIState extends State<AuthenticationUI>
     super.dispose();
   }
 
+  // 함수이름: didUpdateWidget
+  // 함수역할: 인증 제어기가 교체되면 이전 감시와 복구 시도를 멈추고 새 제어기의 상태를 반영한다.
+  // 매개변수: oldWidget (AuthenticationUI): 이전 화면 설정.
+  // 반환값: 없음.
   @override
   void didUpdateWidget(covariant AuthenticationUI oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -121,6 +123,10 @@ class _AuthenticationUIState extends State<AuthenticationUI>
     }
   }
 
+  // 함수이름: didChangeAppLifecycleState
+  // 함수역할: 백그라운드에서는 세션 복구를 멈추고 현재 인증 상태에 따라 복구 필요성을 다시 판단한다.
+  // 매개변수: state (AppLifecycleState): 새 앱 상태.
+  // 반환값: 없음.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
@@ -128,7 +134,10 @@ class _AuthenticationUIState extends State<AuthenticationUI>
     _handleAuthenticationChanged();
   }
 
-  // Navigator가 유지하는 로그인 화면도 처리 중 상태와 인증 오류를 직접 갱신한다.
+  // 함수이름: _handleAuthenticationChanged
+  // 함수역할: 빌드 중 알림도 안전하게 다음 마이크로태스크로 미뤄 화면과 전경 세션 복구 상태를 갱신한다.
+  // 매개변수: 없음.
+  // 반환값: 없음. 이미 해제된 화면은 무시한다.
   void _handleAuthenticationChanged() {
     // Auth notifications can arrive during a build: defer the retry mutation.
     Future.microtask(() {
@@ -475,18 +484,20 @@ class _AuthenticationUIState extends State<AuthenticationUI>
     }
   }
 
-  // 인증에서 돌아오면 가입 모드와 비밀번호만 비우고 입력한 이메일·언어는 유지한다.
+  // 함수이름: _showSignInAfterVerification
+  // 함수역할: 인증 화면에서 돌아오면 이메일·언어는 유지하고 비밀번호와 가입 모드만 초기화한다.
+  // 매개변수: 없음.
+  // 반환값: 없음. 화면이 해제되었으면 무시한다.
   void _showSignInAfterVerification() {
     if (!mounted) return;
     _passwordController.clear();
     setState(() => _createAccount = false);
   }
 
-  // Function Name: _submit
-  // Description: Validates the email and password, then creates an account or signs in according to the selected mode.
-  // Parameters:
-  // - None.
-  // Returns: Future<void> completing when the requested interaction or refresh finishes.
+  // 함수이름: _submit
+  // 함수역할: 이메일·비밀번호 검증을 통과하면 선택 모드에 따라 계정을 생성하거나 로그인한다. 검증 실패 시 요청하지 않는다.
+  // 매개변수: 없음.
+  // 반환값: 인증 요청 처리가 완료되는 Future<void>.
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -505,11 +516,10 @@ class _AuthenticationUIState extends State<AuthenticationUI>
     );
   }
 
-  // Function Name: _sendPasswordReset
-  // Description: Requests a password reset for the entered email and reports successful delivery.
-  // Parameters:
-  // - None.
-  // Returns: Future<void> completing when the requested interaction or refresh finishes.
+  // 함수이름: _sendPasswordReset
+  // 함수역할: 현재 언어로 비밀번호 재설정 메일을 요청하고 화면이 유지되고 전송이 성공했을 때 안내한다.
+  // 매개변수: 없음.
+  // 반환값: 재설정 요청과 결과 안내 완료.
   Future<void> _sendPasswordReset() async {
     final sent = await widget.control.sendPasswordReset(
       _emailController.text,
@@ -529,11 +539,10 @@ class _AuthenticationUIState extends State<AuthenticationUI>
       );
   }
 
-  // Function Name: _startPhoneSignIn
-  // Description: Collects an international phone number and starts SMS verification unless canceled.
-  // Parameters:
-  // - None.
-  // Returns: Future<void> completing when the requested interaction or refresh finishes.
+  // 함수이름: _startPhoneSignIn
+  // 함수역할: 국가번호가 포함된 전화번호를 입력받아 문자 인증을 시작하며 취소 시 요청하지 않고 입력 제어기를 정리한다.
+  // 매개변수: 없음.
+  // 반환값: 번호 입력과 인증 시작 처리 완료.
   Future<void> _startPhoneSignIn() async {
     final text = _AuthenticationText(_languageControl.language);
     final phoneController = TextEditingController(text: '+82');
@@ -605,13 +614,10 @@ class _AuthenticationUIState extends State<AuthenticationUI>
   }
 }
 
-// 클래스명: _AuthenticationText
-// 역할: 로그인, 계정 생성 및 이메일·문자 인증에 쓰는 한국어·영어 문구를 담당한다.
-// 주요 책임:
-// - 앱에서 선택한 언어로 로그인 화면의 문구를 제공한다.
-// - 검증·게스트 동의·진행 상태 안내를 간결하게 유지한다.
-// 속성:
-// - language (String): 화면 문구를 선택할 언어 코드.
+// Class Name: _AuthenticationText
+// Role: Localized authentication copy.
+// Responsibilities: Supplies labels and validation, guest-consent and verification messages using the shared language rule.
+// Attributes: language (String): selected language code.
 class _AuthenticationText {
   final String language;
 
@@ -622,11 +628,10 @@ class _AuthenticationText {
   // Returns: Initialized _AuthenticationText instance.
   const _AuthenticationText(this.language);
 
-  // 함수이름: isEnglish
-  // 함수역할: 언어 코드가 앱 공통 기준으로 영어인지 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: isEnglish
+  // Description: Uses the shared language-code rule to select English authentication text.
+  // Parameters: None.
+  // Returns: True for an English language code.
   bool get isEnglish => isEnglishLanguage(language);
   // 함수이름: _isEnglish
   // 함수역할: 문구 제공 객체의 영어 선택 상태를 그대로 사용한다.
@@ -776,44 +781,118 @@ class _AuthenticationText {
   // Returns: The formatted display text or identifier described above.
   String get continueLabel => _isEnglish ? 'Continue' : '계속';
 
-  // 인증 중간 화면도 로그인 화면과 같은 언어를 사용한다.
+  // 함수이름: verifyEmail
+  // 함수역할: 이메일 인증 요청 제목에 사용할 현재 언어 문구를 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get verifyEmail => _isEnglish ? 'Verify your email' : '이메일을 인증해 주세요';
+  // 함수이름: verificationEmailSent
+  // 함수역할: 인증 메일의 수신 주소를 현재 언어의 발송 안내에 넣는다.
+  // 매개변수: email (String?): 수신 주소; null이면 일반 주소 표현.
+  // 반환값: 주소가 포함된 발송 안내.
   String verificationEmailSent(String? email) => _isEnglish
       ? 'A verification email was sent to ${email ?? 'your email address'}.'
       : '${email ?? '입력한 이메일 주소'}로 인증 메일을 보냈어요.';
+  // 함수이름: automaticEmailVerification
+  // 함수역할: 메일 링크를 연 뒤 앱으로 복귀하는 자동 인증 안내에 사용할 현재 언어 문구를 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get automaticEmailVerification => _isEnglish
       ? 'Open the link in your email, then return to the app to sign in automatically.'
       : '메일의 인증 링크를 누른 뒤 앱으로 돌아오면 자동으로 로그인됩니다.';
+  // 함수이름: checkEmailVerification
+  // 함수역할: 인증 상태 수동 재확인 버튼에 사용할 현재 언어 문구를 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get checkEmailVerification =>
       _isEnglish ? 'Check verification status' : '인증 상태 다시 확인';
+  // 함수이름: checkingEmailVerification
+  // 함수역할: 인증 확인 진행 상태에 사용할 현재 언어 문구를 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get checkingEmailVerification =>
       _isEnglish ? 'Checking verification…' : '인증 확인 중…';
+  // 함수이름: backToSignIn
+  // 함수역할: 로그인 화면 복귀 버튼에 사용할 현재 언어 문구를 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get backToSignIn => _isEnglish ? 'Back to sign in' : '로그인 화면으로 돌아가기';
+  // 함수이름: resendEmail
+  // 함수역할: 인증 메일 재전송 버튼에 사용할 현재 언어 문구를 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get resendEmail =>
       _isEnglish ? 'Resend verification email' : '인증 메일 다시 보내기';
+  // 함수이름: passwordResetSent
+  // 함수역할: 비밀번호 재설정 메일 발송 안내에 사용할 현재 언어 문구를 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get passwordResetSent => _isEnglish
       ? 'Password reset instructions were sent by email.'
       : '비밀번호 재설정 메일을 보냈습니다.';
+  // 함수이름: servicesUnavailable
+  // 함수역할: 로그인 서비스 일시 중단 안내에 사용할 현재 언어 문구를 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get servicesUnavailable => _isEnglish
       ? 'MedBuddy secure services are temporarily unavailable.'
       : '지금은 로그인 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.';
+  // 함수이름: retryStartup
+  // 함수역할: 보안 서비스 재연결 버튼에 사용할 현재 언어 문구를 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get retryStartup => _isEnglish ? 'Retry secure startup' : '다시 연결';
+  // 함수이름: continueWithPhone
+  // 함수역할: 전화번호 인증 진입 버튼에 사용할 현재 언어 문구를 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get continueWithPhone =>
       _isEnglish ? 'Continue with phone' : '전화번호로 계속하기';
+  // 함수이름: phoneSignIn
+  // 함수역할: 전화번호 로그인 제목에 사용할 현재 언어 문구를 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get phoneSignIn => _isEnglish ? 'Phone sign-in' : '전화번호로 로그인';
+  // 함수이름: phoneNumber
+  // 함수역할: 국가번호 포함 전화번호 입력 라벨에 사용할 현재 언어 문구를 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get phoneNumber =>
       _isEnglish ? 'International phone number' : '전화번호 (국가번호 포함)';
+  // 함수이름: sendCode
+  // 함수역할: 문자 인증번호 발송 버튼에 사용할 현재 언어 문구를 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get sendCode => _isEnglish ? 'Send code' : '인증번호 보내기';
+  // 함수이름: enterCode
+  // 함수역할: 인증번호 입력 요청 제목에 사용할 현재 언어 문구를 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get enterCode =>
       _isEnglish ? 'Enter verification code' : '인증번호를 입력해 주세요';
+  // 함수이름: codeSent
+  // 함수역할: 문자 인증번호의 수신 번호를 발송 안내에 넣는다.
+  // 매개변수: phone (String?): 수신 번호; null이면 일반 전화번호 표현.
+  // 반환값: 현재 언어의 문자 발송 안내.
   String codeSent(String? phone) => _isEnglish
       ? 'A code was sent to ${phone ?? 'your phone'}.'
       : '${phone ?? '입력한 전화번호'}로 인증번호를 보냈습니다.';
+  // 함수이름: smsCode
+  // 함수역할: 문자 인증번호 입력 라벨에 사용할 현재 언어 문구를 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get smsCode => _isEnglish ? 'SMS code' : '문자 인증번호';
+  // 함수이름: verify
+  // 함수역할: 문자 인증 확정 버튼에 사용할 현재 언어 문구를 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get verify => _isEnglish ? 'Verify' : '인증하기';
 }
 
-// 인증 단계가 바뀌어도 언어 버튼 위치를 유지하고 본문과 겹치지 않게 한다.
+// 클래스명: _AuthenticationScaffold
+// 역할: 인증 단계마다 공통 언어 버튼과 본문 배치를 유지한다.
+// 주요 책임: 처리 중 버튼을 제한하고 선택적으로 뒤로가기와 브랜드 표시를 제공한다.
+// 속성: languageControl (AppLanguageControl): 언어; isBusy (bool): 처리 중; body (Widget): 본문; onBack (VoidCallback?): 복귀; showWordmark (bool): 브랜드 여부.
 class _AuthenticationScaffold extends StatelessWidget {
   final AppLanguageControl languageControl;
   final bool isBusy;
@@ -821,6 +900,10 @@ class _AuthenticationScaffold extends StatelessWidget {
   final VoidCallback? onBack;
   final bool showWordmark;
 
+  // 함수이름: _AuthenticationScaffold
+  // 함수역할: 인증 본문과 언어·뒤로가기·브랜드 표시 구성을 받는다.
+  // 매개변수: languageControl (AppLanguageControl): 언어; isBusy (bool): 처리 상태; body (Widget): 본문; onBack (VoidCallback?): 복귀; showWordmark (bool): 브랜드 여부.
+  // 반환값: 새 _AuthenticationScaffold.
   const _AuthenticationScaffold({
     required this.languageControl,
     required this.isBusy,
@@ -829,7 +912,10 @@ class _AuthenticationScaffold extends StatelessWidget {
     this.showWordmark = false,
   });
 
-  // 언어 아이콘을 누를 때만 선택창을 열고, 닫기만 하면 기존 설정을 유지한다.
+  // Function Name: _selectLanguage
+  // Description: Opens language choices and saves only an explicit selection while the initiating context is still mounted.
+  // Parameters: context (BuildContext): Sheet and lifecycle location.
+  // Returns: Future<void>; cancellation keeps the prior language and persistence errors propagate.
   Future<void> _selectLanguage(BuildContext context) async {
     final selected = await showModalBottomSheet<String>(
       context: context,
@@ -891,6 +977,10 @@ class _AuthenticationScaffold extends StatelessWidget {
     await languageControl.setLanguage(selected);
   }
 
+  // 함수이름: build
+  // 함수역할: 언어·복귀 버튼을 본문과 분리하고 처리 중 입력을 제한하는 인증 화면을 구성한다.
+  // 매개변수: context (BuildContext): 테마·글자 배율 위치.
+  // 반환값: 안전 영역을 적용한 Scaffold.
   @override
   Widget build(BuildContext context) => Scaffold(
     body: SafeArea(
@@ -934,22 +1024,18 @@ class _AuthenticationScaffold extends StatelessWidget {
   );
 }
 
-// Class Name: _SmsCodeView
-// Role: Represents six-digit SMS code entry, verification, and cancellation.
-// Responsibilities:
-// - Holds the configuration consumed by the State responsible for six-digit SMS code entry, verification, and cancellation.
-// Attributes:
-// - control (AuthenticationControl): Controller handling this screen's queries and update requests.
+// 클래스명: _SmsCodeView
+// 역할: 문자 인증번호 입력 화면.
+// 주요 책임: 인증 제어기의 진행·오류 상태와 공통 언어를 문자 입력 상태에 전달한다.
+// 속성: control (AuthenticationControl): 인증 처리; languageControl (AppLanguageControl): 표시 언어.
 class _SmsCodeView extends StatefulWidget {
   final AuthenticationControl control;
   final AppLanguageControl languageControl;
 
-  // Function Name: _SmsCodeView
-  // Description: Initializes six-digit SMS code entry, verification, and cancellation with the supplied configuration.
-  // Parameters:
-  // - control (AuthenticationControl): Controller handling this screen's queries and update requests.
-  // - languageControl (AppLanguageControl): Language shared with sign-in and account creation.
-  // Returns: Initialized _SmsCodeView instance.
+  // 함수이름: _SmsCodeView
+  // 함수역할: 문자 인증 화면에 인증 처리기와 로그인 화면의 언어 제어기를 연결한다.
+  // 매개변수: control (AuthenticationControl): 인증 상태·명령; languageControl (AppLanguageControl): 공유 언어.
+  // 반환값: 새 _SmsCodeView.
   const _SmsCodeView({required this.control, required this.languageControl});
 
   // Function Name: createState
@@ -962,9 +1048,9 @@ class _SmsCodeView extends StatefulWidget {
 }
 
 // 클래스명: _SmsCodeViewState
-// 역할: 문자로 받은 6자리 인증번호 입력과 제출·취소의 화면 상태를 관리한다.
-// 주요 책임:
-// - 문자로 받은 6자리 인증번호 입력과 제출·취소에 필요한 상태 변경과 사용자 동작을 연결한다.
+// 역할: 문자 인증번호 입력과 확인·취소 화면 상태.
+// 주요 책임: 입력값을 인증 제어기로 전달하고 화면 종료 시 입력 자원을 해제한다.
+// 속성: _codeController (TextEditingController): 문자 인증번호.
 class _SmsCodeViewState extends State<_SmsCodeView> {
   final _codeController = TextEditingController();
 
@@ -1066,29 +1152,37 @@ class _EmailVerificationView extends StatefulWidget {
   final AppLanguageControl languageControl;
   final VoidCallback onSignedOut;
 
-  // Function Name: _EmailVerificationView
-  // Description: Initializes verification-email resending and email verification status checks with the supplied configuration.
-  // Parameters:
-  // - control (AuthenticationControl): Controller handling this screen's queries and update requests.
-  // - languageControl (AppLanguageControl): Language used for both the screen and email dispatch.
-  // - onSignedOut (VoidCallback): Restores the sign-in form after successful sign-out.
-  // Returns: Initialized _EmailVerificationView instance.
+  // 함수이름: _EmailVerificationView
+  // 함수역할: 인증 메일 재전송·확인 화면에 인증 상태와 언어 및 로그아웃 후 복귀 동작을 전달한다.
+  // 매개변수: control (AuthenticationControl): 인증 상태·명령; languageControl (AppLanguageControl): 공유 언어; onSignedOut (VoidCallback): 로그아웃 성공 후 로그인 폼 복귀.
+  // 반환값: 새 _EmailVerificationView.
   const _EmailVerificationView({
     required this.control,
     required this.languageControl,
     required this.onSignedOut,
   });
 
+  // 함수이름: createState
+  // 함수역할: 자동 이메일 인증 조회와 수동 확인 상태를 관리할 객체를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 새 _EmailVerificationViewState.
   @override
   State<_EmailVerificationView> createState() => _EmailVerificationViewState();
 }
 
-// 인증 재확인만 진행 표시로 구분하고, 로그인 복귀 실패는 같은 화면에서 안내한다.
+// 클래스명: _EmailVerificationViewState
+// 역할: 전경에서 이메일 인증 상태를 재확인한다.
+// 주요 책임: 주기 조회·수동 확인이 겹치지 않게 하고 화면 종료 시 감시를 해제한다.
+// 속성: _checkingVerification (bool): 수동 확인 중; _verificationTimer (Timer?): 주기 조회.
 class _EmailVerificationViewState extends State<_EmailVerificationView>
     with WidgetsBindingObserver {
   bool _checkingVerification = false;
   Timer? _verificationTimer;
 
+  // 함수이름: initState
+  // 함수역할: 앱 수명 감시를 등록하고 전경이면 인증 상태 주기 확인을 예약한다.
+  // 매개변수: 없음.
+  // 반환값: 없음.
   @override
   void initState() {
     super.initState();
@@ -1096,6 +1190,10 @@ class _EmailVerificationViewState extends State<_EmailVerificationView>
     _scheduleVerificationChecks();
   }
 
+  // 함수이름: dispose
+  // 함수역할: 주기 확인 타이머와 앱 수명 감시를 해제한다.
+  // 매개변수: 없음.
+  // 반환값: 없음.
   @override
   void dispose() {
     _verificationTimer?.cancel();
@@ -1103,7 +1201,10 @@ class _EmailVerificationViewState extends State<_EmailVerificationView>
     super.dispose();
   }
 
-  // 다른 기기에서 메일을 인증해도 감지하되, 백그라운드에서는 조회하지 않는다.
+  // 함수이름: _scheduleVerificationChecks
+  // 함수역할: 기존 타이머를 취소하고 전경 또는 수명 상태 미확인 시에만 5초 간격 확인을 시작한다.
+  // 매개변수: 없음.
+  // 반환값: 없음. 백그라운드에서는 새 타이머를 만들지 않는다.
   void _scheduleVerificationChecks() {
     _verificationTimer?.cancel();
     final lifecycle = WidgetsBinding.instance.lifecycleState;
@@ -1114,6 +1215,10 @@ class _EmailVerificationViewState extends State<_EmailVerificationView>
     );
   }
 
+  // 함수이름: didChangeAppLifecycleState
+  // 함수역할: 앱 상태 변경마다 기존 확인을 취소하고 복귀 시 주기 확인과 즉시 확인을 시작한다.
+  // 매개변수: state (AppLifecycleState): 새 앱 상태.
+  // 반환값: 없음.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _verificationTimer?.cancel();
@@ -1123,7 +1228,10 @@ class _EmailVerificationViewState extends State<_EmailVerificationView>
     }
   }
 
-  // 수동 확인·재전송과 요청을 겹치지 않고 미인증 결과는 조용히 유지한다.
+  // 함수이름: _checkAutomatically
+  // 함수역할: 현재 인증 화면에서 미인증 계정만 확인하며 수동 작업 중에는 건너뛴다.
+  // 매개변수: 없음.
+  // 반환값: 조용한 상태 확인이 끝나면 완료되는 Future<void>.
   Future<void> _checkAutomatically() async {
     if (!mounted ||
         widget.control.isBusy ||
@@ -1134,6 +1242,10 @@ class _EmailVerificationViewState extends State<_EmailVerificationView>
     await widget.control.refreshEmailVerification(showPendingMessage: false);
   }
 
+  // 함수이름: _checkVerification
+  // 함수역할: 수동 인증 확인을 한 번만 실행하고 성공·실패 모두 진행 표시를 해제한다.
+  // 매개변수: 없음.
+  // 반환값: 확인 완료; 제어기 예외는 호출자에게 전파되는 Future<void>.
   Future<void> _checkVerification() async {
     if (widget.control.isBusy || _checkingVerification) return;
     setState(() => _checkingVerification = true);
@@ -1144,7 +1256,10 @@ class _EmailVerificationViewState extends State<_EmailVerificationView>
     }
   }
 
-  // 계정은 삭제하지 않고 세션만 종료한다. 실패 안내는 컨트롤러가 제공한다.
+  // 함수이름: _returnToSignIn
+  // 함수역할: 계정을 삭제하지 않고 로그아웃 후 로그인 폼으로 복귀시킨다. StateError이면 현재 인증 안내를 유지한다.
+  // 매개변수: 없음.
+  // 반환값: 로그아웃 처리 후 완료되는 Future<void>.
   Future<void> _returnToSignIn() async {
     if (widget.control.isBusy) return;
     try {

@@ -4,7 +4,9 @@
 import 'json_value_reader.dart';
 
 // 클래스명: UserSettingDestination
-// 역할: 설정값 변경 없이 특정 설정 항목을 표시하기 위한 화면 이동 목적지다.
+// 역할: 설정값 변경 없이 특정 설정 영역으로 이동할 목적지를 지정한다.
+// 주요 책임: 알림·표시·홈·계정 설정의 초기 표시 위치를 선택하게 한다.
+// 속성: notifications 등 알림 설정, fontSize/language/timeFormat/readingSpeed, homeScheduleSource/homeWidget, account 목적지.
 enum UserSettingDestination {
   notifications,
   notificationReception,
@@ -19,25 +21,24 @@ enum UserSettingDestination {
   account,
 }
 
-// 함수이름: isEnglishLanguage
-// 함수역할: 앞뒤 공백과 대소문자를 무시하고 en으로 시작하는 언어 코드를 영어 표시로 판정하는 앱 공통 기준을 제공한다.
-// 매개변수:
-// - language (String?): 판정할 언어 코드. null은 빈 값으로 본다.
-// 반환값:
-// - bool: en·EN·en-US처럼 영어를 가리키면 true, 빈 값과 그 밖의 값은 false.
+// Function Name: isEnglishLanguage
+// Description: Provides the shared language test used throughout the app.
+// Parameters: language: Optional language code; surrounding whitespace and case are ignored.
+// Returns: True when the normalized value starts with en; false for null, empty or other values.
 bool isEnglishLanguage(String? language) =>
     (language ?? '').trim().toLowerCase().startsWith('en');
 
-// 함수이름: normalizeAppLanguage
-// 함수역할: 저장·서버 언어 값을 앱이 지원하는 ko 또는 en 코드로 맞춰 화면마다 판정이 달라지지 않게 한다.
-// 매개변수:
-// - language (String?): 정규화할 언어 코드. null은 빈 값으로 본다.
-// 반환값:
-// - String: 영어로 판정되면 en, 빈 값을 포함한 그 밖의 값은 ko.
+// Function Name: normalizeAppLanguage
+// Description: Normalizes persisted or server-provided languages to the app's supported codes.
+// Parameters: language: Optional input language code.
+// Returns: en when isEnglishLanguage matches, otherwise ko.
 String normalizeAppLanguage(String? language) =>
     isEnglishLanguage(language) ? 'en' : 'ko';
 
-// 함수역할: 저장값과 약품 검색 요청값을 지원하는 세 가지 모드로 정규화한다.
+// 함수이름: normalizeMedicationSearchMode
+// 함수역할: 저장된 검색 선택을 지원하는 세 가지 요청 모드로 정규화한다.
+// 매개변수: value: 검색 모드 후보; 앞뒤 공백과 대소문자를 무시한다.
+// 반환값: fast 또는 thorough를 유지하고 나머지는 balanced.
 String normalizeMedicationSearchMode(String? value) =>
     switch (value?.trim().toLowerCase()) {
       'fast' => 'fast',
@@ -67,7 +68,10 @@ String normalizeMedicationSearchMode(String? value) =>
 // - defaultEveningTime (String): 새 저녁 알림의 HH:mm 기본 시각
 // - defaultBedtime (String): 새 취침 전 알림의 HH:mm 기본 시각
 class UserSetting {
-  // 함수역할: 구형·잘못된 설정은 기본값인 내 일정으로 복원한다.
+  // 함수이름: _normalizedHomeScheduleSource
+  // 함수역할: 홈 일정 출처의 구형·잘못된 값을 기본 내 일정으로 정규화한다.
+  // 매개변수: value: 저장된 출처 문자열.
+  // 반환값: 정규화된 값이 patients이면 patients, 아니면 self.
   static String _normalizedHomeScheduleSource(String value) =>
       value.trim().toLowerCase() == 'patients' ? 'patients' : 'self';
 
@@ -75,7 +79,10 @@ class UserSetting {
   final int fontSize;
   final String _medicationSearchMode;
 
-  // 기기별 검색 선택은 생성 경로와 무관하게 지원하는 요청값으로만 노출한다.
+  // 함수이름: medicationSearchMode
+  // 함수역할: 객체 생성 경로와 무관하게 지원되는 약품 검색 모드만 제공한다.
+  // 매개변수: 없음.
+  // 반환값: fast, thorough, balanced 중 정규화된 모드.
   String get medicationSearchMode =>
       normalizeMedicationSearchMode(_medicationSearchMode);
 
@@ -111,6 +118,7 @@ class UserSetting {
   // - defaultLunchTime (String): 새 점심 알림의 HH:mm 기본 시각
   // - defaultEveningTime (String): 새 저녁 알림의 HH:mm 기본 시각
   // - defaultBedtime (String): 새 취침 전 알림의 HH:mm 기본 시각
+  // - medicationSearchMode (String): 기기 전용 약 검색 방식; homeScheduleSource (String): 홈의 본인·연동 환자 일정 선택.
   // 반환값:
   // - UserSetting: 초기화된 인스턴스.
   const UserSetting({
@@ -236,12 +244,10 @@ class UserSetting {
     return 'medium';
   }
 
-  // 함수이름: isEnglish
-  // 함수역할: 현재 설정 언어가 영어 표시 대상인지 앱 공통 기준으로 판정한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - bool: language가 isEnglishLanguage 기준으로 영어이면 true.
+  // Function Name: isEnglish
+  // Description: Checks this setting's language using the shared app rule.
+  // Parameters: None.
+  // Returns: Whether language selects English display.
   bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: use24HourTime
@@ -276,13 +282,10 @@ class UserSetting {
     };
   }
 
-  // 함수이름: formatTime
-  // 함수역할: 사용자가 선택한 12시간제 또는 24시간제 방식으로 시각을 표시한다.
-  // 매개변수:
-  // - hour (int): 24시간제 지역 시각의 시
-  // - minute (int): 지역 시각의 분
-  // 반환값:
-  // - String: 사용자가 선택한 12시간제 또는 24시간제 방식으로 시각을 표시한다.
+  // Function Name: formatTime
+  // Description: Formats a time using the selected clock style and localized period label.
+  // Parameters: hour/minute: Clock fields, clamped to 0..23 and 0..59.
+  // Returns: Zero-padded 24-hour HH:mm or localized AM/PM with a 12-hour clock.
   String formatTime(int hour, int minute) {
     final safeHour = hour.clamp(0, 23).toInt();
     final safeMinute = minute.clamp(0, 59).toInt();
@@ -366,6 +369,7 @@ class UserSetting {
   // - defaultLunchTime (String?): 새 점심 알림의 HH:mm 기본 시각
   // - defaultEveningTime (String?): 새 저녁 알림의 HH:mm 기본 시각
   // - defaultBedtime (String?): 새 취침 전 알림의 HH:mm 기본 시각
+  // - medicationSearchMode (String?): 기기 약 검색 방식 대체 값; homeScheduleSource (String?): 홈 일정 원본 대체 값, 허용된 값으로 정규화한다.
   // 반환값:
   // - 변경값이 반영된 UserSetting 인스턴스
   UserSetting copyWith({
@@ -433,12 +437,9 @@ class UserSetting {
   }
 
   // 함수이름: toJson
-  // 함수역할: 사용자 접근성·언어·알림·기본 시간을 서버 필드명으로 직렬화한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Map<String, dynamic>: 서버와 공유할 사용자 설정 필드.
-  // 기기 스냅샷·초안 비교에서만 약품 검색 방식을 포함한다.
+  // 함수역할: 사용자 표시·언어·알림·기본 시간을 서버 필드명으로 직렬화하고 기기용 검색 설정은 선택적으로 포함한다.
+  // 매개변수: includeDevicePreferences (bool): true이면 medication_search_mode를 추가하여 기기 스냅샷·초안 비교에 사용한다.
+  // 반환값: Map<String, dynamic>: 사용자 설정 필드.
   Map<String, dynamic> toJson({bool includeDevicePreferences = false}) {
     return {
       'user_hash': userHash,

@@ -4,9 +4,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
 // Class Name: AuthenticationMode
-// Role: Selects explicit local development identity or Firebase-backed authentication.
-// Responsibilities:
-// - Keep disabled authentication distinguishable from the secure mode required by release and profile builds.
+// Role: Select local development identity or Firebase authentication.
+// Responsibilities: Keep disabled authentication explicit and distinguishable from secure release/profile operation.
+// Attributes: disabled: local development identity; firebase: provider-backed authentication.
 enum AuthenticationMode { disabled, firebase }
 
 // Class Name: AuthConfig

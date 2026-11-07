@@ -16,6 +16,13 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   // 로컬 데모의 로그아웃은 공급자 호출·정리·상태 알림 없이 같은 세션을 유지한다.
+  // 함수이름: 데모 모드의 로그아웃
+  // 함수역할:
+  // - 로그아웃을 두 번 요청해도 정리·변경 알림 없이 같은 데모 세션과 인증 상태를 유지하고 오류·진행 상태를 만들지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('disabled-auth sign out preserves the demo without cleanup', () async {
     final control = AuthenticationControl.development();
     addTearDown(control.dispose);

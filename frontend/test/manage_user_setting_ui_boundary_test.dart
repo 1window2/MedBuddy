@@ -21,6 +21,10 @@ import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
 void main() {
   for (final language in ['ko', 'en']) {
     for (final width in [320.0, 430.0]) {
+      // 함수이름: testWidgets: '설정 홈과 계정의 인사 영역 위치·크기가 같다 $language $width'
+      // 함수역할: 언어·화면 너비별로 설정 홈과 계정 화면의 인사 패널·아이콘·헤더 간격을 비교한다.
+      // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+      // 반환값: 패널 크기·좌우 위치·아이콘 상대 위치·헤더 간격이 같고 예외가 없다.
       testWidgets('설정 홈과 계정의 인사 영역 위치·크기가 같다 $language $width', (tester) async {
         tester.view.physicalSize = Size(width, 1000);
         tester.view.devicePixelRatio = 1;
@@ -66,6 +70,10 @@ void main() {
 
   for (final language in ['ko', 'en']) {
     for (final hasMfa in [false, true]) {
+      // 함수이름: testWidgets: '계정은 보안과 데이터 안내 뒤에 로그아웃과 삭제를 배치한다 $language $hasMfa'
+      // 함수역할: 언어와 문자 인증 지원 여부별로 계정의 보안·데이터 안내·로그아웃·삭제 순서를 검사한다.
+      // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+      // 반환값: 보안이 있으면 데이터 안내보다 앞서고 로그아웃과 삭제는 그 뒤에 순서대로 위치한다.
       testWidgets('계정은 보안과 데이터 안내 뒤에 로그아웃과 삭제를 배치한다 $language $hasMfa', (
         tester,
       ) async {
@@ -116,13 +124,10 @@ void main() {
     }
   }
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 문자 2단계 인증 영역과 등록 창이 한국어로 표시되고, 인증번호 요청 실패 시 컨트롤의 오류를 창 안에 보여준다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // Function Name: testWidgets: '문자 2단계 인증 영역과 창은 한국어로 표시하고 오류를 보여준다'
+  // Description: Renders Korean SMS MFA test panels and requests a code using the development authentication control.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: Korean labels are shown without SMS text, and the unavailable-feature error appears inside the enrollment dialog.
   testWidgets('문자 2단계 인증 영역과 창은 한국어로 표시하고 오류를 보여준다', (tester) async {
     final authenticationControl = AuthenticationControl.development();
     addTearDown(authenticationControl.dispose);
@@ -162,13 +167,10 @@ void main() {
     expect(find.text('취소'), findsOneWidget);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 설정 홈에서 계정 인사와 세 설정 영역을 구분해 표시한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // Function Name: testWidgets: '설정 홈에서 계정 인사와 세 설정 영역을 구분해 표시한다'
+  // Description: Opens settings with a development account, enters display/voice and returns home.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: The greeting and three active categories appear without laboratory or root-save controls, and navigation returns without exceptions.
   testWidgets('설정 홈에서 계정 인사와 세 설정 영역을 구분해 표시한다', (tester) async {
     final authenticationControl = AuthenticationControl.development();
     addTearDown(authenticationControl.dispose);
@@ -232,13 +234,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 뒤로가기 버튼은 설정 내용을 스크롤해도 같은 위치에 고정된다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // Function Name: testWidgets: '뒤로가기 버튼은 설정 내용을 스크롤해도 같은 위치에 고정된다'
+  // Description: Records the settings back-button position and scrolls content upward by 700 pixels.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: The back arrow stays at the same coordinates, no close icon replaces it and layout remains exception-free.
   testWidgets('뒤로가기 버튼은 설정 내용을 스크롤해도 같은 위치에 고정된다', (tester) async {
     final authenticationControl = AuthenticationControl.development();
     addTearDown(authenticationControl.dispose);
@@ -277,13 +276,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: English를 선택하면 설정 화면 전체와 저장 언어가 함께 바뀐다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // 함수이름: testWidgets: 'English를 선택하면 설정 화면 전체와 저장 언어가 함께 바뀐다'
+  // 함수역할: 한국어 화면에서 언어를 영어로 고르고 저장 콜백이 받은 언어와 저장 뒤 화면을 검사한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 저장값은 en이고 Text Size가 저장 전후 모두 영어로 표시된다.
   testWidgets('English를 선택하면 설정 화면 전체와 저장 언어가 함께 바뀐다', (tester) async {
     String? savedLanguage;
     final authenticationControl = AuthenticationControl.development();
@@ -322,13 +318,10 @@ void main() {
     expect(find.text('Text Size'), findsOneWidget);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 기존 영어 설정은 영어로 열리고 한국어로 전환할 수 있다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // Function Name: testWidgets: '기존 영어 설정은 영어로 열리고 한국어로 전환할 수 있다'
+  // Description: Opens existing English settings, then selects Korean in the display section.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: Only the active language's text-size label is present before and after switching.
   testWidgets('기존 영어 설정은 영어로 열리고 한국어로 전환할 수 있다', (tester) async {
     final authenticationControl = AuthenticationControl.development();
     addTearDown(authenticationControl.dispose);
@@ -360,13 +353,10 @@ void main() {
     expect(find.text('글자 크기'), findsOneWidget);
     expect(find.text('Text Size'), findsNothing);
   });
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 환경설정 저장 실패 후 버튼을 복구하고 재시도를 허용한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // 함수이름: testWidgets: '환경설정 저장 실패 후 버튼을 복구하고 재시도를 허용한다'
+  // 함수역할: 저장 응답을 대기시키고 중복 탭한 뒤 저장 예외를 완료한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 요청은 한 번이며 실패 안내 후 버튼이 다시 활성화되고 프레임 예외가 없다.
   testWidgets('환경설정 저장 실패 후 버튼을 복구하고 재시도를 허용한다', (tester) async {
     final saveRequest = Completer<UserSettingSaveResult>();
     var requestCount = 0;
@@ -418,13 +408,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 선택한 읽기 속도로 음성 미리보기를 재생하고 중지한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // 함수이름: testWidgets: '선택한 읽기 속도로 음성 미리보기를 재생하고 중지한다'
+  // 함수역할: fast 속도로 예시를 재생하고 완료 콜백과 사용자 중지를 각각 실행한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 전달 문구·1.2 배속·재생/정지 라벨이 맞고 완료/중지 뒤 재생 오류를 표시하지 않는다.
   testWidgets('선택한 읽기 속도로 음성 미리보기를 재생하고 중지한다', (tester) async {
     UserSetting? spokenSetting;
     String? spokenText;
@@ -498,13 +485,10 @@ void main() {
     expect(find.text('음성 미리보기를 재생하지 못했습니다.'), findsNothing);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 사용자가 음성 미리보기를 중지하면 취소 오류를 안내하지 않는다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // Function Name: testWidgets: '사용자가 음성 미리보기를 중지하면 취소 오류를 안내하지 않는다'
+  // Description: Stops a pending preview whose stopper completes playback with a cancellation error.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: The play action is restored without failure feedback or an uncaught exception.
   testWidgets('사용자가 음성 미리보기를 중지하면 취소 오류를 안내하지 않는다', (tester) async {
     final playback = Completer<void>();
     final authenticationControl = AuthenticationControl.development();
@@ -564,13 +548,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 큰 글씨 선택은 미리보기에서 확실한 크기 차이를 보여준다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // 함수이름: testWidgets: '큰 글씨 선택은 미리보기에서 확실한 크기 차이를 보여준다'
+  // 함수역할: 글씨 크기를 large로 바꾼 뒤 예시 문장의 Text 스타일을 검사한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 미리보기 크기가 20이며 레이아웃 예외가 없다.
   testWidgets('큰 글씨 선택은 미리보기에서 확실한 크기 차이를 보여준다', (tester) async {
     final authenticationControl = AuthenticationControl.development();
     addTearDown(authenticationControl.dispose);
@@ -603,13 +584,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 글씨 크기를 선택하면 저장 전에도 설정 화면 전체 배율이 바뀐다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // Function Name: testWidgets: '글씨 크기를 선택하면 저장 전에도 설정 화면 전체 배율이 바뀐다'
+  // Description: Changes text size from medium to large and small before saving and measures the title's inherited scale.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: The measured scale changes from 1.0 to 1.30 then 0.92 without exceptions.
   testWidgets('글씨 크기를 선택하면 저장 전에도 설정 화면 전체 배율이 바뀐다', (tester) async {
     final authenticationControl = AuthenticationControl.development();
     addTearDown(authenticationControl.dispose);
@@ -633,13 +611,10 @@ void main() {
     );
 
     await _openDisplayAndVoice(tester);
-    // 함수이름: currentScale
-    // 함수역할:
-    // - 설정 제목의 실제 MediaQuery 배율을 기준 글씨 16에 대해 측정한다.
-    // 매개변수:
-    // - 없음.
-    // 반환값:
-    // - 제목 위젯에 적용된 글씨 배율.
+    // Function Name: currentScale
+    // Description: Measures the settings title's effective MediaQuery text scale against a 16-point reference.
+    // Parameters: None.
+    // Returns: double: scaled size divided by 16.
     double currentScale() {
       final titleContext = tester.element(find.text('글자 크기'));
       return MediaQuery.textScalerOf(titleContext).scale(16) / 16;
@@ -654,13 +629,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 설정을 저장해도 환경설정 화면에 그대로 머문다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // Function Name: testWidgets: '설정을 저장해도 환경설정 화면에 그대로 머문다'
+  // Description: Pushes settings from a root action and saves from the display/voice section.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: Settings and its save button remain visible; the root opener does not reappear.
   testWidgets('설정을 저장해도 환경설정 화면에 그대로 머문다', (tester) async {
     final authenticationControl = AuthenticationControl.development();
     addTearDown(authenticationControl.dispose);
@@ -728,13 +700,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 글씨 크기 선택 버튼은 각 선택지의 실제 크기를 비교해서 보여준다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // 함수이름: testWidgets: '글씨 크기 선택 버튼은 각 선택지의 실제 크기를 비교해서 보여준다'
+  // 함수역할: 글씨 크기 선택창의 세 라벨 스타일을 비교한 뒤 창을 닫는다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: small·medium·large가 각각 14·17·23으로 표시되고 예외가 없다.
   testWidgets('글씨 크기 선택 버튼은 각 선택지의 실제 크기를 비교해서 보여준다', (tester) async {
     final authenticationControl = AuthenticationControl.development();
     addTearDown(authenticationControl.dispose);
@@ -760,7 +729,10 @@ void main() {
     await _openDisplayAndVoice(tester);
     await tester.tap(find.byKey(const ValueKey('fontSizeSelector')));
     await tester.pumpAndSettle();
-    // 선택창 안에서 세 크기의 실제 글씨를 비교한다.
+    // 함수이름: optionLabel
+    // 함수역할: 선택창의 크기 값에 대응하는 라벨 Text를 찾아 실제 글씨 크기를 검사할 수 있게 한다.
+    // 매개변수: value (String): small·medium·large 선택 키.
+    // 반환값: 해당 선택지의 Text 위젯.
     Text optionLabel(String value) => tester.widget<Text>(
       find.descendant(
         of: find.byKey(ValueKey('fontSize-$value')),
@@ -775,13 +747,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 서버 저장 실패 시 기기 전용 저장 상태를 안내한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // 함수이름: testWidgets: '서버 저장 실패 시 기기 전용 저장 상태를 안내한다'
+  // 함수역할: 저장 대역이 synchronizedWithServer=false를 반환하도록 하고 저장 버튼을 누른다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 기기 전용 저장과 재시도 안내가 표시되며 예외가 없다.
   testWidgets('서버 저장 실패 시 기기 전용 저장 상태를 안내한다', (tester) async {
     final authenticationControl = AuthenticationControl.development();
     addTearDown(authenticationControl.dispose);
@@ -866,13 +835,10 @@ void main() {
     });
   }
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 계정 삭제 성공 후 빈 화면이 아니라 루트 화면으로 돌아간다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // Function Name: testWidgets: '계정 삭제 성공 후 빈 화면이 아니라 루트 화면으로 돌아간다'
+  // Description: Pushes settings above a root screen, confirms account deletion and counts the callback.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: Deletion runs once and returns to the root opener without a blank route or exception.
   testWidgets('계정 삭제 성공 후 빈 화면이 아니라 루트 화면으로 돌아간다', (tester) async {
     var deletionCount = 0;
     final authenticationControl = AuthenticationControl.development();
@@ -994,6 +960,10 @@ void main() {
   ];
   for (final (index, (language, failure, message))
       in deletionFailures.indexed) {
+    // Function Name: testWidgets: '계정 삭제 실패를 화면 언어로 안내한다 #$index $language'
+    // Description: For each language and typed deletion failure, injects the failure and confirms deletion.
+    // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+    // Returns: The expected localized snackbar appears and the delete action remains available on the account screen.
     testWidgets('계정 삭제 실패를 화면 언어로 안내한다 #$index $language', (tester) async {
       await _pumpForDeletion(tester, language, () async => throw failure());
       await _requestDeletion(tester, language);
@@ -1006,7 +976,10 @@ void main() {
     });
   }
 
-  // Google 재인증 창을 닫은 것은 실패가 아니므로 오류를 띄우지 않고 화면을 다시 쓸 수 있게 한다.
+  // Function Name: testWidgets: 'Google 재인증을 취소하면 계정 삭제 오류를 안내하지 않는다'
+  // Description: Cancels Google reauthentication twice through the account-deletion callback.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: Cancellation produces no snackbar and a second deletion attempt is still accepted.
   testWidgets('Google 재인증을 취소하면 계정 삭제 오류를 안내하지 않는다', (tester) async {
     var attempts = 0;
     await _pumpForDeletion(tester, 'ko', () async {
@@ -1022,33 +995,69 @@ void main() {
   });
 }
 
-// 실제 인증 요청 없이 보안 메뉴 유무에 따른 계정 화면 순서를 검증한다.
+// 클래스명: _AccountOrderAuthentication
+// 역할: 계정 메뉴 순서 확인용 인증 대역.
+// 주요 책임: 실제 인증 없이 문자 인증 지원과 고정 계정 표시를 제공하고 사용하지 않는 API는 기본 미구현 오류로 남긴다.
+// 속성: phoneAuthenticationEnabled (bool): 보안 영역 노출 여부; 고정 접근자: Test 이름·시험 이메일·비게스트 상태.
 class _AccountOrderAuthentication extends ChangeNotifier
     implements AuthenticationControl {
   @override
   final bool phoneAuthenticationEnabled;
 
+  // 함수이름: _AccountOrderAuthentication
+  // 함수역할: 문자 인증 보안 영역의 지원 여부를 고정한다.
+  // 매개변수: phoneAuthenticationEnabled (bool): 문자 인증 영역 노출 조건.
+  // 반환값: 새 _AccountOrderAuthentication.
   _AccountOrderAuthentication(this.phoneAuthenticationEnabled);
 
+  // 함수이름: hasEnrolledSmsMfa
+  // 함수역할: 문자 다중 인증이 등록되지 않은 계정을 재현한다.
+  // 매개변수: 없음.
+  // 반환값: bool: 항상 false.
   @override
   bool get hasEnrolledSmsMfa => false;
+  // 함수이름: canEnrollSmsMfa
+  // 함수역할: 실제 등록 동작 없이 계정 메뉴 순서만 검사하도록 등록 가능 여부를 끈다.
+  // 매개변수: 없음.
+  // 반환값: bool: 항상 false.
   @override
   bool get canEnrollSmsMfa => false;
+  // 함수이름: isAnonymous
+  // 함수역할: 로그인 계정의 메뉴 배치를 검사하도록 게스트 여부를 끈다.
+  // 매개변수: 없음.
+  // 반환값: bool: 항상 false.
   @override
   bool get isAnonymous => false;
+  // 함수이름: signedInDisplayName
+  // 함수역할: 계정 인사에 사용할 고정 시험 이름을 제공한다.
+  // 매개변수: 없음.
+  // 반환값: String?: Test.
   @override
   String? get signedInDisplayName => 'Test';
+  // 함수이름: signedInEmail
+  // 함수역할: 계정 상세에 사용할 고정 시험 이메일을 제공한다.
+  // 매개변수: 없음.
+  // 반환값: String?: test@example.com.
   @override
   String? get signedInEmail => 'test@example.com';
+  // 함수이름: signedInPhoneNumber
+  // 함수역할: 전화번호가 연결되지 않은 시험 계정을 재현한다.
+  // 매개변수: 없음.
+  // 반환값: String?: null.
   @override
   String? get signedInPhoneNumber => null;
+  // 함수이름: noSuchMethod
+  // 함수역할: 대역이 구현하지 않은 인증 API 호출을 기본 미구현 처리로 전달한다.
+  // 매개변수: invocation (Invocation): 예상하지 않은 멤버 호출.
+  // 반환값: 정상 반환 없음. 기본 noSuchMethod 오류를 발생시킨다.
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-// 함수이름: _pumpForDeletion
-// 함수역할: 지정한 언어와 계정 삭제 콜백으로 설정 화면을 구성한다.
-// 매개변수: tester, 화면 언어, 계정 삭제 콜백. 반환값: 화면 구성 완료.
+// Function Name: _pumpForDeletion
+// Description: Builds settings with an explicit language and injectable account-deletion outcome, registering authentication cleanup.
+// Parameters: tester (WidgetTester): UI driver; language (String): display and explicit language mode; onDelete (Future<void> Function()): deletion callback.
+// Returns: Future<void> completing after the settings widget is mounted.
 Future<void> _pumpForDeletion(
   WidgetTester tester,
   String language,
@@ -1068,9 +1077,10 @@ Future<void> _pumpForDeletion(
   );
 }
 
-// 함수이름: _requestDeletion
-// 함수역할: 계정 화면에서 계정 삭제를 선택하고 확인한다.
-// 매개변수: tester, 화면 언어. 반환값: 삭제 요청 처리 완료.
+// Function Name: _requestDeletion
+// Description: Opens account settings if needed, scrolls to deletion and confirms using labels in the chosen language.
+// Parameters: tester (WidgetTester): UI driver; language (String): confirmation-label language.
+// Returns: Future<void> completing after the deletion interaction settles.
 Future<void> _requestDeletion(WidgetTester tester, String language) async {
   final english = language == 'en';
   if (find.text(english ? 'Delete account' : '계정 데이터 삭제').evaluate().isEmpty) {
@@ -1099,8 +1109,9 @@ Future<void> _openDisplayAndVoice(WidgetTester tester) async {
 }
 
 // 함수이름: _selectSettingChoice
-// 함수역할: 현재 값 행을 열고 선택창의 값을 확정한다.
-// 매개변수: tester·항목 키·저장 값. 반환값: 선택 및 미리보기 반영 완료.
+// 함수역할: 현재 값 행을 열고 지정한 저장 값의 선택지를 화면에 드러내 확정한다.
+// 매개변수: tester (WidgetTester): 화면 제어; preference (String): 설정 항목 키; value (String): 선택할 저장 값.
+// 반환값: 선택과 미리보기 반영 완료.
 Future<void> _selectSettingChoice(
   WidgetTester tester,
   String preference,

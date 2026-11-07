@@ -9,9 +9,9 @@ import 'package:flutter/foundation.dart';
 import 'auth_config.dart';
 
 // Class Name: FirebaseRuntimeService
-// Role: Coordinates one native Firebase initialization attempt per isolate.
-// Responsibilities:
-// - Reuse in-flight work, clear failed attempts for retries, validate an existing app's identity, and select the build-appropriate App Check provider.
+// Role: Coordinate shared Firebase initialization.
+// Responsibilities: Reuse an in-flight attempt, bound each caller's wait and permit retry after initialization failure.
+// Attributes: _initializationTimeout (Duration): 20-second wait; _initializationFuture (Future<void>?): shared initialization attempt.
 class FirebaseRuntimeService {
   // Function Name: FirebaseRuntimeService._
   // Description: Restricts Firebase and App Check initialization to the shared static initialization future.
@@ -35,12 +35,10 @@ class FirebaseRuntimeService {
     await attempt.timeout(_initializationTimeout);
   }
 
-  // Function Name: _startInitialization
-  // Description: Starts native Firebase and App Check initialization once per isolate. Clears a failed native attempt while retaining an in-flight timed-out attempt, preventing overlapping native initialization calls on retry.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - The shared native initialization attempt.
+  // 함수이름: _startInitialization
+  // 함수역할: 초기화 시도를 공유 상태에 저장하고 해당 시도가 실패한 경우에만 캐시를 비워 다음 호출의 재시도를 허용한다.
+  // 매개변수: 없음.
+  // 반환값: Future<void>: 이번 초기화 시도; 오류는 호출자에게 전파된다.
   static Future<void> _startInitialization() {
     final attempt = _initialize();
     _initializationFuture = attempt;

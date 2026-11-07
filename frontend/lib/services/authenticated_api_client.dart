@@ -34,6 +34,8 @@ typedef UnauthorizedResponseHandler = Future<void> Function();
 // Role: Signals that a required App Check token cannot be obtained.
 // Responsibilities:
 // - Distinguish application-attestation failure from user authentication failure without exposing provider internals.
+// Attributes:
+// - None; this exception carries only its fixed diagnostic message.
 class AppAttestationUnavailableException implements Exception {
   // Function Name: AppAttestationUnavailableException
   // Description: Creates the fixed application-attestation failure used when token retrieval is unavailable or times out.
@@ -57,6 +59,8 @@ class AppAttestationUnavailableException implements Exception {
 // Role: Signals that the current Firebase identity cannot authorize a request.
 // Responsibilities:
 // - Distinguish missing or timed-out identity tokens from transport and attestation failures.
+// Attributes:
+// - None; this exception carries only its fixed diagnostic message.
 class AuthenticationUnavailableException implements Exception {
   // Function Name: AuthenticationUnavailableException
   // Description: Creates the fixed authentication failure used when a usable identity token is unavailable.
@@ -103,18 +107,17 @@ class ApiContractMismatchException implements Exception {
   String toString() => 'MedBuddy API contract is incompatible: $serverVersion';
 }
 
-// Class Name: AuthenticatedApiClient
-// Role: Adds trusted-backend authentication and attestation headers to HTTP requests.
-// Responsibilities:
-// - Enforce same-origin token delivery, bound token retrieval, reject contract mismatches, and invoke session cleanup on HTTP 401.
-// Attributes:
-// - _inner (http.Client): HTTP transport; constructor documentation specifies ownership for injected clients.
-// - _tokenProvider (IdTokenProvider): Asynchronous provider of the current user's identity token.
-// - _appCheckTokenProvider (AppCheckTokenProvider): Asynchronous provider of the current app-attestation token.
-// - _appCheckRequired (bool): Whether requests require App Check attestation.
-// - _onUnauthorized (UnauthorizedResponseHandler?): Session-cleanup callback after a server HTTP 401 response.
-// - defaultOnUnauthorized (UnauthorizedResponseHandler?): Shell-registered fallback for clients built without a callback.
-// - _trustedBaseUri (Uri): MedBuddy origin permitted to receive authentication headers.
+// 클래스명: AuthenticatedApiClient
+// 역할: 신뢰하는 서버에만 인증 정보를 보내고 현재 세션에 해당하는 인증 실패를 전달한다.
+// 주요 책임:
+// - 토큰 조회 시간을 제한하고 서버 계약 버전을 확인하며 이전 세션의 늦은 401 응답을 무시한다.
+// 속성:
+// - _inner (http.Client): close 시 함께 닫는 HTTP 전송 객체
+// - _tokenProvider, _appCheckTokenProvider: 사용자 인증·앱 검증 토큰의 비동기 공급자
+// - _appCheckRequired (bool): 앱 검증 헤더 필요 여부
+// - _onUnauthorized, defaultOnUnauthorized: 인스턴스별·앱 기본 세션 정리 콜백
+// - _trustedBaseUri (Uri): 인증 헤더 전송을 허용하는 서버 주소
+// - _closed (bool): 종료 후 늦은 401 응답의 세션 정리를 막는 상태
 class AuthenticatedApiClient extends http.BaseClient {
   static const Duration _authenticationTimeout = Duration(seconds: 10);
   static const Duration _appCheckTimeout = Duration(seconds: 10);
@@ -134,7 +137,7 @@ class AuthenticatedApiClient extends http.BaseClient {
   // Function Name: AuthenticatedApiClient
   // Description: Wraps a transport client with injected or Firebase-backed token providers, App Check requirements, trusted origin, and optional unauthorized-session handling.
   // Parameters:
-  // - inner (http.Client?): HTTP transport; constructor documentation specifies ownership for injected clients.
+  // - inner (http.Client?): Optional transport; close() closes it even when supplied by the caller.
   // - tokenProvider (IdTokenProvider?): Asynchronous provider of the current user's identity token.
   // - appCheckTokenProvider (AppCheckTokenProvider?): Asynchronous provider of the current app-attestation token.
   // - appCheckRequired (bool?): Whether requests require App Check attestation.
@@ -191,11 +194,12 @@ class AuthenticatedApiClient extends http.BaseClient {
   }
 
   // 함수이름: send
-  // 함수역할: 신뢰 주소의 인증 헤더를 붙여 요청하고 서버 계약 불일치 응답은 소모 후 거부하며 401에는 세션 무효화 콜백을 실행한다.
+  // 함수역할: 인증 헤더를 붙여 요청하고 계약 버전 불일치는 응답을 소모한 뒤 예외로 알린다.
+  // - 401은 클라이언트가 열려 있고 요청 당시 인증이 현재 인증과 같을 때만 세션 정리를 실행한다.
   // 매개변수:
   // - request (http.BaseRequest): 인증·신뢰 범위 검증 후 전송할 HTTP 요청
   // 반환값:
-  // - Future<http.StreamedResponse>: 신뢰 주소의 인증 헤더를 붙여 요청하고 서버 계약 불일치 응답은 소모 후 거부하며 401에는 세션 무효화 콜백을 실행한다.
+  // - Future<http.StreamedResponse>: 아직 읽지 않은 응답 스트림. 인증·전송·계약 검증·정리 콜백 오류는 전파한다.
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     request.headers.addAll(await buildAuthenticationHeaders(request.url));
@@ -216,6 +220,12 @@ class AuthenticatedApiClient extends http.BaseClient {
     return response;
   }
 
+  // 함수이름: _stillUsesAuthorization
+  // 함수역할: 이전 요청의 인증 헤더를 현재 토큰과 비교해 새 세션을 잘못 종료하지 않도록 한다.
+  // 매개변수:
+  // - authorization (String?): 실패한 요청의 Bearer 헤더. 인증이 없었으면 null
+  // 반환값:
+  // - Future<bool>: 두 인증 값이 같으면 true. 조회 실패·시간 초과는 false로 처리한다.
   Future<bool> _stillUsesAuthorization(String? authorization) async {
     try {
       final token = (await _tokenProvider().timeout(_authenticationTimeout))
@@ -313,12 +323,12 @@ class AuthenticatedApiClient extends http.BaseClient {
     return normalizedRequestUri.origin == _trustedBaseUri.origin;
   }
 
-  // Function Name: close
-  // Description: Closes the wrapped HTTP transport and its persistent connections.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - No return value.
+  // 함수이름: close
+  // 함수역할: 늦은 401의 세션 정리를 차단하고 주입된 전송 객체까지 함께 닫는다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음. 이후 요청 전송 가능 여부는 닫힌 전송 객체의 정책을 따른다.
   @override
   void close() {
     _closed = true;

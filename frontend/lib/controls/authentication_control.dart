@@ -21,9 +21,9 @@ import '../services/user_facing_error_message.dart';
 import 'app_language_control.dart';
 
 // Class Name: SmsChallengePurpose
-// Role: Distinguishes phone sign-in, MFA sign-in, and MFA enrollment challenges.
-// Responsibilities:
-// - Select the credential completion path for an entered SMS code.
+// Role: Select the SMS credential completion path.
+// Responsibilities: Distinguish phone sign-in from MFA sign-in and enrollment.
+// Attributes: phoneSignIn/mfaSignIn/mfaEnrollment: challenge purposes.
 enum SmsChallengePurpose { phoneSignIn, mfaSignIn, mfaEnrollment }
 
 // Class Name: AuthenticationErrorCode
@@ -223,17 +223,15 @@ class AuthenticationStateError extends StateError {
 }
 
 // Class Name: _IdentityFailureKind
-// Role: Records what a failed Firebase identity call says about the account itself.
-// Responsibilities:
-// - Separate a rejected identity from a call that could not be completed and from a result that needs a second check.
+// Role: Classify what an identity-provider failure establishes about the account.
+// Responsibilities: Separate identity rejection from transport unavailability and ambiguous results requiring verification.
+// Attributes: rejected/unavailable/ambiguous: identity verdict categories.
 enum _IdentityFailureKind { rejected, unavailable, ambiguous }
 
 // Class Name: _SessionFailureKind
-// Role: Records how a failed backend session synchronization must be handled.
-// Responsibilities:
-// - rejected: the identity is no longer valid, so the provider session is signed out.
-// - refused: the server answered with a verdict that ends the MedBuddy session.
-// - inconclusive: no verdict was obtained, so an established session for the same identity is kept.
+// Role: Classify backend session synchronization failures.
+// Responsibilities: Distinguish rejected identity, explicit session refusal and inconclusive failures that may retain a same-identity session.
+// Attributes: rejected/refused/inconclusive: session recovery decisions.
 enum _SessionFailureKind { rejected, refused, inconclusive }
 
 // Class Name: _IdTokenFailure
@@ -304,13 +302,10 @@ _IdentityFailureKind _classifyIdentityFailure(Object error) {
   return _IdentityFailureKind.ambiguous;
 }
 
-// 클래스명: AuthenticationControl
-// 역할: Firebase 신원과 백엔드 세션 교환을 조정해 인증 게이트 상태를 유지한다.
-// 주요 책임:
-// - 인증 작업을 직렬화하고 복구 가능한 오류를 노출하며 공급자 로그아웃 전에 개인정보 관련 정리를 완료한다.
-// 속성:
-// - apiClient (AuthenticatedApiClient): 요청에 사용할 HTTP 클라이언트; 주입 여부에 따른 소유권은 생성자 설명 참조
-// - _errorMessage (String?): 실패 상태에 사용할 사용자 안내문
+// Class Name: AuthenticationControl
+// Role: Coordinates Firebase identity and backend sessions for the authentication gate.
+// Responsibilities: Serialize sign-in work, expose recoverable failures, guard stale session responses and complete privacy cleanup before provider sign-out.
+// Attributes: Firebase/provider boundaries and apiClient perform authentication; session/error fields drive the gate; generations, timers and subscriptions coordinate recovery.
 class AuthenticationControl extends ChangeNotifier
     implements AuthenticationGateState {
   static const Duration _backendSessionTimeout = Duration(seconds: 20);
@@ -435,12 +430,10 @@ class AuthenticationControl extends ChangeNotifier
   AuthenticationErrorCode? _errorCode;
   Object? _backendSessionError;
 
-  // 함수이름: errorMessageForLanguage
-  // 함수역할: 인증·서버 세션 오류를 현재 선택 언어로 표시하며, 언어를 바꾸어도 이미 발생한 오류를 다시 번역한다.
-  // 매개변수:
-  // - isEnglish (bool): 영어 표시 문구를 선택할지 여부
-  // 반환값:
-  // - String?: 서버 세션 연결 오류를 로그인 화면의 현재 언어에 맞는 안내로 변환한다. 버전 계약 불일치는 앱 업데이트가 필요하다는 구체적인 행동을 안내한다.
+  // Function Name: errorMessageForLanguage
+  // Description: Resolves the retained authentication or backend-session failure in the current screen language.
+  // Parameters: isEnglish: Whether to use English guidance.
+  // Returns: Localized error text, or null without an error; uncoded English-only errors use generic Korean guidance in Korean mode.
   String? errorMessageForLanguage({required bool isEnglish}) {
     if (_errorMessage == null) {
       return null;
@@ -520,6 +513,10 @@ class AuthenticationControl extends ChangeNotifier
         !_initializationFailed;
   }
 
+  // Function Name: shouldAutoRetryBackendSession
+  // Description: Limits automatic backend-session retry to recoverable transient failures with valid configuration.
+  // Parameters: None.
+  // Returns: True when retry is allowed, configuration did not fail and the retained backend error is transient.
   bool get shouldAutoRetryBackendSession =>
       canRetryBackendSession &&
       !_configurationFailed &&
@@ -623,9 +620,10 @@ class AuthenticationControl extends ChangeNotifier
     return control;
   }
 
-  // 실제 계정·메일·서버 요청 없이 인증 흐름을 검증한다. 주입 클라이언트도 dispose에서 닫는다.
-  // httpClient는 컨트롤이 직접 만든 클라이언트의 전송 계층만 바꾸고, observeIdTokenChanges는
-  // 앱 시작 때와 같은 토큰 변경 구독을 연결한다.
+  // Function Name: AuthenticationControl.withFirebaseAuth
+  // Description: Builds a controllable Firebase authentication flow for tests without starting normal initialization.
+  // Parameters: firebaseAuth: Injected provider; apiClient: Optional client also closed on disposal; httpClient: Optional transport for an internally created client; observeIdTokenChanges: Subscribe to normal token events.
+  // Returns: An initialized test control bound to the supplied FirebaseAuth.
   @visibleForTesting
   factory AuthenticationControl.withFirebaseAuth(
     FirebaseAuth firebaseAuth, {
@@ -667,12 +665,10 @@ class AuthenticationControl extends ChangeNotifier
     _beforeSignOut = callback;
   }
 
-  // 함수이름: _initialize
-  // 함수역할: API·인증 설정을 검증하고 Firebase 또는 명시적 로컬 모드를 초기화하며 토큰 변경 구독과 복구 가능한 실패 상태를 연결한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: _initialize
+  // Description: Validates configuration and initializes Firebase or explicit local authentication mode.
+  // Parameters: None.
+  // Returns: Completion with gate state updated; configuration and initialization failures become distinct retained errors rather than escaping.
   Future<void> _initialize() async {
     _configurationFailed = false;
     _initializationFailed = false;
@@ -806,13 +802,10 @@ class AuthenticationControl extends ChangeNotifier
     );
   }
 
-  // Function Name: signIn
-  // Description: Signs in with a trimmed email and password, then synchronizes the resulting Firebase identity with the backend.
-  // Parameters:
-  // - email (String): Email used for sign-in, verification, or password reset.
-  // - password (String): Password for the email account.
-  // Returns:
-  // - Future<void>: asynchronous completion without a result payload.
+  // 함수이름: signIn
+  // 함수역할: 이메일로 Firebase에 로그인한 뒤 반환된 사용자 또는 현재 사용자로 백엔드 세션을 동기화한다.
+  // 매개변수: email: 앞뒤 공백을 제거할 이메일; password: 그대로 전달할 비밀번호.
+  // 반환값: 인증 작업 완료 Future; 동시 실행과 오류 안내는 공통 인증 실행기가 처리한다.
   Future<void> signIn({required String email, required String password}) async {
     await _runAuthOperation(/* Function Name: _runAuthOperation callback
      * Description: Signs in with trimmed email credentials and synchronizes the resulting Firebase user.
@@ -830,12 +823,10 @@ class AuthenticationControl extends ChangeNotifier
     });
   }
 
-  // Function Name: signInAnonymously
-  // Description: Creates a Firebase guest identity and establishes its MedBuddy backend session.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>: asynchronous completion without a result payload.
+  // 함수이름: signInAnonymously
+  // 함수역할: Firebase 익명 사용자를 만들고 해당 사용자의 백엔드 세션을 연결한다.
+  // 매개변수: 없음.
+  // 반환값: 인증 작업 완료 Future; 오류와 로딩 상태는 공통 실행기가 관리한다.
   Future<void> signInAnonymously() async {
     await _runAuthOperation(/* Function Name: _runAuthOperation callback
      * Description: Creates an anonymous Firebase sign-in and synchronizes its backend session.
@@ -1087,14 +1078,10 @@ class AuthenticationControl extends ChangeNotifier
     _clearSmsChallenge();
   }
 
-  // Function Name: createAccount
-  // Description: Links email credentials to an anonymous identity or creates an email account, sends verification, and refreshes the authentication gate.
-  // Parameters:
-  // - email (String): Email used for sign-in, verification, or password reset.
-  // - password (String): Password for the email account.
-  // - language (String): Selected app language for the verification email; defaults to Korean.
-  // Returns:
-  // - Future<void>: asynchronous completion without a result payload.
+  // 함수이름: createAccount
+  // 함수역할: 익명 사용자에게 이메일 자격을 연결하거나 새 계정을 만들고 지정 언어로 확인 메일을 보낸다.
+  // 매개변수: email/password: 계정 자격; language: 확인 메일 언어, 기본 ko.
+  // 반환값: 메일 전송과 세션 동기화까지의 인증 작업 Future; 이메일만 공백을 제거한다.
   Future<void> createAccount({
     required String email,
     required String password,
@@ -1219,12 +1206,10 @@ class AuthenticationControl extends ChangeNotifier
     }, clearError: showPendingMessage);
   }
 
-  // Function Name: signOut
-  // Description: Awaits application cleanup while the token is usable, signs out providers, and clears SMS and backend session state.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>: asynchronous completion without a result payload.
+  // 함수이름: signOut
+  // 함수역할: 앱 정리를 마친 뒤 Google·Firebase 공급자와 로컬 인증 상태를 로그아웃 경로로 종료한다.
+  // 매개변수: 없음.
+  // 반환값: 로그아웃 완료 Future; 공급자가 없는 인증 비활성 데모에서는 정리도 시작하지 않는다.
   Future<void> signOut() {
     // 인증 비활성화 데모에는 로그아웃할 공급자가 없으므로 알림·위젯 정리도 시작하지 않는다.
     if (AuthConfig.mode == AuthenticationMode.disabled && _firebaseAuth == null) {
@@ -1362,12 +1347,10 @@ class AuthenticationControl extends ChangeNotifier
     });
   }
 
-  // Function Name: finishAccountDeletion
-  // Description: Clears the local Firebase session after the backend has deleted MedBuddy data and the Firebase identity through its trusted Admin boundary. Avoids a second client-side identity deletion and its recent-login race.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Completes after the local authentication gate returns to sign-in.
+  // 함수이름: finishAccountDeletion
+  // 함수역할: 백엔드의 계정·신원 삭제 후 로컬 공급자 세션을 종료하며 클라이언트 신원 삭제를 중복 실행하지 않는다.
+  // 매개변수: 없음.
+  // 반환값: 인증 게이트 정리 완료 Future; 인증 비활성 모드는 로컬 세션을 다시 만든다.
   Future<void> finishAccountDeletion() async {
     if (AuthConfig.mode == AuthenticationMode.disabled) {
       _session = _createLocalSession();
@@ -1533,13 +1516,10 @@ class AuthenticationControl extends ChangeNotifier
         : _runAuthOperation(operation);
   }
 
-  // 함수이름: _synchronizeUser
-  // 함수역할: Firebase 신원을 이메일 검증·MFA 상태와 조정하고 삭제된 신원과 오래된 응답을 제외한 뒤 인증된 백엔드 교환 결과만 세션으로 채택한다. 더 새로운 동기화가 시작되면 그 결과가 정해질 때까지 기다린 뒤 반환한다.
-  // 매개변수:
-  // - user (User?): 현재 또는 새로 복원된 Firebase 사용자
-  // - scheduledRetry (bool): 유지된 세션을 확인하려고 예약한 재시도인지 여부
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: _synchronizeUser
+  // Description: Starts a new session-synchronization generation and records it as the latest work.
+  // Parameters: user: Firebase identity or null; scheduledRetry: Whether this is a background recheck of a retained session.
+  // Returns: The synchronization Future; its implementation coordinates superseding generations before returning.
   Future<void> _synchronizeUser(User? user, {bool scheduledRetry = false}) {
     final generation = ++_sessionGeneration;
     final synchronization = _runSynchronization(
@@ -1552,14 +1532,10 @@ class AuthenticationControl extends ChangeNotifier
     return synchronization;
   }
 
-  // 함수이름: _runSynchronization
-  // 함수역할: 한 번의 세션 동기화를 수행한다. 로그아웃·이메일 미인증은 세션을 즉시 끝내고, 서버 교환이 실패하면 실패 원인을 분류해 세션을 끝낼지 유지할지 정한다.
-  // 매개변수:
-  // - user (User?): 현재 또는 새로 복원된 Firebase 사용자
-  // - generation (int): 이 동기화에 부여된 세대 번호. 더 큰 번호가 생기면 결과를 적용하지 않는다.
-  // - scheduledRetry (bool): 유지된 세션을 확인하려고 예약한 재시도인지 여부
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: _runSynchronization
+  // Description: Reconciles provider identity, verification/MFA and the backend session under a generation guard.
+  // Parameters: user: Identity to synchronize; generation: Ownership generation; scheduledRetry: Retained-session retry flag.
+  // Returns: Completion after applying the current result or waiting for newer work; failures are classified before retaining or clearing a session.
   Future<void> _runSynchronization(
     User? user,
     int generation, {
@@ -1619,12 +1595,10 @@ class AuthenticationControl extends ChangeNotifier
     }
   }
 
-  // 함수이름: _awaitNewerSynchronization
-  // 함수역할: 대체된 동기화가 최신 동기화의 결과가 정해지기 전에 호출자에게 돌아가지 않게 한다. 시작·로그인 흐름이 세션 없이 먼저 끝나 로그인 화면이 잠깐 보이는 것을 막는다.
-  // 매개변수:
-  // - generation (int): 대체된 동기화의 세대 번호
-  // 반환값:
-  // - Future<void>: 더 새로운 동기화가 끝나면 완료된다. 계정 삭제·dispose처럼 새 동기화 없이 무효화된 경우에는 바로 완료된다.
+  // Function Name: _awaitNewerSynchronization
+  // Description: Waits for a newer synchronization so obsolete startup/sign-in work does not finish ahead of its replacement.
+  // Parameters: generation: Superseded operation's generation.
+  // Returns: Completion after newer work, or immediately when invalidation has no replacement; replacement errors belong to its caller.
   Future<void> _awaitNewerSynchronization(int generation) async {
     final newer = _latestSynchronization;
     if (newer == null || _latestSynchronizationGeneration <= generation) {
@@ -1637,12 +1611,10 @@ class AuthenticationControl extends ChangeNotifier
     }
   }
 
-  // 함수이름: _requestBackendSession
-  // 함수역할: 현재 ID 토큰을 읽고 백엔드 세션을 요청한다. 같은 사용자·같은 토큰의 요청이 이미 진행 중이면 새 요청을 보내지 않고 그 결과를 함께 사용한다.
-  // 매개변수:
-  // - user (User): 세션을 요청할 Firebase 사용자
-  // 반환값:
-  // - Future<AuthSession>: 서버가 인증한 세션. 토큰을 읽지 못하면 _IdTokenFailure, 서버 교환이 실패하면 그 원인을 던진다.
+  // Function Name: _requestBackendSession
+  // Description: Reads the current ID token and shares a handshake already running for that user/token pair.
+  // Parameters: user: Firebase identity requesting a backend session.
+  // Returns: The authenticated session Future; token failure is wrapped separately and handshake failures propagate.
   Future<AuthSession> _requestBackendSession(User user) async {
     final token = await _readIdToken(user);
     final pending = _pendingHandshake;
@@ -1666,12 +1638,10 @@ class AuthenticationControl extends ChangeNotifier
     }
   }
 
-  // 함수이름: _readIdToken
-  // 함수역할: 서버 교환 전에 Firebase ID 토큰을 직접 읽어, 토큰을 얻지 못한 원인을 일반적인 연결 실패와 구분할 수 있게 한다.
-  // 매개변수:
-  // - user (User): 토큰을 읽을 Firebase 사용자
-  // 반환값:
-  // - Future<String>: 비어 있지 않은 ID 토큰. 읽지 못하면 원래 실패를 담은 _IdTokenFailure를 던진다.
+  // Function Name: _readIdToken
+  // Description: Reads a bounded Firebase ID token while preserving token-acquisition failures as a distinct category.
+  // Parameters: user: Identity whose token is needed.
+  // Returns: A nonempty token; timeout, provider error or an empty token throws _IdTokenFailure.
   Future<String> _readIdToken(User user) async {
     final String? token;
     try {
@@ -1685,12 +1655,10 @@ class AuthenticationControl extends ChangeNotifier
     return token;
   }
 
-  // 함수이름: _fetchBackendSession
-  // 함수역할: 인증된 백엔드 세션을 한 번 요청하고 응답을 검증한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<AuthSession>: 서버가 인증한 세션. 200이 아닌 응답·형식 오류·미인증 응답은 예외로 알린다.
+  // Function Name: _fetchBackendSession
+  // Description: Requests and validates one authenticated backend-session response.
+  // Parameters: None.
+  // Returns: An authenticated AuthSession; non-200, malformed or unauthenticated responses throw.
   Future<AuthSession> _fetchBackendSession() async {
     final response = await apiClient
         .get(Uri.parse(ApiConfig.authSessionUrl))
@@ -1709,15 +1677,10 @@ class AuthenticationControl extends ChangeNotifier
     return session;
   }
 
-  // 함수이름: _resolveSessionFailure
-  // 함수역할: 세션 동기화 실패를 분류해 처리한다. 신원이 거부되면 공급자까지 로그아웃하고, 서버가 거절하면 세션을 끝내며, 판정을 얻지 못한 실패는 같은 사용자의 기존 세션을 유지하고 재확인을 예약한다.
-  // 매개변수:
-  // - failure (Object): 토큰 읽기 또는 서버 교환에서 발생한 실패
-  // - user (User): 동기화 대상 Firebase 사용자
-  // - generation (int): 이 동기화의 세대 번호
-  // - scheduledRetry (bool): 유지된 세션을 확인하려고 예약한 재시도인지 여부
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: _resolveSessionFailure
+  // Description: Classifies failed synchronization and retains only an inconclusive session still owned by the same provider user.
+  // Parameters: failure: Token or handshake error; user: Target identity; generation: Ownership guard; scheduledRetry: Retry accounting flag.
+  // Returns: Completion after retaining/retrying or clearing state; rejected identity attempts provider invalidation, and stale work defers to its replacement.
   Future<void> _resolveSessionFailure(
     Object failure,
     User user,
@@ -1773,13 +1736,10 @@ class AuthenticationControl extends ChangeNotifier
     );
   }
 
-  // 함수이름: _classifySessionFailure
-  // 함수역할: 세션 동기화 실패가 계정에 대한 판정인지 판정을 얻지 못한 것인지 구분한다.
-  // 매개변수:
-  // - failure (Object): 토큰 읽기 또는 서버 교환에서 발생한 실패
-  // - user (User): 동기화 대상 Firebase 사용자
-  // 반환값:
-  // - Future<_SessionFailureKind>: rejected(신원 거부·401), refused(403 등 서버 거절·계약 불일치·잘못된 응답), inconclusive(네트워크·TLS 연결 실패·시간 초과·408/429/5xx·토큰 발급 불가).
+  // Function Name: _classifySessionFailure
+  // Description: Distinguishes rejected identity, conclusive server refusal and failures without an account verdict.
+  // Parameters: failure: Token/handshake error; user: Identity for an optional probe.
+  // Returns: A failure category; ambiguous token errors trigger a bounded identity probe, while TLS/transient failures remain inconclusive.
   Future<_SessionFailureKind> _classifySessionFailure(
     Object failure,
     User user,
@@ -1803,12 +1763,10 @@ class AuthenticationControl extends ChangeNotifier
         : _SessionFailureKind.refused;
   }
 
-  // 함수이름: _probeIdentity
-  // 함수역할: 토큰 실패 코드만으로 판단할 수 없을 때 사용자 정보를 다시 읽어 계정 상태를 확인한다. Android 플러그인은 getIdToken의 거부 사유를 unknown으로 전달하지만 reload는 원래 코드를 전달한다.
-  // 매개변수:
-  // - user (User): 상태를 확인할 Firebase 사용자
-  // 반환값:
-  // - Future<_SessionFailureKind>: 계정·갱신 토큰이 거부되면 rejected, 그 밖의 결과는 inconclusive.
+  // Function Name: _probeIdentity
+  // Description: Reloads identity when an ambiguous token error does not establish whether credentials were rejected.
+  // Parameters: user: Firebase identity to probe.
+  // Returns: Rejected only for a recognized identity-rejection error; success and other failures remain inconclusive.
   Future<_SessionFailureKind> _probeIdentity(User user) async {
     try {
       await user.reload().timeout(_identityProbeTimeout);
@@ -1820,12 +1778,10 @@ class AuthenticationControl extends ChangeNotifier
     return _SessionFailureKind.inconclusive;
   }
 
-  // 함수이름: _scheduleSessionResync
-  // 함수역할: 판정 없이 유지한 세션을 서버와 다시 확인하도록 다음 재시도를 예약한다. 정해진 횟수를 넘으면 다음 토큰 갱신까지 예약하지 않는다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음.
+  // Function Name: _scheduleSessionResync
+  // Description: Schedules the next bounded retry for a session retained after an inconclusive failure.
+  // Parameters: None.
+  // Returns: None; avoids duplicate timers, stops after the configured delays and rechecks owner identity before firing.
   void _scheduleSessionResync() {
     if (_sessionResyncTimer != null ||
         _sessionResyncAttempts >= _sessionResyncDelays.length) {
@@ -1854,24 +1810,20 @@ class AuthenticationControl extends ChangeNotifier
     });
   }
 
-  // 함수이름: _cancelSessionResync
-  // 함수역할: 예약된 세션 재확인을 취소하고 재시도 횟수를 초기화한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음.
+  // Function Name: _cancelSessionResync
+  // Description: Cancels pending retained-session rechecks and resets their retry budget.
+  // Parameters: None.
+  // Returns: None; clears timer reference and attempt count.
   void _cancelSessionResync() {
     _sessionResyncTimer?.cancel();
     _sessionResyncTimer = null;
     _sessionResyncAttempts = 0;
   }
 
-  // 함수이름: _clearSession
-  // 함수역할: 세션과 그 세션이 속한 Firebase 사용자 기록을 함께 지우고 예약된 재확인을 취소한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음.
+  // Function Name: _clearSession
+  // Description: Clears both backend session and its Firebase owner, cancelling retained-session retries.
+  // Parameters: None.
+  // Returns: None; does not independently notify listeners.
   void _clearSession() {
     _session = null;
     _sessionSubject = null;
@@ -2149,13 +2101,10 @@ class AuthenticationControl extends ChangeNotifier
     }
   }
 
-  // 함수이름: _setError
-  // 함수역할: 코드가 없는 사용자용 안내와 선택적 백엔드 오류 원인을 저장하고 구독 화면에 변경을 알린다.
-  // 매개변수:
-  // - message (String): 사용자에게 표시하거나 오류로 보존할 안내 문구
-  // - cause (Object?): 언어별 안내에 사용할 원래 서버 세션 오류
-  // 반환값:
-  // - 없음.
+  // Function Name: _setError
+  // Description: Stores uncoded feedback with an optional backend-session cause for later localization.
+  // Parameters: message: User-facing text; cause: Optional original backend error.
+  // Returns: None; clears the coded-error field and notifies listeners.
   void _setError(String message, {Object? cause}) {
     _errorMessage = message;
     _errorCode = null;
@@ -2163,12 +2112,10 @@ class AuthenticationControl extends ChangeNotifier
     notifyListeners();
   }
 
-  // 함수이름: _setErrorCode
-  // 함수역할: 인증 실패 코드를 저장해 화면이 현재 언어의 안내를 고를 수 있게 하고 구독 화면에 변경을 알린다.
-  // 매개변수:
-  // - code (AuthenticationErrorCode): 언어와 무관한 실패 식별자
-  // 반환값:
-  // - 없음.
+  // Function Name: _setErrorCode
+  // Description: Stores a language-independent authentication code and clears unrelated backend-error state.
+  // Parameters: code: AuthenticationErrorCode for localization.
+  // Returns: None; retains its English fallback and notifies listeners.
   void _setErrorCode(AuthenticationErrorCode code) {
     _errorMessage = code.english;
     _errorCode = code;
@@ -2176,12 +2123,10 @@ class AuthenticationControl extends ChangeNotifier
     notifyListeners();
   }
 
-  // 함수이름: _setStateError
-  // 함수역할: 인증 코드가 담긴 StateError는 코드로, 그 밖의 StateError는 원래 문구로 저장한다.
-  // 매개변수:
-  // - error (StateError): 인증 작업 중 발생한 상태 오류
-  // 반환값:
-  // - 없음.
+  // Function Name: _setStateError
+  // Description: Routes coded authentication state errors through localization and other state errors through their original message.
+  // Parameters: error: StateError from authentication work.
+  // Returns: None; the selected error setter notifies subscribers.
   void _setStateError(StateError error) {
     if (error is AuthenticationStateError) {
       _setErrorCode(error.code);

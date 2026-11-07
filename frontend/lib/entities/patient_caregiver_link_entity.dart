@@ -115,6 +115,7 @@ class PatientCaregiverLink {
   // - patientAlias (String?): 보호자가 설정한 환자 별칭; 빈 문자열은 별칭 해제
   // - linkStatus (bool): 환자·보호자 연결 활성 상태
   // - linkedAt (DateTime?): 환자·보호자가 연결된 시각
+  // - caregiverAlias (String?): 환자가 정한 보호자 별칭; 빈 문자열은 해제, null은 제공되지 않은 별칭이다.
   // 반환값:
   // - PatientCaregiverLink: 초기화된 인스턴스.
   const PatientCaregiverLink({
@@ -129,12 +130,10 @@ class PatientCaregiverLink {
     this.linkedAt,
   });
 
-  // 함수이름: PatientCaregiverLink.fromJson
-  // 함수역할: 서버에서 받은 환자-보호자 연동 JSON을 앱 모델로 변환한다. 과거 필드명과 현재 필드명을 함께 읽어 호환성을 유지한다.
-  // 매개변수:
-  // - json (Map<String, dynamic>): 환자-보호자 연동 API 응답 JSON
-  // 반환값:
-  // - PatientCaregiverLink 인스턴스
+  // Function Name: PatientCaregiverLink.fromJson
+  // Description: Read current and legacy link fields, preserving null versus explicitly cleared aliases.
+  // Parameters: json (Map<String, dynamic>): link response.
+  // Returns: PatientCaregiverLink: normalized participants, aliases, status and timestamp.
   factory PatientCaregiverLink.fromJson(Map<String, dynamic> json) {
     return PatientCaregiverLink(
       linkId: readJsonInt(json['link_id'] ?? json['id'] ?? json['linkID']),
@@ -200,6 +199,7 @@ class PatientCaregiverLink {
   // - patientAlias (String?): 보호자가 설정한 환자 별칭; 빈 문자열은 별칭 해제
   // - linkStatus (bool?): 환자·보호자 연결 활성 상태
   // - linkedAt (DateTime?): 환자·보호자가 연결된 시각
+  // - caregiverAlias (String?): 환자가 정한 보호자 별칭; 빈 문자열은 해제, null은 기존 값을 유지한다.
   // 반환값:
   // - 변경값이 반영된 PatientCaregiverLink 인스턴스
   PatientCaregiverLink copyWith({
@@ -226,12 +226,10 @@ class PatientCaregiverLink {
     );
   }
 
-  // 함수이름: _readPatientAlias
-  // 함수역할: 서버에 아직 별칭이 없는 NULL과 사용자가 지운 빈 문자열을 구분한다. 과거 서버가 별칭 필드를 생략한 응답도 NULL로 처리한다.
-  // 매개변수:
-  // - json (Map<String, dynamic>): 해당 모델의 서버 응답 또는 저장 JSON 객체
-  // 반환값:
-  // - String?: 서버에 아직 별칭이 없는 NULL과 사용자가 지운 빈 문자열을 구분한다. 과거 서버가 별칭 필드를 생략한 응답도 NULL로 처리한다.
+  // Function Name: _readPatientAlias
+  // Description: Read the first present alias field; preserve null for legacy rows and empty text for an explicit reset.
+  // Parameters: json (Map<String, dynamic>): link response with current or legacy alias keys.
+  // Returns: String?: normalized first-present alias, or null when absent/null.
   static String? _readPatientAlias(Map<String, dynamic> json) {
     const aliasKeys = ['patient_alias', 'patientAlias', 'display_name'];
     for (final key in aliasKeys) {
