@@ -265,20 +265,28 @@ class MedicationHistoryControl extends ChangeNotifier {
   }
 
   // Function Name: load
-  // Description: Clears stale presentation data and loads the requested period with exclusive busy state and error notification.
-  // Parameters: range (MedicationHistoryRange): Requested history period.
-  // Returns: Completion after publishing a validated snapshot; busy/session/read failures throw, leaving no stale snapshot.
-  Future<void> load(MedicationHistoryRange range) async {
+  // Description: Loads a period with exclusive busy state, optionally retaining the same period only while revalidating it.
+  // Parameters: range (MedicationHistoryRange): Requested period; preserveSnapshot (bool): Keep matching data during refresh.
+  // Returns: Completion after publishing a validated snapshot; session/read failures discard the snapshot and propagate.
+  Future<void> load(
+    MedicationHistoryRange range, {
+    bool preserveSnapshot = false,
+  }) async {
     ensureSession();
     if (busy) throw const MedicationHistoryBusy();
     requestedRange = range;
-    snapshot = null;
+    if (!preserveSnapshot ||
+        snapshot?.range.start != range.start ||
+        snapshot?.range.end != range.end) {
+      snapshot = null;
+    }
     error = null;
     loading = true;
     notifyListeners();
     try {
       snapshot = await _readPeriod(range);
     } catch (failure) {
+      snapshot = null;
       if (!_disposed && !_invalidated) error = failure;
       rethrow;
     } finally {

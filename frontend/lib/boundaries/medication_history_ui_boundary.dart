@@ -75,7 +75,7 @@ class MedicationHistoryUI extends StatefulWidget {
   final bool showBackButton;
   // 탭으로 유지되는 동안 숨겨지면 앱 복귀 때 서버 기록을 다시 읽지 않는다.
   final bool isActive;
-  // 다른 화면에서 서버에 복용 기록이 저장됐다는 신호. 보이는 동안 받으면 다시 읽는다.
+  // 다른 화면의 복용 기록 변경 신호. 숨겨져 있으면 탭 복귀 시 다시 읽는다.
   final Listenable? recordChanges;
 
   // 함수이름: createState
@@ -176,6 +176,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     _range = widget.sharedRange ?? _periodRange(_anchor, _period)!;
     _chartExpanded.clear();
     _detailsExpanded.clear();
+    _recordsChanged = false;
     final bound = _control;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && identical(bound, _control)) {
@@ -226,30 +227,39 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
       _interactionActive = false;
       _exporting = false;
       _bindControl();
+    } else if (!oldWidget.isActive && widget.isActive) {
+      final bound = _control;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && identical(bound, _control)) _refreshVisibleHistory();
+      });
     }
   }
 
   // Function Name: didChangeAppLifecycleState
-  // Description: On visible-app resume, verifies the session and reloads unlocked history; a new Korean day advances noncustom periods to today.
+  // Description: On visible-app resume, verifies the session and refreshes history without rebuilding the selected view.
   // Parameters: state (AppLifecycleState): new application state.
-  // Returns: No return value; invalid sessions or active interactions do not reload.
+  // Returns: No return value; active interactions defer the refresh until they complete.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed || !widget.isActive) return;
+    if (state == AppLifecycleState.resumed) _refreshVisibleHistory();
+  }
+
+  // 함수이름: _refreshVisibleHistory
+  // 함수역할: 보이는 기록의 세션을 확인하고 진행 중인 작업과 겹치지 않게 갱신한다.
+  // 매개변수: 없음.
+  // 반환값: 없음. 조회·편집 중이면 종료 후 한 번 갱신하도록 표시한다.
+  void _refreshVisibleHistory() {
+    if (!widget.isActive) return;
     try {
       _control.ensureSession();
     } catch (_) {
       return;
     }
-    if (!_control.busy && !_interactionActive && !_exporting) {
-      // 탭은 계속 유지되므로 날짜가 바뀐 뒤 돌아오면 주간·월간을 오늘로 옮긴다.
-      final today = _control.today;
-      if (today != _lastSeenToday) {
-        _lastSeenToday = today;
-        if (_period != _HistoryPeriod.custom) _anchor = _selectedDay = today;
-      }
-      unawaited(_reload());
+    if (_control.busy || _interactionActive || _exporting) {
+      _recordsChanged = true;
+      return;
     }
+    unawaited(_reload());
   }
 
   // Function Name: dispose
@@ -270,26 +280,26 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   // Parameters: None.
   // Returns: Future<void>; lookup errors stay in controller state instead of escaping.
   Future<void> _load() async {
+    final control = _control;
     _recordsChanged = false;
     try {
-      await _control.load(_range);
+      await control.load(_range, preserveSnapshot: true);
     } catch (_) {
-      // 서버·네트워크 오류는 제어 객체의 상태로 표시하고 이전 자료는 남기지 않는다.
+      // 갱신 중에는 같은 기간의 기록을 유지하되 조회 실패 후에는 이전 자료를 지운다.
     }
-    if (_recordsChanged && mounted) _onRecordsChanged();
+    if (mounted && identical(control, _control) && _recordsChanged) {
+      _onRecordsChanged();
+    }
   }
 
   // Function Name: _onRecordsChanged
   // Description: Reloads visible valid-session history after a record change, deferring it while lookup, editing or export is active.
   // Parameters: None.
-  // Returns: No return value; inactive or invalidated views ignore the signal.
+  // Returns: No return value; inactive views defer the read and invalidated views ignore the signal.
   void _onRecordsChanged() {
-    if (!widget.isActive || _control.sessionInvalidated) return;
-    if (_control.busy || _interactionActive || _exporting) {
-      _recordsChanged = true;
-      return;
-    }
-    unawaited(_load());
+    if (_control.sessionInvalidated) return;
+    _recordsChanged = true;
+    _refreshVisibleHistory();
   }
 
   // Function Name: _endInteraction
@@ -310,6 +320,13 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   // 매개변수: 없음.
   // 반환값: 조회 완료 Future<void>; 공유된 기간은 그대로 조회한다.
   Future<void> _reload() async {
+    final today = _control.today;
+    if (today != _lastSeenToday) {
+      _lastSeenToday = today;
+      if (widget.sharedRange == null && _period != _HistoryPeriod.custom) {
+        _anchor = _selectedDay = today;
+      }
+    }
     if (widget.sharedRange == null) {
       final earliest = MedicationHistoryDates.earliest(_control.today);
       final range = _period == _HistoryPeriod.custom
@@ -1004,22 +1021,35 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
               children: [
                 if (!scrollHeader) header,
                 Expanded(
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 720),
-                      child: ListView(
-                        key: const Key('history-scroll'),
-                        padding: const EdgeInsets.all(16),
-                        children: [
-                          if (scrollHeader) header,
-                          if (widget.sharedRange != null)
-                            ..._sharedPeriodBody(snapshot)
-                          else
-                            ..._dashboard(snapshot),
-                        ],
+                  child: Stack(
+                    children: [
+                      Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 720),
+                          child: ListView(
+                            key: const Key('history-scroll'),
+                            padding: const EdgeInsets.all(16),
+                            children: [
+                              if (scrollHeader) header,
+                              if (widget.sharedRange != null)
+                                ..._sharedPeriodBody(snapshot)
+                              else
+                                ..._dashboard(snapshot),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
+                      if (_control.loading && snapshot != null)
+                        const Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: LinearProgressIndicator(
+                            key: Key('history-refresh-progress'),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ],
@@ -1086,7 +1116,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         _periodNavigation(),
       const SizedBox(height: 12),
       // 수정 저장 뒤 다시 읽기 전까지는 자료도 오류도 없으므로 빈 화면 대신 진행을 표시한다.
-      if (_control.loading || (snapshot == null && _control.error == null))
+      if (snapshot == null && _control.error == null)
         const Padding(
           padding: EdgeInsets.all(32),
           child: Center(child: CircularProgressIndicator()),
@@ -1528,7 +1558,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         style: Theme.of(context).textTheme.titleMedium,
       ),
       const SizedBox(height: 8),
-      if (_control.loading)
+      if (_control.loading && snapshot == null)
         const LinearProgressIndicator()
       else if (_control.error != null) ...[
         Text(

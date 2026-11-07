@@ -72,6 +72,130 @@ MedicationHistoryChange _change() => MedicationHistoryChange(
 // 반환값:
 // - 없음; 프레임워크에서 테스트를 실행한다.
 void main() {
+  // 함수이름: 같은 기간의 갱신 중 표시 유지 검증
+  // 함수역할: 이전 기록을 갱신 중에만 유지하고 응답 완료 후 새 기록으로 바꾸는지 확인한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료 Future<void>.
+  test(
+    'same-period refresh preserves data until the response arrives',
+    () async {
+      Completer<http.Response>? pending;
+      final control = _control(
+        MockClient(
+          (_) async => pending == null
+              ? historyTestResponse(historyTestBody())
+              : pending.future,
+        ),
+      );
+      addTearDown(control.dispose);
+      await control.load(_range);
+      final previous = control.snapshot;
+      pending = Completer<http.Response>();
+      final refresh = control.load(_range, preserveSnapshot: true);
+      expect(control.snapshot, same(previous));
+      expect(control.loading, isTrue);
+      pending.complete(historyTestResponse(historyTestBody(items: [])));
+      await refresh;
+      expect(control.snapshot, isNot(same(previous)));
+      expect(control.snapshot!.items, isEmpty);
+      expect(control.loading, isFalse);
+    },
+  );
+
+  // 함수이름: 다른 기간의 이전 표시 차단 검증
+  // 함수역할: 유지 옵션을 켜도 이전 기간의 기록을 새 날짜 아래에 표시하지 않는지 확인한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료 Future<void>.
+  test(
+    'a different period clears data even with preservation enabled',
+    () async {
+      Completer<http.Response>? pending;
+      final control = _control(
+        MockClient(
+          (_) async => pending == null
+              ? historyTestResponse(historyTestBody())
+              : pending.future,
+        ),
+      );
+      addTearDown(control.dispose);
+      await control.load(_range);
+      pending = Completer<http.Response>();
+      final refresh = control.load(
+        MedicationHistoryRange(
+          DateTime.utc(2026, 10, 17),
+          DateTime.utc(2026, 10, 17),
+        ),
+        preserveSnapshot: true,
+      );
+      expect(control.snapshot, isNull);
+      pending.complete(
+        historyTestResponse(historyTestBody(start: '2026-10-17', items: [])),
+      );
+      await refresh;
+      expect(control.snapshot!.range.days, 1);
+    },
+  );
+
+  for (final status in [401, 403, 500]) {
+    // 함수이름: 갱신 실패 시 이전 기록 제거 검증
+    // 함수역할: 권한·서버 오류가 확인되면 환자·보호자 모두 이전 기록을 지우는지 확인한다.
+    // 매개변수: 없음. 반환값: 비동기 검증 완료 Future<void>.
+    for (final readOnly in [false, true]) {
+      test('refresh failure $status clears data, readOnly=$readOnly', () async {
+        var fail = false;
+        final control = _control(
+          MockClient(
+            (_) async => fail
+                ? historyTestResponse({'detail': 'Unavailable'}, status)
+                : historyTestResponse(historyTestBody()),
+          ),
+          readOnly: readOnly,
+        );
+        addTearDown(control.dispose);
+        await control.load(_range);
+        fail = true;
+        await expectLater(
+          control.load(_range, preserveSnapshot: true),
+          throwsA(isA<ApiRequestException>()),
+        );
+        expect(control.snapshot, isNull);
+        expect(control.error, isNotNull);
+        expect(control.loading, isFalse);
+      });
+    }
+  }
+
+  // 함수이름: 갱신 중 계정 변경 검증
+  // 함수역할: 계정 변경 즉시 기존 기록을 지우고 늦은 응답도 다시 표시하지 않는지 확인한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료 Future<void>.
+  test(
+    'session change clears preserved data and rejects a late refresh',
+    () async {
+      final changes = StreamController<String?>.broadcast(sync: true);
+      addTearDown(changes.close);
+      Completer<http.Response>? pending;
+      final control = _control(
+        MockClient(
+          (_) async => pending == null
+              ? historyTestResponse(historyTestBody())
+              : pending.future,
+        ),
+        changes: changes.stream,
+      );
+      addTearDown(control.dispose);
+      await control.load(_range);
+      pending = Completer<http.Response>();
+      final refresh = control.load(_range, preserveSnapshot: true);
+      final rejected = expectLater(
+        refresh,
+        throwsA(isA<MedicationHistorySessionChanged>()),
+      );
+      changes.add('different-session');
+      expect(control.snapshot, isNull);
+      pending.complete(historyTestResponse(historyTestBody()));
+      await rejected;
+      expect(control.snapshot, isNull);
+    },
+  );
+
   // 함수이름: 내보내기와 현재 조회 분리
   // 함수역할:
   // - 하루 스냅샷을 로드한 뒤 7일 내보내기를 읽어도 현재 스냅샷·요청 기간의 객체를 유지하고 busy를 해제하는지 확인한다.
@@ -148,61 +272,67 @@ void main() {
   // - None.
   // Returns:
   // - Future<void>: Completes the checks; an unexpected result fails the test.
-  test('an export longer than 31 days is read in 31-day parts and merged', () async {
-    final reads = <Uri>[];
-    final control = _control(
-      MockClient((request) async {
-        reads.add(request.url);
-        final start = request.url.queryParameters['start_date']!;
-        final end = request.url.queryParameters['end_date']!;
-        return historyTestResponse(
-          historyTestBody(
-            start: start,
-            end: end,
-            items: [
-              historyTestEntry(date: end),
-              historyTestEntry(date: start, slot: 'evening'),
-            ],
-          ),
-        );
-      }),
-    );
-    addTearDown(control.dispose);
-    final range = MedicationHistoryRange(
-      DateTime.utc(2026, 7, 20),
-      DateTime.utc(2026, 10, 17),
-    );
-    final merged = await control.readRangeForExport(range);
-    expect(
-      reads.map(
-        (uri) =>
-            '${uri.queryParameters['start_date']}~${uri.queryParameters['end_date']}',
-      ),
-      [
-        '2026-09-17~2026-10-17',
-        '2026-08-17~2026-09-16',
-        '2026-07-20~2026-08-16',
-      ],
-    );
-    expect(merged.range.start, range.start);
-    expect(merged.range.end, range.end);
-    expect(merged.items, hasLength(6));
-    expect(
-      merged.items.map((item) => MedicationHistoryDates.format(item.scheduleDate)),
-      [
-        '2026-10-17',
-        '2026-09-17',
-        '2026-09-16',
-        '2026-08-17',
-        '2026-08-16',
-        '2026-07-20',
-      ],
-    );
-    expect(merged.medications.map((item) => item.id).toSet(), hasLength(
-      merged.medications.length,
-    ));
-    expect(control.busy, isFalse);
-  });
+  test(
+    'an export longer than 31 days is read in 31-day parts and merged',
+    () async {
+      final reads = <Uri>[];
+      final control = _control(
+        MockClient((request) async {
+          reads.add(request.url);
+          final start = request.url.queryParameters['start_date']!;
+          final end = request.url.queryParameters['end_date']!;
+          return historyTestResponse(
+            historyTestBody(
+              start: start,
+              end: end,
+              items: [
+                historyTestEntry(date: end),
+                historyTestEntry(date: start, slot: 'evening'),
+              ],
+            ),
+          );
+        }),
+      );
+      addTearDown(control.dispose);
+      final range = MedicationHistoryRange(
+        DateTime.utc(2026, 7, 20),
+        DateTime.utc(2026, 10, 17),
+      );
+      final merged = await control.readRangeForExport(range);
+      expect(
+        reads.map(
+          (uri) =>
+              '${uri.queryParameters['start_date']}~${uri.queryParameters['end_date']}',
+        ),
+        [
+          '2026-09-17~2026-10-17',
+          '2026-08-17~2026-09-16',
+          '2026-07-20~2026-08-16',
+        ],
+      );
+      expect(merged.range.start, range.start);
+      expect(merged.range.end, range.end);
+      expect(merged.items, hasLength(6));
+      expect(
+        merged.items.map(
+          (item) => MedicationHistoryDates.format(item.scheduleDate),
+        ),
+        [
+          '2026-10-17',
+          '2026-09-17',
+          '2026-09-16',
+          '2026-08-17',
+          '2026-08-16',
+          '2026-07-20',
+        ],
+      );
+      expect(
+        merged.medications.map((item) => item.id).toSet(),
+        hasLength(merged.medications.length),
+      );
+      expect(control.busy, isFalse);
+    },
+  );
 
   // 함수이름: 내보내기 잠금과 세션 변경
   // 함수역할:

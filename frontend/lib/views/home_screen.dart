@@ -94,7 +94,6 @@ class HomeScreen extends StatefulWidget {
 // - _selectedDestination (MedBuddyDestination): Top-level navigation destination to display or select.
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   MedBuddyDestination _selectedDestination = MedBuddyDestination.home;
-  int _historyRevision = 0;
   ManageChatList? _chatList;
   CheckCaregiverHome? _caregiverHome;
   String? _homeScheduleSource;
@@ -765,12 +764,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _buildDestination(
               MedBuddyDestination.medicationHistory,
               // Function Name: _buildApplicationShell._buildDestination callback
-              // Description: Supplies the signed-in user's own medication history, rebuilt each time the tab is selected.
+              // Description: Preserves the signed-in user's history state across tab changes; activation refreshes its data.
               // Parameters:
               // - None.
               // Returns: The medication history screen.
               () => MedicationHistoryUI(
-                key: ValueKey((viewModel.patientHash, _historyRevision)),
+                key: ValueKey(viewModel.patientHash),
                 patientHash: viewModel.patientHash,
                 currentUserHash: viewModel.patientHash,
                 isEnglish: viewModel.userSetting.isEnglish,
@@ -865,7 +864,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // Function Name: _selectDestination
   // Description: Selects an available destination and triggers its relevant refresh without waiting for navigation; conversation access is checked separately.
   // Parameters: destination: Requested bottom-navigation target.
-  // Returns: None; chat with a confirmed empty link list is refused, revisited schedules reuse recent data, and history selection gets a fresh revision key.
+  // Returns: None; chat with a confirmed empty link list is refused and visited screens retain their state while refreshing relevant data.
   void _selectDestination(MedBuddyDestination destination) {
     if (destination == MedBuddyDestination.home) unawaited(_refreshChatList());
     if (destination == MedBuddyDestination.chat && !_showChatDestination) {
@@ -891,9 +890,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // - None.
     // Returns: No payload; applies the captured state changes.
     setState(() {
-      if (destination == MedBuddyDestination.medicationHistory) {
-        _historyRevision++;
-      }
       _selectedDestination = destination;
       _visitedDestinations.add(destination);
     });

@@ -9,6 +9,7 @@ import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:medbuddy_frontend/boundaries/chat_list_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/medication_history_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/input_prescription_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/linked_chat_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/manage_user_setting_ui_boundary.dart';
@@ -306,6 +307,46 @@ void _viewport(WidgetTester tester, double width) {
 // 반환값:
 // - void; 반환값 없음.
 void main() {
+  // 함수이름: 하단 기록 탭 재사용 검증
+  // 함수역할: 홈을 거쳐 기록 탭에 돌아와도 동일한 화면 상태를 유지하는지 확인한다.
+  // 매개변수: tester(WidgetTester): 하단 메뉴 조작 도구. 반환값: 검증 완료 Future<void>.
+  testWidgets('history tab retains its state when returning from home', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    _viewport(tester, 390);
+    final model = _ViewModel();
+    addTearDown(model.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: model,
+        child: MaterialApp(
+          home: HomeScreen(
+            chatListFactory: (hash) => ManageChatList(
+              userHash: hash,
+              linkControl: _Links(),
+              chatControl: _History(),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final tab = find.byKey(
+      const ValueKey('bottomNavigation-medicationHistory'),
+    );
+    await tester.tap(tab);
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(MedicationHistoryUI));
+    await tester.tap(find.byKey(const ValueKey('bottomNavigation-home')));
+    await tester.pumpAndSettle();
+    await tester.tap(tab);
+    await tester.pumpAndSettle();
+    expect(tester.state(find.byType(MedicationHistoryUI)), same(state));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   for (final language in ['한국어', 'English']) {
     // 함수이름: cold offline chat remains reachable and recovers
     // 함수역할: 인터넷 없이 시작해도 채팅과 재시도를 유지하고, 복구 후 대화를 표시하며 실제 연결 해제 때만 홈으로 돌아간다.

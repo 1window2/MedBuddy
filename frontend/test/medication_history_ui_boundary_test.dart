@@ -146,7 +146,7 @@ class _HistoryServer {
 
 // Function Name: _pumpHistory
 // Description: Mounts history with the real theme/localizations and an isolated HTTP/store double; optionally selects today's visible details and registers controller cleanup.
-// Parameters: tester (WidgetTester), server (_HistoryServer): Harness and responses; readOnly/isEnglish/openToday/initiallyShowExport/isActive (bool): View modes; textScale (double): Text scaling; onChanged (FutureOr<void> Function()?): Save callback; sessionChanges (Stream<String?>?): Session events; now (DateTime Function()?): Clock; recordChanges (Listenable?): External changes.
+// Parameters: tester (WidgetTester), server (_HistoryServer): Harness and responses; readOnly/isEnglish/openToday/initiallyShowExport/isActive (bool): View modes; textScale (double): Text scaling; onChanged (FutureOr<void> Function()?): Save callback; sessionChanges (Stream<String?>?): Session events; now (DateTime Function()?): Clock; recordChanges (Listenable?): External changes; activeState (ValueNotifier<bool>?): Tab visibility changes.
 // Returns: Future<MedicationHistoryControl>: Mounted controller; failed widget lookup or settling fails the test.
 Future<MedicationHistoryControl> _pumpHistory(
   WidgetTester tester,
@@ -161,6 +161,7 @@ Future<MedicationHistoryControl> _pumpHistory(
   bool isActive = true,
   DateTime Function()? now,
   Listenable? recordChanges,
+  ValueNotifier<bool>? activeState,
 }) async {
   final control = MedicationHistoryControl(
     patientHash: 'test-patient',
@@ -172,6 +173,19 @@ Future<MedicationHistoryControl> _pumpHistory(
     sessionChanges: sessionChanges,
   );
   addTearDown(control.dispose);
+  // 함수이름: history
+  // 함수역할: 같은 제어기를 유지한 채 탭 가시성만 바꾸는 시험 화면을 만든다.
+  // 매개변수: active(bool): 탭 표시 여부. 반환값: MedicationHistoryUI.
+  Widget history(bool active) => MedicationHistoryUI(
+    patientHash: 'test-patient',
+    readOnly: readOnly,
+    isEnglish: isEnglish,
+    control: control,
+    onChanged: onChanged,
+    initiallyShowExport: initiallyShowExport,
+    isActive: active,
+    recordChanges: recordChanges,
+  );
   await tester.pumpWidget(
     MaterialApp(
       theme: MedBuddyTheme.light(),
@@ -183,16 +197,12 @@ Future<MedicationHistoryControl> _pumpHistory(
         ).copyWith(textScaler: TextScaler.linear(textScale)),
         child: child!,
       ),
-      home: MedicationHistoryUI(
-        patientHash: 'test-patient',
-        readOnly: readOnly,
-        isEnglish: isEnglish,
-        control: control,
-        onChanged: onChanged,
-        initiallyShowExport: initiallyShowExport,
-        isActive: isActive,
-        recordChanges: recordChanges,
-      ),
+      home: activeState == null
+          ? history(isActive)
+          : ValueListenableBuilder<bool>(
+              valueListenable: activeState,
+              builder: (_, active, _) => history(active),
+            ),
     ),
   );
   await tester.pumpAndSettle();
@@ -351,6 +361,202 @@ Future<MedicationHistoryControl> _pumpAsNeeded(
 // Parameters: None; individual callbacks receive the test runner's WidgetTester.
 // Returns: void; registers tests and fixtures without running them synchronously.
 void main() {
+  // 함수이름: 기록 탭 복귀 상태 유지 검증
+  // 함수역할: 선택한 월·날짜·스크롤·접힘 상태를 유지하고 갱신 중에도 기존 내용을 표시하는지 확인한다.
+  // 매개변수: tester(WidgetTester): 화면 조작 도구. 반환값: 비동기 검증 완료.
+  testWidgets('reactivation preserves month, day, scroll and expanded state', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final active = ValueNotifier(true);
+    addTearDown(active.dispose);
+    final server = _HistoryServer()
+      ..items.add(historyTestEntry(date: '2026-10-16'));
+    final control = await _pumpHistory(
+      tester,
+      server,
+      openToday: false,
+      activeState: active,
+    );
+    await tester.tap(find.byKey(const Key('history-tab-month')));
+    await tester.pumpAndSettle();
+    final day = find.byKey(const Key('history-month-day-2026-10-16'));
+    await _revealHistory(tester, day);
+    await tester.tap(day);
+    await tester.pumpAndSettle();
+    await _revealHistory(tester, find.byKey(const Key('history-toggle-chart')));
+    await tester.tap(find.byKey(const Key('history-toggle-chart')));
+    await tester.pumpAndSettle();
+    await _revealHistory(tester, find.byKey(const Key('history-select-date')));
+    await tester.drag(find.byType(ListView).first, const Offset(0, -100));
+    await tester.pumpAndSettle();
+    final scrollable = find.descendant(
+      of: find.byKey(const Key('history-scroll')),
+      matching: find.byType(Scrollable),
+    );
+    final position = tester.state<ScrollableState>(scrollable).position;
+    final offset = position.pixels;
+    expect(offset, greaterThan(0));
+    final previous = control.snapshot;
+    final reads = server.reads.length;
+    active.value = false;
+    await tester.pump();
+    expect(server.reads.length, reads);
+    final pending = Completer<http.Response>();
+    server.pendingRead = pending;
+    active.value = true;
+    await tester.pump();
+    await tester.pump();
+    expect(server.reads.length, reads + 1);
+    expect(control.snapshot, same(previous));
+    expect(find.byKey(const Key('history-refresh-progress')), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('2026-10-16'), findsOneWidget);
+    expect(find.byKey(const Key('history-month-calendar')), findsNothing);
+    expect(position.pixels, offset);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byWidgetPredicate(
+              (widget) => widget is IconButton && widget.tooltip == 'Share',
+            ),
+          )
+          .onPressed,
+      isNull,
+    );
+    server.pendingRead = null;
+    pending.complete(
+      historyTestResponse(
+        historyTestBody(start: '2026-10-01', items: server.items),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('history-refresh-progress')), findsNothing);
+    expect(find.text('2026-10-16'), findsOneWidget);
+    expect(find.byKey(const Key('history-month-calendar')), findsNothing);
+    expect(position.pixels, offset);
+    expect(control.snapshot!.range.start, DateTime.utc(2026, 10, 1));
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 숨겨진 기록의 변경 반영 검증
+  // 함수역할: 숨겨진 탭에서는 조회하지 않고 다시 열 때 누적된 복용 변경을 한 번 조회하는지 확인한다.
+  // 매개변수: tester(WidgetTester): 화면 조작 도구. 반환값: 비동기 검증 완료.
+  testWidgets('hidden dose changes refresh once when history becomes active', (
+    tester,
+  ) async {
+    final active = ValueNotifier(true);
+    final saved = ValueNotifier(0);
+    addTearDown(active.dispose);
+    addTearDown(saved.dispose);
+    final server = _HistoryServer();
+    final control = await _pumpHistory(
+      tester,
+      server,
+      openToday: false,
+      activeState: active,
+      recordChanges: saved,
+    );
+    final reads = server.reads.length;
+    active.value = false;
+    await tester.pump();
+    server.items.single['status'] = 'taken';
+    saved.value++;
+    saved.value++;
+    await tester.pumpAndSettle();
+    expect(server.reads.length, reads);
+    active.value = true;
+    await tester.pumpAndSettle();
+    expect(server.reads.length, reads + 1);
+    expect(
+      control.snapshot!.items.single.status,
+      MedicationHistoryStatus.taken,
+    );
+  });
+
+  // 함수이름: 탭 복귀 시 날짜 변경 검증
+  // 함수역할: 한국 날짜가 바뀌면 오늘의 주간으로 이동하되 직접 선택한 기간은 유지하는지 확인한다.
+  // 매개변수: tester(WidgetTester): 고정 시계와 화면 조작 도구. 반환값: 비동기 검증 완료.
+  for (final custom in [false, true]) {
+    testWidgets('reactivation handles a new day, custom=$custom', (
+      tester,
+    ) async {
+      var now = historyTestNow;
+      final active = ValueNotifier(true);
+      addTearDown(active.dispose);
+      final server = _HistoryServer();
+      final control = await _pumpHistory(
+        tester,
+        server,
+        openToday: false,
+        activeState: active,
+        now: () => now,
+      );
+      if (custom) {
+        await tester.tap(find.byKey(const Key('history-tab-custom')));
+        await tester.pumpAndSettle();
+      }
+      final previous = control.snapshot!.range;
+      active.value = false;
+      await tester.pump();
+      now = historyTestNow.add(const Duration(days: 3));
+      active.value = true;
+      await tester.pumpAndSettle();
+      expect(
+        control.snapshot!.range.start,
+        custom ? previous.start : DateTime.utc(2026, 10, 19),
+      );
+      expect(
+        control.snapshot!.range.end,
+        custom ? previous.end : DateTime.utc(2026, 10, 20),
+      );
+    });
+  }
+
+  // 함수이름: 보호자 권한 거절 후 표시 제거 검증
+  // 함수역할: 백그라운드 재조회에서 연동 권한이 거절되면 이전 환자 기록과 공유 동작을 제거하는지 확인한다.
+  // 매개변수: tester(WidgetTester): 화면 조작 도구. 반환값: 비동기 검증 완료.
+  testWidgets('revoked caregiver access removes preserved history', (
+    tester,
+  ) async {
+    final active = ValueNotifier(true);
+    addTearDown(active.dispose);
+    final server = _HistoryServer();
+    final control = await _pumpHistory(
+      tester,
+      server,
+      openToday: false,
+      readOnly: true,
+      activeState: active,
+    );
+    active.value = false;
+    await tester.pump();
+    final pending = Completer<http.Response>();
+    server.pendingRead = pending;
+    active.value = true;
+    await tester.pump();
+    await tester.pump();
+    expect(control.snapshot, isNotNull);
+    pending.complete(historyTestResponse({'detail': 'Forbidden'}, 403));
+    await tester.pumpAndSettle();
+    expect(control.snapshot, isNull);
+    expect(find.byKey(const Key('history-load-error')), findsOneWidget);
+    expect(find.byKey(const Key('history-section-summary')), findsNothing);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byWidgetPredicate(
+              (widget) => widget is IconButton && widget.tooltip == 'Share',
+            ),
+          )
+          .onPressed,
+      isNull,
+    );
+  });
+
   // 함수이름: testWidgets 콜백
   // 함수역할: 모든 기간 탭에서 일별 상세가 처음부터 펼쳐지고 사용자가 다시 접고 펼칠 수 있는지 검증한다.
   // 매개변수: tester(WidgetTester): 격리된 화면과 시험 시계를 조작하는 실행기.
@@ -543,12 +749,7 @@ void main() {
       tester,
     ) async {
       final server = _HistoryServer();
-      await _pumpHistory(
-        tester,
-        server,
-        openToday: false,
-        isActive: active,
-      );
+      await _pumpHistory(tester, server, openToday: false, isActive: active);
       final reads = server.reads.length;
       expect(reads, greaterThan(0));
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -563,24 +764,25 @@ void main() {
     // Description: Checks that external record-change events trigger reads only for the parameterized visible history state.
     // Parameters: tester (WidgetTester): Drives the isolated widget tree and test clock.
     // Returns: Future<void>; a failed expectation or widget interaction fails the case.
-    testWidgets('a dose saved elsewhere reloads only a visible history: $active', (
-      tester,
-    ) async {
-      final saved = ValueNotifier(0);
-      addTearDown(saved.dispose);
-      final server = _HistoryServer();
-      await _pumpHistory(
-        tester,
-        server,
-        openToday: false,
-        isActive: active,
-        recordChanges: saved,
-      );
-      final reads = server.reads.length;
-      saved.value++;
-      await tester.pumpAndSettle();
-      expect(server.reads.length, active ? reads + 1 : reads);
-    });
+    testWidgets(
+      'a dose saved elsewhere reloads only a visible history: $active',
+      (tester) async {
+        final saved = ValueNotifier(0);
+        addTearDown(saved.dispose);
+        final server = _HistoryServer();
+        await _pumpHistory(
+          tester,
+          server,
+          openToday: false,
+          isActive: active,
+          recordChanges: saved,
+        );
+        final reads = server.reads.length;
+        saved.value++;
+        await tester.pumpAndSettle();
+        expect(server.reads.length, active ? reads + 1 : reads);
+      },
+    );
   }
 
   // Function Name: testWidgets callback
@@ -2361,9 +2563,14 @@ void main() {
       await _revealHistory(tester, day('2026-10-16'));
       final cell = tester
           .widgetList<Semantics>(
-            find.ancestor(of: day('2026-10-16'), matching: find.byType(Semantics)),
+            find.ancestor(
+              of: day('2026-10-16'),
+              matching: find.byType(Semantics),
+            ),
           )
-          .firstWhere((widget) => widget.properties.label?.contains('16') ?? false);
+          .firstWhere(
+            (widget) => widget.properties.label?.contains('16') ?? false,
+          );
       expect(cell.properties.onTap, isNotNull);
       handle.dispose();
     });
