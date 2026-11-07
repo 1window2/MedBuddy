@@ -23,6 +23,9 @@ const _mapArea = NearbyCareSearchArea(
 
 // 클래스명: _Location
 // 역할: 위치 실패·잘못된 좌표·조회 횟수를 재현하는 테스트 경계.
+// 주요 책임: 위치 요청 수를 기록하고 지정 좌표 또는 오류로 응답한다.
+// 속성: error (Object?): 조회 실패; calls (int): 조회 횟수.
+// - coordinate (DeviceCoordinate): 성공 시 반환할 좌표.
 class _Location implements DeviceLocationBoundary {
   Object? error;
   int calls = 0;
@@ -53,14 +56,34 @@ class _Location implements DeviceLocationBoundary {
 
 // 클래스명: _MapProbe
 // 역할: 네이티브 지도를 대신해 화면이 전달하는 검색 기준과 사용자 명령을 기록한다.
+// 주요 책임: 네이티브 지도 대신 검색 영역과 화면 콜백을 보관해 사용자 동작을 시험한다.
+// 속성: area (NearbyCareSearchArea): 최근 검색 영역; revision (int): 중심 갱신 번호.
+// - search (Future<bool> Function(NearbyCareSearchArea)): 영역 재검색 콜백.
+// - locate (VoidCallback): 현재 위치 복귀 콜백.
 class _MapProbe {
   late NearbyCareSearchArea area;
   late Future<bool> Function(NearbyCareSearchArea) search;
   late VoidCallback locate;
   int revision = 0;
 
-  // 함수이름: build
-  // 함수역할: 지도 계약의 검색 위치·명령을 기록한다. 매개변수: 지도 생성 계약. 반환값: 빈 지도 대역.
+  // Function Name: build
+  // Description:
+  // - Captures search area, center revision and search/location commands, then returns an empty map-sized widget; other map options are ignored.
+  // Parameters:
+  // - searchArea (NearbyCareSearchArea): Latest search origin and radius.
+  // - centerRevision (int): Requested camera-center revision.
+  // - isSearching (bool): Accepted loading flag.
+  // - onSearchAreaRequested (Future<bool> Function(NearbyCareSearchArea)): Captured area-search callback.
+  // - onCurrentLocationRequested (VoidCallback): Captured current-location command.
+  // - pharmacies (List<NearbyCarePlace>): Accepted places; no native markers are built.
+  // - selectedPharmacyId (String?): Accepted selection.
+  // - onPharmacySelected (ValueChanged<NearbyCarePlace>): Unused selection callback.
+  // - onAttributionRequested (VoidCallback): Unused attribution callback.
+  // - statusText (String?): Unused status label.
+  // - selectMarkerHint, zoomInTooltip, zoomOutTooltip (String): Unused accessibility labels.
+  // - configurationUnavailableText, unavailableText (String): Unused unavailable-state text.
+  // Returns:
+  // - Widget: SizedBox.expand keyed area-map.
   Widget build({
     required NearbyCareSearchArea searchArea,
     required int centerRevision,
@@ -86,8 +109,16 @@ class _MapProbe {
   }
 }
 
-// 함수이름: _app
-// 함수역할: 약국 화면과 지도 대역을 연결한다. 매개변수: 제어기·지도·언어. 반환값: 테스트 앱.
+// Function Name: _app
+// Description:
+// - Connects the nearby-care control and map probe to a localized screen with 24-point text.
+// Parameters:
+// - control (CheckNearbyCare): Search and location state source.
+// - map (_MapProbe): Substitute map builder.
+// - language (String): Screen locale; defaults to ko.
+// - hospitals (bool): Selects hospital mode instead of pharmacy mode.
+// Returns:
+// - Widget: MaterialApp containing CheckNearbyPharmacyUI.
 Widget _app(
   CheckNearbyCare control,
   _MapProbe map, {
@@ -110,6 +141,13 @@ void main() {
   // 결과가 있으면 병원은 300m, 약국은 20km에 머무르고 수동 지역·새로고침은 반경을 보존한다.
   for (final hospitals in [true, false]) {
     for (final fallback in [false, true]) {
+      // 함수이름: 초기 반경과 현재 위치 재설정
+      // 함수역할:
+      // - 병원 300m·약국 20km 및 GPS 대체 상태를 확인하고 지도 검색·새로고침은 선택 반경을, 재위치 요청은 초기 반경을 사용하는지 검증한다.
+      // 매개변수:
+      // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+      // 반환값:
+      // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
       testWidgets(
         'initial radius and GPS reset: hospitals=$hospitals fallback=$fallback',
         (tester) async {

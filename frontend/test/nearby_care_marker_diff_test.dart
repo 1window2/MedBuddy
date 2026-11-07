@@ -270,6 +270,13 @@ void main() {
   });
 
   for (final selected in [null, 'shared', 'missing']) {
+    // 함수이름: testWidgets callback
+    // 함수역할:
+    // - 선택 장소가 있으면 그 좌표와 확대율로 시작하되 검색 원점은 유지하고, 선택이 없으면 기본 중심을 사용하는지 확인한다. 지도 설정이 없으면 건너뛴다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets(
       'initial camera uses selected place without changing search origin: $selected',
       (tester) async {
@@ -549,6 +556,13 @@ void main() {
   );
 
   // 함수역할: 선택 이동 시 두 ID만 교체하는지 검사한다. 매개변수: 없음. 반환값: 없음.
+  // 함수이름: test callback
+  // 함수역할:
+  // - 30개 장소 중 선택이 바뀐 이전·새 마커만 제거 후 추가 대상으로 잡히는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('선택 변경은 기존 선택과 새 선택의 두 마커만 교체한다', () {
     final places = [for (var i = 0; i < 30; i++) place('$i')];
     final delta = NearbyCareMarkerDiff.between(
@@ -560,6 +574,13 @@ void main() {
   });
 
   // 함수역할: 즐겨찾기 하나의 변경이 다른 마커를 건드리지 않는지 검사한다. 매개변수·반환값: 없음.
+  // 함수이름: test callback
+  // 함수역할:
+  // - 즐겨찾기 한 곳의 스타일 변경은 해당 마커만 교체 대상으로 잡히는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('즐겨찾기 변경은 해당 마커만 교체한다', () {
     final places = [for (var i = 0; i < 30; i++) place('$i')];
     final delta = NearbyCareMarkerDiff.between(
@@ -571,6 +592,13 @@ void main() {
   });
 
   // 함수역할: 위치·이름 변화와 표시와 무관한 값의 변경을 구분한다. 매개변수·반환값: 없음.
+  // 함수이름: test callback
+  // 함수역할:
+  // - 없어진 장소를 제거하고 이름·좌표가 바뀐 장소와 새 장소만 추가하며 순서·전화번호 변경은 무시하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('검색 추가·제거·좌표·이름 변경을 구분하고 순서·연락처 변경은 무시한다', () {
     final before = styles([place('a'), place('b'), place('c')]);
     final delta = NearbyCareMarkerDiff.between(
@@ -586,6 +614,13 @@ void main() {
   });
 
   // 함수역할: 결과 없음과 반복 조회에서 필요한 제거만 수행하는지 검사한다. 매개변수·반환값: 없음.
+  // 함수이름: test callback
+  // 함수역할:
+  // - 빈 결과는 기존 마커 제거만 요청하고 같은 결과는 추가·제거 작업을 만들지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('빈 결과는 기존 마커만 제거하고 같은 결과는 작업하지 않는다', () {
     final before = styles([place('a')]);
     expect(NearbyCareMarkerDiff.between(before, {}).remove, {'a'});

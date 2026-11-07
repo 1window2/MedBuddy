@@ -6,9 +6,9 @@ import 'package:geolocator/geolocator.dart';
 import '../entities/device_coordinate_entity.dart';
 
 // 클래스명: DeviceLocationFailure
-// 역할: 위치 서비스 꺼짐·권한 거절·영구 거절·조회 불가 원인을 구분한다.
-// 주요 책임:
-// - 약국 화면이 권한 변경 또는 위치 서비스 활성화 등 필요한 복구 경로를 선택하게 한다.
+// 역할: 기기 위치 조회를 막는 상태를 구분한다.
+// 주요 책임: 위치 서비스 꺼짐·권한 거절·영구 거절·조회 불가에 맞는 안내를 선택하게 한다.
+// 속성: serviceDisabled/denied/deniedForever/unavailable: 위치 실패 원인.
 enum DeviceLocationFailure {
   serviceDisabled,
   denied,
@@ -35,9 +35,9 @@ class DeviceLocationException implements Exception {
 }
 
 // 클래스명: DeviceLocationBoundary
-// 역할: 약국 조회가 사용할 현재 좌표 및 설정 이동 계약이다.
-// 주요 책임:
-// - 구체 위치 플러그인을 감추고 권한·기기 위치 설정 이동을 교체 가능한 경계로 제공한다.
+// 역할: 위치 플러그인과 분리된 좌표 조회·설정 화면 진입 계약이다.
+// 주요 책임: 현재 좌표 요청과 앱·기기 위치 설정 열기를 구현체에 위임한다.
+// 속성: 저장 상태 없음; 비동기 위치 및 설정 열기 메서드만 노출한다.
 abstract interface class DeviceLocationBoundary {
   // 함수이름: requestCurrentCoordinate
   // 함수역할: 동의와 위치 사용 가능 여부를 확인한 현재 WGS84 좌표 조회 계약을 제공한다.
@@ -65,16 +65,14 @@ abstract interface class DeviceLocationBoundary {
 }
 
 // 클래스명: GeolocatorDeviceLocationService
-// 역할: Geolocator를 통해 사용자 동의 후 현재 좌표를 한 번 조회한다.
-// 주요 책임:
-// - 위치 서비스와 권한 상태를 검사하고 조회를 15초로 제한하며 실패를 공통 위치 오류로 변환한다.
+// 역할: Geolocator로 기기 좌표 및 위치 설정 접근을 구현한다.
+// 주요 책임: 위치 서비스·권한을 확인하고 위치 조회 실패를 공통 예외로 변환한다.
+// 속성: 인스턴스 상태 없음; 플랫폼 위치 API를 사용한다.
 class GeolocatorDeviceLocationService implements DeviceLocationBoundary {
-  // 함수이름: requestCurrentCoordinate
-  // 함수역할: 위치 서비스·권한을 검사하고 필요한 권한을 요청한 뒤 최대 15초 동안 고정밀 좌표를 조회해 실패 원인을 공통 오류로 변환한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<DeviceCoordinate>: 위치 서비스·권한을 검사하고 필요한 권한을 요청한 뒤 최대 15초 동안 고정밀 좌표를 조회해 실패 원인을 공통 오류로 변환한다.
+  // Function Name: requestCurrentCoordinate
+  // Description: Check location service and permission, requesting permission once if denied; fetch high-accuracy coordinates with a 15-second limit.
+  // Parameters: None.
+  // Returns: Future<DeviceCoordinate>: current WGS84 position; throws a typed DeviceLocationException for service/permission issues or position lookup failure.
   @override
   Future<DeviceCoordinate> requestCurrentCoordinate() async {
     if (!await Geolocator.isLocationServiceEnabled()) {

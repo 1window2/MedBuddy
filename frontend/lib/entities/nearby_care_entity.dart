@@ -47,9 +47,9 @@ class NearbyCareSearchArea {
 }
 
 // Class Name: NearbyCareSearchMode
-// Role: Defines the wire-level search choices shared by nearby-care controls.
-// Responsibilities:
-// - Preserve backend values; concrete providers and their UI own applicable choices.
+// Role: Define shared nearby-care search modes without deciding provider-specific availability.
+// Responsibilities: Preserve the API values used by concrete care-provider controls.
+// Attributes: apiValue (String): all/open_at_time/late_hours/official_late_night/weekend_holiday.
 enum NearbyCareSearchMode {
   all('all'),
   openAtTime('open_at_time'),
@@ -112,6 +112,10 @@ class NearbyCarePlace {
   // - todayOpenTime/todayCloseTime/isOpenNow/is24Hours and optional schedule fields: reported operating evidence.
   // - Optional designation/source fields: pharmacy designation, provenance and freshness.
   // - departments/institutionType: optional hospital metadata.
+  // - isOpenLate/hasWeekendOrHolidayHours/isPublicHoliday/isOfficialLateNight (bool): reported late-hours, weekend/holiday hours, holiday-date and official-night designation flags.
+  // - designationSourceName/designationSourceUrl (String?): designation provenance; designationVerifiedAt (DateTime?): verification time; designationIsStale (bool): stale designation evidence.
+  // - scheduleDate (DateTime?): reported operating day; scheduleSource (String): schedule provenance; scheduleIsDateSpecific (bool): date-specific instead of weekly evidence.
+  // - minutesUntilClose (int?)/nextOpenAt (DateTime?): remaining opening minutes and next opening; sourceUpdatedAt (DateTime?)/sourceName (String): catalog freshness and provider.
   // Returns: A nearby-care place; unknown opening status remains nullable.
   const NearbyCarePlace({
     required this.placeId,
@@ -206,7 +210,10 @@ class NearbyCarePlace {
     );
   }
 
-  // 대상 장소 중심으로 보완 조회한 결과도 사용자 검색 위치를 기준으로 거리를 표시한다.
+  // 함수이름: withDistanceKm
+  // 함수역할: 보완 조회한 장소의 다른 정보는 유지하면서 사용자 검색 기준 거리를 교체한다.
+  // 매개변수: distance: 새 거리 값(km); 직접 유효성 검사는 하지 않는다.
+  // 반환값: distanceKm만 바뀐 새 장소 객체.
   NearbyCarePlace withDistanceKm(double distance) => NearbyCarePlace(
     placeId: placeId,
     name: name,
@@ -281,6 +288,7 @@ class NearbyCareSearchResult {
   // Parameters: data/searchArea/searchMode/targetDateTime: result/query; catalog and holiday fields: reliability.
   // - searchTruncated/regionScopeUncertain: result incompleteness and region-sampling evidence, respectively.
   // - searchRadiusExpanded: true only when the control itself searched a wider radius than requested.
+  // - catalogUpdatedAt (DateTime?): catalog update time; catalogIsStale (bool): stale catalog evidence; holidayScheduleStatus (String): holiday coverage/uncertainty reported by the provider.
   // Returns: A display result whose optional searchArea supports existing injected controller responses.
   const NearbyCareSearchResult({
     this.searchArea,
