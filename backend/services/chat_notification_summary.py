@@ -4,10 +4,13 @@
 
 import hashlib
 
+from sqlalchemy.orm import Session
+
 from entities.chat_message_entity import CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE
 from entities.medication_schedule_entity import (
     MEDICATION_SLOT_ENGLISH_NAMES, MEDICATION_SLOT_KOREAN_NAMES,
 )
+from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from repositories.chat_message_repository import ChatMessageRepository
 
 
@@ -65,7 +68,7 @@ def notification_preview(*, message_kind: str, context_payload: object, body: st
 # Parameters: db (Session) supplies messages; link is the active link row; recipient_hash (str) selects its side; language (str) selects English only for en;
 #   show_details (bool) permits sender/previews; count (int | None) reuses a caller count or requests a fresh aggregate.
 # Returns: Summary dict with count, latest ID, sender, lines and stable group tag; database failures propagate.
-def build_chat_notification_summary(db, *, link, recipient_hash: str,
+def build_chat_notification_summary(db: Session, *, link: _PatientCaregiverLink, recipient_hash: str,
                                     language: str, show_details: bool,
                                     count: int | None = None) -> dict:
     """count는 호출자가 같은 요청에서 이미 센 미확인 개수이며, 없으면 여기서 센다."""

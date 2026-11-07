@@ -127,7 +127,7 @@ class ChatMessageCreate(BaseModel):
     # 반환값: 원본 입력 그대로. 이력 공유 dict의 추가 키는 ValueError이며 다른 유형 검증은 다음 단계에 맡긴다.
     @model_validator(mode="before")
     @classmethod
-    def reject_history_snapshot_fields(cls, value):
+    def reject_history_snapshot_fields(cls, value: object) -> object:
         if isinstance(value, dict) and str(value.get("message_kind", "")).strip().lower() == CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE:
             if set(value) - cls.model_fields.keys():
                 raise ValueError("History sharing accepts dates, not client snapshots or patient identifiers.")
@@ -138,7 +138,7 @@ class ChatMessageCreate(BaseModel):
     # 매개변수: 없음. 검증된 모델 필드를 읽는다.
     # 반환값: 현재 모델. 누락된 날짜·혼합 문맥은 ValueError이며 실제 날짜 범위 검증은 제어 계층이 수행한다.
     @model_validator(mode="after")
-    def validate_history_share(self):
+    def validate_history_share(self) -> "ChatMessageCreate":
         if self.message_kind == CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE:
             if self.history_start_date is None or self.history_end_date is None:
                 raise ValueError("History sharing requires start and end dates.")
@@ -156,7 +156,7 @@ class ChatMessageCreate(BaseModel):
     # 매개변수: 없음. 검증된 모델 필드를 읽는다.
     # 반환값: 현재 모델. 필수값·연도·유형 불일치는 ValueError다.
     @model_validator(mode="after")
-    def validate_hospital_share(self):
+    def validate_hospital_share(self) -> "ChatMessageCreate":
         if self.message_kind == "hospital_share":
             if not self.hospital_id or self.hospital_schedule_date is None:
                 raise ValueError("Hospital sharing requires an identifier and schedule date.")
