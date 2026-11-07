@@ -2,6 +2,7 @@
 # Role: Regression coverage for patient-scoped schedules, dose completion, transactional outbox
 #   events, and legacy schema compatibility.
 
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -13,6 +14,7 @@ from unittest.mock import ANY, patch
 from fastapi import HTTPException
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import ConnectionPoolEntry
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -709,7 +711,7 @@ class CheckScheduleTest(unittest.TestCase):
             # Returns:
             # - None.
             @event.listens_for(engine, "connect")
-            def enable_concurrent_writes(dbapi_connection, _record) -> None:
+            def enable_concurrent_writes(dbapi_connection: sqlite3.Connection, _record: ConnectionPoolEntry) -> None:
                 cursor = dbapi_connection.cursor()
                 cursor.execute("PRAGMA journal_mode=WAL")
                 cursor.execute("PRAGMA busy_timeout=10000")
