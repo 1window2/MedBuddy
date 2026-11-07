@@ -48,6 +48,8 @@ _CAREGIVER = "caregiver-a"
 
 # Class Name: _ChatStream
 # Role: What the `chat_stream` fixture hands to a test.
+# Responsibilities:
+# - Group isolated handshake dependencies and construct stream paths for selected users and links.
 # Attributes:
 # - client (TestClient): Client of the application; the lifespan is not started.
 # - app (FastAPI): Application built by main.create_app() for this test.

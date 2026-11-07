@@ -39,32 +39,19 @@ class DispatchChatMessageAlert:
 
     _MAXIMUM_PREVIEW_LENGTH = 120
 
-    # 함수이름: __init__
-    # 함수역할:
-    # - 채팅 수신자 설정 조회 세션과 기기 푸시 전송 경계를 연결한다.
-    # 매개변수:
-    # - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
-    # - push_boundary (PushNotificationBoundary): 인증 모드에 맞춰 선택된 기기 푸시 전송 경계.
-    # 반환값:
-    # - 없음.
+    # Function Name: __init__
+    # Description: Bind the shared database session and push adapter and create the active-link repository.
+    # Parameters: db (Session) reads recipients and messages; push_boundary (PushNotificationBoundary) delivers notifications.
+    # Returns: None.
     def __init__(self, db: Session, push_boundary: PushNotificationBoundary) -> None:
         self.db = db
         self.push_boundary = push_boundary
         self.link_repository = PatientCaregiverLinkRepository(db)
 
-    # 함수이름: notify_new_message
-    # 함수역할:
-    # - 채팅방에 접속하지 않은 상대 기기에 새 메시지 도착을 알린다.
-    # - 수신자와 문구를 모두 읽은 뒤 세션의 읽기 트랜잭션을 끝내고 전송한다. 호출자는 자신의 변경을 먼저 커밋해야 한다.
-    # 매개변수:
-    # - recipient_hash (str): 알림을 받을 계정 식별자.
-    # - link_id (int): 저장된 환자·보호자 연동 식별자.
-    # - message_body (str): 메시지 또는 푸시 미리보기에 사용할 사용자 입력 본문.
-    # - message_kind (str): 텍스트 또는 구조화 문맥 메시지 유형.
-    # - slot_key (str | None): morning, lunch, evening, bedtime 중 복용 시간대 키.
-    # - message_id (int | None): 저장된 채팅 메시지 식별자.
-    # 반환값:
-    # - 푸시 전송 결과
+    # Function Name: notify_new_message
+    # Description: Recheck queued message visibility and unread state, honor preview preferences, build grouped summaries and supported action payloads, then deliver outside the read transaction.
+    # Parameters: recipient_hash and link_id identify the destination; message_body and message_kind provide fallback content; slot_key optionally identifies a dose slot; message_id triggers authoritative stored-message checks.
+    # Returns: PushDeliveryResult, with zero deliveries for ineligible recipients/messages; disables invalid registrations and propagates delivery failures.
     def notify_new_message(
         self,
         *,

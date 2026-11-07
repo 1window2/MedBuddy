@@ -187,13 +187,10 @@ class ChatMessage(BaseModel):
             deleted_for_everyone=row.deleted_for_everyone_at is not None,
         )
 
-    # 함수이름: to_response_dict
-    # 함수역할:
-    # - 채팅 메시지를 모바일 앱 응답 필드 형식으로 변환한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - JSON 직렬화 가능한 메시지 사전
+    # Function Name: to_response_dict
+    # Description: Serialize chat and medication contexts with UTC timestamps; redact content and attachments for hidden or globally deleted messages.
+    # Parameters: None.
+    # Returns: dict[str, object] retaining message identity and visibility flags even when content is redacted.
     def to_response_dict(self) -> dict[str, object]:
         """모바일 앱이 사용하는 JSON 필드 형식으로 변환한다."""
         medication_context = self._medication_context_response()

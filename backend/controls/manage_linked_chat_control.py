@@ -79,31 +79,25 @@ class ChatSendResult:
     created: bool
 
 
-# 클래스명: ManageLinkedChat
-# 역할:
-# - 활성 환자·보호자 연동 안에서 채팅 사용 사례를 수행한다.
-# 주요 책임:
-# - 권한 검증, 기록 조회, 복약 맥락 검증, 저장과 읽음 처리를 조율한다.
-# 속성:
-# - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
-# - link_repository (PatientCaregiverLinkRepository): 활성 환자·보호자 연동 저장소.
-# - message_repository (ChatMessageRepository): 범위별 채팅 기록·읽음·삭제 상태 저장소.
-# - medication_repository (SavedMedicationRepository): 환자 소유 저장 약품 스냅샷 저장소.
-# - pharmacy_repository (PharmacyCatalogRepository): 약국 카탈로그와 공휴일 당번표 저장소.
-# - course_policy (MedicationCoursePolicy): 약 복용 시작·종료·활성 날짜의 공통 판정 정책.
 # 서버가 만드는 슬롯 완료 카드의 재전송 식별자 접두사다. 클라이언트가 같은 식별자를 먼저 쓰면 서버 카드가
 # 만들어지지 않으므로 클라이언트 요청에는 쓰지 못하게 한다.
 _SERVER_SLOT_COMPLETION_CLIENT_ID_PREFIX = "slot_complete_"
 
 
-# 함수이름: _reject_server_client_id
-# 함수역할: 서버 전용 재전송 식별자를 클라이언트 요청에서 400으로 거절한다.
-# 매개변수: client_message_id (str): 요청의 재전송 식별자. 반환값: 없음.
+# Function Name: _reject_server_client_id
+# Description: Reject identifiers reserved for server-generated slot-completion messages.
+# Parameters: client_message_id (str) is the proposed request identifier.
+# Returns: None; raises HTTP 400 for the reserved prefix.
 def _reject_server_client_id(client_message_id: str) -> None:
     if client_message_id.startswith(_SERVER_SLOT_COMPLETION_CLIENT_ID_PREFIX):
         raise HTTPException(400, "This client message namespace is reserved for the server.")
 
 
+# 클래스명: ManageLinkedChat
+# 역할: 활성 환자·보호자 연동 안에서 채팅 사용 사례를 수행한다.
+# 주요 책임: 권한 검증, 기록 조회, 서버 복약·장소 문맥 구성, 저장·읽음·삭제를 조율한다.
+# 속성: db (Session)는 요청 세션, link_repository·message_repository는 연동·메시지 저장소다.
+#   medication_repository·pharmacy_repository는 저장 약·약국 조회, course_policy는 복용 기간 정책이다.
 class ManageLinkedChat:
     """채팅 접근 권한, 저장, 기록 조회, 읽음 처리를 조율한다."""
 
@@ -323,7 +317,10 @@ class ManageLinkedChat:
             "data": self._medication_detail_response(medication),
         }
 
-    # 병원 조회 전에 연동 권한·중복을 확인하고 읽기 트랜잭션을 끝낸다.
+    # 함수이름: find_sent_message
+    # 함수역할: 외부 장소 조회 전에 활성 연동과 중복 전송을 확인하고 성공·실패 모두 읽기 트랜잭션을 반환한다.
+    # 매개변수: link_id (int)는 연동, sender_hash·client_message_id (str)는 발신자·요청 ID, message_kind (str)는 재시도 유형이다.
+    # 반환값: 기존 ChatSendResult 또는 없으면 None. 권한·이력 공유 재사용 검증 오류는 전달한다.
     def find_sent_message(
         self, *, link_id: int, sender_hash: str, client_message_id: str,
         message_kind: str = CHAT_MESSAGE_KIND_TEXT,
@@ -344,6 +341,10 @@ class ManageLinkedChat:
         finally:
             self.db.rollback()
 
+    # 함수이름: prepare_pharmacy_share
+    # 함수역할: 활성 연동과 서버 약국 ID를 검증하고 외부 조회 전에 읽기 트랜잭션을 반환한다.
+    # 매개변수: link_id (int)는 연동, sender_hash (str)는 발신자, pharmacy_id (str)는 공유할 약국이다.
+    # 반환값: 주간표가 없을 때 PharmacyCatalogEntry, 있으면 None. 미등록 약국은 HTTP 400, 권한 오류는 전달한다.
     def prepare_pharmacy_share(
         self, *, link_id: int, sender_hash: str, pharmacy_id: str,
     ) -> PharmacyCatalogEntry | None:
@@ -357,6 +358,11 @@ class ManageLinkedChat:
         finally:
             self.db.rollback()
 
+    # 함수이름: _validate_history_retry
+    # 함수역할: 이력 공유 요청 ID를 다른 유형·본문·기간에 재사용하거나 삭제된 공유를 복원하지 못하게 한다.
+    # 매개변수: existing (_ChatMessage)는 저장 메시지, message_kind (str)는 요청 유형, body (str | None)는 본문,
+    #   history_start_date·history_end_date (date | None)는 공유 기간이다.
+    # 반환값: None. 이력 공유와 무관하면 검사하지 않으며 불일치·삭제는 HTTP 409다.
     @staticmethod
     def _validate_history_retry(
         existing: _ChatMessage, *, message_kind: str, body: str | None = None,
@@ -378,14 +384,10 @@ class ManageLinkedChat:
         ):
             raise HTTPException(409, "The message request ID was already used for a different or deleted history share.")
 
-    # 함수이름: _rebuild_medication_references
-    # 함수역할:
-    # - 검색약 카드의 이름·제조사·사진을 보낸 앱의 값이 아니라 최근 24시간 안에 서버가 약 검색 결과로
-    #   돌려준 공개 품목 정보로 다시 만든다. 같은 품목은 한 번만 남긴다.
-    # 매개변수:
-    # - references (list[dict[str, object]]): 형식을 검증한 요청의 검색약 목록.
-    # 반환값:
-    # - 서버 값으로 다시 만든 검색약 목록. 최근 검색 결과에 없는 품목이 있으면 400.
+    # Function Name: _rebuild_medication_references
+    # Description: Deduplicate reference identifiers and replace client snapshots with authoritative search-cache data.
+    # Parameters: references (list[dict[str, object]]) contains validated item_seq references.
+    # Returns: list[dict[str, object]] in first-seen order; raises HTTP 400 when any cached product has expired.
     def _rebuild_medication_references(
         self, references: list[dict[str, object]],
     ) -> list[dict[str, object]]:
@@ -399,16 +401,10 @@ class ManageLinkedChat:
             )
         return [{"item_seq": item_seq, **known[item_seq]} for item_seq in item_seqs]
 
-    # 함수이름: _validate_reference_retry
-    # 함수역할:
-    # - 응답 유실 재시도에서 같은 요청 식별자로 다른 검색약 스냅샷·본문·유형을 보내거나 삭제된 메시지를 되살리지 못하게 한다.
-    # 매개변수:
-    # - existing (_ChatMessage): 같은 요청 식별자로 이미 저장된 메시지.
-    # - references (list[dict[str, object]]): 이번 요청의 검색약 스냅샷.
-    # - body (str): 이번 요청의 본문.
-    # - message_kind (str): 이번 요청의 메시지 유형.
-    # 반환값:
-    # - 없음. 다르면 409를 발생시킨다.
+    # Function Name: _validate_reference_retry
+    # Description: Reject reuse of a reference-bearing request identifier with changed references, text, kind, or a message deleted for everyone.
+    # Parameters: existing (_ChatMessage) is the stored result; references is the rebuilt reference list; body and message_kind are retry content.
+    # Returns: None; raises HTTP 409 on a conflicting retry.
     @staticmethod
     def _validate_reference_retry(
         existing: _ChatMessage,
@@ -425,6 +421,10 @@ class ManageLinkedChat:
         ):
             raise HTTPException(409, "The request ID was already used for another medication reference.")
 
+    # 함수이름: _lock_history_share_link
+    # 함수역할: 기존 읽기 잠금을 해제하고 양쪽 계정을 일정한 순서로 잠근 뒤 삭제·연동 상태를 다시 검증한다.
+    # 매개변수: link_id (int)는 공유 연동, sender_hash (str)는 발신 계정이다. 세션에 미저장 변경이 없어야 한다.
+    # 반환값: 잠금 이후 검증된 연동 행. 더러운 세션은 RuntimeError, 삭제·해제는 HTTP 410/404, DB 잠금 경합은 503이다.
     def _lock_history_share_link(self, *, link_id: int, sender_hash: str) -> _PatientCaregiverLink:
         """양쪽 계정의 해제·삭제 작업과 공유 저장을 직렬화하고 권한을 재검증한다."""
         if self.db.new or self.db.dirty or self.db.deleted:
@@ -451,28 +451,10 @@ class ManageLinkedChat:
             self.db.rollback()
             raise
 
-    # 함수이름: send_message
-    # 함수역할:
-    # - 일반 또는 복약 맥락 메시지를 멱등하게 저장하고 상대 참여자를 반환한다.
-    # 매개변수:
-    # - link_id (int): 저장된 환자·보호자 연동 식별자.
-    # - sender_hash (str): 채팅 메시지를 작성한 계정 식별자.
-    # - client_message_id (str): 채팅 재전송 중복 방지용 클라이언트 생성 식별자.
-    # - body (str): 호출자가 정리·검증한 본문. HTTP 경로는 ChatMessageCreate.normalize_body를 거치며, 이 함수는 전달받은 값을 그대로 저장한다.
-    # - medication_id (int | None): 선택할 저장 약의 식별자.
-    # - medication_ids (list[int] | None): 구조화 채팅 카드에 담을 선택적 저장 약 식별자 목록.
-    # - medication_references (list[dict[str, object]] | None): 저장하지 않은 검색약의 표시 스냅샷. 일반 텍스트에만 허용한다.
-    # - message_kind (str): 텍스트 또는 구조화 문맥 메시지 유형.
-    # - slot_key (str | None): morning, lunch, evening, bedtime 중 복용 시간대 키.
-    # - pharmacy_id (str | None): 공공 약국 식별자.
-    # - allow_internal (bool): 신뢰된 서버 코드가 내부 전용 구조화 메시지를 생성할 수 있는지 여부.
-    # - source_alert_id (int | None): 보호자 미복약 알림에서 시작한 확인 요청의 원본 알림 식별자.
-    # - hospital_context (dict[str, object] | None): 서버가 검증한 병원 공유 문맥.
-    # - pharmacy_operating_snapshot (dict[str, object] | None): 서버가 만든 약국 운영 상태 스냅샷.
-    # - history_start_date (date | None): 복약 기록 공유의 시작일.
-    # - history_end_date (date | None): 복약 기록 공유의 종료일.
-    # 반환값:
-    # - 저장 메시지, 상대 수신자와 이번 요청의 신규 생성 여부를 담은 ChatSendResult.
+    # Function Name: send_message
+    # Description: Require an active participant, validate context combinations and authoritative references, and idempotently save the message with its notification job; conflicting retries are rejected.
+    # Parameters: link_id and sender_hash scope the conversation; client_message_id deduplicates; body and message_kind define content. medication_id, medication_ids and medication_references attach products; slot_key and pharmacy_id select context; allow_internal permits server messages; source_alert_id links a missed-dose case; hospital_context and pharmacy_operating_snapshot carry prepared place data; history_start_date and history_end_date bound a history share.
+    # Returns: ChatSendResult with recipient and created flag. Validation/authorization failures raise HTTP errors; integrity races reload the existing result or propagate when no matching request exists.
     def send_message(
         self,
         *,
@@ -666,6 +648,11 @@ class ManageLinkedChat:
             created=True,
         )
 
+    # Function Name: record_medication_taken
+    # Description: Atomically records the patient's explicit dose confirmations, chat receipt and notification job; a replay returns the original message without reapplying doses.
+    # Parameters: link_id (int), sender_hash and client_message_id (str) identify the authorized request; schedule_date (date), slot_key (str), medication_ids (list[int]) select doses;
+    #   commit (bool) controls transaction ownership; allow_historical (bool) permits the schedule control's bounded historical synchronization path.
+    # Returns: (ChatSendResult, completion events), with no events on replay. HTTP 403 rejects caregiver writes; 409 rejects changed or no-longer-valid confirmations.
     def record_medication_taken(
         self, *, link_id: int, sender_hash: str, client_message_id: str,
         schedule_date: date, slot_key: str, medication_ids: list[int],
@@ -776,15 +763,10 @@ class ManageLinkedChat:
             recipient_hash=str(link.caregiver_hash), created=True,
         ), schedule.consumeCompletionEvents()
 
-    # 함수이름: publish_slot_completion
-    # 함수역할:
-    # - 한 시간대의 약을 모두 복용하면 모든 활성 보호자 채팅에 완료 기록을 남긴다.
-    # 매개변수:
-    # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
-    # - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
-    # - only_caregiver_hash (str | None): 지정하면 이 보호자와의 채팅에만 기록한다.
-    # 반환값:
-    # - 새로 저장된 완료 메시지 수
+    # Function Name: publish_slot_completion
+    # Description: Idempotently publish today's full-slot completion to active linked conversations, skipping those already containing a full confirmation.
+    # Parameters: patient_hash (str) identifies the patient; slot_key (str) selects the slot; only_caregiver_hash (str | None) optionally restricts delivery.
+    # Returns: int newly created messages; unsupported slots return zero and send failures propagate.
     def publish_slot_completion(
         self, *, patient_hash: str, slot_key: str,
         only_caregiver_hash: str | None = None,
@@ -864,14 +846,10 @@ class ManageLinkedChat:
             },
         }
 
-    # 함수이름: request_unread_count
-    # 함수역할:
-    # - 현재 사용자가 읽지 않은 상대 메시지 수를 반환한다.
-    # 매개변수:
-    # - link_id (int): 저장된 환자·보호자 연동 식별자.
-    # - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
-    # 반환값:
-    # - 읽지 않은 메시지 수
+    # Function Name: request_unread_count
+    # Description: Authorizes the link, counts visible unread peer messages and optionally adds a privacy-aware notification summary without marking messages read.
+    # Parameters: link_id (int) is the room; user_hash (str) is its participant; include_notification_preview (bool) requests localized preview metadata.
+    # Returns: Success envelope with unread_count, first_unread_message_id and optional notification; authorization/database errors propagate.
     def request_unread_count(
         self,
         *,
@@ -959,14 +937,10 @@ class ManageLinkedChat:
             )
         return medication
 
-    # 함수이름: _active_medications
-    # 함수역할:
-    # - 환자의 지정일 활성 약을 이름이 있는 항목으로 제한해 반환한다.
-    # 매개변수:
-    # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
-    # - target_date (date): 약 복용 기간이 유효해야 하는 날짜.
-    # 반환값:
-    # - 지정일에 복용 중이며 표시 이름이 있는 저장 약 행 목록.
+    # Function Name: _active_medications
+    # Description: Read schedule projections and keep named medications active on the requested date.
+    # Parameters: patient_hash (str) identifies the owner; target_date (date) is the course-policy reference date.
+    # Returns: list[_SavedMedication] of eligible snapshots; database failures propagate.
     def _active_medications(
         self,
         patient_hash: str,
@@ -1100,8 +1074,11 @@ class ManageLinkedChat:
     # - slot_key (str | None): morning, lunch, evening, bedtime 중 복용 시간대 키.
     # - pharmacy_id (str | None): 공공 약국 식별자.
     # - allow_internal (bool): 신뢰된 서버 코드가 내부 전용 구조화 메시지를 생성할 수 있는지 여부.
+    # - hospital_context (dict | None): 서버에서 확인한 병원 공유 정보.
+    # - pharmacy_operating_snapshot (dict | None): 주간표 없는 약국의 제한 조회 운영 스냅샷.
+    # - history_start_date, history_end_date (date | None): 이력 공유의 서버 조회 기간.
     # 반환값:
-    # - 검증된 일정·복용 기간·약국 스냅샷; 일반 텍스트 메시지는 None.
+    # - 검증된 일정·복용 기간·약국·병원·이력 스냅샷; 일반 텍스트는 None. 누락·미지원 유형은 400, 금지된 내부 동작은 403이다.
     def _build_message_context(
         self,
         *,
@@ -1188,6 +1165,10 @@ class ManageLinkedChat:
             }
         raise HTTPException(status_code=400, detail="Unsupported chat message kind.")
 
+    # 함수이름: _pharmacy_operating_snapshot
+    # 함수역할: 카탈로그 주간표와 30일 이내 달력 캐시로 전송 시점 상태를 계산하며 달력 누락·공휴일을 평일로 추정하지 않는다.
+    # 매개변수: pharmacy (object)는 선택적 weekly_hours 속성을 가진 서버 약국 정보다.
+    # 반환값: 운영 상태·기준 시각·검증된 구간 dict. 외부 API는 호출하지 않으며 DB 오류는 전달한다.
     def _pharmacy_operating_snapshot(self, pharmacy: object) -> dict[str, object]:
         """카탈로그와 신선한 달력 캐시만 사용해 전송 시점의 약국 상태를 고정한다."""
         now = application_now()
@@ -1280,13 +1261,10 @@ class ManageLinkedChat:
             detail="The selected schedule slot has no active medication.",
         )
 
-    # 함수이름: _medication_course_context
-    # 함수역할:
-    # - 약 부족 메시지에서 사용할 남은 복용 기간을 계산한다.
-    # 매개변수:
-    # - medication (_SavedMedication): 환자 소유로 저장된 약품 스냅샷과 복용 기간 정보.
-    # 반환값:
-    # - 남은 복용 일수와 종료일; 복용 기간을 모르면 각 값이 None.
+    # Function Name: _medication_course_context
+    # Description: Compute the inclusive remaining course days for a low-supply message using today's date and the shared end-date policy.
+    # Parameters: medication (_SavedMedication) supplies the course.
+    # Returns: dict[str, object] with a nonnegative remaining_days and ISO course_end_date, or None values when the end is unknown.
     def _medication_course_context(
         self,
         medication: _SavedMedication,

@@ -49,6 +49,10 @@ class ChatMedicationReference(BaseModel):
         return safe_medication_image_url(value) or ""
 
 
+# 클래스명: ChatMedicationTaken
+# 역할: 일반 대화와 구분되는 환자의 명시적 복용 확인 요청을 검증한다.
+# 주요 책임: 재전송 ID 형식·복용 시간대·양수 약 ID와 선택 개수 한도를 제한한다.
+# 속성: client_message_id (str)는 요청 ID, schedule_date (date)는 복용일, slot_key는 정기 시간대, medication_ids는 list[int]다.
 class ChatMedicationTaken(BaseModel):
     """Explicit patient confirmation; ordinary chat text never updates doses."""
 
@@ -100,11 +104,10 @@ class ChatMessageCreate(BaseModel):
     history_start_date: date | None = None
     history_end_date: date | None = None
 
-    # 함수이름: validate_medication_references
-    # 함수역할: 검색약은 다른 구조화 문맥이 없는 일반 텍스트에만 허용하고, 저장 약과 합친 첨부 수를 제한한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값: 검증한 요청 자신.
+    # Function Name: validate_medication_references
+    # Description: Allows searched-product attachments only in ordinary chat without other structured context, capping the combined saved/searched count.
+    # Parameters: None; validates the current request fields.
+    # Returns: This request; raises ValueError for conflicting context or too many attachments.
     @model_validator(mode="after")
     def validate_medication_references(self) -> "ChatMessageCreate":
         if self.medication_references:
@@ -118,7 +121,10 @@ class ChatMessageCreate(BaseModel):
                 raise ValueError("Too many medication attachments.")
         return self
 
-    # 이력 공유는 날짜만 입력받고 클라이언트가 만든 집계·환자 식별자를 거부한다.
+    # 함수이름: reject_history_snapshot_fields
+    # 함수역할: 이력 공유 입력에서 스키마에 없는 집계·환자 식별자 등 추가 필드를 거절한다.
+    # 매개변수: value (object)는 모델 변환 전 원본 입력이다.
+    # 반환값: 원본 입력 그대로. 이력 공유 dict의 추가 키는 ValueError이며 다른 유형 검증은 다음 단계에 맡긴다.
     @model_validator(mode="before")
     @classmethod
     def reject_history_snapshot_fields(cls, value):
@@ -127,6 +133,10 @@ class ChatMessageCreate(BaseModel):
                 raise ValueError("History sharing accepts dates, not client snapshots or patient identifiers.")
         return value
 
+    # 함수이름: validate_history_share
+    # 함수역할: 이력 공유에는 시작·종료일을 요구하고 다른 문맥과 혼합하거나 일반 메시지에 기간을 붙이는 것을 거절한다.
+    # 매개변수: 없음. 검증된 모델 필드를 읽는다.
+    # 반환값: 현재 모델. 누락된 날짜·혼합 문맥은 ValueError이며 실제 날짜 범위 검증은 제어 계층이 수행한다.
     @model_validator(mode="after")
     def validate_history_share(self):
         if self.message_kind == CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE:
@@ -141,7 +151,10 @@ class ChatMessageCreate(BaseModel):
             raise ValueError("History dates require a medication history share message.")
         return self
 
-    # 병원 공유에는 식별자와 조회 날짜만 받으며 제공자 정보는 서버에서 구성한다.
+    # 함수이름: validate_hospital_share
+    # 함수역할: 병원 공유에 ID·안전한 연도의 조회일을 요구하고 약국 문맥 혼합·다른 유형의 병원 필드를 거절한다.
+    # 매개변수: 없음. 검증된 모델 필드를 읽는다.
+    # 반환값: 현재 모델. 필수값·연도·유형 불일치는 ValueError다.
     @model_validator(mode="after")
     def validate_hospital_share(self):
         if self.message_kind == "hospital_share":

@@ -357,6 +357,13 @@ class DispatchChatMessageAlertTest(unittest.TestCase):
         self.assertEqual(boundary.calls[0]["data"]["message_preview"], "")
 
 
+# 함수이름: test_group_summary_counts_only_visible_incoming_and_resets_after_read
+# 함수역할:
+# - 그룹 요약은 보이는 수신 미확인 메시지만 세고 읽음 후 초기화되며 같은 대화 태그와 연동 권한을 유지하는지 확인한다.
+# 매개변수:
+# - fk_db: Session; 외래 키가 활성화된 격리 데이터베이스.
+# 반환값:
+# - None.
 def test_group_summary_counts_only_visible_incoming_and_resets_after_read(fk_db):
     link_id, first_id = _seed_chat_scene(fk_db)
     link = fk_db.get(_PatientCaregiverLink, link_id)
@@ -404,6 +411,13 @@ def test_group_summary_counts_only_visible_incoming_and_resets_after_read(fk_db)
                                      include_notification_preview=True)
 
 
+# 함수이름: test_group_summary_hides_health_share_and_limits_push_size
+# 함수역할:
+# - 그룹 요약은 줄 길이·4KB 전송 한도를 지키고 건강 공유·상세 비공개 설정의 내용을 숨기는지 확인한다.
+# 매개변수:
+# - fk_db: Session; 외래 키가 활성화된 격리 데이터베이스.
+# 반환값:
+# - None.
 def test_group_summary_hides_health_share_and_limits_push_size(fk_db):
     link_id, first_id = _seed_chat_scene(fk_db)
     for i in range(3):
@@ -436,8 +450,14 @@ def test_group_summary_hides_health_share_and_limits_push_size(fk_db):
     assert hidden["count"] == 4 and hidden["lines"] == [] and hidden["sender_name"] == ""
 
 
-# 접힌 기기 알림은 첫 줄만 보이므로 본문은 최신 메시지부터 보내고,
-# 앱이 InboxStyle로 읽는 chat_summary의 lines는 오래된 순서를 유지한다.
+# Function Name: test_grouped_push_body_puts_the_newest_message_first
+# Description:
+# - Requires newest-first push body text while the structured summary remains chronological and the title carries the total count.
+# - The collapsed notification shows only its first line; InboxStyle consumes the chronological summary.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# Returns:
+# - None.
 def test_grouped_push_body_puts_the_newest_message_first(fk_db):
     link_id, _ = _seed_chat_scene(fk_db)
     for i in (2, 3, 4):
@@ -454,12 +474,26 @@ def test_grouped_push_body_puts_the_newest_message_first(fk_db):
     assert json.loads(call["data"]["chat_summary"])["lines"] == ["메시지 2", "메시지 3", "메시지 4"]
 
 
-# 미리보기 요청은 이미 센 미확인 개수를 재사용하고, 푸시와 같은 수신자 언어 규칙을 쓴다.
+# Function Name: test_unread_count_preview_counts_once_with_push_language_rules
+# Description:
+# - Requires unread count and preview to share one repository query and normalize the recipient language consistently.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# - monkeypatch: pytest.MonkeyPatch; restores temporary dependency replacements.
+# Returns:
+# - None.
 def test_unread_count_preview_counts_once_with_push_language_rules(fk_db, monkeypatch):
     link_id, _ = _seed_chat_scene(fk_db, {"language": " EN "})
     calls = []
     original = ChatMessageRepository.unread_summary
 
+    # Function Name: counting_unread_summary
+    # Description:
+    # - Records summary query arguments and delegates to the original repository method.
+    # Parameters:
+    # - kwargs: dict; unread-summary scope and preview options.
+    # Returns:
+    # - The original unread summary result.
     def counting_unread_summary(self, **kwargs):
         calls.append(kwargs)
         return original(self, **kwargs)
@@ -497,15 +531,14 @@ _CHAT_FALLBACK_BODY = {
 }
 
 
-# 함수이름: _seed_chat_scene
-# 함수역할:
-# - 환자·보호자 연동과 환자가 보낸 읽지 않은 메시지, 두 참여자의 기기 토큰을 저장한다.
-# - 보호자에게는 활성·비활성 토큰을 하나씩 두어 수신 대상 선택을 검증할 수 있게 한다.
-# 매개변수:
-# - db (Session): 외래 키가 적용된 테스트 세션.
-# - user_setting (dict[str, object] | None): 보호자 user_settings 값; None이면 행을 만들지 않는다.
-# 반환값:
-# - (연동 ID, 메시지 ID).
+# Function Name: _seed_chat_scene
+# Description:
+# - Seed a patient/caregiver link, an unread patient message, and device tokens including an inactive caregiver token.
+# Parameters:
+# - db: Session; isolated database with foreign keys enabled.
+# - user_setting: dict[str, object] | None; caregiver settings, or no row when None.
+# Returns:
+# - tuple[int, int]; created link and message identifiers.
 def _seed_chat_scene(
     db, user_setting: dict[str, object] | None = None,
 ) -> tuple[int, int]:
@@ -592,23 +625,26 @@ def test_chat_alert_follows_recipient_language_and_detail_mode(
     ]
 
 
-# 함수이름: test_chat_switch_blocks_chat_alert_but_caregiver_switch_does_not
-# 함수역할:
-# - 채팅 알림 설정을 끄면 전송하지 않고, 보호자 알림 전역 설정은 채팅 알림에 영향을 주지 않는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_chat_switch_blocks_chat_alert_but_caregiver_switch_does_not
+# Description:
+# - Suppress pushes when chat alerts are off, independently of the global caregiver-alert switch.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# Returns:
+# - None.
 def test_chat_switch_blocks_chat_alert_but_caregiver_switch_does_not(fk_db) -> None:
     link_id, message_id = _seed_chat_scene(
         fk_db,
         {"chat_notifications_enabled": False, "caregiver_notifications_enabled": True},
     )
 
-    # 함수이름: send
-    # 함수역할: 저장된 메시지의 채팅 알림을 보호자에게 한 번 전송한다.
-    # 매개변수: 없음.
-    # 반환값: 전송 요청을 기록한 푸시 대체 경계.
+    # Function Name: send
+    # Description:
+    # - Dispatch the saved message alert to its caregiver recipient.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - RecordingPushBoundary; fake containing the recorded push requests.
     def send() -> RecordingPushBoundary:
         boundary = RecordingPushBoundary()
         DispatchChatMessageAlert(fk_db, boundary).notify_new_message(
@@ -627,14 +663,14 @@ def test_chat_switch_blocks_chat_alert_but_caregiver_switch_does_not(fk_db) -> N
     assert len(send().calls) == 1
 
 
-# 함수이름: test_queued_chat_alert_is_dropped_when_it_is_no_longer_deliverable
-# 함수역할:
-# - 저장된 메시지 알림을 전송 직전에 다시 확인해 연동 해제, 비참여자, 다른 연동, 숨김·삭제·읽음 상태에서는 보내지 않는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# - change (str): 전송 전에 적용할 상태 변경 이름.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_queued_chat_alert_is_dropped_when_it_is_no_longer_deliverable
+# Description:
+# - Recheck queued alerts before sending and drop revoked, mismatched, hidden, deleted, or read messages.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# - change: str; state mutation applied before delivery.
+# Returns:
+# - None.
 @pytest.mark.parametrize(
     "change",
     (
@@ -690,13 +726,13 @@ def test_queued_chat_alert_is_dropped_when_it_is_no_longer_deliverable(
     assert boundary.calls == []
 
 
-# 함수이름: test_message_hidden_only_for_the_sender_is_still_delivered
-# 함수역할:
-# - 보낸 사람만 자기 화면에서 숨긴 메시지는 상대에게 계속 알리는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_message_hidden_only_for_the_sender_is_still_delivered
+# Description:
+# - Deliver a message hidden only from its sender to the other participant.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# Returns:
+# - None.
 def test_message_hidden_only_for_the_sender_is_still_delivered(fk_db) -> None:
     link_id, message_id = _seed_chat_scene(fk_db)
     fk_db.get(_ChatMessage, message_id).patient_deleted_at = utc_now()
@@ -711,15 +747,15 @@ def test_message_hidden_only_for_the_sender_is_still_delivered(fk_db) -> None:
     assert len(boundary.calls) == 1
 
 
-# 함수이름: test_dose_receipt_push_never_carries_medication_names
-# 함수역할:
-# - 서버가 쓴 복용 기록 메시지의 알림 본문과 데이터에 약 이름이 실리지 않는지 검증한다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# - user_setting (dict[str, object] | None): 수신자 설정 값 또는 행 없음.
-# - expected_preview (str): 약 이름 없이 날짜와 시간대만 담은 기대 문구.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_dose_receipt_push_never_carries_medication_names
+# Description:
+# - Keep medication names out of both the body and data of server-authored dose-receipt pushes.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# - user_setting: dict[str, object] | None; recipient settings or no settings row.
+# - expected_preview: str; expected date-and-slot preview without medication names.
+# Returns:
+# - None.
 @pytest.mark.parametrize(
     ("user_setting", "expected_preview"),
     [
@@ -754,13 +790,13 @@ def test_dose_receipt_push_never_carries_medication_names(
     assert "비밀" not in str(call)
 
 
-# 함수이름: test_chat_push_is_sent_after_the_session_released_its_connection
-# 함수역할:
-# - 채팅 알림을 보내는 시점에 세션이 트랜잭션도 풀 연결도 잡고 있지 않은지 검증한다.
-# 매개변수:
-# - tmp_path (Path): 풀 연결 수를 셀 수 있는 파일 엔진을 만들 임시 디렉터리.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_chat_push_is_sent_after_the_session_released_its_connection
+# Description:
+# - Release the session transaction and pooled connection before sending the chat push.
+# Parameters:
+# - tmp_path: Path; isolated temporary directory.
+# Returns:
+# - None.
 def test_chat_push_is_sent_after_the_session_released_its_connection(tmp_path) -> None:
     engine = make_engine(tmp_path)
     db = make_session_factory(engine)()
@@ -785,13 +821,13 @@ def test_chat_push_is_sent_after_the_session_released_its_connection(tmp_path) -
         engine.dispose()
 
 
-# 함수이름: test_rejected_chat_token_is_disabled_in_a_committed_transaction
-# 함수역할:
-# - Firebase가 거부한 채팅 수신 토큰만 비활성화하고 그 변경이 다른 연결에서 보이도록 커밋되는지 검증한다.
-# 매개변수:
-# - tmp_path (Path): 세션마다 다른 연결을 쓰는 파일 엔진을 만들 임시 디렉터리.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_rejected_chat_token_is_disabled_in_a_committed_transaction
+# Description:
+# - Disable only Firebase-rejected recipient tokens and commit the change so another connection sees it.
+# Parameters:
+# - tmp_path: Path; isolated temporary directory.
+# Returns:
+# - None.
 def test_rejected_chat_token_is_disabled_in_a_committed_transaction(tmp_path) -> None:
     engine = make_engine(tmp_path)
     sessions = make_session_factory(engine)
@@ -823,14 +859,13 @@ def test_rejected_chat_token_is_disabled_in_a_committed_transaction(tmp_path) ->
         engine.dispose()
 
 
-# 함수이름: test_sent_chat_push_is_reported_even_when_token_cleanup_fails
-# 함수역할:
-# - 전송 뒤 무효 토큰 정리가 DB 장애로 실패해도 전송 결과를 그대로 돌려주고 세션을 계속 쓸 수 있는지 검증한다.
-# - 예외가 올라가면 호출한 작업이 같은 메시지를 다시 보내게 된다.
-# 매개변수:
-# - fk_db (Session): 외래 키가 적용된 테스트 세션.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_sent_chat_push_is_reported_even_when_token_cleanup_fails
+# Description:
+# - Preserve the successful send result and usable session when invalid-token cleanup fails, avoiding a resend-triggering exception.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# Returns:
+# - None.
 def test_sent_chat_push_is_reported_even_when_token_cleanup_fails(fk_db) -> None:
     link_id, message_id = _seed_chat_scene(fk_db)
     # 거부되는 토큰 외에 정상 기기 하나를 더 두어 전달된 푸시가 실제로 있도록 한다.
@@ -838,18 +873,24 @@ def test_sent_chat_push_is_reported_even_when_token_cleanup_fails(fk_db) -> None
     fk_db.commit()
     original_commit = fk_db.commit
 
-    # 함수이름: fail_cleanup_commit
-    # 함수역할: 전송 직후의 커밋 한 번을 DB 장애처럼 실패시키고 원래 커밋으로 되돌린다.
-    # 매개변수: 없음.
-    # 반환값: 없음 (None).
+    # Function Name: fail_cleanup_commit
+    # Description:
+    # - Restore the original commit and fail this cleanup attempt to simulate a database outage.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None; raises OperationalError for the injected commit failure.
     def fail_cleanup_commit() -> None:
         fk_db.commit = original_commit
         raise OperationalError("COMMIT", None, Exception("database is unavailable"))
 
-    # 함수이름: arm_failure
-    # 함수역할: 전송 시점에 다음 커밋 실패를 예약한다.
-    # 매개변수: call (dict[str, object]): 기록된 전송 요청.
-    # 반환값: 없음 (None).
+    # Function Name: arm_failure
+    # Description:
+    # - Arm a one-time cleanup commit failure when a push is sent.
+    # Parameters:
+    # - call: dict[str, object]; recorded push request, unused.
+    # Returns:
+    # - None.
     def arm_failure(call: dict[str, object]) -> None:
         fk_db.commit = fail_cleanup_commit
 

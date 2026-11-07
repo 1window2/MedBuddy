@@ -23,14 +23,10 @@ from fastapi import WebSocket, WebSocketDisconnect
 class ChatConnectionManager:
     """연동과 사용자별 WebSocket을 추적하고 실시간 이벤트를 방송한다."""
 
-    # 함수이름: __init__
-    # 함수역할:
-    # - 사용자별 연결 상한을 저장하고 연동별 연결 사전과 비동기 잠금을 준비한다.
-    # 매개변수:
-    # - max_connections_per_user (int): 한 연동에서 사용자 한 명이 동시에 유지할 수 있는 최대 연결 수.
-    # - send_timeout_seconds (float): Positive finite transport-write deadline.
-    # 반환값:
-    # - 없음; 초기 연결 목록은 비어 있다.
+    # Function Name: __init__
+    # Description: Prepares per-link/user socket sets and a registry lock, validating the finite positive transport-write deadline.
+    # Parameters: max_connections_per_user (int) caps sockets per user in each link; send_timeout_seconds (float) bounds writes.
+    # Returns: None; raises ValueError for a nonfinite or nonpositive send deadline.
     def __init__(
         self, max_connections_per_user: int = 3, *, send_timeout_seconds: float = 5.0,
     ) -> None:
@@ -51,15 +47,10 @@ class ChatConnectionManager:
         )
         self._lock = asyncio.Lock()
 
-    # 함수이름: connect
-    # 함수역할:
-    # - WebSocket을 수락하고 연동 참여자의 연결로 등록한다.
-    # 매개변수:
-    # - link_id (int): 환자와 보호자 간 연동 ID.
-    # - user_hash (str): 접근 범위를 제한할 참여자 소유권 해시.
-    # - websocket (WebSocket): 등록하거나 해제할 참여자 WebSocket 연결.
-    # 반환값:
-    # - 등록하면 True; 상한에 도달하면 코드 4429로 연결을 닫고 False.
+    # Function Name: connect
+    # Description: Accepts a socket, registers it below the user's link limit, or closes an excess connection outside the registry lock.
+    # Parameters: link_id (int), user_hash (str) identify the already-authorized participant; websocket (WebSocket) is the connection.
+    # Returns: True when registered, False after an over-limit close with code 4429; acceptance failures propagate.
     async def connect(
         self,
         *,
@@ -117,15 +108,10 @@ class ChatConnectionManager:
         async with self._lock:
             return bool(self._connections.get(link_id, {}).get(user_hash))
 
-    # 함수이름: broadcast
-    # 함수역할:
-    # - 현재 연동의 모든 연결에 동일한 실시간 이벤트를 전송한다.
-    # 매개변수:
-    # - link_id (int): 환자와 보호자 간 연동 ID.
-    # - event (dict[str, object]): 연동 참여자에게 전송할 JSON 직렬화 가능한 실시간 이벤트.
-    # - recipient_hash (str | None): 수신자 해시; None이면 양쪽 참여자에게 전송한다.
-    # 반환값:
-    # - 없음
+    # Function Name: broadcast
+    # Description: Snapshots matching sockets under the lock and delivers concurrently outside it using the bounded per-socket delivery path.
+    # Parameters: link_id (int) selects the room; event (dict) is JSON-compatible; recipient_hash (str | None) restricts delivery to one side when present.
+    # Returns: None after attempted deliveries; an empty registry is a no-op.
     async def broadcast(
         self, *, link_id: int, event: dict[str, object],
         recipient_hash: str | None = None,

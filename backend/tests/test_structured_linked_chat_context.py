@@ -39,18 +39,12 @@ from entities.saved_medication_entity import _SavedMedication  # noqa: E402
 from entities.user_setting_entity import _UserSetting  # noqa: E402
 
 
-# 클래스명: StructuredLinkedChatContextTest
-# 역할: 연동 환자의 실제 일정·약·약국 정보만 구조화 채팅으로 노출되는지 검증하는 테스트 모음이다.
-# 주요 책임:
-# - 양측에 같은 아침 완료 건수를 제공하지만 복약 확인 요청 권한은 보호자에게만 허용하는지 검증한다.
-# - 약 부족 메시지에 실제 남은 7일과 종료일을 붙이고 불편 메시지에는 안전 안내 표시를 포함하는지 검증한다.
-# - 현재부터 7일간 하루 세 번 복용하는 환자 약을 저장하고 갱신된 행을 반환한다.
-# 속성:
-# - engine (Engine): 격리 인메모리 SQLite 엔진.
-# - db (Session): 이 테스트의 DB 상태만 보관하는 SQLAlchemy 세션.
-# - link_id (int): 시험용 환자와 보호자가 공유하는 활성 연동 ID.
-# - medication (_SavedMedication): 현재 테스트 조건에서 공유할 저장된 활성 약.
-# - chat (ManageLinkedChat): 격리 테스트 세션에 연결한 채팅 control.
+# Class Name: StructuredLinkedChatContextTest
+# Role: Tests server-derived medication, schedule, and pharmacy context in linked chat.
+# Responsibilities:
+# - Verify participant permissions, trusted completion receipts, schedule timing, and legacy dose-day compatibility.
+# Attributes:
+# - engine (Engine): isolated SQLite engine. db (Session): test session. link_id (int): active participant link. medication (_SavedMedication): seeded active prescription. chat (ManageLinkedChat): chat control.
 class StructuredLinkedChatContextTest(unittest.TestCase):
     """구조화 채팅이 연동 환자의 실제 데이터만 노출하는지 확인한다."""
 
@@ -131,14 +125,13 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
         self.assertFalse(patient_morning["can_request_check"])
         self.assertTrue(caregiver_morning["can_request_check"])
 
-    # 함수이름: test_schedule_context_shows_the_same_alarm_time_as_the_alarm_screen
-    # 함수역할:
-    # - 저장된 알람이 없는 시간대는 환자의 기본 복약 시각을, 있는 시간대는 저장된 알람을 보여 주어
-    #   채팅 일정 카드와 알림 설정 화면의 시각이 같아지는지 검증한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음 (None).
+    # Function Name: test_schedule_context_shows_the_same_alarm_time_as_the_alarm_screen
+    # Description:
+    # - Use saved alarms or patient default dose times so chat schedule cards agree with the alarm-settings screen.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_schedule_context_shows_the_same_alarm_time_as_the_alarm_screen(
         self,
     ) -> None:
@@ -216,13 +209,13 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
             )
         self.assertEqual(patient_request.exception.status_code, 403)
 
-    # 함수이름: test_slot_completion_is_server_only_and_idempotent
-    # 함수역할:
-    # - 클라이언트의 완료 메시지 위조를 403으로 거절하고 서버 완료 사건은 재시도해도 한 건만 저장하는지 검증한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음 (None).
+    # Function Name: test_slot_completion_is_server_only_and_idempotent
+    # Description:
+    # - Reject forged client completion messages and reserved identifiers, then persist each server completion event only once across retries.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_slot_completion_is_server_only_and_idempotent(self) -> None:
         """완료 메시지는 클라이언트가 위조할 수 없고 사건별 한 번만 저장되는지 본다."""
         with self.assertRaises(HTTPException) as client_request:
@@ -350,10 +343,13 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
         arguments.update(overrides)
         return self.chat.record_medication_taken(**arguments)
 
-    # 함수이름: test_released_app_records_a_rest_day_dose_from_chat
-    # 함수역할: 복용일 기능을 알리지 않은 앱이 쉬는 날의 주 1회 약을 채팅에서 기록하면 500 대신 기록과 영수증을 만들고,
-    #          복용일 기능을 알린 앱의 같은 요청은 409로 거절되는지 검증한다.
-    # 매개변수: 없음. 반환값: 없음; 불일치 시 단언 실패.
+    # Function Name: test_released_app_records_a_rest_day_dose_from_chat
+    # Description:
+    # - Allow a legacy app to record a rest-day dose and receipt, but reject the same request with HTTP 409 when dose-day support is declared.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_released_app_records_a_rest_day_dose_from_chat(self):
         from core import api_contract
         weekly = self._save_medication()

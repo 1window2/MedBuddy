@@ -65,6 +65,8 @@ def enqueue(database: tuple) -> int:
 
 # Class Name: Push
 # Role: Deterministic push boundary recording attempts without external side effects.
+# Responsibilities:
+# - Record request payloads and consume queued delivery results or exceptions without contacting Firebase.
 # Attributes: results - queued outcomes; calls - transmitted payloads.
 class Push:
     # Function Name: __init__

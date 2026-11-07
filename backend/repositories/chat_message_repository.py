@@ -112,17 +112,10 @@ class ChatMessageRepository:
         """새 채팅 메시지를 현재 트랜잭션에 추가한다."""
         self.db.add(message)
 
-    # 함수이름: mark_incoming_read
-    # 함수역할:
-    # - 상대가 보낸 미확인 메시지를 지정한 범위까지 읽음 처리한다.
-    # 매개변수:
-    # - link_id (int): 환자와 보호자 간 연동 ID.
-    # - reader_hash (str): 메시지를 읽은 참여자의 소유권 해시.
-    # - through_message_id (int | None): 읽음 처리할 마지막 메시지 ID; None이면 조건에 맞는 전체.
-    # - read_at (datetime): 선택 메시지에 저장할 읽음 시각.
-    # - is_patient (bool): 환자 기준 삭제 여부를 확인할지; False이면 보호자 기준.
-    # 반환값:
-    # - 변경 개수와 마지막 읽음 메시지 식별자
+    # Function Name: mark_incoming_read
+    # Description: Mark visible, unread incoming messages through the optional ID boundary; leave persistence to the caller.
+    # Parameters: link_id identifies the conversation; reader_hash excludes the reader's own messages; through_message_id optionally caps IDs; read_at is the timestamp to set; is_patient selects the reader's visibility field.
+    # Returns: tuple[int, int | None] with the number changed and highest changed ID, or (0, None).
     def mark_incoming_read(
         self,
         *,
@@ -162,7 +155,10 @@ class ChatMessageRepository:
             link_id=link_id, reader_hash=reader_hash, is_patient=is_patient,
         )[0]
 
-    # 읽음 구분선의 원래 위치와 개수를 같은 조회 시점에 얻는다.
+    # Function Name: unread_summary
+    # Description: Aggregates visible incoming unread count and its earliest ID in a single database query.
+    # Parameters: link_id (int) scopes the chat; reader_hash (str) excludes the reader's own messages; is_patient (bool) selects side-specific visibility.
+    # Returns: (count, first message ID or None); database failures propagate.
     def unread_summary(
         self, *, link_id: int, reader_hash: str, is_patient: bool = False,
     ) -> tuple[int, int | None]:
@@ -173,6 +169,10 @@ class ChatMessageRepository:
         )
         return int(count), int(first_id) if first_id is not None else None
 
+    # 함수이름: recent_unread
+    # 함수역할: 사용자에게 보이는 상대의 미확인 메시지 중 최신 세 건을 시간순으로 돌려준다.
+    # 매개변수: link_id (int)는 채팅, reader_hash (str)는 읽는 계정, is_patient (bool)는 환자 측 숨김 정책 선택이다.
+    # 반환값: _ChatMessage 목록. 미확인 건이 없으면 빈 목록이며 DB 오류는 전달한다.
     def recent_unread(self, *, link_id: int, reader_hash: str,
                       is_patient: bool = False) -> list[_ChatMessage]:
         rows = (self.db.query(_ChatMessage)
@@ -180,16 +180,10 @@ class ChatMessageRepository:
                 .order_by(_ChatMessage.id.desc()).limit(3).all())
         return list(reversed(rows))
 
-    # 함수이름: _unread_incoming_filters
-    # 함수역할:
-    # - 읽음 처리와 미확인 집계가 같은 기준을 쓰도록 상대가 보낸 미확인 메시지 조건을 만든다.
-    # - 모두에게 삭제된 메시지와 읽는 사람 쪽에서 숨긴 메시지는 제외한다.
-    # 매개변수:
-    # - link_id (int): 환자와 보호자 간 연동 ID.
-    # - reader_hash (str): 메시지를 읽는 참여자의 소유권 해시.
-    # - is_patient (bool): 환자 기준 삭제 여부를 확인할지; False이면 보호자 기준.
-    # 반환값:
-    # - 쿼리 filter에 그대로 펼쳐 넣을 SQL 조건 다섯 개.
+    # Function Name: _unread_incoming_filters
+    # Description: Build shared filters for incoming messages that remain unread and visible to the specified participant.
+    # Parameters: link_id (int) scopes the conversation; reader_hash (str) excludes own messages; is_patient (bool) selects the participant's deletion marker.
+    # Returns: tuple[ColumnElement[bool], ...] without executing a query.
     @staticmethod
     def _unread_incoming_filters(
         link_id: int, reader_hash: str, is_patient: bool,

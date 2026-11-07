@@ -1,3 +1,5 @@
+# File Name: chat_operating_snapshot.py
+# Role: Freezes verified operating intervals and uncertainty into a share-time snapshot.
 """공유 전송 시각의 확인된 운영 구간을 JSON 스냅샷으로 고정한다."""
 
 from datetime import datetime, timedelta
@@ -5,6 +7,11 @@ from datetime import datetime, timedelta
 from services.nearby_care_policy import is_open_now, parse_operating_hours
 
 
+# Function Name: build_operating_snapshot
+# Description: Merges adjoining verified overnight intervals and records open, closing-soon, before-open, closed or unknown status at the server time.
+# Parameters: now (datetime) must be aware; today_hours and previous_hours are raw time pairs; today_calendar_verified and previous_calendar_verified gate their use;
+#   operating_notes (str) forces unknown status when nonempty because free-text exceptions cannot be resolved here.
+# Returns: JSON-compatible dict with ISO timestamps; full-day operation has no asserted closing time. A naive now raises ValueError.
 def build_operating_snapshot(
     *, now: datetime, today_hours: object, previous_hours: object,
     today_calendar_verified: bool, previous_calendar_verified: bool,

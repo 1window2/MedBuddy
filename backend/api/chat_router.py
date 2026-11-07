@@ -112,19 +112,11 @@ def get_chat_messages(
     )
 
 
-# 함수이름: delete_chat_messages
-# 함수역할:
-# - 인증된 연동 참여자의 메시지 삭제를 처리하고 범위에 따라 본인 또는 양쪽 참여자에게 변경을 방송한다.
-# 매개변수:
-# - link_id (int): 저장된 환자·보호자 연동 식별자.
-# - payload (ChatMessageDelete): 명시적인 삭제 메시지 선택과 삭제 범위.
-# - request (Request): 애플리케이션 공유 상태에 접근할 FastAPI 요청.
-# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
-# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
-# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
-# - chat (ManageLinkedChat): 활성 연동 채팅과 문맥 접근을 관리하는 Control.
-# 반환값:
-# - 삭제 메시지 식별자와 삭제 범위.
+# Function Name: delete_chat_messages
+# Description: Resolves the caller's scope, persists deletion off the event loop and broadcasts only to the owner for me-scope or both sides otherwise.
+# Parameters: link_id (int), payload (ChatMessageDelete) select messages/scope; request (Request) provides the socket manager; user_hash (str) asserts ownership;
+#   principal (AuthenticatedPrincipal), authorization (AuthorizationControl) and chat (ManageLinkedChat) are injected dependencies.
+# Returns: Deletion envelope; authority/persistence failures propagate before publication.
 @router.post("/links/{link_id}/messages/delete")
 async def delete_chat_messages(
     link_id: int,
@@ -247,8 +239,9 @@ def get_chat_medication_detail(
 # - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
 # - chat (ManageLinkedChat): 활성 연동 채팅과 문맥 접근을 관리하는 Control.
 # - hospital (CheckNearbyHospital): 병원 공유 메시지의 병원 정보를 서버에서 확인하는 Control.
+# - pharmacy (CheckNearbyPharmacy): 주간표 없는 약국 공유의 현재 운영 근거를 제한 조회하는 Control.
 # 반환값:
-# - 생성 여부와 저장된 메시지
+# - 생성 여부와 저장된 메시지. 권한·채팅/장소 한도 오류를 전달하며 병원 검증 실패는 400, 제공자 장애·예산 소진은 503이다.
 @router.post("/links/{link_id}/messages")
 async def post_chat_message(
     link_id: int,
@@ -330,6 +323,11 @@ async def post_chat_message(
     return await publish_saved_message(link_id, result, request)
 
 
+# Function Name: record_chat_medication_taken
+# Description: Checks sender scope/quota, records the patient's explicit doses and chat receipt, then publishes current schedules and queues completion alerts.
+# Parameters: link_id (int) selects the chat; payload (ChatMedicationTaken) selects the dose/request; request supplies publication/quota state; background_tasks defers alerts;
+#   user_hash (str) asserts owner scope; principal, authorization and chat are injected authentication/use-case dependencies.
+# Returns: Message response with freshly read schedules even on replay; authorization, quota and changed-confirmation errors propagate.
 @router.post("/links/{link_id}/medication-taken")
 async def record_chat_medication_taken(
     link_id: int,
@@ -368,19 +366,11 @@ async def record_chat_medication_taken(
     return {**response, "schedules": schedules}
 
 
-# 함수이름: mark_chat_read
-# 함수역할:
-# - 상대 메시지를 읽음 처리하고 연결된 기기에 변경을 방송한다.
-# 매개변수:
-# - link_id (int): 저장된 환자·보호자 연동 식별자.
-# - payload (ChatReadUpdate): 읽음 처리 상한으로 사용할 마지막 확인 메시지.
-# - request (Request): 애플리케이션 공유 상태에 접근할 FastAPI 요청.
-# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
-# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
-# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
-# - chat (ManageLinkedChat): 활성 연동 채팅과 문맥 접근을 관리하는 Control.
-# 반환값:
-# - 읽음 처리 개수와 마지막 메시지 정보
+# Function Name: mark_chat_read
+# Description: Marks the authorized participant's incoming messages read and broadcasts a receipt only when at least one row changed.
+# Parameters: link_id (int), payload (ChatReadUpdate) select the room/read ceiling; request (Request) supplies the socket manager; user_hash (str) asserts scope;
+#   principal (AuthenticatedPrincipal), authorization (AuthorizationControl), chat (ManageLinkedChat) are injected dependencies.
+# Returns: Read-count/last-message response; authorization and persistence errors propagate.
 @router.post("/links/{link_id}/read")
 async def mark_chat_read(
     link_id: int,
@@ -423,8 +413,9 @@ async def mark_chat_read(
 # - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
 # - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
 # - chat (ManageLinkedChat): 활성 연동 채팅과 문맥 접근을 관리하는 Control.
+# - include_notification_preview (bool): 개인정보 표시 설정을 따른 알림 요약도 요청할지 여부.
 # 반환값:
-# - 읽지 않은 메시지 수
+# - 미확인 개수·첫 미확인 ID와 선택적 알림 요약을 담은 응답. 읽음 상태는 바꾸지 않으며 권한·조회 오류는 전달한다.
 @router.get("/links/{link_id}/unread-count")
 def get_chat_unread_count(
     link_id: int,
@@ -443,20 +434,11 @@ def get_chat_unread_count(
     )
 
 
-# 함수이름: stream_chat_events
-# 함수역할:
-# - 인증된 연동 참여자에게 메시지와 읽음 이벤트를 실시간 전달한다.
-# 매개변수:
-# - websocket (WebSocket): 연결 대기 중이거나 활성 상태인 실시간 채팅 연결.
-# - link_id (int): 저장된 환자·보호자 연동 식별자.
-# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
-# 반환값:
-# - 없음
-# 비고:
-# - 연결은 열 때 검증한 ID 토큰의 만료 시각에 4440으로 닫고, ping을 처리할 때
-#   설정한 간격마다 연동이 아직 활성인지 다시 확인해 아니면 4404로 닫는다.
-#   출시된 클라이언트는 닫히면 새 토큰으로 다시 연결하므로 토큰 수명마다 한 번만 끊긴다.
-# - 연결 요청을 거절할 때의 종료 코드는 그 코드를 읽는다고 알린 클라이언트에만 전달된다(_reject).
+# Function Name: stream_chat_events
+# Description: Authenticates and rate-limits a linked participant, releases the handshake database session, then keeps a ping-only stream with expiry, frame and heartbeat limits.
+# Parameters: websocket (WebSocket) is the pending connection; link_id (int) selects the room; user_hash (str) asserts the participant scope.
+# Returns: None after disconnection; closes on credential expiry, invalid/revoked identity, inactive link, idle timeout, oversized/unsupported frames or rate excess.
+# Note: Credentials/link are periodically rechecked on ping; temporary recheck errors retry on a later ping without extending token lifetime. Registered sockets are always removed.
 @router.websocket("/links/{link_id}/stream")
 async def stream_chat_events(
     websocket: WebSocket,
@@ -598,19 +580,10 @@ async def stream_chat_events(
             )
 
 
-# 함수이름: _reject
-# 함수역할:
-# - 연결 요청을 거절한다. 종료 코드를 읽는다고 알린 클라이언트에는 요청을 수락한 뒤 곧바로 종료 코드와
-#   사유를 보내고 닫아, 인증 실패·연동 해제·연결 한도를 구분해 대응할 수 있게 한다.
-# - 그 밖의 클라이언트에는 예전처럼 수락 전에 닫는다(HTTP 403). 0.2.0 앱은 연결이 열리면 재연결
-#   간격을 처음으로 되돌리므로, 수락 후 닫으면 1초마다 다시 연결한다.
-# - 거절한 연동 ID와 종료 코드를 로그에 남긴다. 계정 식별자와 사유 문자열은 남기지 않는다.
-# 매개변수:
-# - websocket (WebSocket): 연결 대기 중인 실시간 채팅 연결.
-# - code (int): 거절 사유를 나타내는 WebSocket 종료 코드.
-# - reason (str): 종료 프레임에 담을 사유; 연결 한도 초과 시 재시도 대기 초.
-# 반환값:
-# - 없음
+# Function Name: _reject
+# Description: Logs only link ID/close code and rejects the handshake; clients declaring close-code support are briefly accepted so they can receive a specific code/reason.
+# Parameters: websocket (WebSocket) is pending; code (int) selects the close reason; reason (str) optionally carries retry seconds.
+# Returns: None after close; legacy clients remain pre-accept rejections to avoid their immediate reconnect loop.
 async def _reject(websocket: WebSocket, code: int, reason: str = "") -> None:
     # 서버 접속 로그는 거절을 모두 403으로만 남기므로, 원인을 구분할 종료 코드를 따로 기록한다.
     logger.info(
@@ -626,13 +599,10 @@ async def _reject(websocket: WebSocket, code: int, reason: str = "") -> None:
         await websocket.close(code=code)
 
 
-# 함수이름: _credential_deadline
-# 함수역할:
-# - 검증한 토큰의 만료 시각을 이 프로세스의 단조 시계 기준 시각으로 바꾼다.
-# 매개변수:
-# - principal (AuthenticatedPrincipal): 핸드셰이크에서 검증한 인증 주체.
-# 반환값:
-# - 연결을 닫을 time.monotonic() 기준 시각; 만료 정보가 없으면(인증 비활성 모드) None.
+# Function Name: _credential_deadline
+# Description: Converts the verified wall-clock expiry into a monotonic deadline for this process.
+# Parameters: principal (AuthenticatedPrincipal) supplies the aware token expiry.
+# Returns: Monotonic float deadline, possibly already elapsed, or None when expiry is absent.
 def _credential_deadline(principal: AuthenticatedPrincipal) -> float | None:
     expires_at = principal.expires_at
     if expires_at is None:
@@ -640,15 +610,10 @@ def _credential_deadline(principal: AuthenticatedPrincipal) -> float | None:
     return time.monotonic() + (expires_at - datetime.now(UTC)).total_seconds()
 
 
-# 함수이름: _link_is_still_active
-# 함수역할:
-# - 열려 있는 스트림의 사용자가 아직 활성 연동의 참여자인지 짧은 세션으로 다시 확인한다.
-#   계정 삭제는 연동을 함께 지우므로 삭제된 계정도 여기서 걸러진다.
-# 매개변수:
-# - link_id (int): 저장된 환자·보호자 연동 식별자.
-# - user_hash (str): 핸드셰이크에서 확정한 참여자 식별자.
-# 반환값:
-# - 활성 연동의 참여자이면 True, 연동이 해제·삭제됐으면 False; 그 밖의 DB 오류는 그대로 전파한다.
+# Function Name: _link_is_still_active
+# Description: Rechecks room membership in a fresh short-lived session, which also excludes links removed by account deletion.
+# Parameters: link_id (int) and user_hash (str) identify the previously authorized connection.
+# Returns: True for active membership, False for HTTP authorization failures; other database errors propagate and the session always closes.
 def _link_is_still_active(link_id: int, user_hash: str) -> bool:
     db = SessionLocal()
     try:
@@ -714,15 +679,10 @@ def _authenticate_websocket(websocket: WebSocket) -> AuthenticatedPrincipal:
     return get_authenticated_principal(credentials)
 
 
-# 함수이름: _credential_is_still_valid
-# 함수역할:
-# - 연결 때 받은 ID 토큰을 다시 검증해 취소되거나 정지된 세션이면 False를 돌려준다. App Check 토큰은
-#   연결 때 한 번만 본다(짧게 만료되므로 열린 연결에서 다시 요구하지 않는다).
-# 매개변수:
-# - websocket (WebSocket): 연결 때의 헤더를 가진 실시간 채팅 연결.
-# - user_hash (str): 연결 때 확인한 계정 식별자.
-# 반환값:
-# - 같은 계정의 유효한 토큰이면 True. 검증 서비스 장애(503)는 예외로 올려 다음 ping에서 다시 확인한다.
+# Function Name: _credential_is_still_valid
+# Description: Revalidates the handshake identity token and requires the same user; App Check is not repeated on the already-open stream.
+# Parameters: websocket (WebSocket) retains the original headers; user_hash (str) is the authenticated connection owner.
+# Returns: False for malformed/revoked/mismatched identity, True for the same valid account or disabled authentication; verifier 5xx errors propagate for retry.
 def _credential_is_still_valid(websocket: WebSocket, user_hash: str) -> bool:
     authorization_header = websocket.headers.get("authorization", "").strip()
     credentials: HTTPAuthorizationCredentials | None = None

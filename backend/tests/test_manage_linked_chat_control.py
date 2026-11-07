@@ -278,6 +278,13 @@ class ManageLinkedChatTest(unittest.TestCase):
             ["morning", "lunch", "evening"],
         )
 
+    # 함수이름: test_as_needed_medication_has_no_inferred_schedule_slots
+    # 함수역할:
+    # - 필요시 약품은 횟수 문자열이 있어도 정기 슬롯을 추정하지 않고 양측 채팅 일정 문맥에서 제외하는지 확인한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - None.
     def test_as_needed_medication_has_no_inferred_schedule_slots(self) -> None:
         self.medication.dosing_mode = "as_needed"
         self.medication.daily_frequency = "1회"
@@ -368,14 +375,13 @@ class ManageLinkedChatTest(unittest.TestCase):
             "https://nedrug.mfds.go.kr/pill.png",
         )
 
-    # 함수이름: test_long_medication_name_and_dosage_are_cut_to_the_message_columns
-    # 함수역할:
-    # - 저장 약의 이름·1회 용량이 메시지 열보다 길면 열 길이로 잘라 저장하는지 검증한다.
-    # - SQLite는 길이를 검사하지 않지만 PostgreSQL은 초과 값을 거부해 메시지 전송이 500으로 끝난다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음 (None).
+    # Function Name: test_long_medication_name_and_dosage_are_cut_to_the_message_columns
+    # Description:
+    # - Truncate medication names and dose text to message-column limits before persistence, avoiding PostgreSQL length errors.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_long_medication_name_and_dosage_are_cut_to_the_message_columns(
         self,
     ) -> None:
