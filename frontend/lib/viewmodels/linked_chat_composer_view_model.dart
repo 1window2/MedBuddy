@@ -98,6 +98,7 @@ class LinkedChatComposerViewModel extends ChangeNotifier {
         body: draft.body,
         medicationId: draft.primaryMedicationId,
         medicationIds: draft.medicationIds,
+        medicationReferences: draft.medicationReferences,
         messageKind: draft.messageKind,
         slotKey: draft.slotKey,
         pharmacyId: draft.pharmacyId,

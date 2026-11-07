@@ -12,6 +12,10 @@ import 'check_schedule_ui_boundary.dart';
 import 'check_medication_detail_ui_boundary.dart';
 import 'check_nearby_pharmacy_ui_boundary.dart';
 import 'medication_history_ui_boundary.dart';
+import 'medication_search_ui_boundary.dart';
+import '../controls/check_medication_detail_control.dart';
+import '../entities/medication_detail_entity.dart';
+import '../widgets/chat_medication_reference_tile.dart';
 import '../controls/manage_linked_chat_control.dart';
 import '../services/notification_service.dart';
 import '../entities/chat_message_entity.dart';
@@ -206,9 +210,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   List<ChatMedicationContext> _medicationContexts = const [];
   List<ChatScheduleContext> _scheduleContexts = const [];
   // 기능 메뉴가 아직 받지 못한 목록을 "없음"으로 안내하지 않도록 조회 상태를 따로 둔다.
-  _ChatContextLoad _medicationLoad = _ChatContextLoad.loading;
   _ChatContextLoad _scheduleLoad = _ChatContextLoad.loading;
   List<ChatMedicationContext> _selectedMedicationContexts = const [];
+  List<ChatMedicationReference> _selectedMedicationReferences = const [];
   String? _selectedMedicationScheduleDate;
   String? _sendErrorMessage;
   bool _checkedLinkAfterSendFailure = false;
@@ -352,9 +356,6 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     super.initState();
     _configuration.latestMessageRequest?.addListener(_onLatestMessageRequested);
     _medicationContexts = _configuration.initialMedicationContexts;
-    if (_medicationContexts.isNotEmpty) {
-      _medicationLoad = _ChatContextLoad.loaded;
-    }
     WidgetsBinding.instance.addObserver(this);
     _ownsApiClient = _configuration.apiClient == null;
     _apiClient = _configuration.apiClient ?? AuthenticatedApiClient();
@@ -582,7 +583,6 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() {
         _medicationContexts = medications;
-        _medicationLoad = _ChatContextLoad.loaded;
         final selectedSlots = {
           for (final item in _selectedMedicationContexts)
             item.medicationId: item.scheduleSlotKeys,
@@ -619,10 +619,8 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
               : null;
           if (cached != null) {
             _medicationContexts = cached;
-            _medicationLoad = _ChatContextLoad.loaded;
           } else {
             _sendErrorMessage = _text.medicationLoadFailed;
-            _medicationLoad = _ChatContextLoad.failed;
           }
         }
       });
@@ -696,6 +694,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     await _submitMessage(
       body: body,
       medications: _selectedMedicationContexts,
+      medicationReferences: _selectedMedicationReferences,
       clearComposer: true,
       clearMedicationSelection: true,
     );
@@ -708,6 +707,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   Future<ChatMessage?> _submitMessage({
     required String body,
     List<ChatMedicationContext> medications = const [],
+    List<ChatMedicationReference> medicationReferences = const [],
     ChatMessageKind messageKind = ChatMessageKind.text,
     String? slotKey,
     String? pharmacyId,
@@ -727,6 +727,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     final message = await _composer.send(
       ChatMessageDraft(
         body: body,
+        medicationReferences: medicationReferences,
         medicationIds: medications
             .map((item) => item.medicationId)
             .toList(growable: false),
@@ -743,6 +744,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     _clearPendingRequest();
     setState(() {
       if (clearMedicationSelection) _selectedMedicationContexts = const [];
+      if (medicationReferences.isNotEmpty) {
+        _selectedMedicationReferences = const [];
+      }
       _sendErrorMessage = null;
     });
     _history.addMessage(message);
@@ -765,7 +769,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _sendQuickReply(_ChatQuickReply reply) async {
     final medications = _selectedMedicationContexts;
-    if (medications.isEmpty || _isSending) {
+    if (medications.isEmpty ||
+        _isSending ||
+        _selectedMedicationReferences.isNotEmpty) {
       return;
     }
     if (_isPatient && reply == _ChatQuickReply.taken) {
@@ -807,7 +813,12 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   Future<void> _recordSelectedMedicationTaken(
     List<ChatMedicationContext> selectedMedications,
   ) async {
-    if (_isSending || _isSelectingMessages || _isDeletingMessages) return;
+    if (_isSending ||
+        _isSelectingMessages ||
+        _isDeletingMessages ||
+        _selectedMedicationReferences.isNotEmpty) {
+      return;
+    }
     final viewModel = context.read<MedBuddyViewModel?>();
     final selectedDate = _selectedMedicationScheduleDate;
     setState(() {
@@ -933,12 +944,8 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       action: _ChatAction.medication,
       icon: Icons.medication_outlined,
       label: _text.selectMedication,
-      reason: switch (_medicationLoad) {
-        _ChatContextLoad.loading => _text.medicationsLoading,
-        _ChatContextLoad.failed => _text.medicationLoadFailed,
-        _ChatContextLoad.loaded =>
-          _medicationContexts.isEmpty ? _text.noActiveMedication : null,
-      },
+      // 등록 약을 조회하지 못해도 별도 약품 검색으로 첨부할 수 있다.
+      reason: null,
     ),
     (
       action: _ChatAction.medicationHistory,
@@ -1196,9 +1203,13 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _showMedicationSelector() async {
-    if (_medicationContexts.isEmpty || _isSending) {
+    if (_isSending || _history.linkUnavailable) {
       return;
     }
+    var references = List<ChatMedicationReference>.of(
+      _selectedMedicationReferences,
+    );
+    var searching = false;
     final selectionDate = _doseRecorder.selectionDay(
       context.read<MedBuddyViewModel?>(),
       _scheduleContexts,
@@ -1232,15 +1243,100 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
         // 매개변수:
         // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
         // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-        builder: (context) => CheckScheduleUI.selection(
-          schedules: selectionSchedules,
-          language: _configuration.userSetting.language,
-          selectedMedicationSlots: {
-            for (final item in _selectedMedicationContexts)
-              item.medicationId.toString(): item.isAsNeeded
-                  ? {'as_needed'}
-                  : item.scheduleSlotKeys.toSet(),
-          },
+        builder: (selectionContext) => StatefulBuilder(
+          builder: (context, updateSelection) => CheckScheduleUI.selection(
+            schedules: selectionSchedules,
+            language: _configuration.userSetting.language,
+            additionalSelectionCount: references.length,
+            maxSelectionCount: 10,
+            selectionHeader: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  OutlinedButton.icon(
+                    key: const Key('chat-search-medication'),
+                    icon: const Icon(Icons.search),
+                    label: Text(
+                      _text.isEnglish ? 'Search medications' : '약 검색',
+                    ),
+                    onPressed: searching
+                        ? null
+                        : () async {
+                            updateSelection(() => searching = true);
+                            final lookup = CheckMedicationDetail(
+                              client: _apiClient,
+                              readSearchMode: () => _configuration
+                                  .userSetting
+                                  .medicationSearchMode,
+                            );
+                            try {
+                              final detail =
+                                  await Navigator.push<MedicationDetail>(
+                                    selectionContext,
+                                    MaterialPageRoute(
+                                      builder: (_) => MedicationSearchUI(
+                                        userSetting: _configuration.userSetting,
+                                        selectionMode: true,
+                                        lookupControl: lookup,
+                                      ),
+                                    ),
+                                  );
+                              if (!mounted ||
+                                  !selectionContext.mounted ||
+                                  _history.linkUnavailable ||
+                                  detail == null) {
+                                return;
+                              }
+                              final reference =
+                                  ChatMedicationReference.fromDetail(detail);
+                              updateSelection(() {
+                                references = [
+                                  ...references.where(
+                                    (item) => item.itemSeq != reference.itemSeq,
+                                  ),
+                                  reference,
+                                ];
+                              });
+                            } on FormatException {
+                              if (selectionContext.mounted) {
+                                ScaffoldMessenger.of(
+                                  selectionContext,
+                                ).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      _text.isEnglish
+                                          ? 'This medication cannot be attached.'
+                                          : '이 약의 첨부 정보를 확인하지 못했어요.',
+                                    ),
+                                  ),
+                                );
+                              }
+                            } finally {
+                              lookup.dispose();
+                              if (selectionContext.mounted) {
+                                updateSelection(() => searching = false);
+                              }
+                            }
+                          },
+                  ),
+                  for (final reference in references)
+                    ChatMedicationReferenceTile(
+                      reference: reference,
+                      isEnglish: _text.isEnglish,
+                      onRemove: () =>
+                          updateSelection(() => references.remove(reference)),
+                    ),
+                ],
+              ),
+            ),
+            selectedMedicationSlots: {
+              for (final item in _selectedMedicationContexts)
+                item.medicationId.toString(): item.isAsNeeded
+                    ? {'as_needed'}
+                    : item.scheduleSlotKeys.toSet(),
+            },
+          ),
         ),
       ),
     );
@@ -1259,6 +1355,19 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
         )
         .whereType<ChatMedicationContext>()
         .toList(growable: false);
+    if (_history.linkUnavailable) return;
+    if (selected.length + references.length > 10) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _text.isEnglish
+                ? 'Attach up to 10 medications.'
+                : '약은 최대 10개까지 첨부할 수 있어요.',
+          ),
+        ),
+      );
+      return;
+    }
     // 함수이름: _showMedicationSelector.setState callback
     // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_selectedMedicationContexts = selected; _sendErrorMessage = null`로 갱신한다.
     // 매개변수:
@@ -1266,6 +1375,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
     setState(() {
       _selectedMedicationContexts = selected;
+      _selectedMedicationReferences = references;
       _selectedMedicationScheduleDate = selected.isEmpty ? null : selectionDate;
       _sendErrorMessage = null;
       _clearPendingRequest();
@@ -2278,14 +2388,43 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                 ),
               ),
               const SizedBox(height: 8),
-              _QuickReplyBar(
-                text: _text,
-                isPatient: _isPatient,
-                enabled: !_isSending,
-                onSelected: _sendQuickReply,
-              ),
+              if (_selectedMedicationReferences.isEmpty)
+                _QuickReplyBar(
+                  text: _text,
+                  isPatient: _isPatient,
+                  enabled: !_isSending,
+                  onSelected: _sendQuickReply,
+                ),
               const SizedBox(height: 8),
             ],
+            if (_selectedMedicationReferences.isNotEmpty)
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 150),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      for (final reference in _selectedMedicationReferences)
+                        ChatMedicationReferenceTile(
+                          reference: reference,
+                          isEnglish: _text.isEnglish,
+                          onRemove: _isSending
+                              ? null
+                              : () => setState(() {
+                                  _selectedMedicationReferences =
+                                      _selectedMedicationReferences
+                                          .where(
+                                            (item) =>
+                                                item.itemSeq !=
+                                                reference.itemSeq,
+                                          )
+                                          .toList();
+                                  _clearPendingRequest();
+                                }),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
             if (_sendErrorMessage != null) ...[
               if (_pendingCareShare != null)
                 TextButton.icon(
@@ -3808,6 +3947,11 @@ class _MessageBubble extends StatelessWidget {
               ),
               const SizedBox(height: 8),
             ],
+            for (final reference in message.medicationReferences)
+              ChatMedicationReferenceTile(
+                reference: reference,
+                isEnglish: text.isEnglish,
+              ),
             if (message.scheduleContext != null) ...[
               _MessageScheduleContext(
                 schedule: message.scheduleContext!,

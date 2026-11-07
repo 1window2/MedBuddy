@@ -1,6 +1,7 @@
 // File Name: chat_message_draft_entity.dart
 // Role: Preserves an immutable outgoing message payload and its retry comparison contract.
 
+import 'dart:convert';
 import 'chat_message_entity.dart';
 
 // Class Name: ChatMessageDraft
@@ -12,6 +13,7 @@ import 'chat_message_entity.dart';
 class ChatMessageDraft {
   final String body;
   final List<int> medicationIds;
+  final List<ChatMedicationReference> medicationReferences;
   final ChatMessageKind messageKind;
   final String? slotKey;
   final String? pharmacyId;
@@ -26,6 +28,7 @@ class ChatMessageDraft {
   ChatMessageDraft({
     required String body,
     List<int> medicationIds = const [],
+    List<ChatMedicationReference> medicationReferences = const [],
     this.messageKind = ChatMessageKind.text,
     this.slotKey,
     this.pharmacyId,
@@ -33,6 +36,7 @@ class ChatMessageDraft {
     this.hospitalScheduleDate,
   }) : body = body.trim(),
        medicationIds = List.unmodifiable(medicationIds),
+       medicationReferences = List.unmodifiable(medicationReferences),
        _medicationSignature = (List<int>.of(medicationIds)..sort()).join(',');
 
   // Function Name: primaryMedicationId
@@ -46,6 +50,10 @@ class ChatMessageDraft {
   bool matchesRetryOf(ChatMessageDraft other) =>
       body == other.body &&
       _medicationSignature == other._medicationSignature &&
+      jsonEncode(medicationReferences.map((item) => item.toJson()).toList()) ==
+          jsonEncode(
+            other.medicationReferences.map((item) => item.toJson()).toList(),
+          ) &&
       messageKind == other.messageKind &&
       slotKey == other.slotKey &&
       pharmacyId == other.pharmacyId &&

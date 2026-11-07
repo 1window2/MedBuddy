@@ -318,6 +318,7 @@ async def post_chat_message(
         body=payload.body,
         medication_id=payload.medication_id,
         medication_ids=payload.medication_ids,
+        medication_references=[item.model_dump() for item in payload.medication_references],
         message_kind=payload.message_kind,
         slot_key=payload.slot_key,
         pharmacy_id=payload.pharmacy_id,

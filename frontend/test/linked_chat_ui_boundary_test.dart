@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/linked_chat_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/medication_search_ui_boundary.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 import 'package:medbuddy_frontend/widgets/chat_date_divider.dart';
 import 'package:medbuddy_frontend/boundaries/medication_history_ui_boundary.dart';
@@ -48,6 +49,7 @@ class _RetryChatControl extends ManageLinkedChat {
   final List<String> clientMessageIds = [];
   final List<int?> primaryMedicationIds = [];
   final List<List<int>> medicationIdGroups = [];
+  final List<List<ChatMedicationReference>> referenceGroups = [];
   final List<ChatMessageKind> messageKinds = [];
   final List<String?> slotKeys = [];
   final List<String?> hospitalIds = [];
@@ -215,6 +217,7 @@ class _RetryChatControl extends ManageLinkedChat {
     required String body,
     int? medicationId,
     List<int> medicationIds = const [],
+    List<ChatMedicationReference> medicationReferences = const [],
     ChatMessageKind messageKind = ChatMessageKind.text,
     String? slotKey,
     String? pharmacyId,
@@ -227,6 +230,7 @@ class _RetryChatControl extends ManageLinkedChat {
     clientMessageIds.add(clientMessageId);
     primaryMedicationIds.add(medicationId);
     medicationIdGroups.add(List<int>.unmodifiable(medicationIds));
+    referenceGroups.add(List.unmodifiable(medicationReferences));
     messageKinds.add(messageKind);
     slotKeys.add(slotKey);
     hospitalIds.add(hospitalId);
@@ -261,6 +265,7 @@ class _RetryChatControl extends ManageLinkedChat {
       messageKind: messageKind,
       medicationContext: contexts.isEmpty ? null : contexts.first,
       medicationContexts: contexts,
+      medicationReferences: medicationReferences,
     );
   }
 
@@ -963,6 +968,148 @@ void main() {
     });
   }
 
+  for (final cancelSearch in [false, true]) {
+    testWidgets('저장 약 없는 검색 첨부 취소는 초안을 바꾸지 않는다: $cancelSearch', (tester) async {
+      final control = _NoMedicationChatControl();
+      final realtime = _FakeRealtimeService();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: MedBuddyTheme.light(),
+          home: LinkedChatUI(
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            control: control,
+            realtimeService: realtime,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '작성 중');
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('chatActions')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('chat-action-0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('chat-search-medication')));
+      await tester.pumpAndSettle();
+      Navigator.of(tester.element(find.byType(MedicationSearchUI))).pop(
+        cancelSearch
+            ? null
+            : const MedicationDetail(
+                itemSeq: '202600001',
+                itemName: '취소할 검색정',
+                efficacy: '',
+                usageMethod: '',
+                warning: '',
+              ),
+      );
+      await tester.pumpAndSettle();
+      if (cancelSearch) {
+        expect(
+          tester
+              .widget<FilledButton>(
+                find.byKey(const Key('scheduleMedicationSelectionConfirm')),
+              )
+              .onPressed,
+          isNull,
+        );
+      } else {
+        expect(find.text('취소할 검색정'), findsOneWidget);
+      }
+      Navigator.of(tester.element(find.byType(CheckScheduleUI))).pop();
+      await tester.pumpAndSettle();
+      expect(find.text('취소할 검색정'), findsNothing);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        '작성 중',
+      );
+      expect(control.sendAttempts, 0);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await realtime.dispose();
+      control.dispose();
+    });
+  }
+
+  for (final hasSaved in [false, true]) {
+    testWidgets('검색약은 저장 약과 분리해 첨부하고 복용 기록 없이 보낸다: $hasSaved', (tester) async {
+      final control = hasSaved
+          ? _RetryChatControl(failFirstSend: false)
+          : _NoMedicationChatControl();
+      final realtime = _FakeRealtimeService();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: MedBuddyTheme.light(),
+          home: LinkedChatUI(
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            control: control,
+            realtimeService: realtime,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('chatActions')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('chat-action-4')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('chat-action-0')));
+      await tester.pumpAndSettle();
+      if (hasSaved) {
+        await tester.tap(
+          find.byKey(const Key('scheduleMedicationSelectionOption_morning_91')),
+        );
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.byKey(const Key('chat-search-medication')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<MedicationSearchUI>(find.byType(MedicationSearchUI))
+            .selectionMode,
+        isTrue,
+      );
+      Navigator.of(tester.element(find.byType(MedicationSearchUI))).pop(
+        const MedicationDetail(
+          itemSeq: '202600001',
+          itemName: '미등록 검색정',
+          efficacy: '',
+          usageMethod: '',
+          warning: '',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('미등록 검색정'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const Key('scheduleMedicationSelectionConfirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('미등록 검색정'), findsOneWidget);
+      expect(find.text('복용했어요'), findsNothing);
+      await tester.enterText(find.byType(TextField), '이 약에 대해 궁금해요.');
+      await tester.pump();
+      control.failSends = true;
+      await tester.tap(find.byKey(const Key('chatSendButton')));
+      await tester.pumpAndSettle();
+      expect(find.text('미등록 검색정'), findsOneWidget);
+      control.failSends = false;
+      await tester.tap(find.byKey(const Key('chatSendButton')));
+      await tester.pumpAndSettle();
+      expect(control.clientMessageIds[0], control.clientMessageIds[1]);
+      expect(control.referenceGroups.last.single.itemSeq, '202600001');
+      expect(control.medicationIdGroups.last, hasSaved ? [91] : isEmpty);
+      expect(control.slotKeys.last, isNull);
+      expect(control.messageKinds.last, ChatMessageKind.text);
+      expect(find.text('미등록 검색정'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await realtime.dispose();
+      control.dispose();
+    });
+  }
   for (final (hospital, language, status) in [
     (false, 'ko', 'before_open'),
     (false, 'en', 'closing_soon'),
@@ -3584,10 +3731,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('chatActions')));
     await tester.pumpAndSettle();
     final medication = find.byKey(const ValueKey('chat-action-0'));
-    expect(tester.widget<ListTile>(medication).enabled, isFalse);
-    // 아직 받지 못한 목록을 "약 없음"으로 안내하지 않는다.
-    expect(find.text('복용 중인 약을 불러오는 중입니다'), findsOneWidget);
-    expect(find.text('복용 중인 약이 없습니다'), findsNothing);
+    // 저장 약 조회와 별개인 약품 검색 진입은 계속 허용한다.
+    expect(tester.widget<ListTile>(medication).enabled, isTrue);
 
     control.gate.complete();
     await tester.pumpAndSettle();
@@ -3601,9 +3746,9 @@ void main() {
   });
 
   // 함수이름: 약 없음 기능 메뉴 테스트
-  // 함수역할: 복용 중인 약이 없으면 약 첨부 선택지를 막고 그 이유를 화면 낭독기 이름으로 알리는지 확인한다.
+  // 함수역할: 저장 약이 없어도 검색약 첨부 선택 화면에 진입할 수 있는지 확인한다.
   // 매개변수: tester: 화면 테스트 도구. 반환값: 검증 완료.
-  testWidgets('기능 메뉴는 복용 중인 약이 없을 때 이유를 알린다', (tester) async {
+  testWidgets('기능 메뉴는 복용 중인 약이 없어도 검색을 허용한다', (tester) async {
     final control = _NoMedicationChatControl();
     final realtimeService = _FakeRealtimeService();
     await tester.pumpWidget(
@@ -3623,9 +3768,12 @@ void main() {
     final medication = tester.widget<ListTile>(
       find.byKey(const ValueKey('chat-action-0')),
     );
-    expect(medication.enabled, isFalse);
+    expect(medication.enabled, isTrue);
     expect(find.text('대화할 약 선택'), findsOneWidget);
-    expect(find.text('복용 중인 약이 없습니다'), findsOneWidget);
+    expect(find.text('복용 중인 약이 없습니다'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('chat-action-0')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-search-medication')), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
     await realtimeService.dispose();

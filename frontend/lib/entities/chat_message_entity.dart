@@ -2,6 +2,8 @@
 // 역할: 환자·보호자 채팅 메시지와 읽음 상태를 표현한다.
 
 import 'json_value_reader.dart';
+import 'chat_medication_reference_entity.dart';
+export 'chat_medication_reference_entity.dart';
 import 'medication_history_entity.dart';
 import 'medication_schedule_entity.dart';
 
@@ -568,6 +570,7 @@ class ChatMessage {
   final ChatMessageKind messageKind;
   final ChatMedicationContext? medicationContext;
   final List<ChatMedicationContext> medicationContexts;
+  final List<ChatMedicationReference> medicationReferences;
   final ChatScheduleContext? scheduleContext;
   final ChatPharmacyContext? pharmacyContext;
   final ChatHospitalContext? hospitalContext;
@@ -611,6 +614,7 @@ class ChatMessage {
     this.messageKind = ChatMessageKind.text,
     this.medicationContext,
     this.medicationContexts = const [],
+    this.medicationReferences = const [],
     this.scheduleContext,
     this.pharmacyContext,
     this.hospitalContext,
@@ -681,6 +685,10 @@ class ChatMessage {
           ? null
           : medicationContexts.first,
       medicationContexts: medicationContexts,
+      medicationReferences:
+          json['hidden_for_me'] == true || json['deleted_for_everyone'] == true
+          ? const []
+          : _readMedicationReferences(context['medication_references']),
       scheduleContext: rawScheduleContext is Map
           ? ChatScheduleContext.fromJson(
               Map<String, dynamic>.from(rawScheduleContext),
@@ -753,6 +761,7 @@ class ChatMessage {
       messageKind: redact ? ChatMessageKind.text : messageKind,
       medicationContext: redact ? null : medicationContext,
       medicationContexts: redact ? const [] : medicationContexts,
+      medicationReferences: redact ? const [] : medicationReferences,
       scheduleContext: redact ? null : scheduleContext,
       pharmacyContext: redact ? null : pharmacyContext,
       hospitalContext: redact ? null : hospitalContext,
@@ -778,6 +787,26 @@ class ChatMessage {
     }
     final singleContext = medicationContext;
     return singleContext == null ? const [] : [singleContext];
+  }
+
+  // 손상된 참고 첨부는 건너뛰되 메시지 본문과 저장 약 첨부는 유지한다.
+  static List<ChatMedicationReference> _readMedicationReferences(
+    dynamic value,
+  ) {
+    if (value is! List) return const [];
+    final references = <ChatMedicationReference>[];
+    for (final raw in value.whereType<Map>()) {
+      try {
+        references.add(
+          ChatMedicationReference.fromJson(Map<String, dynamic>.from(raw)),
+        );
+      } on FormatException {
+        continue;
+      } on TypeError {
+        continue;
+      }
+    }
+    return List.unmodifiable(references);
   }
 
   // 함수이름: _readMedicationContexts

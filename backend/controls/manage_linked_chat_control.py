@@ -36,6 +36,8 @@ from entities.chat_message_entity import (
 from entities.medication_alarm_entity import _MedicationAlarm, default_alarm_time
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.medication_image_url_entity import safe_medication_image_url
+from schemas.chat import ChatMedicationReference
+from pydantic import ValidationError
 from entities.medication_schedule_entity import (
     MEDICATION_SCHEDULE_SLOT_KEYS,
     MEDICATION_SLOT_KOREAN_NAMES,
@@ -375,6 +377,17 @@ class ManageLinkedChat:
         ):
             raise HTTPException(409, "The message request ID was already used for a different or deleted history share.")
 
+    @staticmethod
+    def _validate_reference_retry(existing, references, body, message_kind):
+        """응답 유실 재시도에서 다른 검색약 스냅샷으로 바꾸지 못하게 한다."""
+        original = (existing.context_payload or {}).get("medication_references", [])
+        if (references or original) and (
+            references != original or existing.body != body
+            or existing.message_kind != message_kind
+            or existing.deleted_for_everyone_at is not None
+        ):
+            raise HTTPException(409, "The request ID was already used for another medication reference.")
+
     def _lock_history_share_link(self, *, link_id: int, sender_hash: str) -> _PatientCaregiverLink:
         """양쪽 계정의 해제·삭제 작업과 공유 저장을 직렬화하고 권한을 재검증한다."""
         if self.db.new or self.db.dirty or self.db.deleted:
@@ -426,6 +439,7 @@ class ManageLinkedChat:
         body: str,
         medication_id: int | None = None,
         medication_ids: list[int] | None = None,
+        medication_references: list[dict[str, object]] | None = None,
         message_kind: str = CHAT_MESSAGE_KIND_TEXT,
         slot_key: str | None = None,
         pharmacy_id: str | None = None,
@@ -443,6 +457,16 @@ class ManageLinkedChat:
             else self.require_active_link(link_id=link_id, user_hash=sender_hash)
         )
         recipient_hash = self._other_participant(link, sender_hash)
+        # 내부 호출도 저장 약과 검색 참조를 분리하고 표시 스냅샷만 허용한다.
+        try:
+            references = [ChatMedicationReference.model_validate(item).model_dump()
+                          for item in (medication_references or [])]
+        except ValidationError as exc:
+            raise HTTPException(400, "Invalid medication reference.") from exc
+        if references and (message_kind != CHAT_MESSAGE_KIND_TEXT or any(value is not None for value in (
+            slot_key, pharmacy_id, hospital_context, source_alert_id, pharmacy_operating_snapshot,
+        ))):
+            raise HTTPException(400, "Medication references are only allowed in ordinary chat.")
         # 내부 호출도 HTTP 요청과 같은 문맥 조합을 검증한 뒤 중복 여부를 확인한다.
         if message_kind == CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE:
             if history_start_date is None or history_end_date is None:
@@ -479,6 +503,7 @@ class ManageLinkedChat:
                 existing, message_kind=message_kind, body=body,
                 history_start_date=history_start_date, history_end_date=history_end_date,
             )
+            self._validate_reference_retry(existing, references, body, message_kind)
             return ChatSendResult(
                 message=self._message_for_user(existing, link, sender_hash),
                 recipient_hash=recipient_hash,
@@ -491,7 +516,7 @@ class ManageLinkedChat:
         for selected_id in [medication_id, *(medication_ids or [])]:
             if selected_id is not None and selected_id not in selected_medication_ids:
                 selected_medication_ids.append(selected_id)
-        if len(selected_medication_ids) > MAX_CHAT_MEDICATION_CONTEXTS:
+        if len(selected_medication_ids) + len(references) > MAX_CHAT_MEDICATION_CONTEXTS:
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -525,6 +550,9 @@ class ManageLinkedChat:
             context_payload["medication_contexts"] = [
                 self._medication_context_response(item) for item in medications
             ]
+        if references:
+            context_payload = dict(context_payload or {})
+            context_payload["medication_references"] = references
         row = _ChatMessage(
             link_id=link_id,
             sender_hash=sender_hash,
@@ -582,6 +610,7 @@ class ManageLinkedChat:
                 existing, message_kind=message_kind, body=body,
                 history_start_date=history_start_date, history_end_date=history_end_date,
             )
+            self._validate_reference_retry(existing, references, body, message_kind)
             return ChatSendResult(
                 message=self._message_for_user(existing, link, sender_hash),
                 recipient_hash=recipient_hash,

@@ -383,6 +383,7 @@ class _SendControl extends ManageLinkedChat {
     required String body,
     int? medicationId,
     List<int> medicationIds = const [],
+    List<ChatMedicationReference> medicationReferences = const [],
     ChatMessageKind messageKind = ChatMessageKind.text,
     String? slotKey,
     String? pharmacyId,
@@ -398,6 +399,7 @@ class _SendControl extends ManageLinkedChat {
       draft: ChatMessageDraft(
         body: body,
         medicationIds: medicationIds,
+        medicationReferences: medicationReferences,
         messageKind: messageKind,
         slotKey: slotKey,
         pharmacyId: pharmacyId,

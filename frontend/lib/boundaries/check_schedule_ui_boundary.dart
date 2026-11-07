@@ -48,6 +48,9 @@ class CheckScheduleUI extends StatefulWidget {
   final String? initialSlotKey;
   final bool showBackButton;
   final MedicationHistoryControl? asNeededControl;
+  final Widget? selectionHeader;
+  final int additionalSelectionCount;
+  final int? maxSelectionCount;
 
   // Function Name: CheckScheduleUI
   // Description: Initializes today's per-slot dose completion, reminders, and attachment selection with the supplied configuration.
@@ -62,6 +65,9 @@ class CheckScheduleUI extends StatefulWidget {
     this.showBackButton = true,
     this.asNeededControl,
   }) : selectionSchedules = null,
+       selectionHeader = null,
+       additionalSelectionCount = 0,
+       maxSelectionCount = null,
        selectionLanguage = 'ko',
        initialSelectedMedicationSlots = const {};
 
@@ -78,6 +84,9 @@ class CheckScheduleUI extends StatefulWidget {
     required List<MedicationSchedule> schedules,
     required String language,
     Map<String, Set<String>> selectedMedicationSlots = const {},
+    this.selectionHeader,
+    this.additionalSelectionCount = 0,
+    this.maxSelectionCount,
   }) : selectionSchedules = schedules,
        selectionLanguage = language,
        initialSelectedMedicationSlots = selectedMedicationSlots,
@@ -317,6 +326,12 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       onBackRequested: () => Navigator.pop(context),
     );
     final selectableCount = _selectableDoses.length;
+    final selectedMedicationCount =
+        _selectedDoses.map((dose) => dose.medicationId).toSet().length +
+        widget.additionalSelectionCount;
+    final overLimit =
+        widget.maxSelectionCount != null &&
+        selectedMedicationCount > widget.maxSelectionCount!;
     final selectionControl = MedBuddySelectAllBar(
       tileKey: const Key('schedule-medication-select-all'),
       label: text.selectAll,
@@ -344,6 +359,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
                   children: [
                     if (scrollHeader) header,
                     if (scrollHeader) selectionControl,
+                    ?widget.selectionHeader,
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
                       child: Column(
@@ -406,10 +422,23 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
                   ],
                 ),
               ),
+              if (overLimit)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    text.isEnglish
+                        ? 'Attach up to ${widget.maxSelectionCount} medications.'
+                        : '약은 최대 ${widget.maxSelectionCount}개까지 첨부할 수 있어요.',
+                  ),
+                ),
               _ScheduleSelectionFooter(
                 text: text,
-                selectedCount: _selectedDoses.length,
-                onConfirmRequested: _selectedDoses.isEmpty
+                selectedCount:
+                    _selectedDoses.length + widget.additionalSelectionCount,
+                onConfirmRequested:
+                    overLimit ||
+                        (_selectedDoses.isEmpty &&
+                            widget.additionalSelectionCount == 0)
                     ? null
                     // 함수이름: _buildSelectionScreen.onConfirmRequested callback
                     // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에서 캡처된 작업 `_completeMedicationSelection(context, schedules)`을 실행한다.

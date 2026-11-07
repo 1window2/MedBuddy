@@ -6,7 +6,7 @@
 from datetime import date
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from entities.chat_message_entity import (
     CHAT_MESSAGE_KINDS,
@@ -15,6 +15,23 @@ from entities.chat_message_entity import (
     MAX_CHAT_MEDICATION_CONTEXTS,
 )
 from entities.medication_schedule_entity import MEDICATION_SCHEDULE_SLOT_KEYS
+from entities.medication_image_url_entity import safe_medication_image_url
+
+
+class ChatMedicationReference(BaseModel):
+    """저장 약·복용 일정과 무관한 검색 결과의 최소 표시 스냅샷이다."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    item_seq: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    item_name: str = Field(min_length=1, max_length=300)
+    manufacturer: str = Field(default="", max_length=200)
+    image_url: str = Field(default="", max_length=2048)
+
+    @field_validator("image_url")
+    @classmethod
+    def normalize_image(cls, value: str) -> str:
+        return safe_medication_image_url(value) or ""
 
 
 class ChatMedicationTaken(BaseModel):
@@ -57,6 +74,9 @@ class ChatMessageCreate(BaseModel):
         default_factory=list,
         max_length=MAX_CHAT_MEDICATION_CONTEXTS,
     )
+    medication_references: list[ChatMedicationReference] = Field(
+        default_factory=list, max_length=MAX_CHAT_MEDICATION_CONTEXTS,
+    )
     slot_key: str | None = Field(default=None, max_length=20)
     pharmacy_id: str | None = Field(default=None, max_length=32)
     hospital_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9]{1,32}$")
@@ -64,6 +84,19 @@ class ChatMessageCreate(BaseModel):
     source_alert_id: int | None = Field(default=None, ge=1)
     history_start_date: date | None = None
     history_end_date: date | None = None
+
+    @model_validator(mode="after")
+    def validate_medication_references(self):
+        if self.medication_references:
+            if self.message_kind != CHAT_MESSAGE_KIND_TEXT or any(value is not None for value in (
+                self.slot_key, self.pharmacy_id, self.hospital_id,
+                self.hospital_schedule_date, self.source_alert_id,
+            )):
+                raise ValueError("Medication references are only allowed in ordinary chat.")
+            count = len(set(self.medication_ids + ([self.medication_id] if self.medication_id else [])))
+            if count + len(self.medication_references) > MAX_CHAT_MEDICATION_CONTEXTS:
+                raise ValueError("Too many medication attachments.")
+        return self
 
     # 이력 공유는 날짜만 입력받고 클라이언트가 만든 집계·환자 식별자를 거부한다.
     @model_validator(mode="before")

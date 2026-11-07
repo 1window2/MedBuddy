@@ -262,6 +262,7 @@ class ManageLinkedChat {
     required String body,
     int? medicationId,
     List<int> medicationIds = const [],
+    List<ChatMedicationReference> medicationReferences = const [],
     ChatMessageKind messageKind = ChatMessageKind.text,
     String? slotKey,
     String? pharmacyId,
@@ -300,6 +301,10 @@ class ManageLinkedChat {
             'medication_id': ?primaryMedicationId,
             if (normalizedMedicationIds.isNotEmpty)
               'medication_ids': normalizedMedicationIds,
+            if (medicationReferences.isNotEmpty)
+              'medication_references': medicationReferences
+                  .map((item) => item.toJson())
+                  .toList(),
             'slot_key': ?slotKey,
             'pharmacy_id': ?pharmacyId,
             'hospital_id': ?hospitalId,
