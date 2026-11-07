@@ -1,41 +1,195 @@
 {
-  "version": "1.0.0 출시 후보 (버전 표시와 1.0.0 동작 안내, 2026-11-07)",
-  "pages": 224,
+  "reviewed_on": "2026-11-07",
+  "app_version": "1.0.0 개발 브랜치",
+  "edition": "portrait",
+  "pages": 227,
+  "chapters": 10,
   "subsections": 84,
-  "steps": 321,
+  "steps": 327,
   "pdf_internal_links_verified": 206,
   "pdf_bookmarks_verified": 94,
+  "all_step_text_verified": true,
+  "all_source_note_text_verified": true,
+  "merge_checks": {
+    "chapters": 10,
+    "sections": 84,
+    "steps": 327,
+    "baseline_steps": 321,
+    "added_steps": 6,
+    "baseline_order_preserved": true,
+    "historical_image_files_unchanged": 170,
+    "new_image_files": 29,
+    "all_notes_in_pdf": true,
+    "markdown_roundtrip_identical": true,
+    "clean_rebuild_without_input_pdf": true,
+    "clean_pdf_and_markdown_byte_identical": true
+  },
   "visual_review": {
     "status": "reviewed",
-    "renderer": "Poppler pdftoppm",
-    "rendered_pages": 224,
-    "contact_sheets": 14,
-    "changed_pages_checked": [
+    "renderer": "pypdfium2",
+    "render_scale": 1.35,
+    "changed_pages": [
       1,
-      22,
-      82,
-      177,
-      178
+      22
     ],
-    "comparison": "2026-11-06 발행본과 60dpi 전체 페이지 렌더 비교: 바닥글 버전(MedBuddy 1.0.0)을 뺀 영역에서는 1(표지), 22(1.1 참고), 82(3.2 참고), 177(8.6 참고), 178(8.7 이후 참고 재배치)페이지만 변경",
-    "limitations": "1.5-2와 10.1-2는 테스트 글꼴을 적용한 실제 인증 위젯 시뮬레이션으로, 기기 글꼴 및 시스템 표시줄은 다를 수 있습니다."
+    "rendered_pages": 2,
+    "enlarged_pages_checked": [
+      1,
+      22
+    ],
+    "glyphs_checked": 1079,
+    "out_of_page_glyphs": 0,
+    "observed_layout_defects": [],
+    "unchanged_pages_verified": 225,
+    "comparison": "Decoded text, character positions (within 0.001 point), drawing operators (font subset switches normalized), and image object hashes agree on the other 225 pages.",
+    "max_text_coordinate_delta_points": 6.103515625e-05,
+    "method": "Incremental title revision review: only pages 1 and 22 rerendered and visually inspected. The prior full review is retained separately with its PDF hash."
   },
   "capture_environment": {
-    "kind": "별도 테스트 에뮬레이터 캡처 및 테스트 위젯 시뮬레이션",
-    "data": "시험용 Firebase 설정과 예시 데이터; 실제 계정 및 인증 메일 전송 미사용",
-    "scope": "1.5-2와 10.1-2는 실제 AuthenticationUI에 가짜 Firebase를 주입한 위젯 테스트; 나머지 최근 인증 화면은 별도 테스트 에뮬레이터 캡처",
-    "screenshot_status_bar_cropped": "에뮬레이터 캡처는 상태 표시줄을 제외; 위젯 시뮬레이션에는 시스템 표시줄이 없음"
+    "new_images": 29,
+    "kind": "Product Flutter widgets with synthetic data and mocked responses",
+    "app_text_size": "medium",
+    "text_scale": 1.0,
+    "device_system_bars": "not present in new captures",
+    "historical_image_files": "Preserved byte-for-byte; older app and emulator captures are not reclassified as new captures.",
+    "limitations": "Synthetic captures do not establish device behavior, server persistence, AI accuracy, push delivery or production release."
   },
   "clean_rebuild": {
     "passed": true,
+    "previous_pdf_used_as_input": false,
     "pdf_sha256_identical": true,
     "markdown_sha256_identical": true,
-    "note": "저장소 밖 별도 복사본에서 캐시 없이 재생성(이전 PDF는 입력으로 읽지 않음)"
+    "note": "Title revision independently rebuilt in a fresh directory from repository image files and source, with no published PDF as input."
   },
-  "pdf_sha256": "059496a44639b39eda7329a89aab660a9f491741ffdd666381afc5f6517c8b0b",
-  "markdown_sha256": "f9a2249da55540f3e411569a6a017b5242abb3caa6f95093f482394083b21452",
+  "pdf_sha256": "ac81825d0e26e40a8e65ffd42c5585121718ecc384dddd19e69ac974e86462b3",
+  "markdown_sha256": "d963477f09b6787835109405ebff6e9ffb79dcc248e5b176f398428105e7f1ec",
+  "content_sha256": "5cadea46ffe57cede9561a17a815060f29bc90ca83e596a353c3f1decd153613",
+  "layout_sha256": "f9cfe130fec3930ab0413cb1e257556f286970cfdeaa93a4677330c7feb446f9",
+  "asset_manifest_sha256": "8ee3c8867a679254b685b58da33fdf72cdb6beb9bb9e57f274d57ea8af780240",
+  "content_review_sha256": "960c1432a65221ddcdf74514912cd6b63a2b4d9e52480aabe5f410606fa671e5",
   "fonts_sha256": {
-    "NanumBarunGothic": "9b872773134e2e4d8c0b17021266786576db06c843ede0d0b523b214a450756c",
-    "NanumBarunGothicBold": "39bba4cd9bd2986143825c8654abbb62443914ab33b346c0c929a916f5d98bf2"
+    "NanumBarunGothic.ttf": "9b872773134e2e4d8c0b17021266786576db06c843ede0d0b523b214a450756c",
+    "NanumBarunGothicBold.ttf": "39bba4cd9bd2986143825c8654abbb62443914ab33b346c0c929a916f5d98bf2"
+  },
+  "libraries": {
+    "reportlab": "4.4.9",
+    "pypdf": "6.21.4",
+    "Pillow": "13.0.0",
+    "pypdfium2": "5.14.0"
+  },
+  "review_evidence": [
+    {
+      "report": ".build/audit.json",
+      "sha256": "c2a7dbe70d0ff352f199af180f306ec3e83b3bdbe946a16fac249e3f4725551e"
+    },
+    {
+      "report": ".build/title-review/review.json",
+      "sha256": "494f3eed175a8d68d100ac8bc3578c95299e9e5705f99305c4f9f1accc1eca14"
+    },
+    {
+      "report": ".build/title-baseline/build-verification.json",
+      "sha256": "4925fa31dee68fb868cd0648405d025ce5747749e732a05611ca3cabd56b4b34"
+    },
+    {
+      "report": ".build/review-portrait-merged/review.json",
+      "sha256": "a516370d9b2c3bb64cfcd6a8a4231c5f4dbedd9c0ab45a9a3e28c55101fcd638"
+    },
+    {
+      "report": ".build/merge-checks.json",
+      "sha256": "e54ef0c379039f0d5c9c6ca4c4af3850a4eb823ad68232a6c4150977d6e21abd"
+    }
+  ],
+  "review_scope": {
+    "document_merge_and_render": "verified",
+    "application_code_and_device_tests": "Not run in this document-only merge; inherited code-review observations remain attributed to the local source review.",
+    "native_android_notification_runtime_delivery": "not exercised",
+    "production_services_or_deployment": "not exercised; not claimed"
+  },
+  "delivery_files": [
+    "MedBuddy_User_Guide_ko.pdf",
+    "README.md",
+    "SOURCE_NOTES.md",
+    "source/assets.sha256.json",
+    "source/build-verification.json",
+    "source/content-review.json",
+    "source/layout.json",
+    "tools/README.md",
+    "tools/rebuild_guide.py",
+    "tools/requirements.txt",
+    "tools/review_guides.py",
+    "assets/widget-cabinet-current-status-medium-2026-11-07.png",
+    "assets/widget-chat-caregiver-actions-medium-2026-11-07.png",
+    "assets/widget-chat-patient-actions-medium-2026-11-07.png",
+    "assets/widget-chat-reference-patient-medium-2026-11-07.png",
+    "assets/widget-chat-search-selected-patient-medium-2026-11-07.png",
+    "assets/widget-feature-empty-medium-2026-11-07.png",
+    "assets/widget-feature-start-medium-2026-11-07.png",
+    "assets/widget-feature-text-medium-2026-11-07.png",
+    "assets/widget-history-prn-current-medium-2026-11-07.png",
+    "assets/widget-history-readonly-medium-2026-11-07.png",
+    "assets/widget-history-recipient-current-link-medium-2026-11-07.png",
+    "assets/widget-home-cancel-confirm-medium-2026-11-07.png",
+    "assets/widget-home-complete-medium-2026-11-07.png",
+    "assets/widget-home-not-taken-medium-2026-11-07.png",
+    "assets/widget-home-registration-menu-medium-2026-11-07.png",
+    "assets/widget-manual-bottom-medium-2026-11-07.png",
+    "assets/widget-manual-custom-medium-2026-11-07.png",
+    "assets/widget-manual-date-medium-2026-11-07.png",
+    "assets/widget-manual-partial-save-medium-2026-11-07.png",
+    "assets/widget-manual-prn-medium-2026-11-07.png",
+    "assets/widget-manual-second-medium-2026-11-07.png",
+    "assets/widget-manual-top-medium-2026-11-07.png",
+    "assets/widget-manual-validation-medium-2026-11-07.png",
+    "assets/widget-medication-confirm-medium-2026-11-07.png",
+    "assets/widget-medication-results-medium-2026-11-07.png",
+    "assets/widget-medication-search-medium-2026-11-07.png",
+    "assets/widget-prn-additional-current-medium-2026-11-07.png",
+    "assets/widget-prn-current-medium-2026-11-07.png",
+    "assets/widget-prn-reminder-current-medium-2026-11-07.png",
+    "tools/guide_layout.py"
+  ],
+  "pdf_metadata": {
+    "title": "MedBuddy 사용설명서 - 1.0.0 개발 브랜치",
+    "subject": "1.0.0 개발 브랜치 - 환자와 보호자를 위한 Android 앱 사용 안내 - 병원과 약국 찾기 포함"
+  },
+  "previous_full_visual_review": {
+    "pdf_sha256": "19e3a5d849511338874db349cb430bbcc62e6cd14e48b0d182548c11752cece0",
+    "status": "reviewed",
+    "renderer": "pypdfium2",
+    "render_scale": 1.35,
+    "rendered_pages": 227,
+    "contact_sheets": 15,
+    "all_contact_sheets_visually_reviewed": true,
+    "enlarged_pages_checked": [
+      21,
+      22,
+      39,
+      40,
+      41,
+      42,
+      82,
+      83,
+      101,
+      103,
+      105,
+      118,
+      143,
+      180,
+      210,
+      226
+    ],
+    "glyphs_checked": 57846,
+    "out_of_page_glyphs": 0,
+    "observed_layout_defects": [],
+    "method": "All 227 pages rendered; 15 contact sheets visually inspected; 16 selected changed or risk pages inspected individually. Not every page inspected at full size."
+  },
+  "title_revision_checks": {
+    "changed_pages": [
+      1,
+      22
+    ],
+    "all_source_notes_in_pdf": true,
+    "markdown_roundtrip_identical": true,
+    "clean_rebuild_byte_identical": true
   }
 }

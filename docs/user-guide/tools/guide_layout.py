@@ -871,8 +871,8 @@ def render_pdf(plan, source=SOURCE):
         if not entry["level"]:
             chapter_mark = mark
     writer.add_metadata({
-        "/Title": "MedBuddy \uc0ac\uc6a9\uc124\uba85\uc11c", "/Author": "MedBuddy",
-        "/Subject": "\ud658\uc790\uc640 \ubcf4\ud638\uc790\ub97c \uc704\ud55c Android \uc571 \uc0ac\uc6a9 \uc548\ub0b4 - \ubcd1\uc6d0\uacfc \uc57d\uad6d \ucc3e\uae30 \ud3ec\ud568",
+        "/Title": "MedBuddy \uc0ac\uc6a9\uc124\uba85\uc11c - 1.0.0 \uac1c\ubc1c \ube0c\ub79c\uce58", "/Author": "MedBuddy",
+        "/Subject": "1.0.0 \uac1c\ubc1c \ube0c\ub79c\uce58 - \ud658\uc790\uc640 \ubcf4\ud638\uc790\ub97c \uc704\ud55c Android \uc571 \uc0ac\uc6a9 \uc548\ub0b4 - \ubcd1\uc6d0\uacfc \uc57d\uad6d \ucc3e\uae30 \ud3ec\ud568",
         "/Creator": "MedBuddy", "/Producer": "MedBuddy",
     })
     output = BytesIO()

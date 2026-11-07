@@ -1,6 +1,6 @@
 # 사용자 가이드 재생성
 
-`README.md`가 본문 원본입니다. `source/layout.json`은 84개 소섹션과 321단계의
+`README.md`가 본문 원본입니다. `source/layout.json`은 84개 소섹션과 327단계의
 식별자·스크린샷·크롭·강조 좌표를 연결합니다. 모든 스크린샷은 `assets/`와
 `source/assets/`에 파일로 있고, `source/assets.sha256.json`이 그 파일과 표지 로고의
 해시를 기록합니다. 빌드는 단계가 쓰는 사진마다 이 해시를 대조합니다.
@@ -11,7 +11,7 @@ PDF의 설명·번호·강조 표시는 벡터로 다시 조판하며, 페이지
 ## 준비
 
 - Python 3.12와 `tools/requirements.txt`의 라이브러리.
-- Poppler의 `pdftoppm` 실행 파일. PATH에 추가하거나 `--poppler`로 지정합니다.
+- 전체 페이지 검수에는 포함된 `pypdfium2`를 사용합니다. 기존 Poppler 방식도 사용할 수 있습니다.
 - `NanumBarunGothic.ttf`, `NanumBarunGothicBold.ttf`가 있는 폴더.
   글꼴은 이 저장소에 포함하지 않습니다. 설치된 글꼴 폴더를 `--font-dir`로 전달합니다.
   검수에 사용한 글꼴 해시는 `source/build-verification.json`에 기록합니다.
@@ -27,7 +27,7 @@ PDF의 설명·번호·강조 표시는 벡터로 다시 조판하며, 페이지
 python -m pip install -r docs/user-guide/tools/requirements.txt
 $fontDir = Join-Path $env:LOCALAPPDATA 'Microsoft/Windows/Fonts'
 python -B docs/user-guide/tools/rebuild_guide.py build --font-dir $fontDir
-python -B docs/user-guide/tools/rebuild_guide.py render
+python -B docs/user-guide/tools/review_guides.py docs/user-guide/.build/MedBuddy_User_Guide_ko.pdf docs/user-guide/.build/review-portrait
 ```
 
 macOS에서는 저장소 밖의 Python 3.12 가상환경을 쓰고 Homebrew Poppler를 지정하면 됩니다.
@@ -68,6 +68,7 @@ python -B docs/user-guide/tools/rebuild_guide.py publish
 이미지나 단계가 누락되면 빌드는 실패합니다. 검토되지 않은 캡처를 자동으로 찾거나
 스크린샷을 합성하는 기능은 없습니다.
 
-기능 찾기 4장은 제품 위젯을 독립 실행한 화면이며 실행 중인 기기 캡처가 아닙니다.
+2026-11-07의 추가 캡처는 제품 위젯에 가상 자료를 넣어 독립 실행한 화면이며,
+실행 중인 기기 캡처나 실제 저장·전송의 증거가 아닙니다.
 이 PNG들은 이미 검수된 입력이므로 PDF 재생성에 Flutter나 앱 실행은 필요하지 않습니다.
 캡처 범위·테스트 글꼴·구버전 화면 표시는 `SOURCE_NOTES.md`와 본문 1.7을 참고하세요.

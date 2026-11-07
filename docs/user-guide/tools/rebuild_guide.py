@@ -129,7 +129,7 @@ def collect_content(groups, layout):
             assert item["number"] == previous["number"], section
             step = deepcopy(previous)
             step.update(item)
-            step["callouts"] = previous["callouts"]
+            step["callouts"] = item["callouts"]
             step["section"] = group["section"]
             step["action"] = step["text"]
             step["alt"] = step["label"] + ": " + step["text"]
@@ -172,7 +172,9 @@ def build(font_dir):
     cover.setFont(layout.BOLD, 30)
     cover.drawCentredString(layout.W / 2, layout.H / 2 - 145, "MedBuddy 사용설명서")
     cover.setFont(layout.REG, 12)
-    cover.drawCentredString(layout.W / 2, layout.H / 2 - 172, "1.0.0 출시 후보 개발 브랜치 | 2026-11-07")
+    cover.drawCentredString(layout.W / 2, layout.H / 2 - 172, "1.0.0 개발 브랜치")
+    cover.setFont(layout.REG, 10)
+    cover.drawCentredString(layout.W / 2, layout.H / 2 - 191, "2026-11-07")
     layout.draw_footer(cover, layout.footer_layout(1, plan["total_pages"], ""))
     cover.showPage()
     cover.save()
@@ -182,8 +184,6 @@ def build(font_dir):
     generated = layout.markdown(plan)
     preamble = source.split("## 차례", 1)[0]
     result = preamble + "## 차례" + generated.split("## 차례", 1)[1]
-    anchor = '### 9.12 휴대폰 알림 확인과 테스트하기\n'
-    result = result.replace(anchor, anchor + '\n<img src="assets/notification_settings_2026-10-22.png" width="340" alt="복약 및 알림 안의 휴대폰 알림 권한과 테스트 버튼">\n\n휴대폰 권한과 앱의 알림 수신 설정을 한 화면에서 확인하는 현재 설정 화면입니다.\n', 1)
     (BUILD / "README.md").write_text(result, encoding="utf-8", newline="\n")
     rebuilt = parse_markdown(result)
     for key, group in groups.items():
@@ -201,7 +201,7 @@ def build(font_dir):
                  all_step_text_verified=True, baseline_step_ids_preserved=True, visual_qa="pending",
                  source_layout_sha256=digest(SOURCE / "layout.json"),
                  fonts={name: digest(font_dir / name) for name in ("NanumBarunGothic.ttf", "NanumBarunGothicBold.ttf")},
-                 updated_sections=[key for key in groups if key in {"1.6", "1.7", "2.1", "2.2", "2.3", "2.4", "2.5", "3.7", "3.9", "3.10", "5.1", "5.5", "5.6", "5.8", "7.1", "7.2", "7.6", "9.6", "9.7"}])
+                 included_sections=list(groups))
     dump(BUILD / "audit.json", audit)
     dump(BUILD / "navigation.json", navigation)
     dump(BUILD / "pages.json", layout.public_pages(plan["pages"]))
