@@ -63,6 +63,86 @@ Future<void> _search(
 }
 
 void main() {
+  for (final selection in [false, true]) {
+    testWidgets('검색 결과 연속 선택은 화면을 하나만 연다: $selection', (tester) async {
+      await _search(tester, _Lookup(() async => _drug), selection: selection);
+      await tester.pumpAndSettle();
+      final open = tester
+          .widget<ListTile>(find.byKey(const Key('medication-search-result-0')))
+          .onTap!;
+      open();
+      open();
+      await tester.pumpAndSettle();
+      final routeWidget = selection
+          ? find.byType(AlertDialog)
+          : find.byType(CheckMedicationDetailUI);
+      Navigator.of(tester.element(routeWidget)).pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(CheckMedicationDetailUI), findsNothing);
+      expect(find.byType(MedicationSearchUI), findsOneWidget);
+      await tester.tap(find.byKey(const Key('medication-search-result-0')));
+      await tester.pumpAndSettle();
+      expect(routeWidget, findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('검색 후보 연속 확인은 선택 결과를 한 번만 반환한다', (tester) async {
+    final navigator = GlobalKey<NavigatorState>();
+    final lookup = _Lookup(() async => _drug);
+    addTearDown(lookup.dispose);
+    MedicationDetail? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigator,
+        home: const Scaffold(body: Text('검색 전 화면')),
+      ),
+    );
+    final selected = navigator.currentState!.push<MedicationDetail>(
+      MaterialPageRoute(
+        builder: (_) => MedicationSearchUI(
+          userSetting: const UserSetting(),
+          lookupControl: lookup,
+          initialQuery: '시험약',
+          selectionMode: true,
+        ),
+      ),
+    );
+    unawaited(selected.then((value) => result = value));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('medication-search-submit')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('medication-search-result-0')));
+    await tester.pumpAndSettle();
+    final confirm = tester
+        .widget<FilledButton>(find.widgetWithText(FilledButton, '선택'))
+        .onPressed!;
+    confirm();
+    confirm();
+    await tester.pumpAndSettle();
+    expect(result, same(_drug));
+    expect(find.text('검색 전 화면'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final fails in [false, true]) {
+    testWidgets('검색 중 폐기 후 응답을 무시한다: $fails', (tester) async {
+      final response = Completer<MedicationDetail?>();
+      final lookup = _Lookup(() => response.future);
+      addTearDown(lookup.dispose);
+      await _search(tester, lookup);
+      await tester.pumpWidget(const SizedBox.shrink());
+      if (fails) {
+        response.completeError(StateError('late failure'));
+      } else {
+        response.complete(_drug);
+      }
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('후보는 사용자가 확인한 뒤 선택하며 취소하면 검색에 남는다', (tester) async {
     final lookup = _Lookup(
       () async => throw MedicationMatchReview([_drug, _drug]),

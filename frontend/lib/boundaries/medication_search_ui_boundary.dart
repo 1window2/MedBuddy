@@ -45,6 +45,7 @@ class _MedicationSearchUIState extends State<MedicationSearchUI> {
   int _generation = 0;
   bool _loading = false;
   bool _searched = false;
+  bool _isOpening = false;
   String? _error;
   DateTime? _retryAt;
 
@@ -155,7 +156,28 @@ class _MedicationSearchUIState extends State<MedicationSearchUI> {
   // - medication (MedicationDetail): Chosen result.
   // Returns: Completes when the dialog or detail screen closes.
   Future<void> _open(MedicationDetail medication) async {
+    if (_isOpening || !mounted || ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
+    _isOpening = true;
+    try {
+      await _openResult(medication);
+    } finally {
+      _isOpening = false;
+    }
+  }
+
+  Future<void> _openResult(MedicationDetail medication) async {
     if (widget.selectionMode) {
+      var dismissed = false;
+      void close(BuildContext dialogContext, bool confirmed) {
+        if (dismissed || ModalRoute.of(dialogContext)?.isCurrent != true) {
+          return;
+        }
+        dismissed = true;
+        Navigator.pop(dialogContext, confirmed);
+      }
+
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -179,17 +201,21 @@ class _MedicationSearchUIState extends State<MedicationSearchUI> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => close(context, false),
               child: Text(_english ? 'Cancel' : '취소'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () => close(context, true),
               child: Text(_english ? 'Select' : '선택'),
             ),
           ],
         ),
       );
-      if (!mounted || confirmed != true) return;
+      if (!mounted ||
+          confirmed != true ||
+          ModalRoute.of(context)?.isCurrent != true) {
+        return;
+      }
       Navigator.pop(context, medication);
       return;
     }
