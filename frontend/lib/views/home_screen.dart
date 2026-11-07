@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import '../boundaries/medication_search_ui_boundary.dart';
 import '../services/dose_home_widget_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -1061,6 +1062,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     switch (feature) {
       case AppFeature.manualMedication:
         _openManualMedicationEntry(context, viewModel);
+      case AppFeature.medicationSearch:
+        await Navigator.push<void>(
+          searchContext,
+          MaterialPageRoute(
+            builder: (_) =>
+                MedicationSearchUI(userSetting: viewModel.userSetting),
+          ),
+        );
       case AppFeature.schedule:
         _selectDestination(MedBuddyDestination.schedule);
         if (searchContext.mounted) Navigator.pop(searchContext);

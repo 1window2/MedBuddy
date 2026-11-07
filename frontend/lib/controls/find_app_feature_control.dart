@@ -7,6 +7,26 @@ import '../entities/feature_search_entity.dart';
 class FindAppFeature {
   static const entries = <FeatureSearchEntry>[
     FeatureSearchEntry(
+      AppFeature.medicationSearch,
+      '약 검색',
+      'Find medication',
+      '홈 > 약 등록·관리 > 약 검색',
+      'Home > Add or manage > Find medication',
+      phrases: [
+        '약 검색',
+        '약 이름 찾기',
+        '약품 조회',
+        '약 정보 검색',
+        'medicine search',
+        'drug lookup',
+        'find medication',
+      ],
+      concepts: [
+        ['약', '약품', 'medicine', 'drug', 'medication'],
+        ['검색', '조회', '찾', 'search', 'find', 'lookup'],
+      ],
+    ),
+    FeatureSearchEntry(
       AppFeature.manualMedication,
       '약 직접 등록',
       'Add medication',

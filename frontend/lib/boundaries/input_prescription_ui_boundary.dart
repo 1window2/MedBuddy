@@ -2,6 +2,7 @@
 // Role: UI boundaries and helpers for the home medication dashboard and medication input entry points.
 
 import 'package:flutter/material.dart';
+import 'medication_search_ui_boundary.dart';
 import '../widgets/medbuddy_wordmark.dart';
 
 import 'medication_capture_options_ui_boundary.dart';
@@ -348,7 +349,7 @@ class InputPrescriptionUI extends StatelessWidget {
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _showAnalysisTaskOptions(BuildContext context) async {
     final isEnglish = userSetting.isEnglish;
-    final register = await showModalBottomSheet<bool>(
+    final action = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) => MedBuddyOptionSheet(
@@ -359,7 +360,7 @@ class InputPrescriptionUI extends StatelessWidget {
             subtitle: isEnglish
                 ? 'Add a medication or identify a pill.'
                 : '약봉투, 알약 사진 또는 직접 입력으로 등록해요.',
-            onTap: () => Navigator.pop(sheetContext, true),
+            onTap: () => Navigator.pop(sheetContext, 'register'),
           ),
           const SizedBox(height: 10),
           MedBuddyOptionTile(
@@ -368,13 +369,30 @@ class InputPrescriptionUI extends StatelessWidget {
             subtitle: isEnglish
                 ? 'View and manage saved medications.'
                 : '등록한 약과 복용 기간을 확인하고 관리해요.',
-            onTap: () => Navigator.pop(sheetContext, false),
+            onTap: () => Navigator.pop(sheetContext, 'manage'),
+          ),
+          const SizedBox(height: 10),
+          MedBuddyOptionTile(
+            icon: Icons.search,
+            title: isEnglish ? 'Find medication' : '약 검색',
+            subtitle: isEnglish
+                ? 'Look up medication information by name.'
+                : '약 이름으로 약품 정보를 찾아요.',
+            onTap: () => Navigator.pop(sheetContext, 'search'),
           ),
         ],
       ),
     );
-    if (!context.mounted || register == null) return;
-    if (!register) {
+    if (!context.mounted || action == null) return;
+    if (action == 'search') {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => MedicationSearchUI(userSetting: userSetting),
+        ),
+      );
+      return;
+    }
+    if (action == 'manage') {
       await Navigator.of(context).push<void>(
         MaterialPageRoute(builder: (_) => const CheckSavedMedicationUI()),
       );

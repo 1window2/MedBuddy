@@ -172,6 +172,7 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
   }
 
   _FeatureCategory _category(AppFeature feature) => switch (feature) {
+    AppFeature.medicationSearch ||
     AppFeature.manualMedication ||
     AppFeature.prescription ||
     AppFeature.pillIdentification ||
@@ -248,6 +249,7 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
   // 함수역할: 기존 화면과 일관된 Material 아이콘으로 목적지를 구분한다.
   IconData _icon(AppFeature feature) => switch (feature) {
     AppFeature.manualMedication => Icons.add_circle_outline,
+    AppFeature.medicationSearch => Icons.search,
     AppFeature.prescription => Icons.document_scanner_outlined,
     AppFeature.pillIdentification => Icons.image_search_outlined,
     AppFeature.schedule ||

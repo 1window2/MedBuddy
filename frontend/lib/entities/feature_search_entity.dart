@@ -5,6 +5,7 @@
 // 역할: 검색 결과가 실행할 수 있는 화면 이동만 열거한다. 데이터 변경 명령은 포함하지 않는다.
 enum AppFeature {
   manualMedication,
+  medicationSearch,
   prescription,
   pillIdentification,
   schedule,

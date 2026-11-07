@@ -13,6 +13,7 @@ class MedBuddySearchField extends StatelessWidget {
     required this.isEnglish,
     this.inputKey,
     this.clearKey,
+    this.onSubmitted,
   });
 
   final TextEditingController controller;
@@ -22,6 +23,7 @@ class MedBuddySearchField extends StatelessWidget {
   final bool isEnglish;
   final Key? inputKey;
   final Key? clearKey;
+  final VoidCallback? onSubmitted;
 
   @override
   Widget build(BuildContext context) => TextField(
@@ -31,7 +33,10 @@ class MedBuddySearchField extends StatelessWidget {
     style: MedBuddyTextStyles.menuBody,
     textInputAction: TextInputAction.search,
     onChanged: (_) => onChanged(),
-    onSubmitted: (_) => FocusScope.of(context).unfocus(),
+    onSubmitted: (_) {
+      FocusScope.of(context).unfocus();
+      onSubmitted?.call();
+    },
     decoration: InputDecoration(
       labelText: label,
       hintText: hint,

@@ -27,6 +27,8 @@ void main() {
     expect(entries[AppFeature.historySharing]!.pathKo, '하단 메뉴 > 복약 기록 > 공유');
   });
   final expressions = <String, AppFeature>{
+    '약 이름 검색': AppFeature.medicationSearch,
+    'drug lookup': AppFeature.medicationSearch,
     '폰 글씨가 작아서 크게 보고 싶어': AppFeature.fontSize,
     '잘 안 보여요': AppFeature.fontSize,
     '글시 크게': AppFeature.fontSize,
