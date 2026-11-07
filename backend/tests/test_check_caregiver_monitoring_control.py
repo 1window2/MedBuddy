@@ -3,6 +3,8 @@
 
 from datetime import datetime
 
+from sqlalchemy.orm import Session
+
 from controls.check_caregiver_monitoring_control import CheckCaregiverMonitoring
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 
@@ -141,7 +143,7 @@ class _TodayMedicationControlStub:
 # - fk_db (Session): 외래 키 검사가 활성화된 시험용 DB 세션.
 # 반환값:
 # - 없음 (None).
-def test_monitoring_snapshot_batches_links_settings_and_active_schedules(fk_db) -> None:
+def test_monitoring_snapshot_batches_links_settings_and_active_schedules(fk_db: Session) -> None:
     """활성 환자 전체를 한 번 조회하고 필요한 일정만 포함하는지 검증한다."""
     links = [
         _PatientCaregiverLink(
@@ -194,7 +196,7 @@ def test_monitoring_snapshot_batches_links_settings_and_active_schedules(fk_db) 
 # - fk_db: Session; 외래 키가 활성화된 격리 데이터베이스.
 # 반환값:
 # - None.
-def test_home_snapshot_includes_disabled_patients_without_medication_details(fk_db) -> None:
+def test_home_snapshot_includes_disabled_patients_without_medication_details(fk_db: Session) -> None:
     """홈 일괄 조회는 알림 비활성 환자도 포함하되 저장 약 상세는 조회하지 않는다."""
     links = [
         _PatientCaregiverLink(id=i, patient_hash=patient,

@@ -2,15 +2,17 @@
 # 역할: 보호자 복용 확인 요청의 서버 문맥, 동작 지원 기기 분리와 전송 결과를 검증한다.
 
 """보호자 확인 요청의 서버 검증·Android 데이터 전달·재전송 식별자를 검증한다."""
+from collections.abc import Iterator
 from datetime import timedelta
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from boundaries.push_notification_boundary import FirebasePushNotificationBoundary
+from boundaries.push_notification_boundary import FirebasePushNotificationBoundary, PushDeliveryResult
 from controls.dispatch_chat_message_alert_control import DispatchChatMessageAlert
 from controls.manage_linked_chat_control import ManageLinkedChat  # noqa: F401
 from core.application_clock import application_today
@@ -34,7 +36,7 @@ from schemas.medication import PushTokenRegistration
 # 반환값:
 # - Iterator[tuple]; 세션·연동 ID·메시지 ID.
 @pytest.fixture
-def fixture():
+def fixture() -> Iterator[tuple[Session, int, int]]:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     with Session(engine) as db:
@@ -65,7 +67,7 @@ def fixture():
 # - kwargs: dict; 알림 발송의 추가 옵션.
 # 반환값:
 # - tuple; 푸시 호출 목록과 전달 결과.
-def dispatch(fixture, **kwargs):
+def dispatch(fixture: tuple[Session, int, int], **kwargs: str) -> tuple[list[dict[str, Any]], PushDeliveryResult]:
     db, link_id, message_id = fixture
     boundary = RecordingPushBoundary()
     result = DispatchChatMessageAlert(db, boundary).notify_new_message(
@@ -81,7 +83,7 @@ def dispatch(fixture, **kwargs):
 # - fixture: tuple[Session, int, int]; 격리 세션·연동 ID·확인 요청 메시지 ID.
 # 반환값:
 # - None.
-def test_action_payload_uses_persisted_context_and_stable_event(fixture):
+def test_action_payload_uses_persisted_context_and_stable_event(fixture: tuple[Session, int, int]) -> None:
     first, _ = dispatch(fixture)
     second, _ = dispatch(fixture)
     assert len(first) == 2
@@ -107,7 +109,7 @@ def test_action_payload_uses_persisted_context_and_stable_event(fixture):
 # 반환값:
 # - None.
 @pytest.mark.parametrize("change", ["yesterday", "future", "invalid_slot", "patient_sender", "text"])
-def test_untrusted_or_stale_context_has_no_completion_action(fixture, change):
+def test_untrusted_or_stale_context_has_no_completion_action(fixture: tuple[Session, int, int], change: str) -> None:
     db, _, message_id = fixture
     row = db.get(_ChatMessage, message_id)
     context = dict(row.context_payload["schedule_context"])
@@ -135,7 +137,7 @@ def test_untrusted_or_stale_context_has_no_completion_action(fixture, change):
 # 반환값:
 # - None.
 @pytest.mark.parametrize("change", ["read", "deleted", "hidden", "unlinked", "disabled"])
-def test_suppressed_request_never_produces_an_action(fixture, change):
+def test_suppressed_request_never_produces_an_action(fixture: tuple[Session, int, int], change: str) -> None:
     db, link_id, message_id = fixture
     row = db.get(_ChatMessage, message_id)
     if change == "read":
@@ -159,7 +161,7 @@ def test_suppressed_request_never_produces_an_action(fixture, change):
 # - fixture: tuple[Session, int, int]; isolated session, link and slot-check message IDs.
 # Returns:
 # - None.
-def test_type_only_keeps_private_preview_out_of_action_data(fixture):
+def test_type_only_keeps_private_preview_out_of_action_data(fixture: tuple[Session, int, int]) -> None:
     db, _, _ = fixture
     db.add(_UserSetting(user_hash="patient", notification_detail_mode="type_only"))
     db.commit()
@@ -175,7 +177,7 @@ def test_type_only_keeps_private_preview_out_of_action_data(fixture):
 # - 없음.
 # 반환값:
 # - None.
-def test_gateway_uses_high_priority_data_only_for_slot_check_action():
+def test_gateway_uses_high_priority_data_only_for_slot_check_action() -> None:
     gateway = FirebasePushNotificationBoundary.__new__(FirebasePushNotificationBoundary)
     gateway._app = object()
     response = SimpleNamespace(success_count=1, responses=[SimpleNamespace(success=True)])
@@ -194,7 +196,7 @@ def test_gateway_uses_high_priority_data_only_for_slot_check_action():
 # - fixture: tuple[Session, int, int]; 격리 세션·연동 ID·확인 요청 메시지 ID.
 # 반환값:
 # - None.
-def test_new_capability_is_independent_and_legacy_reregistration_resets_it(fixture):
+def test_new_capability_is_independent_and_legacy_reregistration_resets_it(fixture: tuple[Session, int, int]) -> None:
     db, _, _ = fixture
     control = ManagePushToken(db)
     token = "separate-capability-token"
@@ -218,7 +220,7 @@ def test_new_capability_is_independent_and_legacy_reregistration_resets_it(fixtu
 # - fixture: tuple[Session, int, int]; 격리 세션·연동 ID·확인 요청 메시지 ID.
 # 반환값:
 # - None.
-def test_capability_registration_route_uses_authenticated_owner(fixture):
+def test_capability_registration_route_uses_authenticated_owner(fixture: tuple[Session, int, int]) -> None:
     from api.router import register_push_token
     from entities.authenticated_principal_entity import AuthenticatedPrincipal
     db, _, _ = fixture
@@ -240,7 +242,7 @@ def test_capability_registration_route_uses_authenticated_owner(fixture):
 # - fixture: tuple[Session, int, int]; 격리 세션·연동 ID·확인 요청 메시지 ID.
 # 반환값:
 # - None.
-def test_mixed_capability_delivery_preserves_retryable_and_invalid_results(fixture):
+def test_mixed_capability_delivery_preserves_retryable_and_invalid_results(fixture: tuple[Session, int, int]) -> None:
     db, link_id, message_id = fixture
     boundary = RecordingPushBoundary(invalid_tokens=("legacy-android",), retryable=1)
     result = DispatchChatMessageAlert(db, boundary).notify_new_message(
@@ -258,7 +260,7 @@ def test_mixed_capability_delivery_preserves_retryable_and_invalid_results(fixtu
 # - fixture: tuple[Session, int, int]; 격리 세션·연동 ID·확인 요청 메시지 ID.
 # 반환값:
 # - None.
-def test_old_action_capability_alone_keeps_os_notification(fixture):
+def test_old_action_capability_alone_keeps_os_notification(fixture: tuple[Session, int, int]) -> None:
     db, _, _ = fixture
     db.query(_DevicePushToken).update({"supports_slot_check_actions": False})
     db.commit()

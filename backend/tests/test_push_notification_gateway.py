@@ -18,7 +18,7 @@ from boundaries.push_notification_boundary import FirebasePushNotificationBounda
 # 반환값:
 # - FirebasePushNotificationBoundary; 전송 함수만 테스트에서 교체할 경계.
 @pytest.fixture
-def gateway():
+def gateway() -> FirebasePushNotificationBoundary:
     boundary = FirebasePushNotificationBoundary.__new__(FirebasePushNotificationBoundary)
     boundary._app = object()
     return boundary
@@ -37,7 +37,7 @@ def gateway():
     ("caregiver_dose_completed", "as_needed"),
     *[("caregiver_slot_completed", slot) for slot in ("morning", "lunch", "evening", "bedtime")],
 ])
-def test_completion_retry_reuses_platform_identifiers_but_new_event_is_distinct(gateway, kind, slot):
+def test_completion_retry_reuses_platform_identifiers_but_new_event_is_distinct(gateway: FirebasePushNotificationBoundary, kind: str, slot: str) -> None:
     partial = SimpleNamespace(success_count=1, responses=[
         SimpleNamespace(success=True),
         SimpleNamespace(success=False, exception=messaging.QuotaExceededError("retry")),
@@ -87,7 +87,7 @@ def test_completion_retry_reuses_platform_identifiers_but_new_event_is_distinct(
 @pytest.mark.parametrize(("kind", "slot"), [
     ("caregiver_dose_completed", "as_needed"), ("caregiver_slot_completed", "morning"),
 ])
-def test_invalid_or_missing_completion_key_leaves_platform_identifiers_unset(gateway, event_key, kind, slot):
+def test_invalid_or_missing_completion_key_leaves_platform_identifiers_unset(gateway: FirebasePushNotificationBoundary, event_key: str | None, kind: str, slot: str) -> None:
     payload = {"type": kind, "slot_key": slot}
     if event_key is not None:
         payload["event_key"] = event_key
@@ -119,7 +119,7 @@ def test_invalid_or_missing_completion_key_leaves_platform_identifiers_unset(gat
     {"type": "caregiver_slot_missed", "slot_key": "morning", "action_version": "1"},
     {"type": "linked_chat_message", "slot_key": "as_needed"},
 ])
-def test_non_prn_payload_behavior_is_unchanged_even_with_valid_key(gateway, payload):
+def test_non_prn_payload_behavior_is_unchanged_even_with_valid_key(gateway: FirebasePushNotificationBoundary, payload: dict[str, str]) -> None:
     payload = {**payload, "event_key": "ab" * 32}
     response = SimpleNamespace(success_count=1, responses=[SimpleNamespace(success=True)])
     with patch("boundaries.push_notification_boundary.messaging.send_each_for_multicast", return_value=response) as send:
@@ -145,7 +145,7 @@ def test_non_prn_payload_behavior_is_unchanged_even_with_valid_key(gateway, payl
 # - gateway: FirebasePushNotificationBoundary; 실제 Firebase 초기화 없이 만든 전송 경계.
 # 반환값:
 # - None.
-def test_chat_updates_one_notification_per_conversation_with_count(gateway):
+def test_chat_updates_one_notification_per_conversation_with_count(gateway: FirebasePushNotificationBoundary) -> None:
     response = SimpleNamespace(success_count=1, responses=[SimpleNamespace(success=True)])
     tag = "medbuddy-chat-" + "a1" * 16
     with patch("boundaries.push_notification_boundary.messaging.send_each_for_multicast", return_value=response) as send:

@@ -3,17 +3,21 @@
 
 import sys
 import unittest
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
+from sqlite3 import Cursor
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import ANY, patch
 
 import pytest
 from firebase_admin import exceptions as firebase_exceptions
 from firebase_admin import messaging
 from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Connection, ExecutionContext
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -837,7 +841,7 @@ _MISSED_TEXT = {
 # Returns:
 # - None.
 def _seed_caregiver_alert_scene(
-    db,
+    db: Session,
     *,
     notification_type: str,
     user_setting: dict[str, object] | None = None,
@@ -898,7 +902,7 @@ def _seed_caregiver_alert_scene(
 # Returns:
 # - PushDeliveryResult; aggregated missed-dose delivery outcome.
 def _notify_missed_morning(
-    db, boundary, alert_context: dict[str, str] | None = None,
+    db: Session, boundary: RecordingPushBoundary, alert_context: dict[str, str] | None = None,
 ) -> PushDeliveryResult:
     return DispatchCaregiverAlert(db, boundary).notifySlotMissed(
         caregiver_hash=_CAREGIVER,
@@ -923,7 +927,7 @@ def _notify_missed_morning(
     ("user_setting", "language", "show_details"), _RECIPIENT_PREFERENCE_CASES,
 )
 def test_completed_alert_follows_recipient_language_and_detail_mode(
-    fk_db, user_setting, language, show_details,
+    fk_db: Session, user_setting: dict[str, object] | None, language: str, show_details: bool,
 ) -> None:
     _seed_caregiver_alert_scene(
         fk_db,
@@ -965,7 +969,7 @@ def test_completed_alert_follows_recipient_language_and_detail_mode(
     ("user_setting", "language", "show_details"), _RECIPIENT_PREFERENCE_CASES,
 )
 def test_missed_alert_follows_recipient_language_and_detail_mode(
-    fk_db, user_setting, language, show_details,
+    fk_db: Session, user_setting: dict[str, object] | None, language: str, show_details: bool,
 ) -> None:
     _seed_caregiver_alert_scene(
         fk_db,
@@ -997,7 +1001,7 @@ def test_missed_alert_follows_recipient_language_and_detail_mode(
 # - fk_db: Session; isolated database with foreign keys enabled.
 # Returns:
 # - None.
-def test_missed_alert_sends_action_data_only_to_action_capable_devices(fk_db) -> None:
+def test_missed_alert_sends_action_data_only_to_action_capable_devices(fk_db: Session) -> None:
     _seed_caregiver_alert_scene(
         fk_db,
         notification_type=CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE,
@@ -1049,7 +1053,7 @@ def test_missed_alert_sends_action_data_only_to_action_capable_devices(fk_db) ->
     ),
 )
 def test_caregiver_switch_blocks_both_caregiver_alerts_but_chat_switch_does_not(
-    fk_db, notification_type,
+    fk_db: Session, notification_type: str,
 ) -> None:
     _seed_caregiver_alert_scene(
         fk_db,
@@ -1106,7 +1110,7 @@ _OUTBOX_PUSH_COUNT = {
 # Returns:
 # - Iterator[sessionmaker]; session factory, with the engine disposed after use.
 @pytest.fixture
-def file_sessions(tmp_path):
+def file_sessions(tmp_path: Path) -> Iterator[sessionmaker[Session]]:
     engine = make_engine(tmp_path)
     try:
         yield make_session_factory(engine)
@@ -1123,7 +1127,7 @@ def file_sessions(tmp_path):
 # - notification_type: str; completed-dose or missed-dose alert mode.
 # Returns:
 # - PushDeliveryResult; aggregated delivery result.
-def _send_alert(db, boundary, notification_type: str) -> PushDeliveryResult:
+def _send_alert(db: Session, boundary: RecordingPushBoundary, notification_type: str) -> PushDeliveryResult:
     if notification_type == CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED:
         return DispatchCaregiverAlert(db, boundary).notifySlotCompleted(
             patient_hash=_PATIENT, slot_key="morning",
@@ -1139,7 +1143,7 @@ def _send_alert(db, boundary, notification_type: str) -> PushDeliveryResult:
 # - notification_type: str; completed-dose or missed-dose alert mode.
 # Returns:
 # - int; persisted outbox identifier.
-def _queue_outbox_event(db, notification_type: str) -> int:
+def _queue_outbox_event(db: Session, notification_type: str) -> int:
     today = application_today()
     if notification_type == CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED:
         db.query(_SavedMedication).update(
@@ -1175,7 +1179,7 @@ def _queue_outbox_event(db, notification_type: str) -> int:
 # 반환값:
 # - None.
 @pytest.mark.parametrize("late_link", [False, True])
-def test_completed_outbox_retry_keeps_event_identity_and_new_event_does_not_collapse(fk_db, late_link):
+def test_completed_outbox_retry_keeps_event_identity_and_new_event_does_not_collapse(fk_db: Session, late_link: bool) -> None:
     _seed_caregiver_alert_scene(fk_db, notification_type=CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED)
     outbox_id = _queue_outbox_event(fk_db, CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED)
     row = fk_db.get(_CaregiverAlertOutbox, outbox_id)
@@ -1231,7 +1235,7 @@ def test_completed_outbox_retry_keeps_event_identity_and_new_event_does_not_coll
 # - count: int; number of upcoming commits to fail.
 # Returns:
 # - None.
-def _fail_next_commits(db, count: int = 1) -> None:
+def _fail_next_commits(db: Session, count: int = 1) -> None:
     original_commit = db.commit
     remaining = [count]
 
@@ -1259,7 +1263,7 @@ def _fail_next_commits(db, count: int = 1) -> None:
 # - count: int; number of post-send commits to fail.
 # Returns:
 # - Callable; hook accepted by RecordingPushBoundary.on_send.
-def _fail_commits_after_first_send(db, count: int = 1):
+def _fail_commits_after_first_send(db: Session, count: int = 1) -> Callable[[dict[str, object]], None]:
     armed: list[bool] = []
 
     # Function Name: hook
@@ -1287,7 +1291,7 @@ def _fail_commits_after_first_send(db, count: int = 1):
 # - None.
 @pytest.mark.parametrize("notification_type", _ALERT_MODES)
 def test_caregiver_push_is_sent_after_the_session_released_its_transaction(
-    fk_db, notification_type,
+    fk_db: Session, notification_type: str,
 ) -> None:
     _seed_caregiver_alert_scene(fk_db, notification_type=notification_type)
     open_transactions: list[bool] = []
@@ -1311,7 +1315,7 @@ def test_caregiver_push_is_sent_after_the_session_released_its_transaction(
 # - None.
 @pytest.mark.parametrize("notification_type", _ALERT_MODES)
 def test_outbox_event_is_claimed_before_send_and_recorded_after_it(
-    file_sessions, notification_type,
+    file_sessions: sessionmaker[Session], notification_type: str,
 ) -> None:
     db = file_sessions()
     observer = file_sessions()
@@ -1370,7 +1374,7 @@ def test_outbox_event_is_claimed_before_send_and_recorded_after_it(
 # - None.
 @pytest.mark.parametrize("notification_type", _ALERT_MODES)
 def test_rejected_tokens_are_disabled_in_a_committed_transaction(
-    file_sessions, notification_type,
+    file_sessions: sessionmaker[Session], notification_type: str,
 ) -> None:
     db = file_sessions()
     observer = file_sessions()
@@ -1409,7 +1413,7 @@ def test_rejected_tokens_are_disabled_in_a_committed_transaction(
 # - None.
 @pytest.mark.parametrize("notification_type", _ALERT_MODES)
 def test_delivered_event_stays_sent_when_token_cleanup_fails(
-    fk_db, notification_type,
+    fk_db: Session, notification_type: str,
 ) -> None:
     _seed_caregiver_alert_scene(fk_db, notification_type=notification_type)
     outbox_id = _queue_outbox_event(fk_db, notification_type)
@@ -1442,7 +1446,7 @@ def test_delivered_event_stays_sent_when_token_cleanup_fails(
 # - None.
 @pytest.mark.parametrize("notification_type", _ALERT_MODES)
 def test_delivered_event_is_recorded_on_the_second_attempt(
-    fk_db, notification_type,
+    fk_db: Session, notification_type: str,
 ) -> None:
     _seed_caregiver_alert_scene(fk_db, notification_type=notification_type)
     outbox_id = _queue_outbox_event(fk_db, notification_type)
@@ -1470,7 +1474,7 @@ def test_delivered_event_is_recorded_on_the_second_attempt(
 # Returns:
 # - None.
 def test_delivered_event_keeps_its_lease_when_the_result_cannot_be_written(
-    fk_db,
+    fk_db: Session,
 ) -> None:
     notification_type = CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED
     _seed_caregiver_alert_scene(fk_db, notification_type=notification_type)
@@ -1502,7 +1506,7 @@ def test_delivered_event_keeps_its_lease_when_the_result_cannot_be_written(
 # - None.
 @pytest.mark.parametrize("notification_type", _ALERT_MODES)
 def test_event_whose_send_failed_is_retried_and_never_recorded_as_sent(
-    fk_db, notification_type,
+    fk_db: Session, notification_type: str,
 ) -> None:
     _seed_caregiver_alert_scene(fk_db, notification_type=notification_type)
     outbox_id = _queue_outbox_event(fk_db, notification_type)
@@ -1535,7 +1539,7 @@ def test_event_whose_send_failed_is_retried_and_never_recorded_as_sent(
 # - fk_db: Session; isolated database with foreign keys enabled.
 # Returns:
 # - None.
-def test_legacy_setting_without_slot_json_receives_completed_alert(fk_db) -> None:
+def test_legacy_setting_without_slot_json_receives_completed_alert(fk_db: Session) -> None:
     _seed_caregiver_alert_scene(fk_db, notification_type="enable", slot_settings="{}")
     boundary = RecordingPushBoundary()
 
@@ -1557,7 +1561,7 @@ def test_legacy_setting_without_slot_json_receives_completed_alert(fk_db) -> Non
 # - linked_at: datetime; creation timestamp for the new link.
 # Returns:
 # - int; newly persisted link identifier.
-def _link_late_caregiver(db, linked_at: datetime) -> int:
+def _link_late_caregiver(db: Session, linked_at: datetime) -> int:
     link = _PatientCaregiverLink(
         patient_hash=_PATIENT, caregiver_hash=_OTHER_USER, linked=True,
         created_at=linked_at,
@@ -1593,7 +1597,7 @@ def _link_late_caregiver(db, linked_at: datetime) -> int:
 # - fk_db: Session; isolated database with foreign keys enabled.
 # Returns:
 # - None.
-def test_caregiver_linked_after_the_sent_completion_alert_gets_it_once(fk_db) -> None:
+def test_caregiver_linked_after_the_sent_completion_alert_gets_it_once(fk_db: Session) -> None:
     _seed_caregiver_alert_scene(
         fk_db, notification_type=CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
     )
@@ -1646,7 +1650,7 @@ def test_caregiver_linked_after_the_sent_completion_alert_gets_it_once(fk_db) ->
 # - fk_db: Session; isolated database with foreign keys enabled.
 # Returns:
 # - None.
-def test_link_older_than_the_sent_completion_alert_gets_no_second_alert(fk_db) -> None:
+def test_link_older_than_the_sent_completion_alert_gets_no_second_alert(fk_db: Session) -> None:
     _seed_caregiver_alert_scene(
         fk_db, notification_type=CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
     )
@@ -1677,7 +1681,7 @@ def test_link_older_than_the_sent_completion_alert_gets_no_second_alert(fk_db) -
 # - fk_db: Session; isolated database with foreign keys enabled.
 # Returns:
 # - None.
-def test_late_link_event_undone_before_delivery_is_sent_after_recompletion(fk_db) -> None:
+def test_late_link_event_undone_before_delivery_is_sent_after_recompletion(fk_db: Session) -> None:
     _seed_caregiver_alert_scene(
         fk_db, notification_type=CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
     )
@@ -1712,7 +1716,7 @@ def test_late_link_event_undone_before_delivery_is_sent_after_recompletion(fk_db
 # - monkeypatch: pytest.MonkeyPatch; restores temporary dependency replacements.
 # Returns:
 # - None.
-def test_legacy_missed_deadline_setting_is_queued_and_delivered(fk_db, monkeypatch) -> None:
+def test_legacy_missed_deadline_setting_is_queued_and_delivered(fk_db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "CAREGIVER_MISSED_DOSE_GRACE_MINUTES", 0)
     _seed_caregiver_alert_scene(
         fk_db,
@@ -1749,7 +1753,7 @@ def test_legacy_missed_deadline_setting_is_queued_and_delivered(fk_db, monkeypat
 # Returns:
 # - None.
 @pytest.mark.parametrize("notification_type", _ALERT_MODES)
-def test_slot_disabled_by_the_caregiver_gets_no_alert(fk_db, notification_type) -> None:
+def test_slot_disabled_by_the_caregiver_gets_no_alert(fk_db: Session, notification_type: str) -> None:
     _seed_caregiver_alert_scene(
         fk_db,
         notification_type=notification_type,
@@ -1779,7 +1783,7 @@ def test_slot_disabled_by_the_caregiver_gets_no_alert(fk_db, notification_type) 
 # - fk_db: Session; isolated database with foreign keys enabled.
 # Returns:
 # - None.
-def test_missed_event_delivery_stays_within_statement_budget(fk_db) -> None:
+def test_missed_event_delivery_stays_within_statement_budget(fk_db: Session) -> None:
     notification_type = CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE
     _seed_caregiver_alert_scene(fk_db, notification_type=notification_type)
     outbox_id = _queue_outbox_event(fk_db, notification_type)
@@ -1800,7 +1804,7 @@ def test_missed_event_delivery_stays_within_statement_budget(fk_db) -> None:
     # - executemany: bool; batch flag, unused.
     # Returns:
     # - None.
-    def record_statement(conn, cursor, statement, parameters, context, executemany):
+    def record_statement(conn: Connection, cursor: Cursor, statement: str, parameters: Sequence[Any] | Mapping[str, Any], context: ExecutionContext, executemany: bool) -> None:
         statements.append(" ".join(statement.split()))
 
     event.listen(engine, "before_cursor_execute", record_statement)

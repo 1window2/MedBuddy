@@ -1,11 +1,13 @@
 # 파일명: test_disabled_reminder_time.py
 # 역할: 알림 해제 시 시간 보존·변경의 원자성, 환자 범위와 이전 요청 호환성을 검증한다.
 
+from collections.abc import Iterator
 from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from api.dependencies import (
     get_authenticated_principal,
@@ -30,7 +32,7 @@ from support.db import seed_account
 # 반환값:
 # - Iterator[tuple]; 클라이언트와 알림 컨트롤.
 @pytest.fixture
-def alarm_api(fk_db):
+def alarm_api(fk_db: Session) -> Iterator[tuple[TestClient, SetNotification]]:
     seed_account(fk_db, "patient-a", "patient-b")
     principal = AuthenticatedPrincipal(
         subject="patient-a", issuer="test", user_hash="patient-a",
@@ -56,7 +58,7 @@ def alarm_api(fk_db):
 # 반환값:
 # - None.
 @pytest.mark.parametrize("initially_enabled", [None, False, True])
-def test_disable_saves_time_atomically_and_keeps_patient_scope(alarm_api, initially_enabled):
+def test_disable_saves_time_atomically_and_keeps_patient_scope(alarm_api: tuple[TestClient, SetNotification], initially_enabled: bool | None) -> None:
     client, control = alarm_api
     if initially_enabled is not None:
         control.saveNotificationSetting("patient-a", "morning", 18, 55)
@@ -91,7 +93,7 @@ def test_disable_saves_time_atomically_and_keeps_patient_scope(alarm_api, initia
 # 반환값:
 # - None.
 @pytest.mark.parametrize("body", [None, {}, {"hour": None, "minute": None}])
-def test_legacy_disable_without_time_preserves_saved_time(alarm_api, body):
+def test_legacy_disable_without_time_preserves_saved_time(alarm_api: tuple[TestClient, SetNotification], body: dict[str, int | None] | None) -> None:
     client, control = alarm_api
     control.saveNotificationSetting("patient-a", "morning", 18, 55)
     response = client.patch("/notification/settings/morning/disable", json=body)
@@ -117,7 +119,7 @@ def test_legacy_disable_without_time_preserves_saved_time(alarm_api, body):
     {"hour": None, "minute": 5},
     {"hour": "invalid", "minute": 5},
 ])
-def test_invalid_disabled_time_is_rejected_before_mutation(alarm_api, body):
+def test_invalid_disabled_time_is_rejected_before_mutation(alarm_api: tuple[TestClient, SetNotification], body: dict[str, int | str | None]) -> None:
     client, control = alarm_api
     control.saveNotificationSetting("patient-a", "morning", 18, 55)
     response = client.patch("/notification/settings/morning/disable", json=body)
@@ -135,7 +137,7 @@ def test_invalid_disabled_time_is_rejected_before_mutation(alarm_api, body):
 # 반환값:
 # - None.
 @pytest.mark.parametrize("time", [(24, 0), (19, 60), (None, 5)])
-def test_control_also_validates_disabled_time(alarm_api, time):
+def test_control_also_validates_disabled_time(alarm_api: tuple[TestClient, SetNotification], time: tuple[int | None, int]) -> None:
     _, control = alarm_api
     with pytest.raises(HTTPException) as error:
         control.disableAlarmSetting("patient-a", "morning", hour=time[0], minute=time[1])
@@ -154,7 +156,7 @@ def test_control_also_validates_disabled_time(alarm_api, time):
 # - None.
 @pytest.mark.parametrize("initially_enabled", [None, False, True])
 @pytest.mark.parametrize("body", [{"hour": 19}, {"hour": 19, "minute": None}])
-def test_hour_only_disable_defaults_to_zero_minutes(alarm_api, initially_enabled, body):
+def test_hour_only_disable_defaults_to_zero_minutes(alarm_api: tuple[TestClient, SetNotification], initially_enabled: bool | None, body: dict[str, int | None]) -> None:
     client, control = alarm_api
     if initially_enabled is not None:
         control.saveNotificationSetting("patient-a", "morning", 18, 55)
@@ -174,7 +176,7 @@ def test_hour_only_disable_defaults_to_zero_minutes(alarm_api, initially_enabled
 # - alarm_api: tuple[TestClient, SetNotification]; 인증된 환자의 알림 HTTP 클라이언트와 컨트롤.
 # 반환값:
 # - None.
-def test_control_hour_only_disable_keeps_upstream_positional_contract(alarm_api):
+def test_control_hour_only_disable_keeps_upstream_positional_contract(alarm_api: tuple[TestClient, SetNotification]) -> None:
     _, control = alarm_api
     control.saveNotificationSetting("patient-a", "morning", 18, 55)
     saved = control.disableAlarmSetting("patient-a", "morning", 19)["data"]
@@ -188,7 +190,7 @@ def test_control_hour_only_disable_keeps_upstream_positional_contract(alarm_api)
 # - alarm_api: tuple[TestClient, SetNotification]; 인증된 환자의 알림 HTTP 클라이언트와 컨트롤.
 # 반환값:
 # - None.
-def test_disable_conflict_recovery_keeps_new_time(alarm_api):
+def test_disable_conflict_recovery_keeps_new_time(alarm_api: tuple[TestClient, SetNotification]) -> None:
     _, control = alarm_api
     control.saveNotificationSetting("patient-a", "morning", 18, 55)
     find = control._find_setting
@@ -202,7 +204,7 @@ def test_disable_conflict_recovery_keeps_new_time(alarm_api):
     # - slot: str; 알림 시간대 키.
     # 반환값:
     # - 첫 호출은 None, 이후에는 실제 설정 조회 결과.
-    def miss_first(patient, slot):
+    def miss_first(patient: str, slot: str) -> _MedicationAlarm | None:
         nonlocal calls
         calls += 1
         return None if calls == 1 else find(patient, slot)
@@ -222,7 +224,7 @@ def test_disable_conflict_recovery_keeps_new_time(alarm_api):
 # - alarm_api: tuple[TestClient, SetNotification]; 인증된 환자의 알림 HTTP 클라이언트와 컨트롤.
 # 반환값:
 # - None.
-def test_failed_commit_rolls_back_both_time_and_enabled_state(alarm_api):
+def test_failed_commit_rolls_back_both_time_and_enabled_state(alarm_api: tuple[TestClient, SetNotification]) -> None:
     _, control = alarm_api
     control.saveNotificationSetting("patient-a", "morning", 18, 55)
     with patch.object(control.db, "commit", side_effect=RuntimeError("test failure")):

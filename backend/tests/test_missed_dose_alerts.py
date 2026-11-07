@@ -5,6 +5,7 @@ import sys
 import unittest
 from datetime import date, datetime, timedelta, UTC
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 from fastapi import HTTPException
@@ -44,7 +45,7 @@ from entities.patient_caregiver_link_entity import (  # noqa: E402
 from entities.saved_medication_entity import _SavedMedication  # noqa: E402
 from entities.user_account_entity import _UserAccount  # noqa: E402
 from controls.manage_caregiver_alert_control import ManageCaregiverAlert
-from controls.manage_linked_chat_control import ManageLinkedChat
+from controls.manage_linked_chat_control import ChatSendResult, ManageLinkedChat
 from entities.chat_message_entity import _ChatMessage
 from entities.user_setting_entity import _UserSetting
 
@@ -260,7 +261,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - None.
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
         self.now = self.current_time.astimezone(UTC).replace(tzinfo=None)
         for target, value in (
@@ -289,7 +290,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - None.
-    def complete(self):
+    def complete(self) -> None:
         self.db.add(_MedicationCompletion(
             saved_medication_id=self.medication.id, patient_hash="patient-a",
             schedule_date=self.schedule_date, slot_key="lunch", completed=True,
@@ -303,7 +304,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - dict; snooze receipt, or HTTPException when the action is no longer valid.
-    def snooze(self):
+    def snooze(self) -> dict[str, Any]:
         return self.actions.snooze(self.root.id, "caregiver-a")
 
     # Function Name: chat
@@ -313,7 +314,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - overrides: dict; fields replacing the default alert-linked message request.
     # Returns:
     # - Chat send result; invalid source or scope raises HTTPException.
-    def chat(self, **overrides):
+    def chat(self, **overrides: str | int) -> ChatSendResult:
         values = dict(
             link_id=self.db.query(_PatientCaregiverLink).one().id,
             sender_hash="caregiver-a", client_message_id="random_request_1",
@@ -331,7 +332,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - outcome: str; expected sent or skipped processing result.
     # Returns:
     # - list[dict]; captured push calls.
-    def deliver(self, row_id, outcome="sent"):
+    def deliver(self, row_id: int, outcome: str = "sent") -> list[dict[str, Any]]:
         push = _RecordingPushBoundary()
         with patch("controls.process_caregiver_alert_outbox_control.utc_now",
                    return_value=self.now + timedelta(minutes=10)):
@@ -352,7 +353,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - None.
-    def test_repeat_snooze_is_one_new_row_without_completion_or_setting_changes(self):
+    def test_repeat_snooze_is_one_new_row_without_completion_or_setting_changes(self) -> None:
         setting = self.db.query(_CaregiverNotification).one().slot_settings
         first, repeat = self.snooze(), self.snooze()
         self.assertTrue(first["created"])
@@ -372,7 +373,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - None.
-    def test_snooze_child_cannot_be_snoozed_until_released_then_has_new_cycle(self):
+    def test_snooze_child_cannot_be_snoozed_until_released_then_has_new_cycle(self) -> None:
         child = self.snooze()["data"]["alert_id"]
         with self.assertRaises(HTTPException):
             self.actions.snooze(child, "caregiver-a")
@@ -393,7 +394,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - None.
-    def test_completion_within_ten_minutes_suppresses_fcm_and_retry_is_idempotent(self):
+    def test_completion_within_ten_minutes_suppresses_fcm_and_retry_is_idempotent(self) -> None:
         receipt = self.snooze()
         self.complete()
         self.assertFalse(self.snooze()["created"])
@@ -406,7 +407,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - None.
-    def test_completed_source_rejects_both_new_actions(self):
+    def test_completed_source_rejects_both_new_actions(self) -> None:
         self.complete()
         for action in (self.snooze, self.chat):
             with self.assertRaises(HTTPException) as error:
@@ -421,7 +422,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - None.
-    def test_next_day_rejects_actions_and_suppresses_queued_delivery(self):
+    def test_next_day_rejects_actions_and_suppresses_queued_delivery(self) -> None:
         child = self.snooze()["data"]["alert_id"]
         with patch("controls.dispatch_caregiver_alert_control.application_now",
                    return_value=self.current_time + timedelta(days=1)):
@@ -440,7 +441,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - None.
-    def test_unlinked_source_rejects_actions_and_queued_delivery(self):
+    def test_unlinked_source_rejects_actions_and_queued_delivery(self) -> None:
         child = self.snooze()["data"]["alert_id"]
         self.db.query(_PatientCaregiverLink).one().linked = False
         self.db.commit()
@@ -456,7 +457,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - None.
-    def test_owner_and_slot_cannot_be_forged(self):
+    def test_owner_and_slot_cannot_be_forged(self) -> None:
         with self.assertRaises(HTTPException):
             self.actions.snooze(self.root.id, "patient-a")
         for overrides in ({"sender_hash": "patient-a"}, {"slot_key": "morning"}, {"link_id": 99}):
@@ -470,7 +471,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - None.
-    def test_chat_retries_and_snooze_cycles_share_original_message(self):
+    def test_chat_retries_and_snooze_cycles_share_original_message(self) -> None:
         first = self.chat()
         self.assertTrue(first.created)
         child = self.snooze()["data"]["alert_id"]
@@ -490,7 +491,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - None.
-    def test_delivery_rechecks_global_preference_and_active_tokens(self):
+    def test_delivery_rechecks_global_preference_and_active_tokens(self) -> None:
         child = self.snooze()["data"]["alert_id"]
         self.db.add(_UserSetting(user_hash="caregiver-a", caregiver_notifications_enabled=False))
         self.db.commit()
@@ -503,7 +504,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - None.
-    def test_no_active_tokens_means_no_fcm(self):
+    def test_no_active_tokens_means_no_fcm(self) -> None:
         child = self.snooze()["data"]["alert_id"]
         self.db.query(_DevicePushToken).one().enabled = False
         self.db.commit()
@@ -516,7 +517,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - None.
-    def test_capable_devices_get_context_and_legacy_devices_keep_os_notification(self):
+    def test_capable_devices_get_context_and_legacy_devices_keep_os_notification(self) -> None:
         self.db.add(_DevicePushToken(user_hash="caregiver-a", token="new-device-token", platform="android",
                                      enabled=True, supports_caregiver_actions=True))
         self.db.commit()
@@ -536,7 +537,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - None.
-    def test_local_delivery_reader_only_exposes_released_current_events(self):
+    def test_local_delivery_reader_only_exposes_released_current_events(self) -> None:
         child = self.snooze()["data"]["alert_id"]
         self.assertEqual(len(self.actions.localDeliveries("caregiver-a")), 1)
         self.deliver(child)
@@ -552,7 +553,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - 없음.
     # 반환값:
     # - None.
-    def test_migration_alone_recovers_missing_capability_and_local_snooze_delivery(self):
+    def test_migration_alone_recovers_missing_capability_and_local_snooze_delivery(self) -> None:
         from alembic import command
         from alembic.config import Config
         from boundaries.push_notification_boundary import DisabledPushNotificationBoundary
@@ -617,7 +618,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - None.
-    def test_partial_delivery_failure_still_allows_received_notification_action(self):
+    def test_partial_delivery_failure_still_allows_received_notification_action(self) -> None:
         self.root.status = "failed"
         self.root.attempt_count = 1
         self.root.available_at = self.now + timedelta(minutes=1)
@@ -631,7 +632,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - None.
-    def test_snooze_http_uses_verified_principal_and_checks_auth_app_check(self):
+    def test_snooze_http_uses_verified_principal_and_checks_auth_app_check(self) -> None:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
         from api.router import router
@@ -665,7 +666,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
     # - None.
     # Returns:
     # - None.
-    def test_chat_http_broadcasts_and_queues_durable_push_once(self):
+    def test_chat_http_broadcasts_and_queues_durable_push_once(self) -> None:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
         from unittest.mock import AsyncMock

@@ -4,13 +4,16 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 import hashlib
+from pathlib import Path
 from threading import Barrier
+from typing import Any, NoReturn
 from unittest.mock import patch
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks, HTTPException
 import pytest
+from sqlalchemy.orm import Session
 
 from api.medication_care_router import update_history
 from controls.check_caregiver_monitoring_control import CheckCaregiverMonitoring
@@ -46,7 +49,7 @@ from test_medication_care import medication, principal, report
 # 반환값:
 # - int; 생성된 필요시 약품 ID.
 @pytest.fixture
-def scene(fk_db):
+def scene(fk_db: Session) -> int:
     med = medication(fk_db, dosing_mode="as_needed")
     seed_account(fk_db, "caregiver-a")
     fk_db.add(_PatientCaregiverLink(patient_hash="patient-a", caregiver_hash="caregiver-a", linked=True))
@@ -70,7 +73,7 @@ def scene(fk_db):
 # - values: dict; 복용 보고 요청의 추가 필드.
 # 반환값:
 # - tuple[str, dict]; 슬롯 식별자와 이력 갱신 응답. 컨트롤 오류는 전파.
-def take(db, medication_id, *, slot=None, day=None, **values):
+def take(db: Session, medication_id: int, *, slot: str | None = None, day: date | None = None, **values: Any) -> tuple[str, dict[str, Any]]:
     slot = slot or f"as_needed:{uuid4()}"
     response = ManageMedicationCare(db).update_history(
         principal(), medication_id, day or application_today(), slot, report(**values),
@@ -85,7 +88,7 @@ def take(db, medication_id, *, slot=None, day=None, **values):
 # - db: Session; 격리 데이터베이스.
 # 반환값:
 # - list[dict]; 환자별 감시 정보.
-def snapshot(db):
+def snapshot(db: Session) -> list[dict[str, Any]]:
     return CheckCaregiverMonitoring(db).requestMonitoringSnapshot("caregiver-a")["data"]["patients"]
 
 
@@ -99,7 +102,7 @@ def snapshot(db):
 # - None.
 @pytest.mark.parametrize("legacy_mode", ["enable", "missed_deadline", "disabled"])
 @pytest.mark.parametrize("raw", ["{}", "not-json", '{"lunch":{"notification_type":"disabled"}}'])
-def test_missing_prn_never_inherits_legacy_regular_preferences(legacy_mode, raw):
+def test_missing_prn_never_inherits_legacy_regular_preferences(legacy_mode: str, raw: str) -> None:
     row = _CaregiverNotification(
         enabled=True, alert_option=legacy_mode, deadline_hour=20, deadline_minute=30,
         slot_settings=raw,
@@ -120,7 +123,7 @@ def test_missing_prn_never_inherits_legacy_regular_preferences(legacy_mode, raw)
 # - scene: int; 활성 연동·보호자 토큰·알림 설정을 가진 필요시 약품 ID.
 # 반환값:
 # - None.
-def test_prn_settings_round_trip_and_deadline_rejected(fk_db, scene):
+def test_prn_settings_round_trip_and_deadline_rejected(fk_db: Session, scene: int) -> None:
     control = SetCaregiverNotification(fk_db)
     before = control.requestCaregiverNotificationSettings("caregiver-a", "patient-a")["data"]
     assert len(before) == 5
@@ -155,7 +158,7 @@ def test_prn_settings_round_trip_and_deadline_rejected(fk_db, scene):
 # - scene: int; 활성 연동·보호자 토큰·알림 설정을 가진 필요시 약품 ID.
 # 반환값:
 # - None.
-def test_unconfigured_prn_default_is_disabled_without_persisting(fk_db, scene):
+def test_unconfigured_prn_default_is_disabled_without_persisting(fk_db: Session, scene: int) -> None:
     fk_db.delete(fk_db.query(_CaregiverNotification).one())
     fk_db.commit()
     result = SetCaregiverNotification(fk_db).requestCaregiverNotificationSetting(
@@ -175,7 +178,7 @@ def test_unconfigured_prn_default_is_disabled_without_persisting(fk_db, scene):
 # - scene: int; 활성 연동·보호자 토큰·알림 설정을 가진 필요시 약품 ID.
 # 반환값:
 # - None.
-def test_invalid_stored_prn_deadline_never_queues_missed_alert(fk_db, scene):
+def test_invalid_stored_prn_deadline_never_queues_missed_alert(fk_db: Session, scene: int) -> None:
     setting = fk_db.query(_CaregiverNotification).one()
     setting.slot_settings = encode_slot_settings({"as_needed": {
         "notification_type": "missed_deadline", "deadline_hour": 0, "deadline_minute": 0,
@@ -194,7 +197,7 @@ def test_invalid_stored_prn_deadline_never_queues_missed_alert(fk_db, scene):
 # - scene: int; 활성 연동·보호자 토큰·알림 설정을 가진 필요시 약품 ID.
 # 반환값:
 # - None.
-def test_two_doses_retry_and_timestamp_edit_have_stable_unique_events(fk_db, scene):
+def test_two_doses_retry_and_timestamp_edit_have_stable_unique_events(fk_db: Session, scene: int) -> None:
     care = ManageMedicationCare(fk_db)
     slot = f"as_needed:{uuid4()}"
     today = application_today()
@@ -237,7 +240,7 @@ def test_two_doses_retry_and_timestamp_edit_have_stable_unique_events(fk_db, sce
 # - db: Session; 격리 데이터베이스.
 # 반환값:
 # - None.
-def assert_no_transaction(db):
+def assert_no_transaction(db: Session) -> None:
     assert not db.in_transaction()
 
 
@@ -249,7 +252,7 @@ def assert_no_transaction(db):
 # - scene: int; 활성 연동·보호자 토큰·알림 설정을 가진 필요시 약품 ID.
 # 반환값:
 # - None.
-def test_timestamp_edit_of_preexisting_taken_record_does_not_create_event(fk_db, scene):
+def test_timestamp_edit_of_preexisting_taken_record_does_not_create_event(fk_db: Session, scene: int) -> None:
     slot = f"as_needed:{uuid4()}"
     fk_db.add(_MedicationCompletion(
         patient_hash="patient-a", saved_medication_id=scene, schedule_date=application_today(),
@@ -270,7 +273,7 @@ def test_timestamp_edit_of_preexisting_taken_record_does_not_create_event(fk_db,
 # 반환값:
 # - None.
 @pytest.mark.parametrize("status", ["skipped", "unrecorded"])
-def test_non_taken_and_past_reports_do_not_queue_new_events(fk_db, scene, status):
+def test_non_taken_and_past_reports_do_not_queue_new_events(fk_db: Session, scene: int, status: str) -> None:
     slot, _ = take(fk_db, scene, status=status)
     take(fk_db, scene, day=application_today() - timedelta(days=1))
     assert fk_db.query(_CaregiverAlertOutbox).count() == 0
@@ -286,7 +289,7 @@ def test_non_taken_and_past_reports_do_not_queue_new_events(fk_db, scene, status
 # - scene: int; 활성 연동·보호자 토큰·알림 설정을 가진 필요시 약품 ID.
 # 반환값:
 # - None.
-def test_sent_record_uncheck_recheck_does_not_notify_twice(fk_db, scene):
+def test_sent_record_uncheck_recheck_does_not_notify_twice(fk_db: Session, scene: int) -> None:
     slot, _ = take(fk_db, scene)
     boundary = RecordingPushBoundary()
     worker = ProcessCaregiverAlertOutbox(fk_db, boundary)
@@ -307,7 +310,7 @@ def test_sent_record_uncheck_recheck_does_not_notify_twice(fk_db, scene):
 # 반환값:
 # - None.
 @pytest.mark.parametrize("change", ["skipped", "unrecorded", "delete_record", "delete_medication", "yesterday", "tomorrow", "undated", "wrong_key"])
-def test_delivery_rejects_noncurrent_dose(fk_db, scene, change):
+def test_delivery_rejects_noncurrent_dose(fk_db: Session, scene: int, change: str) -> None:
     slot, _ = take(fk_db, scene)
     event = fk_db.query(_CaregiverAlertOutbox).one()
     event_id = event.id
@@ -341,7 +344,7 @@ def test_delivery_rejects_noncurrent_dose(fk_db, scene, change):
 # 반환값:
 # - None.
 @pytest.mark.parametrize("change", ["revoked", "disabled", "global_disabled", "row_disabled", "missing_setting"])
-def test_retry_rechecks_link_and_settings_at_delivery(fk_db, scene, change):
+def test_retry_rechecks_link_and_settings_at_delivery(fk_db: Session, scene: int, change: str) -> None:
     take(fk_db, scene)
     boundary = RecordingPushBoundary(retryable=1)
     worker = ProcessCaregiverAlertOutbox(fk_db, boundary)
@@ -374,7 +377,7 @@ def test_retry_rechecks_link_and_settings_at_delivery(fk_db, scene, change):
 # - scene: int; 활성 연동·보호자 토큰·알림 설정을 가진 필요시 약품 ID.
 # 반환값:
 # - None.
-def test_transient_failure_retries_same_key_then_stops(fk_db, scene):
+def test_transient_failure_retries_same_key_then_stops(fk_db: Session, scene: int) -> None:
     take(fk_db, scene)
     boundary = RecordingPushBoundary(retryable=1)
     worker = ProcessCaregiverAlertOutbox(fk_db, boundary)
@@ -401,7 +404,7 @@ def test_transient_failure_retries_same_key_then_stops(fk_db, scene):
 # - None.
 @pytest.mark.parametrize("language", ["ko", "en"])
 @pytest.mark.parametrize("details", [True, False])
-def test_prn_wording_respects_language_privacy_and_never_claims_all(fk_db, scene, language, details):
+def test_prn_wording_respects_language_privacy_and_never_claims_all(fk_db: Session, scene: int, language: str, details: bool) -> None:
     setting = fk_db.query(_UserSetting).one()
     setting.language = language
     setting.notification_detail_mode = "details" if details else "type_only"
@@ -424,7 +427,7 @@ def test_prn_wording_respects_language_privacy_and_never_claims_all(fk_db, scene
 # - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
 # 반환값:
 # - None.
-def test_record_and_outbox_rollback_together(fk_db, scene, monkeypatch):
+def test_record_and_outbox_rollback_together(fk_db: Session, scene: int, monkeypatch: pytest.MonkeyPatch) -> None:
     care = ManageMedicationCare(fk_db)
     # 함수이름: fail_commit
     # 함수역할:
@@ -433,7 +436,7 @@ def test_record_and_outbox_rollback_together(fk_db, scene, monkeypatch):
     # - 없음.
     # 반환값:
     # - 반환하지 않음; RuntimeError 발생.
-    def fail_commit():
+    def fail_commit() -> NoReturn:
         raise RuntimeError("test commit failure")
     monkeypatch.setattr(fk_db, "commit", fail_commit)
     with pytest.raises(RuntimeError):
@@ -452,7 +455,7 @@ def test_record_and_outbox_rollback_together(fk_db, scene, monkeypatch):
 # - scene: int; 활성 연동·보호자 토큰·알림 설정을 가진 필요시 약품 ID.
 # 반환값:
 # - None.
-def test_http_handler_schedules_committed_prn_once(fk_db, scene):
+def test_http_handler_schedules_committed_prn_once(fk_db: Session, scene: int) -> None:
     tasks = BackgroundTasks()
     slot = f"as_needed:{uuid4()}"
     request = report()
@@ -473,7 +476,7 @@ def test_http_handler_schedules_committed_prn_once(fk_db, scene):
 # - scene: int; 활성 연동·보호자 토큰·알림 설정을 가진 필요시 약품 ID.
 # 반환값:
 # - None.
-def test_snapshot_current_keys_survive_edits_include_disabled_and_omit_revoked(fk_db, scene):
+def test_snapshot_current_keys_survive_edits_include_disabled_and_omit_revoked(fk_db: Session, scene: int) -> None:
     slot, _ = take(fk_db, scene)
     first = snapshot(fk_db)[0]
     assert first["as_needed_schedule_date"] == application_today().isoformat()
@@ -511,7 +514,7 @@ def test_snapshot_current_keys_survive_edits_include_disabled_and_omit_revoked(f
 # - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
 # 반환값:
 # - None.
-def test_snapshot_uses_application_day_not_utc_day(fk_db, scene, monkeypatch):
+def test_snapshot_uses_application_day_not_utc_day(fk_db: Session, scene: int, monkeypatch: pytest.MonkeyPatch) -> None:
     local_now = datetime(2026, 10, 17, 0, 30, tzinfo=ZoneInfo("Asia/Seoul"))
     monkeypatch.setattr("core.application_clock.application_now", lambda: local_now)
     for day in (date(2026, 10, 16), date(2026, 10, 17), date(2026, 10, 18)):
@@ -533,7 +536,7 @@ def test_snapshot_uses_application_day_not_utc_day(fk_db, scene, monkeypatch):
 # - tmp_path: Path; 테스트 전용 임시 디렉터리.
 # 반환값:
 # - None.
-def test_concurrent_prn_retries_create_one_record_and_event(tmp_path):
+def test_concurrent_prn_retries_create_one_record_and_event(tmp_path: Path) -> None:
     engine = make_engine(tmp_path)
     factory = make_session_factory(engine)
     try:
@@ -547,7 +550,7 @@ def test_concurrent_prn_retries_create_one_record_and_event(tmp_path):
         # - _: int; 사용하지 않는 병렬 작업 번호.
         # 반환값:
         # - int; 성공 시 200, 충돌·잠금 실패 시 HTTPException 상태 코드.
-        def write(_):
+        def write(_: int) -> int:
             with factory() as db:
                 barrier.wait(timeout=10)
                 try:
