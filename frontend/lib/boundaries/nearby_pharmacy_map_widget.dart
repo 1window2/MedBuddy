@@ -13,6 +13,7 @@ import '../entities/nearby_care_entity.dart';
 import '../services/naver_map_config.dart';
 import '../services/nearby_care_marker_diff.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/naver_map_sdk_gate.dart';
 import 'pharmacy_map_symbols.dart';
 
 // Class Name: NearbyPharmacyMap
@@ -258,45 +259,47 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
         ),
         child: Stack(
           children: [
-            NaverMap(
-              forceGesture: true,
-              options: NaverMapViewOptions(
-                initialCameraPosition: NCameraPosition(
-                  target: NLatLng(
-                    initialSelection?.latitude ??
-                        widget.searchArea.center.latitude,
-                    initialSelection?.longitude ??
-                        widget.searchArea.center.longitude,
+            NaverMapSdkGate(
+              builder: (context) => NaverMap(
+                forceGesture: true,
+                options: NaverMapViewOptions(
+                  initialCameraPosition: NCameraPosition(
+                    target: NLatLng(
+                      initialSelection?.latitude ??
+                          widget.searchArea.center.latitude,
+                      initialSelection?.longitude ??
+                          widget.searchArea.center.longitude,
+                    ),
+                    zoom: initialSelection != null ? 16 : _searchAreaZoom,
                   ),
-                  zoom: initialSelection != null ? 16 : _searchAreaZoom,
+                  minZoom: 5,
+                  maxZoom: 19,
+                  rotationGesturesEnable: false,
+                  tiltGesturesEnable: false,
+                  scaleBarEnable: false,
+                  compassEnable: false,
+                  logoClickEnable: true,
+                  contentPadding: EdgeInsets.only(bottom: _paddingInset + 28),
                 ),
-                minZoom: 5,
-                maxZoom: 19,
-                rotationGesturesEnable: false,
-                tiltGesturesEnable: false,
-                scaleBarEnable: false,
-                compassEnable: false,
-                logoClickEnable: true,
-                contentPadding: EdgeInsets.only(bottom: _paddingInset + 28),
+                // Function Name: build.onMapReady callback
+                // Description: Updates the local input or request state for pharmacy markers, selected highlighting, zoom, and attribution controls: `_mapController = controller`.
+                // Parameters:
+                // - controller (inferred by callback contract): Object controlling the associated camera, map, input, or scrolling interaction.
+                // Returns: No payload; applies the captured state changes.
+                onMapReady: (controller) {
+                  if (!mounted) return;
+                  if (!identical(_mapController, controller)) {
+                    _renderedMarkers.clear();
+                    _markerStateUncertain = false;
+                    _markerRetryTimer?.cancel();
+                    _markerRetryUsed = false;
+                  }
+                  setState(() => _mapController = controller);
+                  unawaited(_synchronizeMap());
+                },
+                onCameraChange: _onCameraChange,
+                onCameraIdle: () => unawaited(_onCameraIdle()),
               ),
-              // Function Name: build.onMapReady callback
-              // Description: Updates the local input or request state for pharmacy markers, selected highlighting, zoom, and attribution controls: `_mapController = controller`.
-              // Parameters:
-              // - controller (inferred by callback contract): Object controlling the associated camera, map, input, or scrolling interaction.
-              // Returns: No payload; applies the captured state changes.
-              onMapReady: (controller) {
-                if (!mounted) return;
-                if (!identical(_mapController, controller)) {
-                  _renderedMarkers.clear();
-                  _markerStateUncertain = false;
-                  _markerRetryTimer?.cancel();
-                  _markerRetryUsed = false;
-                }
-                setState(() => _mapController = controller);
-                unawaited(_synchronizeMap());
-              },
-              onCameraChange: _onCameraChange,
-              onCameraIdle: () => unawaited(_onCameraIdle()),
             ),
             if (_pendingArea != null && widget.onSearchAreaRequested != null)
               Positioned(

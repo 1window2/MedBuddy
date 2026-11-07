@@ -1,8 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter_tts/flutter_tts.dart';
-
 import '../entities/user_setting_entity.dart';
+import 'device_speech_engine.dart';
 
 // 파일명: tts_service.dart
 // 역할: 휴대폰/에뮬레이터의 내장 TTS 엔진으로 약 안내 문장을 읽어준다.
@@ -10,19 +9,19 @@ import '../entities/user_setting_entity.dart';
 // Class Name: TTSService
 // Role: Play medication guidance using user-selected language and reading speed.
 // Responsibilities: Coordinate playback cancellation and surface platform playback failures.
-// Attributes: _flutterTts (FlutterTts): injected engine; _playbackGeneration (int): invalidates superseded requests.
+// Attributes: _engine (DeviceSpeechEngine): injected engine; _playbackGeneration (int): invalidates superseded requests.
 class TTSService {
-  final FlutterTts _flutterTts;
+  final DeviceSpeechEngine _engine;
   int _playbackGeneration = 0;
 
   // 함수이름: TTSService
-  // 함수역할: 주입된 음성 엔진 또는 기본 FlutterTts를 사용하도록 재생 서비스를 구성한다.
+  // 함수역할: 주입된 음성 엔진 또는 앱 공용 기기 TTS 엔진을 사용하도록 재생 서비스를 구성한다.
   // 매개변수:
-  // - flutterTts (FlutterTts?): 실제 재생을 수행할 기기 TTS 엔진
+  // - engine (DeviceSpeechEngine?): 실제 재생을 수행할 기기 TTS 엔진
   // 반환값:
   // - TTSService: 초기화된 인스턴스.
-  TTSService({FlutterTts? flutterTts})
-    : _flutterTts = flutterTts ?? FlutterTts();
+  TTSService({DeviceSpeechEngine? engine})
+    : _engine = engine ?? DeviceSpeechEngine.instance;
 
   // Function Name: speak
   // Description: Trim text, stop prior speech and configure playback; skip superseded requests and reject platform errors or unsuccessful start results.
@@ -40,12 +39,11 @@ class TTSService {
 
     // 이전 발화를 정리한 뒤 완료 시점까지 기다려 재생 상태와 실제 음성을 일치시킨다.
     final generation = ++_playbackGeneration;
-    await _flutterTts.stop();
-    await _flutterTts.awaitSpeakCompletion(true);
+    await _engine.stop();
     String? platformError;
-    // 플랫폼은 재생 오류 때 speak 호출을 끝내지 않으므로 오류 알림으로도 대기를 끝낼 수 있게 한다.
+    // 오류 알림이 speak 결과(0)보다 먼저 도착하므로 오류 알림으로 대기를 끝내 오류 문구를 남긴다.
     final playbackResult = Completer<dynamic>();
-    _flutterTts.setCompletionHandler(/* 함수이름: setCompletionHandler 콜백
+    _engine.setCompletionHandler(/* 함수이름: setCompletionHandler 콜백
      * 함수역할: 음성 재생이 정상 종료되면 호출자의 완료 콜백을 실행한다.
      * 매개변수:
      * - 없음.
@@ -54,7 +52,7 @@ class TTSService {
      */() {
       onComplete?.call();
     });
-    _flutterTts.setCancelHandler(/* 함수이름: setCancelHandler 콜백
+    _engine.setCancelHandler(/* 함수이름: setCancelHandler 콜백
      * 함수역할: 음성 재생 취소도 호출자의 완료 콜백으로 전달한다.
      * 매개변수:
      * - 없음.
@@ -63,7 +61,7 @@ class TTSService {
      */() {
       onComplete?.call();
     });
-    _flutterTts.setErrorHandler(/* 함수이름: setErrorHandler 콜백
+    _engine.setErrorHandler(/* 함수이름: setErrorHandler 콜백
      * 함수역할: 플랫폼 음성 오류 메시지를 저장하고 호출자의 완료 콜백을 실행한 뒤 대기 중인 재생 요청을 끝낸다.
      * 매개변수:
      * - message (dynamic): 사용자에게 표시하거나 오류로 보존할 안내 문구
@@ -76,17 +74,17 @@ class TTSService {
         playbackResult.complete(null);
       }
     });
-    await _flutterTts.setLanguage(_languageCode(userSetting.language));
-    await _flutterTts.setSpeechRate(_speechRate(userSetting.readingSpeed));
-    await _flutterTts.setVolume(1.0);
-    await _flutterTts.setPitch(1.0);
+    await _engine.setLanguage(_languageCode(userSetting.language));
+    await _engine.setSpeechRate(_speechRate(userSetting.readingSpeed));
+    await _engine.setVolume(1.0);
+    await _engine.setPitch(1.0);
     if (generation != _playbackGeneration) {
       // 준비하는 사이 중지되었거나 새 재생이 시작됐으면 뒤늦게 읽기 시작하지 않는다.
       onComplete?.call();
       return;
     }
     unawaited(
-      _flutterTts
+      _engine
           .speak(normalizedText, focus: true)
           .then(
             /* 함수이름: then 콜백
@@ -135,7 +133,7 @@ class TTSService {
   // Returns: Future<void>: platform stop completion.
   Future<void> stop() async {
     _playbackGeneration += 1;
-    await _flutterTts.stop();
+    await _engine.stop();
   }
 
   // Function Name: _languageCode

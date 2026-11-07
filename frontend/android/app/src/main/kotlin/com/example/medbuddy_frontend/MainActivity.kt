@@ -1,5 +1,5 @@
 // 파일명: MainActivity.kt
-// 역할: Flutter의 요청을 Android 알림 설정, 카메라 방향 제어와 복약 기록 공유로 연결한다.
+// 역할: Flutter의 요청을 Android 알림 설정, 카메라 방향 제어, 복약 기록 공유와 기기 음성 안내로 연결한다.
 
 package com.example.medbuddy_frontend
 
@@ -14,21 +14,24 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 // 클래스명: MainActivity
-// 역할: Flutter 요청을 Android 설정·카메라 회전·텍스트 공유 기능에 연결한다.
-// 주요 책임: 채널을 등록하고 카메라 회전 복원, 공유 입력 검증과 오류 응답을 처리한다.
-// 속성: 세 채널 이름(String)은 요청 통로이며 orientationBeforePrescriptionCamera(Int?)는 이전 회전 정책이다.
+// 역할: Flutter 요청을 Android 설정·카메라 회전·텍스트 공유·음성 안내 기능에 연결한다.
+// 주요 책임: 채널을 등록하고 카메라 회전 복원, 공유 입력 검증과 오류 응답을 처리하며 엔진 종료 시 음성 자원을 해제한다.
+// 속성: 세 채널 이름(String)은 요청 통로이며 orientationBeforePrescriptionCamera(Int?)는 이전 회전 정책, speechChannel은 음성 안내 통로다.
 class MainActivity : FlutterActivity() {
     private val settingsChannel = "com.medbuddy.app/settings"
     private val prescriptionCameraChannel = "com.medbuddy.app/prescription-camera"
     private val dataExportChannel = "com.medbuddy/data_export"
     private var orientationBeforePrescriptionCamera: Int? = null
+    private var speechChannel: LazySpeechChannel? = null
 
     // 함수이름: configureFlutterEngine
-    // 함수역할: 기본 엔진 설정 후 알림·카메라·기록 공유 채널을 등록한다.
+    // 함수역할: 기본 엔진 설정 후 알림·카메라·기록 공유·음성 안내 채널을 등록한다.
     // 매개변수: flutterEngine(FlutterEngine)은 앱 요청을 받을 메시지 통로를 제공한다.
     // 반환값: Unit. 지원하는 요청은 채널별 성공·오류 응답으로 완료한다.
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // 음성 엔진은 앱 시작 때가 아니라 첫 읽기 요청 때 연결한다.
+        speechChannel = LazySpeechChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
         // 함수명: settingsChannel.setMethodCallHandler 콜백
         // 역할: 알림 설정 열기 요청을 처리하고 다른 메서드는 미지원으로 응답한다.
         // 매개변수: call - Flutter 호출 정보; result - 성공 또는 미지원 응답 통로.
@@ -110,6 +113,16 @@ class MainActivity : FlutterActivity() {
                 }
                 result.notImplemented()
             }
+    }
+
+    // Function Name: cleanUpFlutterEngine
+    // Description: Stops voice guidance and releases the speech engine before the Flutter engine is discarded.
+    // Parameters: flutterEngine - engine being cleaned up.
+    // Returns: Unit.
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        speechChannel?.dispose()
+        speechChannel = null
+        super.cleanUpFlutterEngine(flutterEngine)
     }
 
     // Function Name: enableSensorOrientationForPrescriptionCamera

@@ -341,6 +341,27 @@ choosing the name, manufacturer or picture. A card whose item no search returned
 the last day is refused; results from the live public API work because the search
 stores whatever it returned, not only catalogue items.
 
+## 2026-11-07: launch work moved off the start-up path
+
+The collaborator suggested replacing the native Naver map SDK with the web map in a
+WebView to shrink the APK. Both are billed as the same Dynamic Map item (6,000,000
+free calls a month for the representative account), and a smaller APK does not make
+the app start faster: native libraries are stored uncompressed and mapped on demand.
+The WebView map would make each map screen slower to open (WebView start-up and the
+map script) and would need the map screens rewritten, so the native SDK stays.
+
+Measuring the launch showed two costs that had nothing to do with APK size. `main()`
+awaited the map SDK initialization, which loads its native library, before the first
+frame; it now starts after the first frame and the map screens await the same attempt.
+The `flutter_tts` plugin created `TextToSpeech` when attached to any Flutter engine,
+including the WorkManager and home-widget engines, and on connection read every voice
+of the engine on the main thread. It is replaced by a small app channel that binds the
+engine on the first read-aloud request and keeps the same rates, ranges and audio focus.
+The `SystemChrome` portrait call repeated the manifest's `screenOrientation`.
+On a Galaxy Note10 the median cold launch went from 378 ms to 336 ms (24 runs each,
+release builds under a separate test package). Emulator launches looked far slower
+because of shader compilation in emulated GL, which a phone does not show.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the

@@ -900,7 +900,7 @@ package "Flutter Frontend" {
         }
 
         class "TTSService" as TTSService <<Service: 기기 음성 합성>> {
-            - _flutterTts: FlutterTts
+            - _engine: DeviceSpeechEngine
             + speak(text, language, speed): Future<void>
             + stop(): Future<void>
         }
