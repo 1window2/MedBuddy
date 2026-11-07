@@ -355,8 +355,9 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   for (final scenario in [
-    (size: const Size(390, 844), scale: 1.0),
-    (size: const Size(320, 568), scale: 2.0),
+    (size: const Size(390, 844), scale: 1.0, safeTop: 0.0),
+    (size: const Size(390, 844), scale: 1.0, safeTop: 24.0),
+    (size: const Size(320, 568), scale: 2.0, safeTop: 24.0),
   ]) {
     // 함수이름: login header and inputs fit ${scenario.size} at ${scenario.scale}x
     // 함수역할:
@@ -366,12 +367,14 @@ void main() {
     // 반환값:
     // - Future<void>; 비동기 검증이 끝나면 완료한다.
     testWidgets(
-      'login header and inputs fit ${scenario.size} at ${scenario.scale}x',
+      'login header and inputs fit ${scenario.size} at ${scenario.scale}x with ${scenario.safeTop} top inset',
       (tester) async {
         tester.view.devicePixelRatio = 1;
         tester.view.physicalSize = scenario.size;
+        tester.view.padding = FakeViewPadding(top: scenario.safeTop);
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPadding);
         final auth = AuthenticationControl.development();
         final language = AppLanguageControl(loadPersisted: false);
         addTearDown(auth.dispose);
@@ -387,7 +390,8 @@ void main() {
         final logoRect = tester.getRect(logo);
         final buttonRect = tester.getRect(languageButton);
         expect(logoRect.left, closeTo(32, 0.1));
-        expect(logoRect.top, closeTo(0, 0.1));
+        expect(logoRect.top - scenario.safeTop, closeTo(logoRect.left, 0.1));
+        expect(logoRect.center.dy, closeTo(buttonRect.center.dy, 0.1));
         expect(logoRect.right, lessThanOrEqualTo(buttonRect.left));
         expect(logoRect.overlaps(buttonRect), isFalse);
         expect(
@@ -1217,51 +1221,54 @@ void main() {
   // - None.
   // Returns:
   // - Future<void>; completes after the asynchronous assertions.
-  test('signOut runs cleanup, then the provider, then clears the session', () async {
-    final firebase = _FirebaseAuth();
-    firebase.user.verified = true;
-    final client = AuthenticatedApiClient(
-      inner: MockClient(
-        (_) async => http.Response(
-          jsonEncode({
-            'user_hash': 'sign-out-fixture',
-            'authenticated': true,
-            'email_verified': true,
-          }),
-          200,
+  test(
+    'signOut runs cleanup, then the provider, then clears the session',
+    () async {
+      final firebase = _FirebaseAuth();
+      firebase.user.verified = true;
+      final client = AuthenticatedApiClient(
+        inner: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'user_hash': 'sign-out-fixture',
+              'authenticated': true,
+              'email_verified': true,
+            }),
+            200,
+          ),
         ),
-      ),
-      tokenProvider: () async => 'test-token',
-      appCheckRequired: false,
-    );
-    final auth = AuthenticationControl.withFirebaseAuth(
-      firebase,
-      apiClient: client,
-    );
-    addTearDown(auth.dispose);
-    await auth.retryBackendSession();
-    expect(auth.isAuthenticated, isTrue);
-    firebase.calls.clear();
-    auth.setBeforeSignOut(() async {
+        tokenProvider: () async => 'test-token',
+        appCheckRequired: false,
+      );
+      final auth = AuthenticationControl.withFirebaseAuth(
+        firebase,
+        apiClient: client,
+      );
+      addTearDown(auth.dispose);
+      await auth.retryBackendSession();
       expect(auth.isAuthenticated, isTrue);
-      firebase.calls.add('cleanup');
-    });
-    await auth.signOut();
-    expect(firebase.calls, ['cleanup', 'signOut']);
-    expect(auth.isAuthenticated, isFalse);
-    expect(auth.errorMessage, isNull);
-    expect(auth.isBusy, isFalse);
+      firebase.calls.clear();
+      auth.setBeforeSignOut(() async {
+        expect(auth.isAuthenticated, isTrue);
+        firebase.calls.add('cleanup');
+      });
+      await auth.signOut();
+      expect(firebase.calls, ['cleanup', 'signOut']);
+      expect(auth.isAuthenticated, isFalse);
+      expect(auth.errorMessage, isNull);
+      expect(auth.isBusy, isFalse);
 
-    // Provider sign-out failure preserves the session and is reported to the caller.
-    firebase.signedOut = false;
-    await auth.retryBackendSession();
-    expect(auth.isAuthenticated, isTrue);
-    firebase.failSignOut = true;
-    await expectLater(auth.signOut(), throwsStateError);
-    expect(auth.isAuthenticated, isTrue);
-    expect(
-      auth.errorMessageForLanguage(isEnglish: false),
-      '인터넷 연결을 확인한 뒤 다시 시도해 주세요.',
-    );
-  });
+      // Provider sign-out failure preserves the session and is reported to the caller.
+      firebase.signedOut = false;
+      await auth.retryBackendSession();
+      expect(auth.isAuthenticated, isTrue);
+      firebase.failSignOut = true;
+      await expectLater(auth.signOut(), throwsStateError);
+      expect(auth.isAuthenticated, isTrue);
+      expect(
+        auth.errorMessageForLanguage(isEnglish: false),
+        '인터넷 연결을 확인한 뒤 다시 시도해 주세요.',
+      );
+    },
+  );
 }

@@ -987,7 +987,9 @@ class _AuthenticationScaffold extends StatelessWidget {
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+            padding: showWordmark
+                ? const EdgeInsets.fromLTRB(8, 32, 8, 0)
+                : const EdgeInsets.symmetric(horizontal: 8),
             child: Row(
               children: [
                 if (onBack != null)
