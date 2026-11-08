@@ -307,6 +307,24 @@ class DoseHomeWidget {
     }
   }
 
+  // Function Name: retryWhileStale
+  // Description: After a widget-started refresh, keeps a network-constrained retry while the installed widget still lacks today's data or records still wait, so a refresh that failed at midnight (for example offline) is retried when a connection returns instead of waiting for the next midnight.
+  // Parameters: None.
+  // Returns: Completion; storage and registration failures are ignored because the next widget update or app start checks again.
+  static Future<void> retryWhileStale() async {
+    if (!supported) return;
+    try {
+      final store = await platform.openStore();
+      final need = await store.widgetRefreshNeed(now: DateTime.now());
+      if (need == null) return;
+      if (await needsNetworkRefresh(need.owner)) {
+        await platform.registerSync(need.owner);
+      }
+    } catch (_) {
+      /* 다음 위젯 갱신이나 앱 시작에서 다시 확인한다. */
+    }
+  }
+
   // 함수이름: refreshInBackground
   // 함수역할: 위젯 클릭을 기기에 기록하고, 전송 대기 기록을 보내고, 필요할 때만 서버 일정을 읽어
   //   위젯에 반영한다. 보낼 기록도 표시할 위젯도 없으면 통신하지 않고 끝낸다.

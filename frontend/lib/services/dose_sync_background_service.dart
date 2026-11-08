@@ -1,11 +1,14 @@
 // 파일명: dose_sync_background_service.dart
 // 역할: 연결 조건을 만족할 때 복약 전송을 예약한다. 실제 실행 시점은 Android가 정한다.
+// 15분 주기 작업은 보낼 기록이 있거나 홈 위젯에 오늘 데이터가 필요할 때만 두고, 할 일이 없으면 지운다.
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
 import 'dose_outbox_store.dart';
 
 const doseSyncBackgroundTask = 'medbuddy_dose_sync';
+// Marks periodic runs: cancelling the periodic work from inside such a run stops its engine.
+const doseSyncPeriodicInputKey = 'periodic';
 
 // Class Name: DoseSyncWorkPlatform
 // Role: Adapts Workmanager and outbox opening for background dose uploads.
@@ -45,9 +48,9 @@ class DoseSyncWorkPlatform {
   // Returns: Registration completion; Android may defer execution and platform errors propagate.
   Future<void> registerPeriodic(String owner) =>
       Workmanager().registerPeriodicTask(
-        '$doseSyncBackgroundTask.periodic.$owner',
+        _periodicName(owner),
         doseSyncBackgroundTask,
-        inputData: {'patient_hash': owner},
+        inputData: {'patient_hash': owner, doseSyncPeriodicInputKey: true},
         frequency: const Duration(minutes: 15),
         constraints: Constraints(networkType: NetworkType.connected),
         existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
@@ -61,6 +64,16 @@ class DoseSyncWorkPlatform {
   // Parameters: None.
   // Returns: Platform cancellation completion; queued dose records remain stored.
   Future<void> cancelAll() => Workmanager().cancelByTag(doseSyncBackgroundTask);
+
+  // Function Name: cancelPeriodic
+  // Description: Removes the account's 15-minute retry, including one registered by an earlier app version under the same name.
+  // Parameters: owner (String) - account in the unique job name.
+  // Returns: Cancellation completion; the one-off upload job is kept.
+  Future<void> cancelPeriodic(String owner) =>
+      Workmanager().cancelByUniqueName(_periodicName(owner));
+
+  static String _periodicName(String owner) =>
+      '$doseSyncBackgroundTask.periodic.$owner';
 
   // Function Name: openStore
   // Description: Opens the encrypted outbox shared with foreground dose recording.
@@ -83,8 +96,47 @@ class DoseSyncBackgroundScheduler {
   // Returns: True when that adapter supports dose background jobs.
   static bool get supported => platform.supported;
 
+  // Function Name: reconcile
+  // Description: Keeps the 15-minute retry only while network work remains: queued records, journal taps, or an installed widget without today's data. Otherwise the periodic job is cancelled, then the need is read again so work queued meanwhile is registered again.
+  // Parameters: owner (String) - account; needsNetwork (Future<bool> Function()) - current need, read from the outbox and widget state.
+  // Returns: Completion; registration and cancellation failures propagate.
+  static Future<void> reconcile(
+    String owner, {
+    required Future<bool> Function() needsNetwork,
+  }) async {
+    if (!supported) return;
+    if (await needsNetwork()) {
+      await register(owner);
+      return;
+    }
+    await platform.cancelPeriodic(owner);
+    // A record queued between the read and the cancel may have had its periodic job cancelled here; its one-off job remains, and this read restores the retry.
+    if (await needsNetwork()) await register(owner);
+  }
+
+  // Function Name: finishRun
+  // Description: Ends a background dose run: keeps the periodic retry while network work remains and otherwise removes it. A periodic run cancels itself as its last step, because the cancellation stops the running engine; a record queued meanwhile still has its own one-off upload job, and the next app start reconciles again.
+  // Parameters: owner (String) - account; periodicRun (bool) - whether the running job is the periodic one; needsNetwork (Future<bool> Function()) - current need.
+  // Returns: Completion; registration and cancellation failures propagate.
+  static Future<void> finishRun(
+    String owner, {
+    required bool periodicRun,
+    required Future<bool> Function() needsNetwork,
+  }) async {
+    if (!supported) return;
+    if (await needsNetwork()) {
+      await platform.registerPeriodic(owner);
+      return;
+    }
+    if (periodicRun) {
+      await platform.cancelPeriodic(owner);
+      return;
+    }
+    await reconcile(owner, needsNetwork: needsNetwork);
+  }
+
   // Function Name: register
-  // Description: Registers one-off then periodic work without activating or replacing the outbox account.
+  // Description: Registers one-off then periodic work without activating or replacing the outbox account. Callers register only when a record was queued or network work is known to remain.
   // Parameters: owner (String) - account to associate with both jobs.
   // Returns: Completion, or an immediate no-op on unsupported platforms; registration failures propagate.
   static Future<void> register(String owner) async {

@@ -91,6 +91,7 @@ note over Sync,Local: Display callbacks are coalesced after durable save.\nWidge
 Sync -> Worker: Schedule connected work
 note over Local, Worker: Queue survives process death. Foreground and background share SQLite claims.\nOnly one unexpired upload lease per owner, even for distinct doses:\nevery ACK contains a whole schedule snapshot.
 Worker -> Sync: Restore authenticated session and drain
+note over Worker, Sync: The 15-minute retry stays only while records wait or the widget lacks today's data;\neach run, app start, pause and resume keep or remove it, and a removal is read again.
 Sync -> Local: Transaction: check active account and claim earliest eligible operation
 alt Same owner already has an unexpired lease
   Local --> Sync: No claim; keep pending and retry later

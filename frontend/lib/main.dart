@@ -1417,6 +1417,11 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
                     client: authentication.apiClient,
                     scheduleWork: () =>
                         DoseSyncBackgroundScheduler.register(session.userHash),
+                    reconcileWork: () => DoseSyncBackgroundScheduler.reconcile(
+                      session.userHash,
+                      needsNetwork: () =>
+                          DoseHomeWidget.needsNetworkRefresh(session.userHash),
+                    ),
                     onStateChanged: () =>
                         DoseHomeWidget.publish(owner: session.userHash),
                     loadScheduleWindow: () =>

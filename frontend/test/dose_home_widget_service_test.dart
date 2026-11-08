@@ -6,9 +6,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:medbuddy_frontend/composition/caregiver_notification_background_service.dart';
 import 'package:medbuddy_frontend/composition/dose_home_widget_background.dart';
 import 'package:medbuddy_frontend/entities/dose_widget_state.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
@@ -242,6 +244,19 @@ class _RecordingWorkPlatform extends DoseSyncWorkPlatform {
   @override
   Future<void> cancelAll() async => calls.add('cancel');
 
+  // Runs inside cancelPeriodic, standing in for a record queued while the job is cancelled.
+  Future<void> Function()? onCancelPeriodic;
+
+  // Function Name: cancelPeriodic
+  // Description: Records removal of the account's 15-minute retry and runs the optional race hook.
+  // Parameters: owner (String) - account in the job name.
+  // Returns: Completion after the hook.
+  @override
+  Future<void> cancelPeriodic(String owner) async {
+    calls.add('cancel-periodic:$owner');
+    await onCancelPeriodic?.call();
+  }
+
   // Function Name: openStore
   // Description:
   // - Records the open attempt and exposes the configured storage failure.
@@ -263,6 +278,26 @@ class _RecordingWorkPlatform extends DoseSyncWorkPlatform {
 // - None.
 // Returns:
 // - No value; the framework executes registered tests and lifecycle hooks.
+// Class Name: _WorkerDeps
+// Role: Runs the real background dose task against the test store and client.
+// Attributes: store/client: Test outbox and HTTP transport.
+class _WorkerDeps extends BackgroundTaskDeps {
+  _WorkerDeps(this.store, this.client);
+
+  final DoseOutboxStore store;
+  final http.Client client;
+
+  // Function Name: openDoseStore
+  // Description: Returns the test outbox. Parameters: None. Returns: The store.
+  @override
+  Future<DoseOutboxStore> openDoseStore() async => store;
+
+  // Function Name: openClient
+  // Description: Returns the test transport without Firebase. Parameters: None. Returns: The client.
+  @override
+  Future<http.Client?> openClient() async => client;
+}
+
 void main() {
   sqfliteFfiInit();
   const owner = 'patient-a';
@@ -1054,5 +1089,251 @@ void main() {
     await DoseHomeWidget.clear();
 
     expect(platform.savedStates.single['language'], 'en');
+  });
+
+
+  group('15분 재시도는 통신할 일이 있을 때만 남는다', () {
+    late _RecordingWorkPlatform work;
+    late _WorkerDeps deps;
+    const periodicRun = {'patient_hash': owner, doseSyncPeriodicInputKey: true};
+    const oneOffRun = {'patient_hash': owner};
+    const patients = {'source': 'patients'};
+
+    setUp(() {
+      work = _RecordingWorkPlatform(store);
+      DoseSyncBackgroundScheduler.platform = work;
+      deps = _WorkerDeps(store, client);
+    });
+
+    // Function Name: nothing to send removes the periodic retry
+    // Description: A periodic run with no record and a current widget removes itself, and only as its last step.
+    // Parameters: None. Returns: Future<void>.
+    test('a periodic run with nothing to send removes itself', () async {
+      await prepare();
+
+      expect(
+        await runBackgroundTask(doseSyncBackgroundTask, periodicRun, deps),
+        isTrue,
+      );
+
+      expect(work.calls, ['cancel-periodic:$owner']);
+      expect(uploads, isEmpty);
+    });
+
+    // Risk 1: a record that could not be sent keeps both the retrying one-off run and the periodic retry.
+    for (final (label, input) in [('one-off', oneOffRun), ('periodic', periodicRun)]) {
+      test('a failed upload keeps the record and the periodic retry ($label run)', () async {
+        await prepare();
+        await enqueue('op-1');
+        online = false;
+
+        final result = await runBackgroundTask(doseSyncBackgroundTask, input, deps);
+
+        expect(result, isFalse);
+        expect(await store.pending(owner), hasLength(1));
+        expect(work.calls, ['periodic:$owner']);
+        expect(work.calls.where((c) => c.startsWith('cancel')), isEmpty);
+      });
+    }
+
+    // Risk 1: once the record is delivered the retry is removed; a record queued during that removal gets its jobs back.
+    test('a delivered record removes the retry; one queued meanwhile restores it', () async {
+      await prepare();
+      await enqueue('op-1');
+      work.onCancelPeriodic = () => enqueue('op-2');
+
+      expect(
+        await runBackgroundTask(doseSyncBackgroundTask, oneOffRun, deps),
+        isTrue,
+      );
+
+      expect(uploadedIds(), ['op-1']);
+      expect(work.calls, [
+        'cancel-periodic:$owner',
+        'one-off:$owner',
+        'periodic:$owner',
+      ]);
+      expect(
+        (await store.pending(owner)).map((op) => op['operation_id']),
+        ['op-2'],
+      );
+    });
+
+    test('a delivered record with nothing left removes the retry only', () async {
+      await prepare();
+      await enqueue('op-1');
+
+      await runBackgroundTask(doseSyncBackgroundTask, oneOffRun, deps);
+
+      expect(uploadedIds(), ['op-1']);
+      expect(work.calls, ['cancel-periodic:$owner']);
+      expect(await store.pending(owner), isEmpty);
+    });
+
+    // A record the server rejected waits for the user in the app; retrying it every period would not help.
+    test('a rejected record does not keep the periodic retry', () async {
+      await prepare();
+      await enqueue('op-1');
+      uploadStatus = 409;
+
+      await runBackgroundTask(doseSyncBackgroundTask, oneOffRun, deps);
+
+      expect((await store.pending(owner)).single['state'], 'blocked');
+      expect(work.calls, ['cancel-periodic:$owner']);
+    });
+
+    // Risk 1: the app start (and every pause or resume) restores the job for records left from earlier.
+    test('reconcile registers both jobs while a record waits, and only then', () async {
+      await prepare();
+      Future<bool> needs() => DoseHomeWidget.needsNetworkRefresh(owner);
+
+      await DoseSyncBackgroundScheduler.reconcile(owner, needsNetwork: needs);
+      expect(work.calls, ['cancel-periodic:$owner']);
+
+      work.calls.clear();
+      await enqueue('op-1');
+      await DoseSyncBackgroundScheduler.reconcile(owner, needsNetwork: needs);
+      expect(work.calls, ['one-off:$owner', 'periodic:$owner']);
+    });
+
+    test('reconcile restores the jobs when a record arrives during the cancel', () async {
+      await prepare();
+      work.onCancelPeriodic = () => enqueue('op-1');
+
+      await DoseSyncBackgroundScheduler.reconcile(
+        owner,
+        needsNetwork: () => DoseHomeWidget.needsNetworkRefresh(owner),
+      );
+
+      expect(work.calls, [
+        'cancel-periodic:$owner',
+        'one-off:$owner',
+        'periodic:$owner',
+      ]);
+    });
+
+    // Risk 1: every path that makes a record uploadable schedules the background upload.
+    test('recording, retrying and app state changes schedule or reconcile the work', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      await prepare();
+      var scheduled = 0;
+      var reconciled = 0;
+      final sync = DoseSyncService(
+        owner: owner,
+        client: client,
+        openStore: () async => store,
+        scheduleWork: () async => scheduled++,
+        reconcileWork: () async => reconciled++,
+      );
+      addTearDown(sync.dispose);
+
+      await sync.start();
+      expect((scheduled, reconciled), (0, 1));
+
+      online = false;
+      await sync.record(
+        medicationIds: [91],
+        slotKey: 'morning',
+        scheduleDate: today(),
+        completed: true,
+      );
+      expect(scheduled, 1);
+
+      // The server rejected the record: it waits for the user and needs no background job.
+      final claimed = (await store.claim(
+        owner,
+        'lease-1',
+        DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      ))!;
+      await store.finish(owner, claimed['operation_id'] as String, 'lease-1', blocked: true);
+      expect((await store.pending(owner)).single['state'], 'blocked');
+      expect(await DoseHomeWidget.needsNetworkRefresh(owner), isFalse);
+      await sync.retryNow();
+      expect(scheduled, 2);
+      expect(await DoseHomeWidget.needsNetworkRefresh(owner), isTrue);
+
+      sync.didChangeAppLifecycleState(AppLifecycleState.paused);
+      sync.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      sync.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await Future<void>.delayed(Duration.zero);
+      expect(reconciled, 3);
+    });
+
+    // Risk 2: a refresh started by the widget at midnight that could not read today's schedule keeps a retry, which fixes the widget once online and then removes itself.
+    test('a midnight refresh that failed offline is retried and then removed', () async {
+      await prepare(date: '2000-01-01');
+      online = false;
+
+      await DoseHomeWidget.refreshInBackground(requestedByWidget: true);
+      await DoseHomeWidget.retryWhileStale();
+
+      expect(platform.savedStates.last['heading'], '오늘 일정을 불러와주세요');
+      expect(platform.registered, [owner]);
+
+      online = true;
+      expect(
+        await runBackgroundTask(doseSyncBackgroundTask, periodicRun, deps),
+        isTrue,
+      );
+
+      expect((await store.readCache(owner))!['date'], today());
+      expect(platform.savedStates.last['date'], today());
+      expect(platform.savedStates.last['heading'], isNot('오늘 일정을 불러와주세요'));
+      expect(work.calls, ['cancel-periodic:$owner']);
+    });
+
+    test('a midnight refresh that succeeded keeps no retry', () async {
+      await prepare(date: '2000-01-01');
+
+      await DoseHomeWidget.refreshInBackground(requestedByWidget: true);
+      await DoseHomeWidget.retryWhileStale();
+
+      expect((await store.readCache(owner))!['date'], today());
+      expect(platform.registered, isEmpty);
+    });
+
+    test('a failed patient snapshot keeps the retry until it succeeds', () async {
+      await prepare(config: patients);
+      snapshotStatus = 503;
+
+      await runBackgroundTask(doseSyncBackgroundTask, periodicRun, deps);
+
+      expect(snapshotReads, 1);
+      expect(work.calls, ['periodic:$owner']);
+
+      snapshotStatus = 200;
+      work.calls.clear();
+      await runBackgroundTask(doseSyncBackgroundTask, periodicRun, deps);
+
+      expect(snapshotReads, 2);
+      expect(platform.savedStates.last['patients'], hasLength(1));
+      expect(work.calls, ['cancel-periodic:$owner']);
+    });
+
+    test('an account that is not signed in removes its retry', () async {
+      await prepare();
+      await enqueue('op-1');
+      await store.activate('patient-b');
+
+      expect(
+        await runBackgroundTask(doseSyncBackgroundTask, periodicRun, deps),
+        isTrue,
+      );
+
+      expect(work.calls, ['cancel-periodic:$owner']);
+      expect(uploads, isEmpty);
+      expect(await store.pending(owner), hasLength(1));
+    });
+
+    test('without a widget a stale schedule keeps no retry', () async {
+      await prepare(date: '2000-01-01');
+      platform.installed = false;
+
+      await DoseHomeWidget.retryWhileStale();
+      await runBackgroundTask(doseSyncBackgroundTask, periodicRun, deps);
+
+      expect(platform.registered, isEmpty);
+      expect(work.calls, ['cancel-periodic:$owner']);
+    });
   });
 }

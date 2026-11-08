@@ -48,4 +48,5 @@ Future<void> doseHomeWidgetCallback(Uri? uri) async {
   if (uri?.scheme != 'medbuddy-widget' || uri?.host != 'refresh') return;
   installDoseHomeWidgetReaders();
   await DoseHomeWidget.refreshInBackground(requestedByWidget: true);
+  await DoseHomeWidget.retryWhileStale();
 }

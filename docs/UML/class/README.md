@@ -99,6 +99,9 @@ PlantUML 1.2026.8과 Nanum Gothic으로 변경 원본 6개의 구문을 검사�
 앱 전용 채널(`DeviceSpeechEngine`)을 쓰도록 `ClassDiagram` 속성을 바꾸고 그 PNG만 다시 만들었다.
 지도 SDK 초기화 시점 변경은 클래스 책임을 바꾸지 않아 그림에 추가하지 않았다.
 
+복용 기록의 15분 백그라운드 재시도를 보낼 기록·위젯 갱신이 남았을 때만 두도록 바꾼 것을
+`06_DoseSyncAndWidget`의 관계 설명과 `OfflineDoseSync`의 메모에 반영하고 두 PNG를 다시 만들었다.
+
 ### 2026-10-29 UML 전체 현행화
 
 팀원이 관리하던 UML을 이제 이 저장소에서 직접 관리한다. `beta/v0.2.4`의 코드와 모든 원본을

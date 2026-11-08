@@ -378,6 +378,22 @@ read pauses while another screen covers home. Slowing the poll for users without
 was left out, because the patient-code dialog has no refresh of its own and a new link
 would show on the patient's home up to a minute later.
 
+## 2026-11-08: the 15-minute dose-sync job only while network work remains
+
+The owner chose to keep the periodic dose-sync job only while records wait or the
+widget needs today's data, provided two risks are designed out and tested: a queued
+record left without background delivery, and a widget left on a past day. Records:
+every path that queues one registers the one-off upload (retrying a rejected record
+now does too), the app start, pause and resume reconcile the jobs, and removal is
+followed by a second read so a record queued meanwhile gets its jobs back. Widget: a
+widget-started refresh that still lacks today's data registers the retry, which
+fixes the widget once a connection returns. The periodic job stays while the
+condition holds, so the 15-minute cadence remains as a backstop to the one-off job's
+growing back-off. One gap remains by design: a periodic run that removes itself is
+stopped by WorkManager at once, so it cannot read again afterwards; a record queued in
+that instant still has its own one-off upload, and the next app start restores the
+periodic job.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the

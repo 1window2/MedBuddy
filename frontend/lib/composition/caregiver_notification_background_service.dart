@@ -104,6 +104,26 @@ class BackgroundTaskDeps {
   Future<bool> doseNeedsNetwork(String owner) =>
       DoseHomeWidget.needsNetworkRefresh(owner);
 
+  // Function Name: cancelDosePeriodic
+  // Description: Removes the 15-minute retry of an account that is no longer signed in on this device.
+  // Parameters: owner: Account in the job name.
+  // Returns: Completion; a periodic run that removes itself may be stopped by the platform right after.
+  Future<void> cancelDosePeriodic(String owner) async {
+    if (!DoseSyncBackgroundScheduler.supported) return;
+    await DoseSyncBackgroundScheduler.platform.cancelPeriodic(owner);
+  }
+
+  // Function Name: finishDoseRun
+  // Description: Keeps the account's 15-minute retry only while records wait or the widget still lacks today's data, and removes it otherwise.
+  // Parameters: owner: Account that scheduled the task; periodicRun: Whether this run is the periodic job.
+  // Returns: Completion; a periodic run that removes itself may be stopped by the platform right after.
+  Future<void> finishDoseRun(String owner, {required bool periodicRun}) =>
+      DoseSyncBackgroundScheduler.finishRun(
+        owner,
+        periodicRun: periodicRun,
+        needsNetwork: () => doseNeedsNetwork(owner),
+      );
+
   // Function Name: refreshDoseWidget
   // Description: Refreshes widget actions and display using local state or an already prepared synchronization context.
   // Parameters: sync: Optional service that already drained work; client: Its optional transport.
@@ -197,11 +217,17 @@ Future<bool> runBackgroundTask(
     if (taskName == doseSyncBackgroundTask) {
       final owner = inputData?['patient_hash']?.toString() ?? '';
       if (owner.isEmpty) return true;
+      final periodicRun = inputData?[doseSyncPeriodicInputKey] == true;
       final store = await deps.openDoseStore();
-      if (!await store.isActive(owner)) return true;
+      if (!await store.isActive(owner)) {
+        // Records of an account that is not signed in are never sent from here; its next sign-in reconciles the work again.
+        await deps.cancelDosePeriodic(owner);
+        return true;
+      }
       if (!await deps.doseNeedsNetwork(owner)) {
-        // 통신할 일이 없다. 기기 안의 상태만으로 위젯을 맞추고 끝낸다.
+        // 통신할 일이 없다. 기기 안의 상태만으로 위젯을 맞추고, 더 필요 없는 15분 재시도를 지운다.
         await deps.refreshDoseWidget();
+        await deps.finishDoseRun(owner, periodicRun: periodicRun);
         return true;
       }
       client = await deps.openClient();
@@ -216,7 +242,10 @@ Future<bool> runBackgroundTask(
       try {
         await sync.drain();
         await deps.refreshDoseWidget(sync: sync, client: client);
-        return sync.pendingCount == 0 || sync.hasBlocked;
+        final delivered = sync.pendingCount == 0 || sync.hasBlocked;
+        // 마지막 단계다. 스스로를 지우는 주기 실행은 플랫폼이 곧바로 멈춘다.
+        await deps.finishDoseRun(owner, periodicRun: periodicRun);
+        return delivered;
       } finally {
         sync.dispose();
       }

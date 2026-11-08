@@ -53,7 +53,7 @@ DoseSyncService --> OfflineScheduleWindow : 앱·위젯의 날짜별 일정 계�
 OfflineStore ..> DoseOutboxStore : 계정·캐시 revision을 함께 검사
 DoseHomeWidget --> DoseSyncService : prepareOfflineCache() / 주기 갱신의 refreshScheduleWindow()
 DoseSyncService --> DoseSyncBackgroundScheduler
-DoseSyncBackgroundScheduler --> WorkManager
+DoseSyncBackgroundScheduler --> WorkManager : 일회 전송, 보낼 기록·위젯 갱신이 남았을 때만 15분 재시도
 WorkManager --> DoseSyncService : 연결 시 재전송
 DoseSyncService --> SyncDose : 인증된 completion-operations
 SyncDose --> DoseSyncRequest : 검증된 입력

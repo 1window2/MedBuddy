@@ -67,6 +67,7 @@ Map<String, dynamic> withoutChatReceipt(Map<String, dynamic> operation) {
 // Attributes:
 // - owner (String), client (http.Client): Account scope and caller-owned transport.
 // - openStore, scheduleWork, clock: Injected storage, background scheduling, and time providers.
+// - reconcileWork: Keeps background work only while network work remains (session start and app state changes).
 // - onStateChanged, loadScheduleWindow: Optional display publisher and offline-course loader.
 // - _operations, _confirmed, _cacheDate: Pending changes and the dated authoritative snapshot.
 // - _disposed, _foreground, _timer: Session lifetime and retry scheduling state.
@@ -75,6 +76,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   final http.Client client;
   final Future<DoseOutboxStore> Function() openStore;
   final Future<void> Function() scheduleWork;
+  final Future<void> Function() reconcileWork;
   final DateTime Function() clock;
   final Future<void> Function()? onStateChanged;
   final Future<List<MedicationSchedule>> Function()? loadScheduleWindow;
@@ -122,6 +124,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   // 매개변수:
   // - owner (String), client (http.Client): 계정 키와 호출자가 수명을 관리하는 HTTP 연결
   // - openStore, scheduleWork: 저장소 열기와 백그라운드 작업 예약 함수. 미지정 예약은 아무 작업도 하지 않는다.
+  // - reconcileWork: 보낼 기록·위젯 갱신이 남았을 때만 백그라운드 작업을 두는 함수. 미지정이면 아무 작업도 하지 않는다.
   // - clock (DateTime Function()?): 날짜·재시도 기준 시계. 기본값은 DateTime.now
   // - onStateChanged, loadScheduleWindow: 선택적 표시 갱신 함수와 오프라인 기간 일정 로더
   // 반환값: 아직 시작되지 않은 DoseSyncService.
@@ -130,11 +133,13 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     required this.client,
     Future<DoseOutboxStore> Function()? openStore,
     Future<void> Function()? scheduleWork,
+    Future<void> Function()? reconcileWork,
     DateTime Function()? clock,
     this.onStateChanged,
     this.loadScheduleWindow,
   }) : openStore = openStore ?? DoseOutboxStore.open,
        scheduleWork = scheduleWork ?? (() async {}),
+       reconcileWork = reconcileWork ?? (() async {}),
        clock = clock ?? DateTime.now;
 
   // Function Name: hasScheduledRetry
@@ -213,7 +218,8 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     if (_disposed) return;
     _observing = true;
     WidgetsBinding.instance.addObserver(this);
-    unawaited(scheduleWork().catchError((_) {}));
+    // Records left from an earlier run get their upload job back; with nothing to send, no job is kept.
+    unawaited(reconcileWork().catchError((_) {}));
     unawaited(drain());
     _scheduleRetry();
   }
@@ -708,6 +714,8 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> retryNow() async {
     await initialize();
     await _store!.retryBlocked(owner);
+    // The released records are uploadable again; if this drain fails, the background job sends them.
+    unawaited(scheduleWork().catchError((_) {}));
     await drain();
   }
 
@@ -759,7 +767,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   // 함수이름: didChangeAppLifecycleState
-  // 함수역할: 앱 상태가 바뀌면 대기 타이머를 취소하고 화면 복귀 시 즉시 전송을 요청한다.
+  // 함수역할: 앱 상태가 바뀌면 대기 타이머를 취소하고 화면 복귀 시 즉시 전송을 요청한다. 복귀·백그라운드 전환 때 백그라운드 작업 예약도 맞춘다.
   // 매개변수: state (AppLifecycleState) - Flutter가 전달한 새 상태
   // 반환값: 없음. 전송 완료를 기다리지 않는다.
   @override
@@ -767,6 +775,10 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     _foreground = state == AppLifecycleState.resumed;
     _timer?.cancel();
     if (_foreground) unawaited(drain());
+    if (_foreground || state == AppLifecycleState.paused) {
+      // Leaving or returning to the app re-checks that queued records keep a background job.
+      unawaited(reconcileWork().catchError((_) {}));
+    }
   }
 
   // 함수이름: dispose
