@@ -1,10 +1,12 @@
 // 파일명: manage_chat_list_control.dart
 // 역할: 현재 사용자의 활성 대화 상대, 표시 이름·최근 메시지·안 읽은 개수를 조회한다.
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../entities/chat_message_entity.dart';
 import '../entities/patient_caregiver_link_entity.dart';
@@ -38,6 +40,21 @@ class ManageChatList extends ChangeNotifier {
   bool _disposed = false;
   bool _isLoading = false;
   bool _hasResolvedLinks = false;
+  bool? _rememberedHasLinks;
+
+  // 함수이름: linkPresenceKeyFor
+  // 함수역할: 이 기기에서 마지막으로 확인한 연동 유무를 보관하는 계정별 설정 키를 만든다.
+  // 매개변수: userHash: 계정 해시.
+  // 반환값: 계정 범위의 설정 키. 계정 삭제 때 함께 지운다.
+  static String linkPresenceKeyFor(String userHash) =>
+      'medbuddy.chat_links_present.${userHash.trim()}';
+
+  // 함수이름: offersChat
+  // 함수역할: 채팅 진입을 보일지 정한다. 서버 확인 전에는 이 기기에서 마지막으로 확인한 연동 유무를 따른다.
+  // 매개변수: 없음.
+  // 반환값: 확인된 연동이 있거나, 아직 확인 전이고 지난번에 연동이 있었으면 true. 처음 쓰는 기기는 확인 전까지 false.
+  bool get offersChat =>
+      _hasResolvedLinks ? _links.isNotEmpty : (_rememberedHasLinks ?? false);
 
   // 함수이름: hasResolvedLinks
   // 함수역할: 현재 계정의 연동 목록을 서버에서 한 번 이상 확인했는지 구분한다.
@@ -75,7 +92,40 @@ class ManageChatList extends ChangeNotifier {
            chatControl ?? ManageLinkedChat(userHash: userHash, client: client),
        _localState = localState ?? const ManageCaregiverPatientLocalState(),
        _ownsLinkControl = linkControl == null,
-       _ownsChatControl = chatControl == null;
+       _ownsChatControl = chatControl == null {
+    unawaited(_restoreLinkPresence());
+  }
+
+  // 함수이름: _restoreLinkPresence
+  // 함수역할: 서버 응답 전에 지난번 연동 유무를 읽는다. 연동 없는 사용자는 실행마다 채팅 탭이 잠깐 보였다 사라지지 않고, 연동 있는 사용자는 오프라인으로 시작해도 채팅에 들어갈 수 있다.
+  // 매개변수: 없음.
+  // 반환값: 읽기 완료 Future. 저장소 오류는 처음 쓰는 기기처럼 다룬다.
+  Future<void> _restoreLinkPresence() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final remembered = preferences.getBool(linkPresenceKeyFor(userHash));
+      if (_disposed || _hasResolvedLinks || remembered == null) return;
+      _rememberedHasLinks = remembered;
+      if (remembered) notifyListeners();
+    } catch (_) {
+      /* 서버 응답이 오면 그 결과를 따른다. */
+    }
+  }
+
+  // 함수이름: _rememberLinkPresence
+  // 함수역할: 서버에서 확인한 연동 유무가 바뀌었을 때만 다음 실행을 위해 저장한다.
+  // 매개변수: present: 활성 연동이 하나 이상인지.
+  // 반환값: 저장 완료 Future. 저장 실패는 다음 확인 때 다시 시도한다.
+  Future<void> _rememberLinkPresence(bool present) async {
+    if (_rememberedHasLinks == present) return;
+    _rememberedHasLinks = present;
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setBool(linkPresenceKeyFor(userHash), present);
+    } catch (_) {
+      _rememberedHasLinks = null;
+    }
+  }
 
   // 함수이름: links
   // 함수역할: 외부에서 변경할 수 없는 활성 연동 목록을 반환한다.
@@ -228,6 +278,7 @@ class ManageChatList extends ChangeNotifier {
           links.sort((a, b) => _compareLinks(a, b, latestMessages));
           _links = links;
           _hasResolvedLinks = true;
+          unawaited(_rememberLinkPresence(links.isNotEmpty));
           _labels = labels;
           _latestMessages = latestMessages;
           _unreadCounts = unreadCounts;

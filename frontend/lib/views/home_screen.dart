@@ -217,13 +217,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   // 함수이름: _showChatDestination
-  // 함수역할: 연동 조회 전이나 최초 조회 실패를 연결 해제로 오인하지 않도록 채팅 진입을 유지한다.
+  // 함수역할: 연동 조회 전이나 최초 조회 실패를 연결 해제로 오인하지 않도록, 지난번에 연동이 있던 계정은 채팅 진입을 유지한다.
   // 매개변수: 없음.
-  // 반환값: 현재 계정의 연동이 있거나 아직 목록을 확인하지 못했으면 true. 대화 접근 권한과는 별개다.
-  bool get _showChatDestination {
-    final chat = _chatList;
-    return chat != null && (!chat.hasResolvedLinks || chat.links.isNotEmpty);
-  }
+  // 반환값: 확인된 연동이 있거나, 확인 전이고 이 기기에서 지난번에 연동이 있었으면 true. 대화 접근 권한과는 별개다.
+  bool get _showChatDestination => _chatList?.offersChat ?? false;
 
   // 함수이름: _onChatListChanged
   // 함수역할: 연동 조회 상태에 따라 탭을 갱신하며 서버에서 마지막 연동 해제를 확인하면 홈으로 돌아간다.
@@ -232,6 +229,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     final signature = jsonEncode([
       _chatList?.hasResolvedLinks,
+      _chatList?.offersChat,
       _chatList?.hasError,
       _chatList?.links
           .map(

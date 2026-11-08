@@ -355,7 +355,10 @@ void main() {
     testWidgets('cold offline chat remains reachable and recovers: $language', (
       tester,
     ) async {
-      SharedPreferences.setMockInitialValues({});
+      // This device saw a connection before, so an offline start keeps chat reachable.
+      SharedPreferences.setMockInitialValues({
+        ManageChatList.linkPresenceKeyFor('caregiver'): true,
+      });
       _viewport(tester, 390);
       final links = _Links()..fail = true;
       final model = _ViewModel()..setting = UserSetting(language: language);
@@ -456,6 +459,56 @@ void main() {
     });
   }
 
+  // 함수이름: a device without connections never flashes the chat tab
+  // 함수역할:
+  // - 연동이 없던 기기와 처음 쓰는 기기는 첫 조회 전에도 채팅 탭을 보이지 않아 실행마다 탭이 나타났다 사라지지 않는지, 연동이 생기면 다음 실행부터 바로 보이는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
+  for (final remembered in [null, false]) {
+    testWidgets('a device without connections never flashes the chat tab: $remembered', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({
+        ManageChatList.linkPresenceKeyFor('caregiver'): ?remembered,
+      });
+      _viewport(tester, 390);
+      final pending = Completer<List<PatientCaregiverLink>>();
+      final links = _Links()..pending = pending;
+      final model = _ViewModel();
+      addTearDown(model.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: model,
+          child: MaterialApp(
+            home: HomeScreen(
+              chatListFactory: (hash) => ManageChatList(
+                userHash: hash,
+                linkControl: links,
+                chatControl: _History(),
+              ),
+            ),
+          ),
+        ),
+      );
+      final chatTab = find.byKey(const ValueKey('bottomNavigation-chat'));
+      for (var frame = 0; frame < 5; frame++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(chatTab, findsNothing);
+      }
+      pending.complete([_link(1)]);
+      await tester.pumpAndSettle();
+      expect(chatTab, findsOneWidget);
+      final preferences = await SharedPreferences.getInstance();
+      expect(
+        preferences.getBool(ManageChatList.linkPresenceKeyFor('caregiver')),
+        isTrue,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   // 함수이름: pending initial links allow chat without claiming no connections
   // 함수역할: 첫 조회 대기 중 채팅 진입을 허용하고 빈 응답이 확정될 때만 채팅 탭을 숨긴다.
   // 매개변수: tester: 화면과 지연 응답 검증 도구.
@@ -463,7 +516,9 @@ void main() {
   testWidgets(
     'pending initial links allow chat without claiming no connections',
     (tester) async {
-      SharedPreferences.setMockInitialValues({});
+      SharedPreferences.setMockInitialValues({
+        ManageChatList.linkPresenceKeyFor('caregiver'): true,
+      });
       _viewport(tester, 390);
       final pending = Completer<List<PatientCaregiverLink>>();
       final links = _Links()..pending = pending;

@@ -243,6 +243,7 @@ void main() {
     'caregiver_delivery_${owner}_${'a' * 64}': true,
     'caregiver_linked_patients.$owner': <String>['patient-1'],
     'medbuddy_as_needed_check_$owner': 1700000000000,
+    'medbuddy.chat_links_present.$owner': true,
     'caregiver_patient_label.$owner.patient-1': 'Family',
     'caregiver_alert.$owner.patient-1.morning.snapshot_data': '{}',
     for (final kind in const ['entry', 'read', 'hidden'])

@@ -12,6 +12,7 @@ import '../services/notification_service.dart';
 import '../services/pharmacy_favorite_service.dart';
 import '../services/user_setting_preference_keys.dart';
 import 'as_needed_check_reminder_control.dart';
+import 'manage_chat_list_control.dart';
 import 'manage_user_setting_control.dart';
 
 // 파일명: manage_account_control.dart
@@ -115,6 +116,7 @@ class ManageAccount {
       ').+\$',
     ),
     RegExp(r'^notification_inbox_v1\..+$'),
+    RegExp(r'^medbuddy\.chat_links_present\..+$'),
     CaregiverAlertDeliveryService.markerKeyPattern,
   ];
 
@@ -180,6 +182,7 @@ class ManageAccount {
       '${CaregiverPatientLocalStateService.linkedPatientsKeyPrefix}'
           '$normalizedUserHash',
       AsNeededCheckReminderControl.storageKeyFor(normalizedUserHash),
+      ManageChatList.linkPresenceKeyFor(normalizedUserHash),
     };
     // Only the namespace owner counts; a patient/message reference in another
     // user's key is not owned by the account being deleted.
