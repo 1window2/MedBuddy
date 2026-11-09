@@ -394,6 +394,42 @@ stopped by WorkManager at once, so it cannot read again afterwards; a record que
 that instant still has its own one-off upload, and the next app start restores the
 periodic job.
 
+## 2026-11-09: requests queue outside the worker threads
+
+The second audit left the PostgreSQL account lock path unchanged until a concurrency test
+existed. The test on a local PostgreSQL 16 with the production pool (5, no overflow)
+found that the lock itself costs little: one phone's burst of 12 requests added about
+10 ms at p95 for other users, and the chat hospital and pharmacy shares already release
+the lock before calling the provider. The real limit was the 40 AnyIO worker threads.
+Requests waited for a pooled connection or for their account's lock inside a thread,
+so once about 40 were in flight the requests holding connections found no thread to run
+their endpoint, and everything stalled until a timeout answered 503. A larger pool only
+moved the threshold (20 + 20 still stalled at 96 requests, or at 48 when several came
+from the same accounts), so the owner chose to move the waiting onto the event loop.
+
+A PostgreSQL request now takes its account's turn first and a database slot second, so
+queued requests of one account hold no slot. Both are given back after a unit of
+database work that leaves no transaction open: the registration of an external lookup, a
+`run_request_database_work` step of an asynchronous route that commits or rolls back, or
+a synchronous endpoint as a whole. Releasing at the first commit instead was tried and
+rejected after an independent review: a synchronous endpoint or a step that reads again
+after its commit keeps using a connection, so it would either use connections the gate
+does not count or wait for a slot while holding one. Holding them for the whole request
+was rejected too, because the hospital share would then block an account's other
+requests for up to 22 seconds; that share and the AI lookups roll back first and wait for
+the provider holding nothing. Work that still holds a connection never waits for a slot,
+and later steps queue again, turn first. The advisory locks stay behind the gate for
+other processes and services. A synchronous endpoint now keeps its account's turn until
+it returns, for example during the Firebase call of an account deletion, where before
+only the worker thread waited.
+
+One connection is kept outside the gate for what does not pass through it: the background
+loops and the alert sent after a response, the chat stream check, the catalogue and cache
+worker sessions of external lookups, and the database use of an external lookup's
+endpoint after its registration. These are bounded by their own limits (route quotas,
+the pill upload cap) rather than by the gate. No setting changed; the slot count follows
+`DATABASE_POOL_SIZE` and `DATABASE_MAX_OVERFLOW`.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the

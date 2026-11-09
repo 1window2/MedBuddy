@@ -1722,9 +1722,31 @@ package "FastAPI Backend" {
         }
 
         note "api/dependencies.py module functions\nverify_app_check_token()\nget_authenticated_principal()\nget_recently_authenticated_principal()\n_lock_account_operation()\nget_registered_principal()\nget_session_revocation_boundary()" as BAccountDependencies
-        class "AccountOperationLocks" as AccountOperationLocks <<Service: SQLite request ownership>> {
+        class "AccountOperationLocks" as AccountOperationLocks <<Service: process-local account turns>> {
             + active_scope_count: int
+            + acquire(user_hash, timeout): Callable release
             + hold(user_hash, timeout): AsyncContextManager
+        }
+
+        class "RequestDatabaseGate" as RequestDatabaseGate <<Service: PostgreSQL request admission>> {
+            + accounts: AccountOperationLocks
+            + slots: DatabaseSlots
+            + admit(db, user_hash): AsyncContextManager
+        }
+
+        class "DatabaseSlots" as DatabaseSlots <<Service: event-loop slot queue>> {
+            + capacity: int
+            + available: int
+            + acquire(timeout): None
+            + release(): None
+        }
+
+        class "RequestDatabaseAdmission" as RequestDatabaseAdmission <<Service: one request's turn and slot>> {
+            + held: bool
+            + ensure_admitted(): None
+            + release(): None
+            + release_if_idle(): None
+            + finish(): None
         }
 
         class "TrustedHostMiddleware" as BTrustedHostMiddleware <<Framework Middleware: production Host allowlist>> {
@@ -2976,6 +2998,17 @@ BAccountDependencies --> BAuthenticatedPrincipal : identity 생성 및 freshness
 BAccountDependencies ..> BManageAccount : tombstone registration
 BAccountDependencies --> DBUserAccount : transaction lock scope
 BAccountDependencies --> AccountOperationLocks : SQLite holder/waiter lifecycle
+BAccountDependencies --> RequestDatabaseGate : PostgreSQL admission before registration
+RequestDatabaseGate *-- AccountOperationLocks : account turn first
+RequestDatabaseGate *-- DatabaseSlots : then slot (pool - 1)
+RequestDatabaseGate ..> RequestDatabaseAdmission : issues
+note bottom of RequestDatabaseGate
+  Waits happen on the event loop, never in a worker thread.
+  Turn and slot go back after work that leaves no transaction open
+  (a synchronous endpoint keeps them until it returns);
+  run_request_database_work re-admits later database steps.
+  PostgreSQL advisory locks stay behind the gate.
+end note
 
 DispatchCaregiverAlert --|> MedicationCompletionEventBoundary
 DispatchCaregiverAlert o-- PushNotificationBoundary

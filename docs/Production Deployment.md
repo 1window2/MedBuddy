@@ -443,6 +443,19 @@ disablement made in Firebase therefore applies within 30 seconds; an account del
 this server is forgotten at once. The value is capped at 60 in the code, and 0 restores
 a lookup on every request. No migration is involved; recreate the backend container.
 
+### Request admission on PostgreSQL
+
+Authenticated requests wait on the event loop for their account's turn (up to 5 s) and
+then for a database slot (up to `DATABASE_POOL_TIMEOUT_SECONDS`) before they use the
+database, instead of waiting in a worker thread. The slot count is
+`DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW - 1`, 4 with the defaults; the remaining
+connection serves the background loops, the chat stream check and the cache work of
+external lookups, which do not pass the gate. A wait
+that runs out answers the same retryable 503 as a busy account, and the backend logs
+"Request database admission timed out" with which wait it was, without the account. If
+these lines appear often, raise the pool size (and PostgreSQL `max_connections` if
+needed) rather than the waits. No migration or setting change is involved.
+
 ### Medication search cache migration
 
 Revision `a9d3c5e71f24`, after `f7a2c9e4b610`, adds `medication_search_cache`: the

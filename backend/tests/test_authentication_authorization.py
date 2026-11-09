@@ -471,7 +471,12 @@ async def test_cancelled_postgres_registration_finishes_before_session_cleanup()
     release = threading.Event()
     calls: list[str] = []
     loop_thread = threading.get_ident()
-    db = SimpleNamespace(get_bind=lambda: SimpleNamespace(dialect=SimpleNamespace(name="postgresql")))
+    # PostgreSQL 요청 입장도 세션의 info와 트랜잭션 여부를 읽으므로 그 두 가지를 갖춘다.
+    db = SimpleNamespace(
+        get_bind=lambda: SimpleNamespace(dialect=SimpleNamespace(name="postgresql")),
+        info={},
+        in_transaction=lambda: False,
+    )
 
     # Function Name: register
     # Description: Simulates account registration while holding the caller's session in a worker.

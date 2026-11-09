@@ -61,6 +61,7 @@ from core.config import settings
 from core.account_operation_locks import AccountOperationLocks
 from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operations
 from core.database import get_db
+from core.request_database_gate import RequestDatabaseGate
 from core.request_database_work import run_request_database_work
 from core.request_rate_limits import (
     DAILY_QUOTA_EXCEEDED_DETAIL,
@@ -134,6 +135,20 @@ _push_notification_boundary_lock = Lock()
 _push_notification_boundary: PushNotificationBoundary | None = None
 _sqlite_account_lock_registry = AccountOperationLocks()
 _SQLITE_ACCOUNT_LOCK_WAIT_SECONDS = 5.0
+# 입장 없이 연결을 쓰는 작업 몫으로 연결 하나를 남긴다: 백그라운드 작업자와 응답 뒤 알림 전송,
+# 채팅 스트림 확인, 외부 조회의 카탈로그·캐시 작업 세션, 등록 뒤 외부 조회 endpoint의 DB 사용.
+# 계정 순서 대기는 PostgreSQL lock_timeout과 같은 5초다.
+_DATABASE_CONNECTIONS_OUTSIDE_GATE = 1
+_postgres_request_gate = RequestDatabaseGate(
+    slots=max(
+        1,
+        settings.DATABASE_POOL_SIZE
+        + settings.DATABASE_MAX_OVERFLOW
+        - _DATABASE_CONNECTIONS_OUTSIDE_GATE,
+    ),
+    account_wait_seconds=5.0,
+    slot_wait_seconds=settings.DATABASE_POOL_TIMEOUT_SECONDS,
+)
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 # 공개 정보 조회만 조기에 연결을 반환한다. 사용자 데이터 변경 경로는 포함하지 않는다.
@@ -390,13 +405,14 @@ def _register_detached_lookup_scope(db: Session, user_hash: str) -> None:
 # Function Name: get_registered_principal
 # Description:
 # - Enforces per-user request quotas and account registration, holding the SQLite account lock through endpoint execution and allowing deletion retries.
+# - PostgreSQL requests first wait on the event loop for their account turn and a database slot (core.request_database_gate).
 # - Routes with a daily cost quota are also counted per account for the day.
 # Parameters:
 # - request (Request): Incoming FastAPI request used to access application state.
 # - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
 # - db (Session): SQLAlchemy session for this unit of work.
 # Returns:
-# - Yields the registered principal once; releases the SQLite lock during dependency teardown.
+# - Yields the registered principal once; releases the SQLite lock or the PostgreSQL admission during dependency teardown.
 async def get_registered_principal(
     request: Request,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
@@ -445,10 +461,20 @@ async def get_registered_principal(
                 rule=daily_rule,
                 exceeded_detail=DAILY_QUOTA_EXCEEDED_DETAIL,
             )
-    # Step 1: Hold SQLite ownership through registration and endpoint teardown.
+    # Step 1: Hold SQLite ownership through registration and endpoint teardown, or queue a
+    # PostgreSQL request on the event loop until its transaction may hold a pooled connection.
     async with AsyncExitStack() as account_scope:
+        dialect_name = db.get_bind().dialect.name
         # 공개 조회와 재검증형 추천은 DB 단계만 잠그고 외부 응답 대기에는 계정을 붙잡지 않는다.
-        if db.get_bind().dialect.name == "sqlite" and not detach_registration:
+        if dialect_name == "postgresql":
+            # 대기는 작업 스레드 밖에서 한다. 스레드가 연결이나 계정 잠금을 기다리며 묶이면
+            # 연결을 가진 요청이 끝낼 스레드를 얻지 못해 서버 전체가 시간 초과까지 멈춘다.
+            # 트랜잭션을 남기지 않은 작업 단위가 끝나면 입장을 돌려주므로 외부 조회 대기에는
+            # 자리를 붙잡지 않는다. 동기 endpoint는 한 스레드에서 끝까지 연결을 쓰므로 요청 끝까지 쥔다.
+            await account_scope.enter_async_context(
+                _postgres_request_gate.admit(db, principal.user_hash)
+            )
+        elif dialect_name == "sqlite" and not detach_registration:
             try:
                 await account_scope.enter_async_context(
                     _sqlite_account_lock_registry.hold(

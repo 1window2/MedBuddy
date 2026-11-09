@@ -176,11 +176,11 @@ were rejected. Fixed or still open from its results:
 - [x] Clients can no longer use the `slot_complete_` message id that the server uses
       for its slot completion card; a patient message with that id kept the server
       card from being created.
-- [ ] Hardening, not a vulnerability (the audit rejected it): on PostgreSQL a request
-      waiting for its own account's lock holds one of the 5 pooled connections for up
-      to 5 s. Waiting on an in-process per-account lock before checkout, as SQLite
-      already does, or giving the background loops their own small engine, would free
-      those slots. Needs a PostgreSQL concurrency test before changing the lock path.
+- [x] Hardening, not a vulnerability (the audit rejected it): on PostgreSQL a request
+      waiting for its own account's lock held one of the 5 pooled connections for up
+      to 5 s. A PostgreSQL concurrency test found the larger problem (more than about 40
+      requests in flight stalled the process); requests now wait on the event loop for
+      their account's turn and a database slot (2026-11-09 decision).
 
 ### Review of the 2026-11-07 collaborator commits
 

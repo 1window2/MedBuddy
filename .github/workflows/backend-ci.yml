@@ -108,4 +108,5 @@ jobs:
           tests/test_postgres_catalog_sync.py \
           tests/test_pharmacy_cache_migration.py \
           tests/test_medication_retention_transaction.py \
-          tests/test_postgres_app_role.py
+          tests/test_postgres_app_role.py \
+          tests/test_postgres_request_database_gate.py
