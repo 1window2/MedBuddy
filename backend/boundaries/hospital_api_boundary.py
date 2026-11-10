@@ -13,10 +13,10 @@ import time
 from typing import Protocol
 from urllib.parse import unquote
 import xml.etree.ElementTree as ET
-from zoneinfo import ZoneInfo
 
 import httpx
 
+from core.application_clock import application_today
 from core.config import settings
 from entities.nearby_hospital_entity import (
     HospitalDetails,
@@ -121,7 +121,7 @@ class NationalEmergencyMedicalCenterHospitalAPI:
         self._client = client
         self._owns_client = client is None
         self._clock = clock
-        self._date_clock = date_clock or (lambda: datetime.now(ZoneInfo(settings.APPLICATION_TIME_ZONE)).date())
+        self._date_clock = date_clock or application_today
         self._budget_date: date | None = None
         # 제공기관의 하루 할당량은 오퍼레이션마다 따로 매겨지므로 호출 수도 오퍼레이션별로 센다.
         self._daily_requests: dict[str, int] = {}

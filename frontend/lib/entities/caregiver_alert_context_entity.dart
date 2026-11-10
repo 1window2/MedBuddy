@@ -22,8 +22,10 @@ int fnv1a31(String source) {
 // Class Name: CaregiverAlertContext
 // Role: Carries the validated link between a missed-dose case and one delivery event.
 // Responsibilities: Serialize versioned action context and derive a stable recipient/event notification ID.
-// Attributes: alertId/sourceAlertId/linkId (int): Delivery/source/link IDs; eventId/sourceEventId: Event hashes; patientHash/recipientHash: Account scope; slotKey/scheduleDate: Dose slot/day.
+// Attributes: payloadPrefix (String): Versioned notification payload prefix; alertId/sourceAlertId/linkId (int): Delivery/source/link IDs; eventId/sourceEventId: Event hashes; patientHash/recipientHash: Account scope; slotKey/scheduleDate: Dose slot/day.
 class CaregiverAlertContext {
+  static const String payloadPrefix = 'caregiver-v1:';
+
   final int alertId;
   final int sourceAlertId;
   final int linkId;
@@ -100,16 +102,16 @@ class CaregiverAlertContext {
   // Description: Encodes versioned context for a notification tap without introducing raw JSON delimiters into the payload.
   // Parameters: None.
   // Returns: caregiver-v1 prefix followed by URI-encoded JSON; the payload is not secret or authenticated.
-  String get payload => 'caregiver-v1:${Uri.encodeComponent(jsonEncode(toData()))}';
+  String get payload => '$payloadPrefix${Uri.encodeComponent(jsonEncode(toData()))}';
 
   // Function Name: fromPayload
   // Description: Checks the prefix, decodes URI/JSON content, and applies the same field validation as server data.
   // Parameters: payload (String): Notification tap payload.
   // Returns: Validated context or null for another prefix, malformed encoding/JSON, non-object data, or invalid fields.
   static CaregiverAlertContext? fromPayload(String payload) {
-    if (!payload.startsWith('caregiver-v1:')) return null;
+    if (!payload.startsWith(payloadPrefix)) return null;
     try {
-      final decoded = jsonDecode(Uri.decodeComponent(payload.substring('caregiver-v1:'.length)));
+      final decoded = jsonDecode(Uri.decodeComponent(payload.substring(payloadPrefix.length)));
       return decoded is Map<String, dynamic> ? fromData(decoded) : null;
     } on FormatException {
       return null;

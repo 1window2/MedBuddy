@@ -28,6 +28,7 @@ from api.dependencies import (
     get_manage_linked_chat,
     get_check_nearby_hospital,
     get_check_nearby_pharmacy,
+    get_request_rate_limit_store,
     verify_app_check_token,
 )
 from api.route_support import (
@@ -47,7 +48,7 @@ from core.api_contract import CHAT_CLOSE_CODES_FEATURE, client_declares_feature
 from core.config import settings
 from core.database import SessionLocal
 from core.request_database_work import run_request_database_work
-from core.request_rate_limits import RateLimitRule, RequestRateLimitStore
+from core.request_rate_limits import RateLimitRule
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from entities.chat_message_entity import (
@@ -640,10 +641,7 @@ async def _reserve_websocket_connection(
 ) -> tuple[bool, int]:
     if not settings.RATE_LIMIT_ENABLED:
         return True, 0
-    store = getattr(websocket.app.state, "request_rate_limit_store", None)
-    if not isinstance(store, RequestRateLimitStore):
-        raise RuntimeError("Request rate-limit store is not initialized.")
-    return await store.consume(
+    return await get_request_rate_limit_store(websocket).consume(
         identity=f"websocket:{user_hash}",
         request_scope="CONNECT:/api/v1/chat/stream",
         rule=RateLimitRule(

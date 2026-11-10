@@ -7,12 +7,12 @@ import asyncio
 import logging
 import xml.etree.ElementTree as ElementTree
 from collections.abc import Callable
-from datetime import date, datetime
+from datetime import date
 from typing import Protocol
-from zoneinfo import ZoneInfo
 
 import httpx
 
+from core.application_clock import application_today
 from core.config import settings
 # PharmacyApiUnavailableError는 엔티티에 정의하며, 기존 호출자를 위해 이 경계에서도 같은 이름으로 내보낸다.
 from entities.nearby_pharmacy_entity import (
@@ -88,9 +88,7 @@ class NationalEmergencyMedicalCenterPharmacyAPI:
         timeout_seconds: float | None = None,
         date_clock: Callable[[], date] | None = None,
     ) -> None:
-        self._date_clock = date_clock or (
-            lambda: datetime.now(ZoneInfo(settings.APPLICATION_TIME_ZONE)).date()
-        )
+        self._date_clock = date_clock or application_today
         # 프로세스 전체의 위치 조회 호출 수. 운영자 할당량을 한 사용자가 소진하지 않게 한다.
         self._budget_date: date | None = None
         self._daily_location_requests = 0

@@ -25,6 +25,13 @@ import 'user_setting_preference_keys.dart';
 import 'slot_check_notification_context.dart';
 import 'slot_check_notification_service.dart';
 
+// 보호자 알림으로 처리하는 FCM 메시지 유형. 수신 저장·표시·선택 처리가 같은 목록을 쓴다.
+const Set<String> _caregiverMessageTypes = {
+  'caregiver_slot_completed',
+  'caregiver_dose_completed',
+  'caregiver_slot_missed',
+};
+
 // 재전송된 필요시 복용 푸시는 FCM 메시지 ID가 달라도 같은 알림으로 묶는다.
 // 함수이름: _asNeededPushIdentity
 // 함수역할: 필요시 복용 완료 푸시의 유형·시간대·이벤트 해시를 검증해 중복 구분 키를 만든다.
@@ -116,11 +123,7 @@ Future<void> recordPushNotificationHistory(
         language: english ? 'en' : 'ko',
       );
       category = NotificationInboxCategory.chat;
-    } else if (const {
-      'caregiver_slot_completed',
-      'caregiver_dose_completed',
-      'caregiver_slot_missed',
-    }.contains(type)) {
+    } else if (_caregiverMessageTypes.contains(type)) {
       final patient = message.data['patient_hash']?.toString().trim() ?? '';
       if (patient.isEmpty) return;
       payload = MedicationNotificationPayloadCodec.caregiverPayload(patient);
@@ -811,12 +814,7 @@ class PushNotificationService {
       );
       return;
     }
-    const supportedTypes = {
-      'caregiver_slot_completed',
-      'caregiver_dose_completed',
-      'caregiver_slot_missed',
-    };
-    if (!supportedTypes.contains(message.data['type'])) {
+    if (!_caregiverMessageTypes.contains(message.data['type'])) {
       return;
     }
     final patientHash = message.data['patient_hash']?.trim() ?? '';
@@ -867,12 +865,9 @@ class PushNotificationService {
   // - 없음.
   void _handleOpenedMessage(RemoteMessage message) {
     if (message.data['recipient_hash'] != userHash) return;
-    if (!const {
-      'linked_chat_message',
-      'caregiver_slot_completed',
-      'caregiver_dose_completed',
-      'caregiver_slot_missed',
-    }.contains(message.data['type'])) {
+    final type = message.data['type'];
+    if (type != 'linked_chat_message' &&
+        !_caregiverMessageTypes.contains(type)) {
       return;
     }
     final alert = CaregiverAlertContext.fromData(message.data);

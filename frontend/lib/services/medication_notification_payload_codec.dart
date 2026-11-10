@@ -54,7 +54,7 @@ class MedicationNotificationPayloadCodec {
         linkId: request.linkId,
       );
     }
-    if (payload?.startsWith('caregiver-v1:') ?? false) {
+    if (payload?.startsWith(CaregiverAlertContext.payloadPrefix) ?? false) {
       final alert = CaregiverAlertContext.fromPayload(payload!);
       if (alert == null) return null;
       return MedicationNotificationSelection(
@@ -152,7 +152,7 @@ class MedicationNotificationPayloadCodec {
   static bool isSessionPayload(String? payload) =>
       payload?.startsWith(SlotCheckNotificationContext.prefix) == true ||
       payload?.startsWith('schedule:') == true ||
-      payload?.startsWith('caregiver-v1:') == true ||
+      payload?.startsWith(CaregiverAlertContext.payloadPrefix) == true ||
       payload?.startsWith(caregiverPayloadPrefix) == true ||
       payload?.startsWith('chat:') == true;
 }

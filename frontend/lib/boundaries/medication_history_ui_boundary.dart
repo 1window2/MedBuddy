@@ -2427,7 +2427,8 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
                           key: const Key('history-skip-reason'),
                           controller: _reason,
                           enabled: !_fieldsLocked,
-                          maxLength: 200,
+                          maxLength:
+                              MedicationHistoryChange.maximumReasonLength,
                           minLines: 1,
                           maxLines: 3,
                           decoration: InputDecoration(

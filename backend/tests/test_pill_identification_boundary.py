@@ -323,7 +323,7 @@ def _sample_image() -> bytes:
 # - None.
 def test_image_preprocessing_rejects_invalid_data() -> None:
     with pytest.raises(PillImageQualityError, match="valid image"):
-        PillImageProcessingBoundary().preprocessPillImage(b"not-an-image")
+        PillImageProcessingBoundary().preprocessPillImageWithAssessment(b"not-an-image")
 
 
 # Function Name: _progressive_jpeg
@@ -432,7 +432,7 @@ def test_image_preprocessing_rejects_oversized_dimensions_before_decode(
     monkeypatch.setattr(boundary_module.cv2, "imdecode", fail_decode)
 
     with pytest.raises(PillImageQualityError, match="too large"):
-        PillImageProcessingBoundary().preprocessPillImage(b"image-header")
+        PillImageProcessingBoundary().preprocessPillImageWithAssessment(b"image-header")
 
 
 # Function Name: test_image_preprocessing_returns_bounded_jpeg
@@ -444,7 +444,7 @@ def test_image_preprocessing_rejects_oversized_dimensions_before_decode(
 # Returns:
 # - None.
 def test_image_preprocessing_returns_bounded_jpeg() -> None:
-    processed = PillImageProcessingBoundary().preprocessPillImage(_sample_image())
+    processed = PillImageProcessingBoundary().preprocessPillImageWithAssessment(_sample_image()).image
 
     decoded = cv2.imdecode(np.frombuffer(processed, dtype=np.uint8), cv2.IMREAD_COLOR)
     assert decoded is not None
@@ -465,9 +465,9 @@ def test_image_preprocessing_downsamples_high_resolution_jpeg() -> None:
     success, encoded = cv2.imencode(".jpg", image)
     assert success
 
-    processed = PillImageProcessingBoundary().preprocessPillImage(
+    processed = PillImageProcessingBoundary().preprocessPillImageWithAssessment(
         encoded.tobytes()
-    )
+    ).image
     decoded = cv2.imdecode(
         np.frombuffer(processed, dtype=np.uint8),
         cv2.IMREAD_COLOR,
@@ -491,7 +491,7 @@ def test_image_preprocessing_preserves_ambiguous_multi_object_frame() -> None:
     success, encoded = cv2.imencode(".jpg", image)
     assert success
 
-    processed = PillImageProcessingBoundary().preprocessPillImage(encoded.tobytes())
+    processed = PillImageProcessingBoundary().preprocessPillImageWithAssessment(encoded.tobytes()).image
     decoded = cv2.imdecode(np.frombuffer(processed, dtype=np.uint8), cv2.IMREAD_COLOR)
 
     assert decoded is not None
@@ -518,7 +518,7 @@ def test_image_preprocessing_ignores_edge_clutter_when_cropping() -> None:
     success, encoded = cv2.imencode(".jpg", image)
     assert success
 
-    processed = PillImageProcessingBoundary().preprocessPillImage(encoded.tobytes())
+    processed = PillImageProcessingBoundary().preprocessPillImageWithAssessment(encoded.tobytes()).image
     decoded = cv2.imdecode(np.frombuffer(processed, dtype=np.uint8), cv2.IMREAD_COLOR)
 
     assert decoded is not None
@@ -552,7 +552,7 @@ def test_image_preprocessing_crops_high_contrast_pill_on_textured_frame() -> Non
     success, encoded = cv2.imencode(".jpg", image)
     assert success
 
-    processed = PillImageProcessingBoundary().preprocessPillImage(encoded.tobytes())
+    processed = PillImageProcessingBoundary().preprocessPillImageWithAssessment(encoded.tobytes()).image
     decoded = cv2.imdecode(np.frombuffer(processed, dtype=np.uint8), cv2.IMREAD_COLOR)
 
     assert decoded is not None

@@ -49,14 +49,6 @@ class AppLanguageControl extends ChangeNotifier with WidgetsBindingObserver {
   // - String: system·ko·en 언어 선택 모드
   String get languageMode => _languageMode;
 
-  // 함수이름: isEnglish
-  // 함수역할: 실제 표시 언어가 영어인지 알려 언어별 화면 구성을 선택하게 한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - bool: 실제 표시 언어가 영어인지 알려 언어별 화면 구성을 선택하게 한다.
-  bool get isEnglish => language == 'en';
-
   // 함수이름: load
   // 함수역할: 기기에 저장된 앱 언어를 불러온다. 저장소를 읽는 동안 사용자가 새 언어를 선택했다면 해당 선택을 덮어쓰지 않는다.
   // 매개변수:

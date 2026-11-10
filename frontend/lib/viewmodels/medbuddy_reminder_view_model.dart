@@ -876,10 +876,9 @@ class MedBuddyReminderViewModel {
   // - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키
   // 반환값:
   // - MedicationAlarm: 사용자 환경설정의 기본 시각으로 비활성 복약 알림을 만든다.
-  MedicationAlarm _defaultMedicationAlarm(String slotKey) {
-    final timeParts = userSetting.defaultTimeForSlot(slotKey).split(':');
-    final hour = timeParts.isNotEmpty ? int.tryParse(timeParts[0]) : null;
-    final minute = timeParts.length > 1 ? int.tryParse(timeParts[1]) : null;
-    return MedicationAlarm.defaults(slotKey, hour: hour, minute: minute);
-  }
+  MedicationAlarm _defaultMedicationAlarm(String slotKey) =>
+      MedicationAlarm.defaultsAt(
+        slotKey,
+        userSetting.defaultTimeForSlot(slotKey),
+      );
 }

@@ -8,14 +8,17 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from entities.medication_detail_entity import MedicationDetail, MedicationSearchCacheRecord
+from entities.medication_detail_entity import (
+    SEARCHED_MEDICATION_ITEM_SEQ_MAX_LENGTH,
+    SEARCHED_MEDICATION_MANUFACTURER_MAX_LENGTH,
+    SEARCHED_MEDICATION_NAME_MAX_LENGTH,
+    MedicationDetail,
+    MedicationSearchCacheRecord,
+)
 from entities.medication_image_url_entity import safe_medication_image_url
 from entities.user_account_entity import utc_now
 
 SEARCH_CACHE_MAX_AGE = timedelta(hours=24)
-_ITEM_SEQ_MAX_LENGTH = 64
-_NAME_MAX_LENGTH = 300
-_MANUFACTURER_MAX_LENGTH = 200
 
 
 # Class Name: MedicationSearchCacheRepository
@@ -50,9 +53,9 @@ class MedicationSearchCacheRepository:
             name = (detail.item_name or "").strip()
             manufacturer = (detail.manufacturer or "").strip()
             if (
-                not item_seq or len(item_seq) > _ITEM_SEQ_MAX_LENGTH
-                or not name or len(name) > _NAME_MAX_LENGTH
-                or len(manufacturer) > _MANUFACTURER_MAX_LENGTH
+                not item_seq or len(item_seq) > SEARCHED_MEDICATION_ITEM_SEQ_MAX_LENGTH
+                or not name or len(name) > SEARCHED_MEDICATION_NAME_MAX_LENGTH
+                or len(manufacturer) > SEARCHED_MEDICATION_MANUFACTURER_MAX_LENGTH
             ):
                 continue
             rows[item_seq] = dict(

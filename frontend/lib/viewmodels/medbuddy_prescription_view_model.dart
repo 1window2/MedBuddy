@@ -52,21 +52,6 @@ class MedBuddyPrescriptionViewModel {
   // 매개변수: 없음.
   // 반환값: 이번 분석의 대상 건수.
   int get totalMedicationAnalysisCount => _totalMedicationAnalysisCount;
-  // Function Name: isPrescriptionAnalyzing
-  // Description: Checks whether the workflow is recognizing an image or analyzing medications.
-  // Parameters: None.
-  // Returns: True for those two active processing states.
-  bool get isPrescriptionAnalyzing {
-    return _prescriptionFlowState ==
-            PrescriptionFlowState.recognizingPrescription ||
-        _prescriptionFlowState == PrescriptionFlowState.analyzingMedication;
-  }
-
-  // Function Name: isLoading
-  // Description: Provides the compatibility loading flag for prescription processing.
-  // Parameters: None.
-  // Returns: The same value as isPrescriptionAnalyzing.
-  bool get isLoading => isPrescriptionAnalyzing;
   int? _savingMedicationIndex;
   // Function Name: savingMedicationIndex
   // Description: Exposes the analysis-list index currently being saved, or null when no individual save is running.
@@ -213,12 +198,6 @@ class MedBuddyPrescriptionViewModel {
   // Parameters: None.
   // Returns: The current preview path, or an empty string without a selected preview.
   String get prescriptionPreviewImagePath => _prescriptionPreviewImagePath;
-  // Function Name: medicationScheduleList
-  // Description: Provides the legacy schedule accessor for recognized prescription rows.
-  // Parameters: None.
-  // Returns: The same read-only row list as recognizedMedicationScheduleList.
-  List<MedicationSchedule> get medicationScheduleList =>
-      recognizedMedicationScheduleList;
   List<AnalyzedMedication> _analyzedMedicationList = [];
   // Function Name: analyzedMedicationList
   // Description: Exposes successful detail analyses in their retained prescription order.

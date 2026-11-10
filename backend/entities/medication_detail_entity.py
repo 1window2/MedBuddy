@@ -146,6 +146,14 @@ class _DrugApprovalInfo(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+# Field lengths of a searched product. The cache columns, the chat attachment schema
+# (schemas.chat.ChatMedicationReference) and the cache writer share them, so every cached
+# product can be attached and every attachment fits the cache.
+SEARCHED_MEDICATION_ITEM_SEQ_MAX_LENGTH = 64
+SEARCHED_MEDICATION_NAME_MAX_LENGTH = 300
+SEARCHED_MEDICATION_MANUFACTURER_MAX_LENGTH = 200
+
+
 # Class Name: MedicationSearchCacheRecord
 # Role:
 # - Public product details that the medication search returned, kept briefly so a searched
@@ -163,8 +171,10 @@ class MedicationSearchCacheRecord(Base):
 
     __tablename__ = "medication_search_cache"
 
-    item_seq = Column(String(length=64), primary_key=True)
-    item_name = Column(String(length=300), nullable=False)
-    manufacturer = Column(String(length=200), nullable=False, default="")
+    item_seq = Column(String(length=SEARCHED_MEDICATION_ITEM_SEQ_MAX_LENGTH), primary_key=True)
+    item_name = Column(String(length=SEARCHED_MEDICATION_NAME_MAX_LENGTH), nullable=False)
+    manufacturer = Column(
+        String(length=SEARCHED_MEDICATION_MANUFACTURER_MAX_LENGTH), nullable=False, default="",
+    )
     image_url = Column(String(length=2048), nullable=False, default="")
     fetched_at = Column(DateTime, nullable=False, index=True)

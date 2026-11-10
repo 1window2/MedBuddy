@@ -164,12 +164,6 @@ class MedBuddyViewModel extends ChangeNotifier {
   int get totalMedicationAnalysisCount =>
       _prescriptions.totalMedicationAnalysisCount;
 
-  // Function Name: isLoading
-  // Description: Reports whether the prescription feature has an operation in progress.
-  // Parameters: None.
-  // Returns: Prescription loading state; unrelated feature requests do not determine it.
-  bool get isLoading => _prescriptions.isLoading;
-
   // Function Name: savingMedicationIndex
   // Description: Identifies the analyzed medication currently being saved individually.
   // Parameters: None.
@@ -356,13 +350,6 @@ class MedBuddyViewModel extends ChangeNotifier {
   // Returns: The current preview path, possibly empty.
   String get prescriptionPreviewImagePath =>
       _prescriptions.prescriptionPreviewImagePath;
-
-  // Function Name: medicationScheduleList
-  // Description: Exposes the prescription feature's working medication schedule list.
-  // Parameters: None.
-  // Returns: The current prescription schedules.
-  List<MedicationSchedule> get medicationScheduleList =>
-      _prescriptions.medicationScheduleList;
 
   // Function Name: analyzedMedicationList
   // Description: Exposes medication analysis results retained by the prescription feature.

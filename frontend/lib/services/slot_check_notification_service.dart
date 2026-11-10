@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../entities/calendar_days.dart';
 import '../entities/medication_schedule_entity.dart';
+import '../entities/offline_schedule_window.dart';
 import '../entities/user_setting_entity.dart';
 import 'api_config.dart';
 import 'auth_config.dart';
@@ -103,7 +104,10 @@ class SlotCheckNotificationPlatform {
     final response = await client
         .get(
           Uri.parse('${ApiConfig.baseUrl}/schedule/window').replace(
-            queryParameters: {'patient_hash': sync.owner, 'days': '14'},
+            queryParameters: {
+              'patient_hash': sync.owner,
+              'days': '${OfflineScheduleWindow.maximumDays}',
+            },
           ),
         )
         .timeout(const Duration(seconds: 10));
@@ -111,7 +115,7 @@ class SlotCheckNotificationPlatform {
     final body = jsonDecode(utf8.decode(response.bodyBytes));
     final end = addCalendarDays(
       DateTime.parse(day),
-      13,
+      OfflineScheduleWindow.maximumDays - 1,
     ).toIso8601String().substring(0, 10);
     if (body is! Map ||
         body['success'] != true ||

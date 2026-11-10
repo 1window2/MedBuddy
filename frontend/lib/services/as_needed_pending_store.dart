@@ -77,7 +77,9 @@ class AsNeededPendingStore {
     final operation = json['operation_id'] as String;
     if (!entry.isAsNeeded ||
         entry.revision != 0 ||
-        !entry.slotKey.startsWith('as_needed:') ||
+        !entry.slotKey.startsWith(
+          MedicationHistoryEntry.asNeededEventKeyPrefix,
+        ) ||
         !MedicationHistoryChange.isUuid(operation)) {
       throw const FormatException('Invalid pending as-needed dose.');
     }

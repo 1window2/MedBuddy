@@ -22,22 +22,6 @@ extension MedBuddySavedMedicationFacade on MedBuddyViewModel {
   // Parameters: None. Returns: Whether the newest finished list request failed.
   bool get hasSavedMedicationLoadError => _savedMedications.hasLoadError;
 
-  // Function Name: saveMedicationInfo
-  // Description: Delegate medication persistence and optional refresh to the saved-medication feature.
-  // Parameters: medicationInfo (MedicationDetail): catalog/detail data; medicationSchedule (MedicationSchedule?): reviewed schedule; localImagePath (String): device photo; refreshAfterSave (bool): refresh after persistence.
-  // Returns: Future<MedicationSaveResult>: save outcome from the feature owner.
-  Future<MedicationSaveResult> saveMedicationInfo(
-    MedicationDetail medicationInfo, {
-    MedicationSchedule? medicationSchedule,
-    String localImagePath = '',
-    bool refreshAfterSave = true,
-  }) => _savedMedications.saveMedicationInfo(
-    medicationInfo,
-    medicationSchedule: medicationSchedule,
-    localImagePath: localImagePath,
-    refreshAfterSave: refreshAfterSave,
-  );
-
   // Function Name: saveManualMedication
   // Description: Delegates user-entered medication registration.
   // Parameters: entry: User-confirmed medication data; refreshAfterSave: refresh policy.

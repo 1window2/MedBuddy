@@ -4,6 +4,7 @@ import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
 
 import '../entities/medication_schedule_entity.dart';
+import '../entities/offline_schedule_window.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
@@ -73,7 +74,7 @@ class CheckSchedule {
   // 매개변수: days: 오늘을 포함한 조회 일수, 1~14이며 기본 14.
   // 반환값: 복약 일정 목록 Future; 범위 밖 days는 ArgumentError, 응답 검증 실패는 오류로 전달한다.
   Future<List<MedicationSchedule>> requestMedicationScheduleWindow({
-    int days = 14,
+    int days = OfflineScheduleWindow.maximumDays,
   }) => _requestScheduleWindow(days: days);
 
   // 함수이름: requestOfflineScheduleWindow
@@ -82,7 +83,10 @@ class CheckSchedule {
   // 반환값: 기간이 일치하는 일정 목록; 기기 시각으로 유효기간을 임의 연장하지 않고 불일치 시 실패한다.
   Future<List<MedicationSchedule>> requestOfflineScheduleWindow({
     required String expectedStartDay,
-  }) => _requestScheduleWindow(days: 14, expectedStartDay: expectedStartDay);
+  }) => _requestScheduleWindow(
+    days: OfflineScheduleWindow.maximumDays,
+    expectedStartDay: expectedStartDay,
+  );
 
   // 함수이름: _sharedScheduleWindow
   // 함수역할: 같은 일수의 기간 일정 요청이 진행 중이면 그 응답을 함께 쓴다. 기록 동기화와 알림 동기화가 일정 갱신 직후 같은 14일 일정을 동시에 읽으므로 요청을 한 번만 보낸다. 끝난 응답은 보관하지 않는다.
@@ -120,8 +124,12 @@ class CheckSchedule {
     required int days,
     String? expectedStartDay,
   }) async {
-    if (days < 1 || days > 14) {
-      throw ArgumentError.value(days, 'days', 'Must be between 1 and 14.');
+    if (days < 1 || days > OfflineScheduleWindow.maximumDays) {
+      throw ArgumentError.value(
+        days,
+        'days',
+        'Must be between 1 and ${OfflineScheduleWindow.maximumDays}.',
+      );
     }
     return ApiResponseParser.guardRequest(
       operation: 'Schedule window lookup failed',

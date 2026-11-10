@@ -232,13 +232,14 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
       final newestKnownId = _recoveryBoundary;
       var page = await control.requestHistory(linkId: linkId);
       // A skipped unparseable row still counts as a server row for paging.
-      final initialPageIsFull = ChatHistoryPage.rowCountOf(page) == 50;
+      final initialPageIsFull =
+          ChatHistoryPage.rowCountOf(page) == ChatHistoryPage.defaultPageSize;
       final incoming = [...page];
       final unread = await unreadFuture;
       int? previousBoundary;
       while (newestKnownId != null &&
           page.isNotEmpty &&
-          ChatHistoryPage.rowCountOf(page) == 50) {
+          ChatHistoryPage.rowCountOf(page) == ChatHistoryPage.defaultPageSize) {
         final oldest = page
             .map((m) => m.messageId)
             .reduce((a, b) => a < b ? a : b);
@@ -327,7 +328,8 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
       if (_disposed) return;
       _merge(older);
       _hasOlderMessages =
-          ChatHistoryPage.rowCountOf(older) == 50 &&
+          ChatHistoryPage.rowCountOf(older) ==
+              ChatHistoryPage.defaultPageSize &&
           older.any((m) => m.messageId < beforeId);
     } catch (_) {
       if (!_disposed) _olderMessagesFailed = true;

@@ -3,7 +3,7 @@
 
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from threading import Barrier
 from uuid import uuid4

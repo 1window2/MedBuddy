@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 파일명: medbuddy_bottom_navigation_ui_boundary.dart
@@ -314,11 +315,11 @@ class _BottomNavigationText {
   const _BottomNavigationText(this.language);
 
   // Function Name: isEnglish
-  // Description: Recognizes English locale prefixes after trimming and lowercasing the language code.
+  // Description: Applies the shared isEnglishLanguage rule to the language code.
   // Parameters:
   // - None.
   // Returns: True when the documented condition holds; false otherwise.
-  bool get isEnglish => language.trim().toLowerCase().startsWith('en');
+  bool get isEnglish => isEnglishLanguage(language);
 
   // Function Name: home
   // Description: Provides localized wording for "Home" using the current language and message inputs.

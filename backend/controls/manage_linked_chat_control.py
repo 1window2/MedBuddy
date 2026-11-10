@@ -13,7 +13,11 @@ from sqlalchemy.orm import Session
 from controls.manage_caregiver_alert_control import ManageCaregiverAlert
 
 from core.api_contract import client_schedules_by_dose_days
-from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operations
+from core.account_database_lock import (
+    ACCOUNT_BUSY_DETAIL,
+    ACCOUNT_DELETED_DETAIL,
+    lock_account_operations,
+)
 from core.application_clock import application_now, application_today
 from controls.check_schedule_control import CheckSchedule
 from controls.manage_medication_care_control import ManageMedicationCare
@@ -439,7 +443,7 @@ class ManageLinkedChat:
             for owner in participants:
                 account = self.db.get(_UserAccount, owner)
                 if account is None or account.deletion_requested_at is not None:
-                    raise HTTPException(410, "This MedBuddy account has been deleted.")
+                    raise HTTPException(410, ACCOUNT_DELETED_DETAIL)
             link = self.require_active_link(link_id=link_id, user_hash=sender_hash)
             if (str(link.patient_hash), str(link.caregiver_hash)) != participants:
                 raise HTTPException(404, "Active patient-caregiver chat was not found.")

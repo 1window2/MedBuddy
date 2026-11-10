@@ -196,16 +196,6 @@ class PillImageProcessingBoundary:
     _MAX_ANALYSIS_DIMENSION = 1600
     _MIN_IMAGE_DIMENSION = 128
 
-    # 함수이름: preprocessPillImage
-    # 함수역할:
-    # - 개수 판정을 포함한 전처리를 사용하되 기존 호출자에게 정규화 이미지 바이트만 돌려준다.
-    # 매개변수:
-    # - image (bytes): 업로드한 원본 알약 사진 바이트.
-    # 반환값:
-    # - 분석용 JPEG 바이트; 유효하지 않은 이미지는 PillImageQualityError.
-    def preprocessPillImage(self, image: bytes) -> bytes:
-        return self.preprocessPillImageWithAssessment(image).image
-
     # Function Name: preprocessMultiplePillImage
     # Description:
     # - Validate and resize the image, then encode JPEG without cropping away object positions.

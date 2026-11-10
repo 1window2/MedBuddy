@@ -1752,7 +1752,8 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
     setState(() {
       _isSelectingMessages = true;
-      if (!_selectedMessageIds.remove(id) && _selectedMessageIds.length < 50) {
+      if (!_selectedMessageIds.remove(id) &&
+          _selectedMessageIds.length < ManageLinkedChat.maxDeleteMessageCount) {
         _selectedMessageIds.add(id);
       }
     });

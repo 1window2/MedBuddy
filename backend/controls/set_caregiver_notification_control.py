@@ -8,7 +8,11 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
-from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operations
+from core.account_database_lock import (
+    ACCOUNT_BUSY_DETAIL,
+    ACCOUNT_DELETED_DETAIL,
+    lock_account_operations,
+)
 from entities.caregiver_notification_entity import (
     CAREGIVER_NOTIFICATION_MODE_DISABLED,
     CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE,
@@ -277,7 +281,7 @@ class SetCaregiverNotification:
                 .first()
             )
             if deleted_account is not None:
-                raise HTTPException(410, "This MedBuddy account has been deleted.")
+                raise HTTPException(410, ACCOUNT_DELETED_DETAIL)
             self._resolve_scope(caregiver_hash, patient_hash)
         except OperationalError as exc:
             self.db.rollback()

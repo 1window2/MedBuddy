@@ -98,7 +98,7 @@ class _IdentityStateCache:
             if self._forgotten.get(uid, float("-inf")) >= looked_up_at:
                 return
             if len(self._entries) >= self._MAX_ENTRIES:
-                for key in [key for key, entry in self._entries.items() if entry[0] <= now]:
+                for key in [key for key, entry in self._entries.items() if entry[0] <= looked_up_at]:
                     del self._entries[key]
                 if len(self._entries) >= self._MAX_ENTRIES:
                     self._entries.clear()

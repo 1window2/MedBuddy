@@ -53,6 +53,22 @@ class MedicationAlarm {
     );
   }
 
+  // 함수이름: MedicationAlarm.defaultsAt
+  // 함수역할: 사용자 설정의 기본 시각 문자열을 읽어 비활성 상태의 새 알림 설정을 만든다.
+  // 매개변수:
+  // - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키
+  // - clock (String): HH:mm 기본 시각; 읽을 수 없는 시·분은 MedicationAlarm.defaults 기본값을 쓴다.
+  // 반환값:
+  // - MedicationAlarm: 초기화된 인스턴스.
+  factory MedicationAlarm.defaultsAt(String slotKey, String clock) {
+    final parts = clock.split(':');
+    return MedicationAlarm.defaults(
+      slotKey,
+      hour: int.tryParse(parts.first),
+      minute: parts.length > 1 ? int.tryParse(parts[1]) : null,
+    );
+  }
+
   // Function Name: MedicationAlarm.fromJson
   // Description: Decodes patient and slot alarm fields, using per-slot default hours and supporting both enabled-field spellings.
   // Parameters:

@@ -271,3 +271,26 @@ def test_lookup_started_before_a_deletion_is_not_cached() -> None:
         verifier.verifyIdToken("token")
         with pytest.raises(DeletedIdentityTokenError):
             verifier.verifyIdToken("token")
+
+
+# Function Name: test_full_cache_drops_expired_entries_and_keeps_storing
+# Description: A full cache drops the entries expired at the lookup time and stores the new
+#   account; with nothing expired it starts over instead of failing the request.
+# Parameters: monkeypatch (pytest.MonkeyPatch): Shrinks the cache to two entries.
+# Returns: None.
+def test_full_cache_drops_expired_entries_and_keeps_storing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(boundary_module._IdentityStateCache, "_MAX_ENTRIES", 2)
+    cache = boundary_module._IdentityStateCache()
+    cache.put("old", False, 0, looked_up_at=100.0, ttl=30)
+    cache.put("fresh", False, 0, looked_up_at=125.0, ttl=30)
+
+    cache.put("new", True, 7, looked_up_at=140.0, ttl=30)
+
+    assert cache.get("old", 140.0) is None
+    assert cache.get("fresh", 140.0) == (False, 0)
+    assert cache.get("new", 140.0) == (True, 7)
+
+    cache.put("newest", False, 0, looked_up_at=141.0, ttl=30)
+
+    assert cache.get("fresh", 141.0) is None
+    assert cache.get("newest", 141.0) == (False, 0)

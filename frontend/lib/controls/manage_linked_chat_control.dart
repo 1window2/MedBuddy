@@ -64,8 +64,11 @@ class ChatUnreadSummary {
 // Class Name: ChatHistoryPage
 // Role: Carries parsed chat messages alongside the server's original page length.
 // Responsibilities: Keep skipped malformed rows from changing pagination decisions.
-// Attributes: rowCount: Raw server row count; inherited read-only list: Successfully parsed messages in received order.
+// Attributes: defaultPageSize: Requested page size that also marks a full page; rowCount: Raw server row count; inherited read-only list: Successfully parsed messages in received order.
 class ChatHistoryPage extends UnmodifiableListView<ChatMessage> {
+  // A page with this many server rows may have earlier history.
+  static const int defaultPageSize = 50;
+
   final int rowCount;
 
   // Function Name: ChatHistoryPage
@@ -88,11 +91,13 @@ class ChatHistoryPage extends UnmodifiableListView<ChatMessage> {
 // - 기록·복약 맥락 조회, 중복 방지 전송, 선택 삭제와 읽음 갱신을 수행하고 성공 응답을 검증한다.
 // 속성:
 // - _requestTimeout (Duration): 식별·분석 요청의 최대 대기시간
+// - maxDeleteMessageCount (int): 한 번에 선택 삭제할 수 있는 최대 메시지 수
 // - userHash (String): 현재 사용자 소유권·표시·저장 범위의 해시
 // - _client (http.Client): 요청에 사용할 HTTP 클라이언트; 주입 여부에 따른 소유권은 생성자 설명 참조
 // - _chatUrlBuilder (ChatUrlBuilder): 채팅 하위 경로의 전체 URL 구성 경계
 class ManageLinkedChat {
   static const Duration _requestTimeout = Duration(seconds: 20);
+  static const int maxDeleteMessageCount = 50;
 
   final String userHash;
   final http.Client _client;
@@ -122,7 +127,7 @@ class ManageLinkedChat {
   Future<List<ChatMessage>> requestHistory({
     required int linkId,
     int? beforeMessageId,
-    int limit = 50,
+    int limit = ChatHistoryPage.defaultPageSize,
   }) async {
     final response = await _client
         .get(
@@ -388,7 +393,7 @@ class ManageLinkedChat {
     required ChatDeletionScope scope,
   }) async {
     if (messageIds.isEmpty ||
-        messageIds.length > 50 ||
+        messageIds.length > maxDeleteMessageCount ||
         messageIds.any(
           /* 함수이름: any 콜백
          * 함수역할: 요청의 참조 ID 중 서버 식별자로 사용할 수 없는 값이 있는지 확인한다.
@@ -399,7 +404,9 @@ class ManageLinkedChat {
          */
           (id) => id < 1,
         )) {
-      throw ArgumentError('Select between 1 and 50 messages.');
+      throw ArgumentError(
+        'Select between 1 and $maxDeleteMessageCount messages.',
+      );
     }
     final response = await _client
         .post(

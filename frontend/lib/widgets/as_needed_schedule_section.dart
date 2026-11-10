@@ -393,7 +393,7 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
                     itemName: m.itemName,
                     scheduleDate: _control.today,
                     slotKey:
-                        'as_needed:${MedicationHistoryControl.newOperationId()}',
+                        '${MedicationHistoryEntry.asNeededEventKeyPrefix}${MedicationHistoryControl.newOperationId()}',
                     status: MedicationHistoryStatus.unrecorded,
                     revision: 0,
                     dosingMode: 'as_needed',

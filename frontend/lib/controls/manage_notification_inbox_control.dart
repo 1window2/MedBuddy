@@ -193,14 +193,14 @@ class ManageNotificationInbox extends ChangeNotifier {
       (entry.payload.startsWith(
             MedicationNotificationPayloadCodec.caregiverPayloadPrefix,
           ) ||
-          entry.payload.startsWith('caregiver-v1:'));
+          entry.payload.startsWith(CaregiverAlertContext.payloadPrefix));
 
   // Function Name: _caregiverEntryPatientHash
   // Description: Reads a patient hash from the appropriate caregiver payload format.
   // Parameters: entry: Caregiver notification whose payload is decoded.
   // Returns: The action-context or URI-decoded patient hash, or null for a caught decoding error.
   String? _caregiverEntryPatientHash(NotificationInboxEntry entry) {
-    if (entry.payload.startsWith('caregiver-v1:')) {
+    if (entry.payload.startsWith(CaregiverAlertContext.payloadPrefix)) {
       return CaregiverAlertContext.fromPayload(entry.payload)?.patientHash;
     }
     try {

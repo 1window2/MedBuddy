@@ -83,9 +83,6 @@ class MedBuddyScheduleViewModel {
   // Function Name: lastLoadSucceeded
   // Description: Reports freshness for reminder reconciliation. Parameters: None. Returns: Freshness.
   bool get lastLoadSucceeded => _lastTodayScheduleLoadSucceeded;
-  // Function Name: statusMessage
-  // Description: Exposes schedule-local feedback. Parameters: None. Returns: Feedback.
-  String get statusMessage => _statusMessage;
   // Function Name: _notifyViewModelListeners
   // Description: Publishes feature changes while alive. Parameters: None. Returns: None.
   void _notifyViewModelListeners() {

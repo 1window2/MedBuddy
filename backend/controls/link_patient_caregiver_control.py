@@ -8,7 +8,11 @@ from fastapi import HTTPException
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operations
+from core.account_database_lock import (
+    ACCOUNT_BUSY_DETAIL,
+    ACCOUNT_DELETED_DETAIL,
+    lock_account_operations,
+)
 from core.config import settings
 from entities.caregiver_notification_entity import _CaregiverNotification
 from entities.chat_message_entity import _ChatMessage
@@ -268,7 +272,7 @@ class LinkPatientCaregiver:
             if deleted_account is not None:
                 raise HTTPException(
                     status_code=410,
-                    detail="This MedBuddy account has been deleted.",
+                    detail=ACCOUNT_DELETED_DETAIL,
                 )
             link_code = self._get_valid_link_code(patient_code)
         except OperationalError as exc:

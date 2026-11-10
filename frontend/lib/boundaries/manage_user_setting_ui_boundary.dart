@@ -15,6 +15,7 @@ import '../controls/app_language_control.dart';
 import '../controls/authentication_control.dart';
 import '../controls/manage_account_control.dart';
 import '../controls/notification_readiness_control.dart';
+import '../entities/medication_slot_label.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/notification_service.dart';
 import '../services/tts_service.dart';
@@ -2209,10 +2210,10 @@ class _DefaultMedicationTimePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final entries = [
-      ('morning', text.morning, morningTime),
-      ('lunch', text.lunch, lunchTime),
-      ('evening', text.evening, eveningTime),
-      ('bedtime', text.bedtime, bedtime),
+      ('morning', text.slotLabel('morning'), morningTime),
+      ('lunch', text.slotLabel('lunch'), lunchTime),
+      ('evening', text.slotLabel('evening'), eveningTime),
+      ('bedtime', text.slotLabel('bedtime'), bedtime),
     ];
     return Column(
       children: [
@@ -2615,43 +2616,23 @@ class _SettingText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get twentyFourHourTime => isEnglish ? '24-hour' : '24시간제';
-  // 함수이름: morning
-  // 함수역할: 현재 언어와 입력값에 맞춰 "Morning" 문구를 제공한다.
+  // 함수이름: slotLabel
+  // 함수역할: 공통 시간대 이름(medicationSlotLabel)을 현재 언어로 제공한다.
   // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get morning => isEnglish ? 'Morning' : '아침';
-  // 함수이름: lunch
-  // 함수역할: 현재 언어와 입력값에 맞춰 "Lunch" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get lunch => isEnglish ? 'Lunch' : '점심';
-  // 함수이름: evening
-  // 함수역할: 현재 언어와 입력값에 맞춰 "Evening" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get evening => isEnglish ? 'Evening' : '저녁';
-  // 함수이름: bedtime
-  // 함수역할: 현재 언어와 입력값에 맞춰 "취침 전" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get bedtime => isEnglish ? 'Bedtime' : '취침 전';
+  // - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
+  // 반환값: 시간대 이름. 알 수 없는 키는 "복약"/"Medication".
+  String slotLabel(String slotKey) => medicationSlotLabel(
+    slotKey,
+    isEnglish: isEnglish,
+    fallback: isEnglish ? 'Medication' : '복약',
+  );
   // 함수이름: defaultTimeLabel
   // 함수역할: 현재 언어와 입력값에 맞춰 "$slotTitle 기본 시간" 문구를 제공한다.
   // 매개변수:
   // - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String defaultTimeLabel(String slotKey) {
-    final slotTitle = switch (slotKey) {
-      'morning' => morning,
-      'lunch' => lunch,
-      'evening' => evening,
-      'bedtime' => bedtime,
-      _ => isEnglish ? 'Medication' : '복약',
-    };
+    final slotTitle = slotLabel(slotKey);
     return isEnglish ? '$slotTitle default time' : '$slotTitle 기본 시간';
   }
 

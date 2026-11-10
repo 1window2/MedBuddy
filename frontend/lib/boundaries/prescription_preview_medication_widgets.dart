@@ -35,11 +35,10 @@ typedef _MedicationTableEditCallback =
 // 클래스명: _PreviewMedicationList
 // 역할: 약별 인식 결과와 조회 후보 확인을 세로 카드로 표시한다.
 // 주요 책임: 조회 상태를 행 순서에 맞춰 표시하고 항목별 편집·후보 확인을 부모에게 전달한다.
-// 속성: medicationScheduleList (List<MedicationSchedule>): 일정; lookupStatuses (List<MedicationLookupStatus?>): 같은 순서 상태; matchReviews (Map<int,MedicationMatchReview>): 후보; verifiedScheduleIndexes (Set<int>): 확정; previewText/userSetting: 문구·설정; onEditRequested/onCandidateRequested: 편집 명령.
+// 속성: medicationScheduleList (List<MedicationSchedule>): 일정; lookupStatuses (List<MedicationLookupStatus?>): 같은 순서 상태; matchReviews (Map<int,MedicationMatchReview>): 후보; verifiedScheduleIndexes (Set<int>): 확정; previewText: 문구; onEditRequested/onCandidateRequested: 편집 명령.
 class _PreviewMedicationList extends StatelessWidget {
   final List<MedicationSchedule> medicationScheduleList;
   final _PreviewText previewText;
-  final UserSetting userSetting;
   final _MedicationTableEditCallback onEditRequested;
   final Set<int> verifiedScheduleIndexes;
   final bool isMedicationLookupReview;
@@ -50,12 +49,11 @@ class _PreviewMedicationList extends StatelessWidget {
 
   // 함수이름: _PreviewMedicationList
   // 함수역할: 행 순서가 일치하는 일정·조회 상태와 편집 및 후보 확인 콜백을 받는다.
-  // 매개변수: medicationScheduleList (List<MedicationSchedule>): 일정; previewText (_PreviewText): 문구; userSetting (UserSetting): 설정; onEditRequested (_MedicationTableEditCallback): 편집; verifiedScheduleIndexes (Set<int>): 확정; isMedicationLookupReview (bool): 검토 모드; matchReviews (Map<int,MedicationMatchReview>): 후보; lookupStatuses (List<MedicationLookupStatus?>): 행별 상태; onCandidateRequested (void Function(int,MedicationMatchReview)?): 확인.
+  // 매개변수: medicationScheduleList (List<MedicationSchedule>): 일정; previewText (_PreviewText): 문구; onEditRequested (_MedicationTableEditCallback): 편집; verifiedScheduleIndexes (Set<int>): 확정; isMedicationLookupReview (bool): 검토 모드; matchReviews (Map<int,MedicationMatchReview>): 후보; lookupStatuses (List<MedicationLookupStatus?>): 행별 상태; onCandidateRequested (void Function(int,MedicationMatchReview)?): 확인.
   // 반환값: 새 _PreviewMedicationList.
   const _PreviewMedicationList({
     required this.medicationScheduleList,
     required this.previewText,
-    required this.userSetting,
     required this.onEditRequested,
     required this.verifiedScheduleIndexes,
     required this.isMedicationLookupReview,
@@ -127,7 +125,7 @@ class _PreviewMedicationList extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 2),
-          _TableValueText(value: value, isVerified: verified),
+          _TableValueText(value: value),
           if (extra != null) ...[const SizedBox(height: 6), extra],
         ],
       ),
@@ -318,29 +316,26 @@ class _EditableMedicationCell extends StatelessWidget {
 }
 
 // 클래스명: _TableValueText
-// 역할: 검증 상태를 구분하는 복약 표 값을 담당한다.
+// 역할: 복약 표 값을 담당한다.
 // 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 검증 상태를 구분하는 복약 표 값 위젯을 구성한다.
+// - 부모가 전달한 표시값으로 복약 표 값 위젯을 구성한다.
 // 속성:
 // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-// - isVerified (bool): 현재 약품이나 일정이 확인된 값인지 여부.
 class _TableValueText extends StatelessWidget {
   final String value;
-  final bool isVerified;
 
   // 함수이름: _TableValueText
-  // 함수역할: 검증 상태를 구분하는 복약 표 값 선택에 사용할 언어를 보관한다.
+  // 함수역할: 복약 표에 표시할 값을 보관한다.
   // 매개변수:
   // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-  // - isVerified (bool): 현재 약품이나 일정이 확인된 값인지 여부.
   // 반환값: 입력 설정이 반영된 _TableValueText 인스턴스.
-  const _TableValueText({required this.value, this.isVerified = false});
+  const _TableValueText({required this.value});
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 검증 상태를 구분하는 복약 표 값 화면을 구성한다.
+  // 함수역할: 현재 입력값을 반영해 복약 표 값 화면을 구성한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 검증 상태를 구분하는 복약 표 값에 쓰는 위젯 트리.
+  // 반환값: 복약 표 값에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
     return Text(
@@ -625,13 +620,11 @@ class _CorrectionBadge extends StatelessWidget {
 // - 입력 형식을 검증한 뒤 변경된 복약 일정 객체를 반환한다.
 // 속성:
 // - medicationSchedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
 // - initialField (_MedicationScheduleEditField): 편집 창에서 선택할 복약 정보 입력 항목.
 // - isNewSchedule (bool): 기존 일정 수정이 아니라 새 약품 추가인지 여부.
 class _MedicationScheduleEditDialog extends StatefulWidget {
   final MedicationSchedule medicationSchedule;
   final _PreviewText previewText;
-  final UserSetting userSetting;
   final _MedicationScheduleEditField initialField;
   final bool isNewSchedule;
 
@@ -640,14 +633,12 @@ class _MedicationScheduleEditDialog extends StatefulWidget {
   // 매개변수:
   // - medicationSchedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
   // - previewText (_PreviewText): 해당 화면 구역의 언어별 표시 문구.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
   // - initialField (_MedicationScheduleEditField): 편집 창에서 선택할 복약 정보 입력 항목.
   // - isNewSchedule (bool): 기존 일정 수정이 아니라 새 약품 추가인지 여부.
   // 반환값: 입력 설정이 반영된 _MedicationScheduleEditDialog 인스턴스.
   const _MedicationScheduleEditDialog({
     required this.medicationSchedule,
     required this.previewText,
-    required this.userSetting,
     required this.initialField,
     this.isNewSchedule = false,
   });

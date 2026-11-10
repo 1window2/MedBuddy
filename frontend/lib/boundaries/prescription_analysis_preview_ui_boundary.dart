@@ -256,7 +256,6 @@ class _PrescriptionAnalysisPreviewUIState
                         _PreviewMedicationList(
                           medicationScheduleList: widget.medicationScheduleList,
                           previewText: text,
-                          userSetting: widget.userSetting,
                           onEditRequested: _showMedicationEditor,
                           verifiedScheduleIndexes:
                               widget.verifiedScheduleIndexes,
@@ -337,7 +336,6 @@ class _PrescriptionAnalysisPreviewUIState
       builder: (context) => _MedicationScheduleEditDialog(
         medicationSchedule: medicationSchedule,
         previewText: _PreviewText(widget.userSetting.language),
-        userSetting: widget.userSetting,
         initialField: initialField,
       ),
     );
@@ -378,7 +376,6 @@ class _PrescriptionAnalysisPreviewUIState
       builder: (context) => _MedicationScheduleEditDialog(
         medicationSchedule: defaultSchedule,
         previewText: _PreviewText(widget.userSetting.language),
-        userSetting: widget.userSetting,
         initialField: _MedicationScheduleEditField.medicationName,
         isNewSchedule: true,
       ),

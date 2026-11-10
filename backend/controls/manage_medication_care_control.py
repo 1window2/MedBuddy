@@ -15,7 +15,11 @@ from sqlalchemy.orm import Session
 
 from controls.authorization_control import AuthorizationControl
 from controls.check_saved_medication_control import CheckSavedMedication, SAVED_MEDICATION_LIMIT_DETAIL
-from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operations
+from core.account_database_lock import (
+    ACCOUNT_BUSY_DETAIL,
+    ACCOUNT_DELETED_DETAIL,
+    lock_account_operations,
+)
 from core.application_clock import application_now, application_today
 from core.config import settings
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
@@ -71,11 +75,11 @@ class ManageMedicationCare:
         if not principal.authentication_disabled:
             actor = self.db.get(_UserAccount, principal.user_hash)
             if actor is None or actor.deletion_requested_at is not None:
-                raise HTTPException(410, "This MedBuddy account has been deleted.")
+                raise HTTPException(410, ACCOUNT_DELETED_DETAIL)
         owner = AuthorizationControl(self.db).resolvePatientScope(principal, requested, allow_caregiver=not write)
         account = self.db.get(_UserAccount, owner)
         if account is None or account.deletion_requested_at is not None:
-            raise HTTPException(410, "This MedBuddy account has been deleted.")
+            raise HTTPException(410, ACCOUNT_DELETED_DETAIL)
         return owner
 
     # 함수이름: _medication

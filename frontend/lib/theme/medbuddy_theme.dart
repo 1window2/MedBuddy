@@ -117,12 +117,10 @@ class MedBuddyRadii {
 
 // 클래스명: MedBuddySpacing
 // 역할: 화면 여백과 정보 밀도의 공통 치수를 제공한다.
-// 주요 책임: 페이지·구역·항목 간격과 최대 콘텐츠 폭을 일관되게 유지한다.
-// 속성: pageHorizontal/section/item/contentMaxWidth: 정적 double 치수.
+// 주요 책임: 페이지 좌우 여백과 최대 콘텐츠 폭을 일관되게 유지한다.
+// 속성: pageHorizontal/contentMaxWidth: 정적 double 치수.
 class MedBuddySpacing {
   static const double pageHorizontal = 20;
-  static const double section = 24;
-  static const double item = 12;
   static const double contentMaxWidth = 720;
 }
 

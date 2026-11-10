@@ -21,6 +21,7 @@ from boundaries.pharmacy_api_boundary import (
     PharmacyApiUnavailableError,
     PharmacyLookupBoundary,
 )
+from core.application_clock import application_now
 from core.config import settings
 from entities.nearby_pharmacy_entity import (
     NearbyPharmacy,
@@ -190,9 +191,7 @@ class CheckNearbyPharmacy:
         self._pharmacy_repository = pharmacy_repository
         self._holiday_boundary = holiday_boundary
         self._holiday_emergency_boundary = holiday_emergency_boundary
-        self._now_provider = now_provider or (
-            lambda: datetime.now(ZoneInfo(settings.APPLICATION_TIME_ZONE))
-        )
+        self._now_provider = now_provider or application_now
 
     # Function Name: requestShareOperatingSnapshot
     # Description: Uses the server catalog coordinates for one bounded location/calendar lookup and accepts hours only for exactly one matching pharmacy ID.

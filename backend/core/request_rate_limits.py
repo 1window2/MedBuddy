@@ -25,6 +25,8 @@ _INTEGER_PATH_SEGMENT_PATTERN = re.compile(r"^\d+$")
 _DAILY_WINDOW_SECONDS = 86_400
 RATE_LIMIT_EXCEEDED_DETAIL = "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."
 DAILY_QUOTA_EXCEEDED_DETAIL = "오늘 사용할 수 있는 횟수를 모두 사용했습니다. 내일 다시 시도해주세요."
+# 필수 카운터 저장소에 닿지 못할 때의 503 안내문. 미들웨어와 계정별 한도 의존성이 같이 쓴다.
+QUOTA_STORAGE_UNAVAILABLE_DETAIL = "Request quota storage is temporarily unavailable."
 
 _ATOMIC_INCREMENT_SCRIPT = """
 local count = redis.call('INCR', KEYS[1])
@@ -413,10 +415,8 @@ def request_ip_identity(scope: Scope) -> str:
 # Class Name: RequestRateLimitMiddleware
 # Role: Applies broad per-IP limits before authentication while authenticated dependencies enforce account quotas separately.
 # Responsibilities: Shares counters through Redis, uses the configured local fallback, and responds with retryable 503 when required quota storage is unavailable.
-# Attributes: app is the downstream ASGI callable; store (RequestRateLimitStore), rules (dict) and enabled (bool) configure enforcement; _IP_LIMIT_MULTIPLIER broadens account rules.
+# Attributes: app is the downstream ASGI callable; store (RequestRateLimitStore), rules (dict) and enabled (bool) configure enforcement; IP_LIMIT_MULTIPLIER broadens account rules.
 class RequestRateLimitMiddleware:
-    _IP_LIMIT_MULTIPLIER = IP_LIMIT_MULTIPLIER
-
     # Function Name: __init__
     # Description:
     # - Bind the quota store and a copy of route rules, preserving the middleware enable switch.
@@ -468,11 +468,11 @@ class RequestRateLimitMiddleware:
         retry_after = 0
         try:
             identity_rule = RateLimitRule(
-                max_requests=rule.max_requests * self._IP_LIMIT_MULTIPLIER,
+                max_requests=rule.max_requests * IP_LIMIT_MULTIPLIER,
                 window_seconds=rule.window_seconds,
             )
             allowed, retry_after = await self.store.consume(
-                identity=self._request_ip_identity(scope),
+                identity=request_ip_identity(scope),
                 request_scope=self._request_scope(
                     scope,
                     canonical_path=canonical_path,
@@ -490,23 +490,13 @@ class RequestRateLimitMiddleware:
         except RuntimeError:
             response = JSONResponse(
                 status_code=503,
-                content={
-                    "detail": "Request quota storage is temporarily unavailable."
-                },
+                content={"detail": QUOTA_STORAGE_UNAVAILABLE_DETAIL},
                 headers={"Retry-After": "5"},
             )
             await response(scope, receive, send)
             return
 
         await self.app(scope, receive, send)
-
-    # Function Name: _request_ip_identity
-    # Description: Delegates IP identity extraction to the shared trusted-connection policy.
-    # Parameters: scope (Scope) supplies ASGI connection metadata.
-    # Returns: Address identity string used for the middleware's quota counter.
-    @staticmethod
-    def _request_ip_identity(scope: Scope) -> str:
-        return request_ip_identity(scope)
 
     # 함수이름: _request_scope
     # 함수역할:

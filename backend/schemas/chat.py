@@ -10,9 +10,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from entities.chat_message_entity import (
     CHAT_MESSAGE_KINDS,
+    CHAT_MESSAGE_KIND_HOSPITAL_SHARE,
     CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE,
     CHAT_MESSAGE_KIND_TEXT,
     MAX_CHAT_MEDICATION_CONTEXTS,
+)
+from entities.medication_detail_entity import (
+    SEARCHED_MEDICATION_ITEM_SEQ_MAX_LENGTH,
+    SEARCHED_MEDICATION_MANUFACTURER_MAX_LENGTH,
+    SEARCHED_MEDICATION_NAME_MAX_LENGTH,
 )
 from entities.medication_schedule_entity import MEDICATION_SCHEDULE_SLOT_KEYS
 from entities.medication_image_url_entity import safe_medication_image_url
@@ -33,9 +39,11 @@ class ChatMedicationReference(BaseModel):
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    item_seq: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
-    item_name: str = Field(min_length=1, max_length=300)
-    manufacturer: str = Field(default="", max_length=200)
+    item_seq: str = Field(
+        min_length=1, max_length=SEARCHED_MEDICATION_ITEM_SEQ_MAX_LENGTH, pattern=r"^[A-Za-z0-9_-]+$",
+    )
+    item_name: str = Field(min_length=1, max_length=SEARCHED_MEDICATION_NAME_MAX_LENGTH)
+    manufacturer: str = Field(default="", max_length=SEARCHED_MEDICATION_MANUFACTURER_MAX_LENGTH)
     image_url: str = Field(default="", max_length=2048)
 
     # 함수이름: normalize_image
@@ -157,7 +165,7 @@ class ChatMessageCreate(BaseModel):
     # 반환값: 현재 모델. 필수값·연도·유형 불일치는 ValueError다.
     @model_validator(mode="after")
     def validate_hospital_share(self) -> "ChatMessageCreate":
-        if self.message_kind == "hospital_share":
+        if self.message_kind == CHAT_MESSAGE_KIND_HOSPITAL_SHARE:
             if not self.hospital_id or self.hospital_schedule_date is None:
                 raise ValueError("Hospital sharing requires an identifier and schedule date.")
             if not 1 < self.hospital_schedule_date.year < 9999:

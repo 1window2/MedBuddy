@@ -9,27 +9,23 @@ import 'check_saved_medication_control.dart';
 // 클래스명: DuplicatePillSelectionGroup
 // 역할: 여러 사진에서 같은 품목으로 선택된 후보의 개수를 표현한다.
 // 주요 책임:
-// - 중복 확인 화면에 품목번호, 표시 약명과 사진 수를 함께 전달한다.
+// - 중복 확인 화면에 품목번호와 사진 수를 함께 전달한다.
 // 속성:
 // - itemSeq (String): 공공데이터의 약 품목번호
-// - itemName (String): 화면과 저장에 사용할 약 이름
 // - count (int): 동일 품목으로 선택된 사진 수
 class DuplicatePillSelectionGroup {
   final String itemSeq;
-  final String itemName;
   final int count;
 
   // 함수이름: DuplicatePillSelectionGroup
-  // 함수역할: 같은 품목으로 선택된 약의 품목번호·표시 이름·선택 사진 수를 중복 안내 자료로 묶는다.
+  // 함수역할: 같은 품목으로 선택된 약의 품목번호·선택 사진 수를 중복 안내 자료로 묶는다.
   // 매개변수:
   // - itemSeq (String): 공공데이터의 약 품목번호
-  // - itemName (String): 화면과 저장에 사용할 약 이름
   // - count (int): 동일 품목으로 선택된 사진 수
   // 반환값:
   // - DuplicatePillSelectionGroup: 초기화된 인스턴스.
   const DuplicatePillSelectionGroup({
     required this.itemSeq,
-    required this.itemName,
     required this.count,
   });
 }
@@ -175,7 +171,6 @@ class ResolveDuplicatePillSelectionControl {
         if (entry.value.length > 1)
           DuplicatePillSelectionGroup(
             itemSeq: entry.value.first.itemSeq,
-            itemName: entry.value.first.itemName,
             count: entry.value.length,
           ),
     ];

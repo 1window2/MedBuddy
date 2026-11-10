@@ -13,6 +13,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from google import genai
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.requests import HTTPConnection
 
 from boundaries.firebase_identity_boundary import (
     FirebaseIdentityDeletionBoundary,
@@ -59,13 +60,18 @@ from boundaries.push_notification_boundary import (
 )
 from core.config import settings
 from core.account_operation_locks import AccountOperationLocks
-from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operations
+from core.account_database_lock import (
+    ACCOUNT_BUSY_DETAIL,
+    ACCOUNT_DELETED_DETAIL,
+    lock_account_operations,
+)
 from core.database import get_db
 from core.request_database_gate import RequestDatabaseGate
 from core.request_database_work import run_request_database_work
 from core.request_rate_limits import (
     DAILY_QUOTA_EXCEEDED_DETAIL,
     IP_LIMIT_MULTIPLIER,
+    QUOTA_STORAGE_UNAVAILABLE_DETAIL,
     RATE_LIMIT_EXCEEDED_DETAIL,
     RateLimitRule,
     RequestRateLimitStore,
@@ -514,7 +520,7 @@ async def get_registered_principal(
             if not is_account_deletion_retry:
                 raise HTTPException(
                     status_code=410,
-                    detail="This MedBuddy account has been deleted.",
+                    detail=ACCOUNT_DELETED_DETAIL,
                 ) from exc
         except OperationalError as exc:
             db.rollback()
@@ -555,11 +561,11 @@ async def get_authenticated_app_principal(
 # Description:
 # - Reads the application's initialized quota store and rejects missing or invalid shared state.
 # Parameters:
-# - request (Request): Incoming FastAPI request used to access application state.
+# - connection (HTTPConnection): Incoming HTTP request or WebSocket used to access application state.
 # Returns:
 # - Application-wide RequestRateLimitStore.
-def get_request_rate_limit_store(request: Request) -> RequestRateLimitStore:
-    rate_limit_store = getattr(request.app.state, "request_rate_limit_store", None)
+def get_request_rate_limit_store(connection: HTTPConnection) -> RequestRateLimitStore:
+    rate_limit_store = getattr(connection.app.state, "request_rate_limit_store", None)
     if not isinstance(rate_limit_store, RequestRateLimitStore):
         raise RuntimeError("Request rate-limit store is not initialized.")
     return rate_limit_store
@@ -641,7 +647,7 @@ async def _enforce_quota(
     except RuntimeError as exc:
         raise HTTPException(
             status_code=503,
-            detail="Request quota storage is temporarily unavailable.",
+            detail=QUOTA_STORAGE_UNAVAILABLE_DETAIL,
             headers={"Retry-After": "5"},
         ) from exc
     if not allowed:

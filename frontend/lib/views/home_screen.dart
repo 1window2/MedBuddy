@@ -1371,15 +1371,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     // 응답 도착 시각이 아니라 사용자가 기록 버튼을 누른 시각을 기준으로 판단한다.
     final pressedAt = widget.nowProvider?.call() ?? DateTime.now();
-    final defaultTime = viewModel.userSetting
-        .defaultTimeForSlot(slotKey)
-        .split(':');
     final alarm =
         viewModel.medicationReminderSettings[slotKey] ??
-        MedicationAlarm.defaults(
+        MedicationAlarm.defaultsAt(
           slotKey,
-          hour: int.tryParse(defaultTime.first),
-          minute: defaultTime.length > 1 ? int.tryParse(defaultTime[1]) : null,
+          viewModel.userSetting.defaultTimeForSlot(slotKey),
         );
     final scheduledAt = DateTime(
       pressedAt.year,

@@ -1,6 +1,7 @@
 // 파일명: medication_history_entity.dart
 // 역할: 날짜별 사용자 복약 보고·정정 의도와 서버 응답을 검증한다.
 import 'dose_widget_state.dart';
+import 'json_value_reader.dart';
 import 'medication_slot_label.dart';
 import 'medication_schedule_entity.dart';
 
@@ -57,11 +58,8 @@ class MedicationHistoryDates {
   // 함수이름: format
   // 함수역할: 입력 달력 숫자를 API 날짜 문자열로 만든다.
   // 매개변수: value (DateTime): 연·월·일을 읽을 값.
-  // 반환값: YYYY-MM-DD 문자열. 시간대 변환은 수행하지 않는다.
-  static String format(DateTime value) =>
-      '${value.year.toString().padLeft(4, '0')}-'
-      '${value.month.toString().padLeft(2, '0')}-'
-      '${value.day.toString().padLeft(2, '0')}';
+  // 반환값: API 공통 formatJsonDate와 같은 YYYY-MM-DD 문자열. 시간대 변환은 수행하지 않는다.
+  static String format(DateTime value) => formatJsonDate(value)!;
 
   // Function Name: clock
   // Description: Formats an instant's clock time in the configured dose timezone.
@@ -211,8 +209,11 @@ enum MedicationHistoryStatus {
 // 클래스명: MedicationHistoryEntry
 // 역할: 날짜·약·시간대별 사용자의 복약 보고를 보존한다.
 // 주요 책임: 정기와 필요시 이벤트를 구분하고 응답 필드의 기본 계약을 검증한다.
-// 속성: medicationId/itemName: 약; scheduleDate/slotKey/dosingMode: 일정; status/revision: 보고·버전; actualTakenAt/recordedAt: 시각; reason: 건너뜀 사유.
+// 속성: asNeededEventKeyPrefix: 필요시 복용 이벤트 키 접두사; medicationId/itemName: 약; scheduleDate/slotKey/dosingMode: 일정; status/revision: 보고·버전; actualTakenAt/recordedAt: 시각; reason: 건너뜀 사유.
 class MedicationHistoryEntry {
+  // 필요시 복용 이벤트 키는 이 접두사 뒤에 UUID를 붙인다.
+  static const String asNeededEventKeyPrefix = 'as_needed:';
+
   // 함수이름: MedicationHistoryEntry
   // 함수역할: 이미 준비된 일정 식별자와 보고 상태를 불변 항목으로 묶는다.
   // 매개변수: medicationId/itemName: 약; scheduleDate/slotKey: 일정; status/revision: 보고·버전; actualTakenAt/recordedAt: 선택 시각; reason/dosingMode: 사유·복용 유형.
@@ -301,8 +302,10 @@ class MedicationHistoryEntry {
   static bool validSlot(String key, String mode) {
     if (mode == 'as_needed') {
       return key == 'as_needed' ||
-          (key.startsWith('as_needed:') &&
-              MedicationHistoryChange.isUuid(key.substring(10)));
+          (key.startsWith(asNeededEventKeyPrefix) &&
+              MedicationHistoryChange.isUuid(
+                key.substring(asNeededEventKeyPrefix.length),
+              ));
     }
     return medicationScheduleSlotKeys.contains(key);
   }
@@ -438,8 +441,11 @@ class MedicationHistorySnapshot {
 // 클래스명: MedicationHistoryChange
 // 역할: 기존 보고와 새 상태·시각·사유를 하나의 재시도 가능한 변경으로 묶는다.
 // 주요 책임: 버전·작업 ID를 보존하고 저장 전 상태별 입력 제약을 검사한다.
-// 속성: entry: 기존 항목; status: 새 상태; operationId: UUID; actualTakenAt: 선택 시각; reason: 건너뜀 사유.
+// 속성: maximumReasonLength: 건너뜀 사유 최대 길이; entry: 기존 항목; status: 새 상태; operationId: UUID; actualTakenAt: 선택 시각; reason: 건너뜀 사유.
 class MedicationHistoryChange {
+  // 입력란 글자 수 제한과 저장 전 검증이 같은 상한을 쓴다.
+  static const maximumReasonLength = 200;
+
   // 함수이름: MedicationHistoryChange
   // 함수역할: 한 사용자 의도를 나타내는 원본 항목·새 상태·요청 ID를 보관한다.
   // 매개변수: entry/status/operationId: 대상·상태·ID; actualTakenAt: 선택 실제 복용 시각; reason: 기본 빈 사유.
@@ -478,7 +484,7 @@ class MedicationHistoryChange {
         entry.revision < 0 ||
         !MedicationHistoryEntry.validSlot(entry.slotKey, entry.dosingMode) ||
         !isUuid(operationId) ||
-        reason.runes.length > 200) {
+        reason.runes.length > maximumReasonLength) {
       throw const FormatException('Invalid history correction.');
     }
     if (status == MedicationHistoryStatus.taken) {

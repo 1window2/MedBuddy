@@ -6,7 +6,11 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 
-from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operations
+from core.account_database_lock import (
+    ACCOUNT_BUSY_DETAIL,
+    ACCOUNT_DELETED_DETAIL,
+    lock_account_operations,
+)
 
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.patient_hash_entity import normalize_patient_hash
@@ -152,7 +156,7 @@ class AuthorizationControl:
             for owner in {principal.user_hash, patient_hash}:
                 account = self.db.get(_UserAccount, owner)
                 if account is None or account.deletion_requested_at is not None:
-                    raise HTTPException(410, "This MedBuddy account has been deleted.")
+                    raise HTTPException(410, ACCOUNT_DELETED_DETAIL)
             self.resolvePatientScope(principal, patient_hash, allow_caregiver=True)
         except OperationalError as exc:
             raise HTTPException(

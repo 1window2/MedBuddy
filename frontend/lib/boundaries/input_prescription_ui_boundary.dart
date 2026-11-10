@@ -185,7 +185,6 @@ class InputPrescriptionUI extends StatelessWidget {
                                     title: text.prescriptionAnalysis,
                                     subtitle: text.prescriptionAnalysisSubtitle,
                                     tone: _HomeActionTone.primary,
-                                    userSetting: userSetting,
                                     compact: useGrid,
                                     largeTextGridLayout: useLargeTextGridLayout,
                                     onTap: () =>
@@ -199,7 +198,6 @@ class InputPrescriptionUI extends StatelessWidget {
                                     title: text.healthRecommendation,
                                     subtitle: text.healthRecommendationSubtitle,
                                     tone: _HomeActionTone.mint,
-                                    userSetting: userSetting,
                                     compact: useGrid,
                                     largeTextGridLayout: useLargeTextGridLayout,
                                     onTap: onHealthRecommendationRequested,
@@ -212,7 +210,6 @@ class InputPrescriptionUI extends StatelessWidget {
                                     title: text.nearbyPharmacy,
                                     subtitle: text.nearbyPharmacySubtitle,
                                     tone: _HomeActionTone.lavender,
-                                    userSetting: userSetting,
                                     compact: useGrid,
                                     largeTextGridLayout: useLargeTextGridLayout,
                                     onTap: onNearbyPharmacyRequested,
@@ -225,7 +222,6 @@ class InputPrescriptionUI extends StatelessWidget {
                                     title: text.userSettings,
                                     subtitle: text.userSettingsSubtitle,
                                     tone: _HomeActionTone.butter,
-                                    userSetting: userSetting,
                                     compact: useGrid,
                                     largeTextGridLayout: useLargeTextGridLayout,
                                     onTap: onUserSettingRequested,
@@ -527,12 +523,11 @@ class _HomeActionCard extends StatelessWidget {
   final _HomeActionTone tone;
   final bool compact;
   final bool largeTextGridLayout;
-  final UserSetting userSetting;
   final VoidCallback? onTap;
 
   // Function Name: _HomeActionCard
   // Description: Configures a home action whose full title and description remain available at normal and large text sizes.
-  // Parameters: cardKey: identity; icon/title/subtitle: content; tone: action colors; compact: grid layout; largeTextGridLayout: unrestricted wrapping; userSetting: display settings; onTap: optional action.
+  // Parameters: cardKey: identity; icon/title/subtitle: content; tone: action colors; compact: grid layout; largeTextGridLayout: unrestricted wrapping; onTap: optional action.
   // Returns: A _HomeActionCard.
   const _HomeActionCard({
     this.cardKey,
@@ -542,7 +537,6 @@ class _HomeActionCard extends StatelessWidget {
     required this.tone,
     this.compact = false,
     this.largeTextGridLayout = false,
-    required this.userSetting,
     required this.onTap,
   });
 

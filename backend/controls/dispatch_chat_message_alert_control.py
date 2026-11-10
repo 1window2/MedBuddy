@@ -11,7 +11,11 @@ from boundaries.push_notification_boundary import (
     PushDeliveryResult,
     PushNotificationBoundary,
 )
-from entities.chat_message_entity import _ChatMessage
+from entities.chat_message_entity import (
+    CHAT_MESSAGE_KIND_SLOT_CHECK_REQUEST,
+    CHAT_MESSAGE_KIND_TEXT,
+    _ChatMessage,
+)
 from core.application_clock import application_today
 from entities.medication_schedule_entity import MEDICATION_SCHEDULE_SLOT_KEYS
 from services.chat_notification_summary import (
@@ -58,7 +62,7 @@ class DispatchChatMessageAlert:
         recipient_hash: str,
         link_id: int,
         message_body: str,
-        message_kind: str = "text",
+        message_kind: str = CHAT_MESSAGE_KIND_TEXT,
         slot_key: str | None = None,
         message_id: int | None = None,
     ) -> PushDeliveryResult:
@@ -84,7 +88,7 @@ class DispatchChatMessageAlert:
             context = context_payload if isinstance(context_payload, dict) else {}
             schedule = context.get("schedule_context")
             schedule = schedule if isinstance(schedule, dict) else {}
-            if (message_kind == "slot_check_request"
+            if (message_kind == CHAT_MESSAGE_KIND_SLOT_CHECK_REQUEST
                     and recipient_hash == str(link.patient_hash)
                     and str(row.sender_hash) == str(link.caregiver_hash)
                     and schedule.get("slot_key") in MEDICATION_SCHEDULE_SLOT_KEYS
