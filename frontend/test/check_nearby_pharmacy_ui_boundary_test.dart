@@ -2039,6 +2039,12 @@ void main() {
   // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
   // 반환값: 반환값 없음; 서울특별시 종로구가 복사되고 성공 안내가 표시되며 위젯 예외가 없다.
   testWidgets('길찾기는 실행 방법을 묻고 주소 복사를 지원한다', (tester) async {
+    final view = tester.view;
+    view.devicePixelRatio = 1;
+    view.physicalSize = const Size(360, 780);
+    view.padding = const FakeViewPadding(bottom: 48);
+    view.viewPadding = const FakeViewPadding(bottom: 48);
+    addTearDown(view.reset);
     String? copiedAddress;
     await tester.pumpWidget(
       _testApp(
@@ -2082,7 +2088,18 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.tap(find.byKey(const Key('directions-choice-copy-address')));
+    final copy = find.byKey(const Key('directions-choice-copy-address'));
+    final safeBottom = view.physicalSize.height - view.padding.bottom;
+    expect(tester.getRect(copy).bottom, lessThanOrEqualTo(safeBottom));
+
+    final platform = tester.platformDispatcher;
+    platform.textScaleFactorTestValue = 2;
+    addTearDown(platform.clearTextScaleFactorTestValue);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(copy);
+    await tester.pumpAndSettle();
+    expect(tester.getRect(copy).bottom, lessThanOrEqualTo(safeBottom));
+    await tester.tap(copy);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump();

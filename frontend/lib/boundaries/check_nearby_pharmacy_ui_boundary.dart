@@ -1878,20 +1878,24 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
       builder: (sheetContext) {
         directionsRoute = ModalRoute.of(sheetContext);
-        return _PharmacyDirectionsSheet(
-          pharmacy: pharmacy,
-          text: _text,
-          // 함수이름: _requestDirections.onSelected callback
-          // 함수역할: `Navigator.of(sheetContext).pop(selected)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-          // 매개변수:
-          // - selected (콜백 계약에서 추론): 현재 선택 집합에 포함되는지 여부.
-          // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-          onSelected: (selected) {
-            // 닫히는 시트를 연속으로 눌러 아래 약국 화면까지 pop하지 않도록 한다.
-            if (didSelect || directionsRoute?.isCurrent != true) return;
-            didSelect = true;
-            Navigator.of(sheetContext).pop(selected);
-          },
+        // 모달의 useSafeArea는 하단 시스템 바를 제외하지 않는다.
+        return SafeArea(
+          top: false,
+          child: _PharmacyDirectionsSheet(
+            pharmacy: pharmacy,
+            text: _text,
+            // 함수이름: _requestDirections.onSelected callback
+            // 함수역할: `Navigator.of(sheetContext).pop(selected)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
+            // 매개변수:
+            // - selected (콜백 계약에서 추론): 현재 선택 집합에 포함되는지 여부.
+            // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
+            onSelected: (selected) {
+              // 닫히는 시트를 연속으로 눌러 아래 약국 화면까지 pop하지 않도록 한다.
+              if (didSelect || directionsRoute?.isCurrent != true) return;
+              didSelect = true;
+              Navigator.of(sheetContext).pop(selected);
+            },
+          ),
         );
       },
     );
