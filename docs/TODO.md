@@ -88,7 +88,7 @@ the section that recorded it. Changes are listed in the
       portal).
 - [ ] The security audit follow-ups below (repository secrets, data.go.kr quotas,
       Cloudflare rule, host settings).
-- [ ] Add `beta/v1.0.0` to the `beta-android` environment before the first signed
+- [x] Add `beta/v1.0.0` to the `beta-android` environment before the first signed
       build; the workflow already allows the branch.
 
 ### Security audit, second run (2026-11-07)
@@ -325,11 +325,13 @@ hospital API quota, a physical-device pass) and these:
 
 Owner actions; the code findings of the audit were fixed in the v0.2.5 notes.
 
-- [ ] Delete the repository secrets `GEMINI_API_KEY` and `PUBLIC_DATA_API_KEY` (no
+- [x] Delete the repository secrets `GEMINI_API_KEY` and `PUBLIC_DATA_API_KEY` (no
       workflow uses them; any write collaborator's branch workflow can read them), and
       rotate the keys at the providers if they are still live. Optionally remove the
       stale variables `GCP_CATALOG_SYNC_JOB` and `GCP_MAINTENANCE_JOB`, and the
-      dormant Cloud Run workflows.
+      dormant Cloud Run workflows. Both secrets were deleted by the owner on 2026-11-12
+      (no workflow on any branch read them; the server reads its own `deploy/.env`);
+      the keys were not rotated (capstone scope).
 - [ ] Read the data.go.kr daily quotas of the production key for the MFDS eDrug,
       drug-approval and pill-image operations and for the NEMC pharmacy location
       operation. MFDS lookups have no shared daily budget yet: one `/identify` can make
