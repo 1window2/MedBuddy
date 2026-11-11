@@ -336,9 +336,12 @@ Owner actions; the code findings of the audit were fixed in the v0.2.5 notes.
       up to 16 provider calls and only per-account and per-IP limits apply. Pharmacy
       lookups now stop at 800 a day; raise `PHARMACY_API_DAILY_REQUEST_BUDGET` if the
       quota is higher.
-- [ ] Cloudflare: a rate-limit rule for `/api/v1/medication/pill-identification/*`,
+- [x] Cloudflare: a rate-limit rule for `/api/v1/medication/pill-identification/*`,
       `/identify` and `/pharmacy/nearby`, since anonymous sign-in is on and App Check
-      is off in the beta.
+      is off in the beta. Done on 2026-11-12: the existing rule "MedBuddy API burst
+      shield" (60 requests per IP per 10 s, then a 10 s block; the free plan's one rule)
+      already covered `/api/v1/medication/`; it now also covers `/api/v1/pharmacy/` and
+      `/api/v1/hospitals/`.
 - [ ] Host (needs sudo): SSH keys only (`PasswordAuthentication no`), check `ufw`,
       apply the pending security updates, and decide whether gnome-remote-desktop
       (3389/3390) and the AdGuard Home admin page (3000) should listen on the LAN.
