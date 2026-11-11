@@ -171,10 +171,13 @@ were rejected. Fixed or still open from its results:
       search then answers 503 for everyone until midnight. The provider's operating-account
       quota (already a 1.0.0 blocker) is the real fix; a per-call share per account would
       also limit ordinary users to a few searches a day.
-- [ ] Owner checks for the counter store (the audit could not settle them offline): how many
+- [x] Owner checks for the counter store (the audit could not settle them offline): how many
       anonymous accounts Firebase lets one address create, and whether old anonymous
       accounts are deleted. Each signed-in chat send leaves a day-long counter per account,
       so many free accounts could still fill the 128 MB store after the per-address fix.
+      Checked in the console on 2026-11-12: the sign-up quota is the default 100 email or
+      anonymous accounts per address per hour, and old anonymous accounts are not deleted.
+      Owner decision: leave both as they are (capstone project scope).
 - [x] Clients can no longer use the `slot_complete_` message id that the server uses
       for its slot completion card; a patient message with that id kept the server
       card from being created.
@@ -1197,7 +1200,15 @@ Unexplained observations from v0.2.0, analysed without a confirmed cause:
 Firebase console items for the owner: one registered SHA-256 fingerprint that
 is not the release certificate could not be attributed, and the phone sign-in
 provider is enabled although the app and backend disable phone
-authentication.
+authentication. Done on 2026-11-12 with the owner's approval: the phone provider
+and SMS multi-factor authentication are off (no phone accounts; the app has never
+offered phone sign-in or SMS enrollment), `localhost` is no longer an authorized
+domain, users can no longer delete their Firebase account outside the app (deletion
+goes through the server), and SMS is allowed only to Korean numbers. Email
+enumeration protection was already on. The unattributed pair (SHA-1 `9c:e0…`,
+SHA-256 `78:af…`, most likely a contributor's debug key) stays by owner decision;
+the release pair matches the `beta-android` variables. The password policy (6
+characters, notify mode) is left as it is.
 
 ## Hospital provider access: restored on October 1
 
