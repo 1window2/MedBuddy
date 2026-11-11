@@ -342,10 +342,23 @@ Owner actions; the code findings of the audit were fixed in the v0.2.5 notes.
       shield" (60 requests per IP per 10 s, then a 10 s block; the free plan's one rule)
       already covered `/api/v1/medication/`; it now also covers `/api/v1/pharmacy/` and
       `/api/v1/hospitals/`.
-- [ ] Host (needs sudo): SSH keys only (`PasswordAuthentication no`), check `ufw`,
+- [x] Host (needs sudo): SSH keys only (`PasswordAuthentication no`), check `ufw`,
       apply the pending security updates, and decide whether gnome-remote-desktop
       (3389/3390) and the AdGuard Home admin page (3000) should listen on the LAN.
-      Remove the exited `medbuddy-v020-device-test` containers and network.
+      Remove the exited `medbuddy-v020-device-test` containers and network (done on
+      2026-11-12, with the outdated rollback images and test images; 16 GB freed).
+      Done by the owner on 2026-11-12: `/etc/ssh/sshd_config.d/00-medbuddy.conf` turns
+      password and keyboard-interactive login off (a password attempt now gets
+      "Permission denied (publickey)"); the 45 pending updates are installed. The ISP
+      resolvers did not answer for the Ubuntu mirrors, so apt ran once with 1.1.1.1
+      set on `enp2s0` and the setting was reverted. The host boots through a hand-made
+      systemd-boot entry pinned to one kernel, so apt's kernel updates never booted;
+      `ubuntu-sdboot-43.conf` (7.0.0-43) was tested with a one-shot boot and is now the
+      default, and `ubuntu-sdboot.conf` (7.0.0-30) stays as the fallback. A future
+      kernel update needs the same copy to `/boot/efi/EFI/UbuntuSD` and a new entry.
+      Left as they are: `ufw` stays off (AdGuard serves DNS for the home LAN on this
+      host), and remote desktop and the AdGuard admin page listen only on the LAN and
+      Tailscale.
 - [ ] Give the API and catalog jobs a Postgres role without superuser rights; only the
       migration needs the owner role.
 - [x] Deploy the backend changes of 2026-11-06 (JPEG scan limit, pharmacy budget,
