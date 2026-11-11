@@ -152,7 +152,7 @@ class _SavedMedicationNameRow extends StatelessWidget {
                       ),
                     ],
                     if (medication.isAsNeeded)
-                      Text(
+                      KeepWordsText(
                         text.isEnglish ? 'As needed' : '필요시 복용',
                         key: ValueKey('saved-medication-prn-${medication.id}'),
                         style: const TextStyle(
@@ -174,7 +174,7 @@ class _SavedMedicationNameRow extends StatelessWidget {
                           color: statusBackground,
                           borderRadius: MedBuddyRadii.small,
                         ),
-                        child: Text(
+                        child: KeepWordsText(
                           '$statusLabel · ${_formatMedicationDate(stopDate ?? medication.medicationEndDate)}',
                           key: ValueKey(
                             'saved-medication-status-${medication.id}',
@@ -220,7 +220,9 @@ class _SavedMedicationNameRow extends StatelessWidget {
                     for (final action in MedicationRegimenAction.values)
                       PopupMenuItem(
                         value: action,
-                        child: Text(regimenActionLabel(action, text.isEnglish)),
+                        child: KeepWordsText(
+                          regimenActionLabel(action, text.isEnglish),
+                        ),
                       ),
                   ],
                 ),

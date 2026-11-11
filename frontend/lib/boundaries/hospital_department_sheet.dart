@@ -194,7 +194,7 @@ class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
                         child: Row(
                           children: [
                             Expanded(
-                              child: Text(
+                              child: KeepWordsText(
                                 searching
                                     ? (widget.english
                                           ? 'Related specialties'
@@ -236,7 +236,7 @@ class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
                                     if (searching) ...[
                                       Padding(
                                         padding: const EdgeInsets.all(16),
-                                        child: Text(
+                                        child: KeepWordsText(
                                           results.isEmpty ||
                                                   FindHospitalDepartment.needsUrgentHelp(
                                                     _query.text,
@@ -256,7 +256,7 @@ class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
                                       if (results.isEmpty)
                                         Padding(
                                           padding: const EdgeInsets.all(24),
-                                          child: Text(
+                                          child: KeepWordsText(
                                             widget.english
                                                 ? 'No matching specialties'
                                                 : '검색 결과가 없어요',

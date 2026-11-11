@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../services/notification_service.dart';
 import '../theme/medbuddy_theme.dart';
 import 'medbuddy_notice.dart';
+import 'keep_words_text.dart';
 
 // Class Name: ExactReminderNotice
 // Role: Offer exact-reminder permission guidance when Android reports it unavailable.
@@ -142,7 +143,7 @@ class _ExactReminderNoticeState extends State<ExactReminderNotice>
             minimumSize: const Size.fromHeight(48),
             foregroundColor: MedBuddyColors.primaryDark,
           ),
-          child: Text(
+          child: KeepWordsText(
             widget.isEnglish ? 'Allow on-time reminders' : '정확한 시각에 알림 받기',
             textAlign: TextAlign.center,
           ),

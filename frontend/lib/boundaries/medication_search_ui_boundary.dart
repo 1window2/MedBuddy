@@ -217,17 +217,20 @@ class _MedicationSearchUIState extends State<MedicationSearchUI> {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text(_english ? 'Confirm medication' : '약품 정보 확인'),
+          title: KeepWordsText(_english ? 'Confirm medication' : '약품 정보 확인'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(medication.itemName, style: MedBuddyTextStyles.menuTitle),
+                KeepWordsText(
+                  medication.itemName,
+                  style: MedBuddyTextStyles.menuTitle,
+                ),
                 if (medication.manufacturer.isNotEmpty)
-                  Text(medication.manufacturer),
+                  KeepWordsText(medication.manufacturer),
                 const SizedBox(height: 16),
-                Text(
+                KeepWordsText(
                   _english
                       ? 'Check that the full name, strength and form match your medication.'
                       : '약의 전체 이름, 함량과 제형이 가지고 있는 약과 같은지 확인해 주세요.',
@@ -344,13 +347,13 @@ class _MedicationSearchUIState extends State<MedicationSearchUI> {
                             leading: MedicationThumbnail(
                               imageUrl: _results[index].imageUrl,
                             ),
-                            title: Text(
+                            title: KeepWordsText(
                               _results[index].itemName,
                               style: MedBuddyTextStyles.menuTitle,
                             ),
                             subtitle: _results[index].manufacturer.isEmpty
                                 ? null
-                                : Text(
+                                : KeepWordsText(
                                     _results[index].manufacturer,
                                     style: MedBuddyTextStyles.menuBody,
                                   ),

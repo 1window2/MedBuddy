@@ -21,6 +21,7 @@ import '../theme/medbuddy_theme.dart';
 import 'medication_schedule_review_ui_boundary.dart';
 import 'medication_capture_options_ui_boundary.dart';
 import 'medication_photo_source_sheet.dart';
+import '../widgets/keep_words_text.dart';
 
 // 타입명: IdentifiedPillSaveCallback
 // 역할: 사용자가 확인한 낱알약 후보와 복약 일정을 기존 저장 흐름으로 전달한다.
@@ -310,7 +311,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                       padding: const EdgeInsets.all(16),
                     ),
                     const SizedBox(height: 22),
-                    Text(
+                    KeepWordsText(
                       hasVisibleResults
                           ? text.detectedPillCount(_drafts.length)
                           : text.photoSectionTitle(_usesSinglePhoto),
@@ -323,7 +324,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                     ),
                     if (!hasVisibleResults) ...[
                       const SizedBox(height: 6),
-                      Text(
+                      KeepWordsText(
                         text.photoSectionDescription(_usesSinglePhoto),
                         style: const TextStyle(
                           color: MedBuddyColors.textMuted,
@@ -361,7 +362,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                         _drafts.any((draft) => draft.hasAnyImage))
                       Padding(
                         padding: const EdgeInsets.only(top: 10),
-                        child: Text(
+                        child: KeepWordsText(
                           text.frontPhotoRequiredForEveryPill,
                           style: const TextStyle(
                             color: MedBuddyColors.reminderAccent,
@@ -403,7 +404,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                                   ),
                                 )
                               : const Icon(Icons.search),
-                          label: Text(
+                          label: KeepWordsText(
                             _isAnalyzing
                                 ? text.analysisProgress(
                                     completedCount: _analysisCompletedCount,
@@ -430,7 +431,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                       const SizedBox(height: 10),
                       Semantics(
                         liveRegion: true,
-                        child: Text(
+                        child: KeepWordsText(
                           text.retryWaitNotice(_retryAfter),
                           textAlign: TextAlign.center,
                           style: const TextStyle(
@@ -482,7 +483,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
         Row(
           children: [
             Expanded(
-              child: Text(
+              child: KeepWordsText(
                 text.pillPhotoTitle(index + 1),
                 style: const TextStyle(
                   color: MedBuddyColors.textStrong,
@@ -495,7 +496,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
             if (draft.result != null)
               Padding(
                 padding: const EdgeInsets.only(right: 4),
-                child: Text(
+                child: KeepWordsText(
                   text.comparisonComplete,
                   style: const TextStyle(
                     color: MedBuddyColors.primaryDark,
@@ -619,7 +620,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
             minimumSize: const Size.fromHeight(48),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           ),
-          label: Text(
+          label: KeepWordsText(
             text.addAnotherPill,
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 14),
@@ -630,7 +631,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     final hasPhoto = _multiplePillSourceImage != null;
     final needsRetry =
         hasPhoto && _multiplePillObservations.isEmpty && !_isAnalyzing;
-    final label = Text(
+    final label = KeepWordsText(
       _isAnalyzing
           ? (text.isEnglish
                 ? 'Finding pills in the photo...'
@@ -687,7 +688,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
             key: const Key('replace-multiple-pill-photo-button'),
             onPressed: _isBusy ? null : () => _selectMultiplePillPhoto(text),
             icon: const Icon(Icons.photo_library_outlined),
-            label: Text(text.changePhoto),
+            label: KeepWordsText(text.changePhoto),
           ),
       ],
     );
@@ -760,7 +761,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                     ),
                   const SizedBox(width: 8),
                   Flexible(
-                    child: Text(
+                    child: KeepWordsText(
                       _isSaving
                           ? text.savingSelections
                           : _isBatchSaved
@@ -804,7 +805,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
               OutlinedButton.icon(
                 key: Key('refine-pill-region-$index'),
                 icon: const Icon(Icons.center_focus_strong),
-                label: Text(
+                label: KeepWordsText(
                   text.refineRegion(index + 1),
                   style: const TextStyle(fontSize: 13),
                 ),
@@ -817,7 +818,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
             OutlinedButton.icon(
               key: Key('refine-pill-back-$index'),
               icon: const Icon(Icons.cameraswitch_outlined),
-              label: Text(
+              label: KeepWordsText(
                 text.addBack(index + 1),
                 style: const TextStyle(fontSize: 13),
               ),
@@ -878,7 +879,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
           // 함수이름: 뒷면 확인 대화상자 빌더
           // 함수역할: 선택한 번호의 앞면과 사진 출처를 표시한다. 매개변수: context. 반환값: 대화상자.
           builder: (context) => AlertDialog(
-            title: Text(text.addBack(index + 1)),
+            title: KeepWordsText(text.addBack(index + 1)),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -892,7 +893,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                         (140 * MediaQuery.devicePixelRatioOf(context)).round(),
                   ),
                   const SizedBox(height: 12),
-                  Text(text.samePillBackNotice),
+                  KeepWordsText(text.samePillBackNotice),
                 ],
               ),
             ),
@@ -906,12 +907,12 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
               TextButton.icon(
                 onPressed: () => Navigator.pop(context, ImageSource.gallery),
                 icon: const Icon(Icons.photo_library_outlined),
-                label: Text(text.gallery),
+                label: KeepWordsText(text.gallery),
               ),
               TextButton.icon(
                 onPressed: () => Navigator.pop(context, ImageSource.camera),
                 icon: const Icon(Icons.photo_camera_outlined),
-                label: Text(text.camera),
+                label: KeepWordsText(text.camera),
               ),
             ],
           ),
@@ -990,7 +991,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          KeepWordsText(
             text.candidateTitleForPill(index + 1, result.candidates.length),
             style: const TextStyle(
               color: MedBuddyColors.textStrong,
@@ -1000,7 +1001,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
             ),
           ),
           const SizedBox(height: 6),
-          Text(
+          KeepWordsText(
             text.candidateDescription,
             style: const TextStyle(
               color: MedBuddyColors.textMuted,
@@ -1022,7 +1023,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
           ],
           const SizedBox(height: 14),
           if (result.hasMoreCandidates) ...[
-            Text(
+            KeepWordsText(
               text.tooManyCandidates,
               style: const TextStyle(fontSize: 13),
             ),
@@ -1069,7 +1070,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
             TextButton.icon(
               key: Key('more-pill-candidates-$index'),
               icon: const Icon(Icons.expand_more),
-              label: Text(
+              label: KeepWordsText(
                 text.moreCandidates,
                 style: const TextStyle(fontSize: 14),
               ),
@@ -1608,8 +1609,8 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
       // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
       builder: (context) => AlertDialog(
-        title: Text(text.confirmedTitle),
-        content: Text(
+        title: KeepWordsText(text.confirmedTitle),
+        content: KeepWordsText(
           confirmedCandidates.length == 1
               ? text.confirmedMessage(confirmedCandidates.first.itemName)
               : text.confirmedBatchMessage(
@@ -1666,8 +1667,8 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
       // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
       builder: (context) => AlertDialog(
-        title: Text(text.duplicateSelectionTitle),
-        content: Text(text.duplicateSelectionMessage(duplicatePhotoCount)),
+        title: KeepWordsText(text.duplicateSelectionTitle),
+        content: KeepWordsText(text.duplicateSelectionMessage(duplicatePhotoCount)),
         actionsOverflowAlignment: OverflowBarAlignment.end,
         actions: [
           TextButton(
@@ -1689,7 +1690,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
             // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
             onPressed: () =>
                 Navigator.pop(context, _DuplicatePillResolution.keepSeparate),
-            child: Text(text.keepDuplicateSchedulesSeparate),
+            child: KeepWordsText(text.keepDuplicateSchedulesSeparate),
           ),
           FilledButton(
             key: const Key('duplicate-pill-merge-matching'),
@@ -1702,7 +1703,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
               context,
               _DuplicatePillResolution.mergeMatchingSchedules,
             ),
-            child: Text(text.mergeMatchingDuplicateSchedules),
+            child: KeepWordsText(text.mergeMatchingDuplicateSchedules),
           ),
         ],
       ),
@@ -1849,7 +1850,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+      ..showSnackBar(SnackBar(content: KeepWordsText(message)));
   }
 
   // 함수이름: _stateErrorMessage
@@ -1937,7 +1938,7 @@ class _MultiplePillObservationPreview extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
+          KeepWordsText(
             description,
             style: const TextStyle(
               color: MedBuddyColors.textMuted,
@@ -2270,7 +2271,7 @@ class _PillCandidateCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      KeepWordsText(
                         candidate.itemName,
                         style: const TextStyle(
                           color: MedBuddyColors.textStrong,
@@ -2291,7 +2292,7 @@ class _PillCandidateCard extends StatelessWidget {
                             color: MedBuddyColors.warningSurface,
                             borderRadius: MedBuddyRadii.small,
                           ),
-                          child: Text(
+                          child: KeepWordsText(
                             text.sameMedicinePhotoCount(duplicateCount),
                             style: const TextStyle(
                               color: MedBuddyColors.reminderAccent,
@@ -2315,7 +2316,7 @@ class _PillCandidateCard extends StatelessWidget {
                         ),
                       ],
                       const SizedBox(height: 8),
-                      Text(
+                      KeepWordsText(
                         '${needsMoreEvidence ? text.needsConfirmation : text.comparisonCandidate}'
                         '${imprint.isEmpty ? '' : '\n${text.imprintLabel}: $imprint'}',
                         style: const TextStyle(
@@ -2489,7 +2490,7 @@ class _ConfidenceNotice extends StatelessWidget {
             ),
             const SizedBox(width: 9),
             Expanded(
-              child: Text(
+              child: KeepWordsText(
                 message,
                 style: const TextStyle(
                   color: MedBuddyColors.reminderAccent,
@@ -2541,7 +2542,7 @@ class _EmptyResult extends StatelessWidget {
               size: 44,
             ),
             const SizedBox(height: 10),
-            Text(
+            KeepWordsText(
               text.noCandidates,
               textAlign: TextAlign.center,
               style: const TextStyle(
@@ -2555,7 +2556,7 @@ class _EmptyResult extends StatelessWidget {
               TextButton.icon(
                 onPressed: onRetry,
                 icon: const Icon(Icons.refresh),
-                label: Text(text.retryComparison),
+                label: KeepWordsText(text.retryComparison),
               ),
             ],
           ],

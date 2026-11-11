@@ -36,7 +36,7 @@ class MedicationDosingModeSelector extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(
+      KeepWordsText(
         isEnglish ? 'Dosing type' : '복용 유형',
         style: MedBuddyTextStyles.formSectionTitle,
       ),
@@ -47,13 +47,13 @@ class MedicationDosingModeSelector extends StatelessWidget {
         children: [
           ChoiceChip(
             key: Key('$keyPrefix-scheduled'),
-            label: Text(isEnglish ? 'Scheduled' : '정기 복용'),
+            label: KeepWordsText(isEnglish ? 'Scheduled' : '정기 복용'),
             selected: !isAsNeeded,
             onSelected: onChanged == null ? null : (_) => onChanged!(false),
           ),
           ChoiceChip(
             key: Key('$keyPrefix-as-needed'),
-            label: Text(isEnglish ? 'As needed' : '필요시 복용'),
+            label: KeepWordsText(isEnglish ? 'As needed' : '필요시 복용'),
             selected: isAsNeeded,
             onSelected: onChanged == null ? null : (_) => onChanged!(true),
           ),

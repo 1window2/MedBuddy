@@ -8,6 +8,7 @@ import '../controls/notification_readiness_control.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/medbuddy_preference_row.dart';
 import '../widgets/medbuddy_setting_toggle.dart';
+import '../widgets/keep_words_text.dart';
 
 // 클래스명: NotificationDeviceSettings
 // 역할: 기기 알림 권한과 테스트 알림 설정을 표시한다.
@@ -120,7 +121,7 @@ class _NotificationDeviceSettingsState extends State<NotificationDeviceSettings>
       if (mounted && isTest) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
+            content: KeepWordsText(
               _text(
                 '테스트 알림을 요청했습니다. 휴대폰 알림창을 확인해주세요.',
                 'Test notification requested. Check your notification panel.',
@@ -252,7 +253,7 @@ class _NotificationDeviceSettingsState extends State<NotificationDeviceSettings>
                 )
               : null,
           icon: const Icon(Icons.notifications_active_outlined),
-          label: Text(
+          label: KeepWordsText(
             _text('테스트 알림 보내기', 'Send test notification'),
             textAlign: TextAlign.center,
           ),
@@ -269,7 +270,7 @@ class _NotificationDeviceSettingsState extends State<NotificationDeviceSettings>
         if (!canTest && !_refreshing)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Text(
+            child: KeepWordsText(
               _text(
                 control.supportsNotifications
                     ? '휴대폰에서 복약 알림을 허용한 뒤 테스트할 수 있습니다.'
@@ -290,7 +291,7 @@ class _NotificationDeviceSettingsState extends State<NotificationDeviceSettings>
             padding: const EdgeInsets.only(top: 8),
             child: Semantics(
               liveRegion: true,
-              child: Text(
+              child: KeepWordsText(
                 _error!,
                 key: const ValueKey('notificationSettingsError'),
                 style: const TextStyle(

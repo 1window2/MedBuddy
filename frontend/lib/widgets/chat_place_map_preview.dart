@@ -10,6 +10,7 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 import '../services/naver_map_config.dart';
 import '../theme/medbuddy_theme.dart';
 import 'naver_map_sdk_gate.dart';
+import 'keep_words_text.dart';
 
 // 클래스명: ChatPlaceMapPreview
 // 역할: 공유된 병원·약국 위치를 작고 읽기 전용인 지도로 보여 준다.
@@ -142,7 +143,7 @@ class _ChatPlaceMapPreviewState extends State<ChatPlaceMapPreview> {
                     ),
                     const SizedBox(width: 8),
                     Flexible(
-                      child: Text(
+                      child: KeepWordsText(
                         widget.isEnglish ? 'View location' : '지도에서 위치 보기',
                         style: MedBuddyTextStyles.menuBody,
                       ),
@@ -200,7 +201,7 @@ class _ChatPlaceMapPreviewState extends State<ChatPlaceMapPreview> {
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(6),
-                    child: Text(
+                    child: KeepWordsText(
                       widget.isEnglish ? 'Loading map...' : '지도 불러오는 중...',
                       style: MedBuddyTextStyles.menuBody.copyWith(fontSize: 12),
                     ),

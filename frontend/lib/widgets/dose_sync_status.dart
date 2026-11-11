@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../entities/medication_slot_label.dart';
 import '../services/dose_sync_service.dart';
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 
 // Class Name: DoseSyncStatus
 // Role: Displays durable dose-sync problems separately from ordinary pending records.
@@ -50,13 +51,13 @@ class DoseSyncStatus extends StatelessWidget {
             Icons.warning_amber_rounded,
             color: MedBuddyColors.reminderAccent,
           ),
-          title: Text(
+          title: KeepWordsText(
             isEnglish
                 ? '$count dose records could not be recovered'
                 : '복용 기록 $count건을 복구하지 못했습니다',
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
-          subtitle: Text(
+          subtitle: KeepWordsText(
             isEnglish
                 ? 'This device\'s secure storage was reset before they were sent. Check today\'s doses and record them again.'
                 : '서버로 보내기 전에 기기 보안 저장소가 초기화되었습니다. 오늘 복약 상태를 확인하고 다시 기록해주세요.',
@@ -89,7 +90,7 @@ class DoseSyncStatus extends StatelessWidget {
                 : Icons.cloud_upload_outlined,
             color: MedBuddyColors.primary,
           ),
-          title: Text(
+          title: KeepWordsText(
             service.hasBlocked
                 ? (isEnglish ? 'Dose sync needs attention' : '복용 기록 전송 확인 필요')
                 : (isEnglish
@@ -110,7 +111,7 @@ class DoseSyncStatus extends StatelessWidget {
                   builder: (context, _) => Column(
                     children: [
                       ListTile(
-                        title: Text(
+                        title: KeepWordsText(
                           isEnglish ? 'Dose sync' : '복용 기록 전송',
                           style: const TextStyle(
                             fontSize: 22,
@@ -138,12 +139,12 @@ class DoseSyncStatus extends StatelessWidget {
                                           final remove = await showDialog<bool>(
                                             context: context,
                                             builder: (context) => AlertDialog(
-                                              title: Text(
+                                              title: KeepWordsText(
                                                 isEnglish
                                                     ? 'Remove rejected record?'
                                                     : '저장되지 않은 기록을 지울까요?',
                                               ),
-                                              content: Text(
+                                              content: KeepWordsText(
                                                 isEnglish
                                                     ? 'This removes only the record rejected by the server.'
                                                     : '서버가 저장하지 못한 이 기기의 대기 기록만 지웁니다.',
@@ -182,7 +183,7 @@ class DoseSyncStatus extends StatelessWidget {
                                         },
                                       )
                                     : null,
-                                title: Text(
+                                title: KeepWordsText(
                                   (op['medication_names'] as List?)?.join(
                                         ', ',
                                       ) ??
@@ -191,13 +192,13 @@ class DoseSyncStatus extends StatelessWidget {
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
-                                subtitle: Text(
+                                subtitle: KeepWordsText(
                                   '${op['schedule_date']} · ${_slot(op['slot_key'] as String)} · ${op['completed'] == true ? (isEnglish ? 'Taken' : '복용') : (isEnglish ? 'Undone' : '복용 완료 취소')}\n${op['state'] == 'blocked' ? (isEnglish ? 'Schedule or access changed. Not saved to server.' : '일정 또는 연동이 변경되어 서버에 저장하지 못했습니다.') : (isEnglish ? 'Saved on this device. Waiting to sync.' : '기기에 저장됨 · 서버 전송 대기')}',
                                 ),
                               ),
                             if (service.operations.isEmpty)
                               ListTile(
-                                title: Text(
+                                title: KeepWordsText(
                                   isEnglish
                                       ? 'All records saved to server.'
                                       : '서버에 모두 저장했습니다.',

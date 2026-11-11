@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/prescription_analysis_progress_ui_boundary.dart';
 import 'package:medbuddy_frontend/entities/prescription_flow_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 import 'package:medbuddy_frontend/widgets/medication_loading_tip.dart';
 
 // 함수이름: main
@@ -276,8 +277,11 @@ void main() {
             final rect = tester.getRect(tip);
             expect(rect.left, greaterThanOrEqualTo(0));
             expect(rect.right, lessThanOrEqualTo(viewport.size.width));
-            expect(tester.widget<Text>(tip).maxLines, isNull);
-            expect(tester.widget<Text>(tip).textAlign, TextAlign.center);
+            expect(tester.widget<KeepWordsText>(tip).maxLines, isNull);
+            expect(
+              tester.widget<KeepWordsText>(tip).textAlign,
+              TextAlign.center,
+            );
             final heading = find.text(
               language == 'en' ? 'Medication tip' : '복약 팁',
             );

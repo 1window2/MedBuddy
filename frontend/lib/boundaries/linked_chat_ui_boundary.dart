@@ -1055,20 +1055,20 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       context: context,
       builder: (dialogContext) => AlertDialog(
         scrollable: true,
-        title: Text(_text.shareCareTitle),
+        title: KeepWordsText(_text.shareCareTitle),
         content: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_text.shareRecipient(_peerName)),
+            KeepWordsText(_text.shareRecipient(_peerName)),
             const SizedBox(height: 12),
-            Text(
+            KeepWordsText(
               selection.place.name,
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
-            Text(selection.place.address),
+            KeepWordsText(selection.place.address),
             if (hospitals && selection.scheduleDate != null)
-              Text(_text.careDate(selection.scheduleDate!)),
+              KeepWordsText(_text.careDate(selection.scheduleDate!)),
             if (selection.place.todayOpenTime != null &&
                 selection.place.todayCloseTime != null)
               Text(
@@ -1076,11 +1076,11 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
               ),
             if (medications.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text(medications.map((item) => item.medicationName).join(', ')),
+              KeepWordsText(medications.map((item) => item.medicationName).join(', ')),
             ],
             if (hospitals) ...[
               const SizedBox(height: 8),
-              Text(_text.hospitalHoursNotice),
+              KeepWordsText(_text.hospitalHoursNotice),
             ],
           ],
         ),
@@ -1093,7 +1093,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
             key: const ValueKey('confirmCareShare'),
             onPressed: () => Navigator.pop(dialogContext, true),
             icon: const Icon(Icons.send_outlined),
-            label: Text(_text.sendMessage),
+            label: KeepWordsText(_text.sendMessage),
           ),
         ],
       ),
@@ -1192,7 +1192,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     if (!selected.canRequestCheck) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(_text.onlyCaregiverCanRequest)));
+      ).showSnackBar(SnackBar(content: KeepWordsText(_text.onlyCaregiverCanRequest)));
       return;
     }
     final sent = await _submitMessage(
@@ -1217,7 +1217,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     if (!succeeded && mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(_text.phoneUnavailable)));
+      ).showSnackBar(SnackBar(content: KeepWordsText(_text.phoneUnavailable)));
     }
   }
 
@@ -1236,7 +1236,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     if (!succeeded && mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(_text.directionsUnavailable)));
+      ).showSnackBar(SnackBar(content: KeepWordsText(_text.directionsUnavailable)));
     }
   }
 
@@ -1299,7 +1299,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                   OutlinedButton.icon(
                     key: const Key('chat-search-medication'),
                     icon: const Icon(Icons.search),
-                    label: Text(
+                    label: KeepWordsText(
                       _text.isEnglish ? 'Search medications' : '약 검색',
                     ),
                     onPressed: searching
@@ -1346,7 +1346,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                                   selectionContext,
                                 ).showSnackBar(
                                   SnackBar(
-                                    content: Text(
+                                    content: KeepWordsText(
                                       _text.isEnglish
                                           ? 'This medication cannot be attached.'
                                           : '이 약의 첨부 정보를 확인하지 못했어요.',
@@ -1648,7 +1648,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       if (!_isChatVisible || _history.linkUnavailable) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(_text.medicationDetailLoadFailed)));
+      ).showSnackBar(SnackBar(content: KeepWordsText(_text.medicationDetailLoadFailed)));
     }
   }
 
@@ -1697,7 +1697,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
               ListTile(
                 key: const Key('chat-select-message'),
                 leading: const Icon(Icons.checklist_outlined),
-                title: Text(
+                title: KeepWordsText(
                   _text.selectMessage,
                   style: MedBuddyTextStyles.menuTitle,
                 ),
@@ -1723,13 +1723,13 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
           if (mounted) {
             ScaffoldMessenger.of(
               context,
-            ).showSnackBar(SnackBar(content: Text(_text.messageCopied)));
+            ).showSnackBar(SnackBar(content: KeepWordsText(_text.messageCopied)));
           }
         } on PlatformException {
           if (mounted) {
             ScaffoldMessenger.of(
               context,
-            ).showSnackBar(SnackBar(content: Text(_text.copyFailed)));
+            ).showSnackBar(SnackBar(content: KeepWordsText(_text.copyFailed)));
           }
         }
       }
@@ -1804,12 +1804,12 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
         // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
         builder: (context, setDialogState) => AlertDialog(
           scrollable: true,
-          title: Text(_text.deleteMessages),
+          title: KeepWordsText(_text.deleteMessages),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(_text.deleteWarning),
+              KeepWordsText(_text.deleteWarning),
               RadioGroup<ChatDeletionScope>(
                 groupValue: scope,
                 // 함수이름: _confirmMessageDeletion.setDialogState callback
@@ -1828,18 +1828,18 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                     RadioListTile<ChatDeletionScope>(
                       contentPadding: EdgeInsets.zero,
                       value: ChatDeletionScope.me,
-                      title: Text(_text.deleteForMe),
+                      title: KeepWordsText(_text.deleteForMe),
                     ),
                     if (canDeleteForEveryone)
                       RadioListTile<ChatDeletionScope>(
                         contentPadding: EdgeInsets.zero,
                         value: ChatDeletionScope.everyone,
-                        title: Text(_text.deleteForEveryone),
+                        title: KeepWordsText(_text.deleteForEveryone),
                       ),
                   ],
                 ),
               ),
-              if (!canDeleteForEveryone) Text(_text.privateDeletionOnly),
+              if (!canDeleteForEveryone) KeepWordsText(_text.privateDeletionOnly),
             ],
           ),
           actions: [
@@ -1860,7 +1860,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
               // - 없음.
               // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(_text.deleteMessages),
+              child: KeepWordsText(_text.deleteMessages),
             ),
           ],
         ),
@@ -1893,7 +1893,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_text.deleteFailed), persist: false),
+        SnackBar(content: KeepWordsText(_text.deleteFailed), persist: false),
       );
     } finally {
       // 함수이름: _confirmMessageDeletion.setState callback
@@ -2034,7 +2034,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                   vertical: 10,
                 ),
                 color: MedBuddyColors.successSurface,
-                child: Text(
+                child: KeepWordsText(
                   _text.medicationContextGuide,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
@@ -2096,7 +2096,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                 size: 42,
               ),
               const SizedBox(height: 14),
-              Text(
+              KeepWordsText(
                 _errorMessage!,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
@@ -2115,7 +2115,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                 // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
                 onPressed: () => _refreshMessages(showLoading: true),
                 icon: const Icon(Icons.refresh),
-                label: Text(_text.retry),
+                label: KeepWordsText(_text.retry),
               ),
             ],
           ),
@@ -2126,7 +2126,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text(
+          child: KeepWordsText(
             _text.emptyConversation,
             textAlign: TextAlign.center,
             style: const TextStyle(
@@ -2163,7 +2163,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
               child: TextButton(
                 key: const Key('chat-load-older'),
                 onPressed: _loadingOlderMessages ? null : _loadOlderMessages,
-                child: Text(
+                child: KeepWordsText(
                   _loadingOlderMessages
                       ? (_text.isEnglish ? 'Loading...' : '불러오는 중...')
                       : _olderMessagesFailed
@@ -2209,7 +2209,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
                               ),
-                              child: Text(
+                              child: KeepWordsText(
                                 _text.isEnglish ? 'Read up to here' : '여기까지 읽음',
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(
@@ -2334,7 +2334,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
               const Icon(Icons.link_off, color: MedBuddyColors.danger),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
+                child: KeepWordsText(
                   _text.linkUnavailable,
                   key: const Key('chat-link-unavailable'),
                   style: const TextStyle(
@@ -2500,7 +2500,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                           );
                         },
                   icon: const Icon(Icons.refresh),
-                  label: Text(_text.retry),
+                  label: KeepWordsText(_text.retry),
                 ),
               Semantics(
                 liveRegion: true,
@@ -2508,7 +2508,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                   alignment: Alignment.centerLeft,
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
+                    child: KeepWordsText(
                       _sendErrorMessage!,
                       style: const TextStyle(
                         color: MedBuddyColors.danger,
@@ -2823,7 +2823,7 @@ class _ScheduleContextSelector extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              KeepWordsText(
                 text.scheduleSelectorTitle,
                 style: const TextStyle(
                   color: MedBuddyColors.textStrong,
@@ -2833,7 +2833,7 @@ class _ScheduleContextSelector extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              Text(
+              KeepWordsText(
                 text.scheduleSelectorCaregiverDescription,
                 style: const TextStyle(
                   color: MedBuddyColors.textMuted,
@@ -3466,7 +3466,7 @@ class _SelectedMedicationContext extends StatelessWidget {
                           if (medication.isAsNeeded ||
                               medication.dosagePerTime.isNotEmpty ||
                               medication.scheduleSlotKeys.isNotEmpty)
-                            Text(
+                            KeepWordsText(
                               [
                                 if (medication.isAsNeeded)
                                   text.isEnglish ? 'As needed' : '필요시 복용',

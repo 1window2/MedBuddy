@@ -13,6 +13,7 @@ import '../services/api_response_parser.dart';
 import '../theme/medbuddy_theme.dart';
 import 'medication_schedule_header.dart';
 import 'medication_thumbnail.dart';
+import 'keep_words_text.dart';
 
 // 클래스명: AsNeededScheduleSection
 // 역할: 필요시 약의 오늘 복용 기록과 선택적 확인 알림을 표시한다.
@@ -286,9 +287,9 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
         builder: (context) => AnimatedBuilder(
           animation: _control,
           builder: (context, _) => AlertDialog(
-            title: Text(tr('추가 복용 기록 확인', 'Confirm another dose')),
+            title: KeepWordsText(tr('추가 복용 기록 확인', 'Confirm another dose')),
             content: SingleChildScrollView(
-              child: Text(
+              child: KeepWordsText(
                 _control.sessionInvalidated
                     ? tr(
                         '로그인 정보가 바뀌었어요. 화면을 다시 열어 주세요.',
@@ -472,7 +473,7 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
             // 지난날 기록은 오늘 목록에서 되돌릴 수 없으므로 실행 취소 대신 다시 누르라고 알린다.
             ? SnackBar(
                 key: const Key('prn-earlier-record-sent'),
-                content: Text(
+                content: KeepWordsText(
                   tr(
                     '이전에 저장하지 못한 복용 기록을 보냈어요. 오늘 복용했다면 다시 눌러 기록해 주세요.',
                     'A dose that could not be saved earlier was sent. If you took one today, tap again to record it.',
@@ -481,7 +482,7 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
                 duration: const Duration(seconds: 6),
               )
             : SnackBar(
-                content: Text(tr('복용 기록을 저장했어요.', 'Dose recorded.')),
+                content: KeepWordsText(tr('복용 기록을 저장했어요.', 'Dose recorded.')),
                 duration: const Duration(seconds: 5),
                 persist: false,
                 action: SnackBarAction(
@@ -556,7 +557,9 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     if (mounted && _saveError != null) return;
     messenger.showSnackBar(
       SnackBar(
-        content: Text(failure ?? tr('복용 기록을 취소했어요.', 'Dose record undone.')),
+        content: KeepWordsText(
+          failure ?? tr('복용 기록을 취소했어요.', 'Dose record undone.'),
+        ),
         duration: Duration(seconds: failure == null ? 2 : 6),
       ),
     );
@@ -571,7 +574,7 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     if (!widget.notificationsAllowed) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
+          content: KeepWordsText(
             tr(
               '환경설정에서 복약 알림을 먼저 켜 주세요.',
               'Enable medication notifications in Settings first.',
@@ -594,14 +597,16 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
           builder: (context, update) => AnimatedBuilder(
             animation: _control,
             builder: (context, _) => AlertDialog(
-              title: Text(tr('필요시 약 확인 알림', 'As-needed check reminder')),
+              title: KeepWordsText(
+                tr('필요시 약 확인 알림', 'As-needed check reminder'),
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     SwitchListTile.adaptive(
                       contentPadding: EdgeInsets.zero,
-                      title: Text(tr('확인 알림', 'Check reminder')),
+                      title: KeepWordsText(tr('확인 알림', 'Check reminder')),
                       value: enabled,
                       onChanged: _reminder.busy || _control.sessionInvalidated
                           ? null
@@ -637,14 +642,17 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
                               update(() => selected = date);
                             },
                     ),
-                    Text(
+                    KeepWordsText(
                       tr(
                         '선택한 시각에 한 번만 알려드려요. 복용 지시나 미복용 경고는 보내지 않습니다.',
                         'One check at the selected time, without missed-dose warnings or repeat reminders.',
                       ),
                     ),
                     if (error != null)
-                      Text(error!, style: const TextStyle(color: Colors.red)),
+                      KeepWordsText(
+                        error!,
+                        style: const TextStyle(color: Colors.red),
+                      ),
                   ],
                 ),
               ),
@@ -843,7 +851,7 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    Text(
+                    KeepWordsText(
                       _control.sessionInvalidated
                           ? tr(
                               '로그인 정보가 바뀌었어요. 화면을 다시 열어 주세요.',
@@ -866,7 +874,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
             if (_saveError != null)
               Padding(
                 padding: const EdgeInsets.all(12),
-                child: Text(_saveError!, key: const Key('prn-save-error')),
+                child: KeepWordsText(
+                  _saveError!,
+                  key: const Key('prn-save-error'),
+                ),
               ),
             for (var i = 0; i < medications.length; i++) ...[
               if (i > 0)
@@ -928,7 +939,7 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                KeepWordsText(
                   medication.itemName,
                   style: TextStyle(
                     fontSize: 16,
@@ -950,7 +961,7 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
                       color: MedBuddyColors.textMuted,
                     ),
                   ),
-                Text(
+                KeepWordsText(
                   tr('오늘 $count회', '${_englishDoses(count)} today'),
                   style: const TextStyle(
                     fontSize: 13,

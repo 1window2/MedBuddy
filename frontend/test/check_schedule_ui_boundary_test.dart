@@ -24,6 +24,7 @@ import 'package:medbuddy_frontend/services/dose_sync_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -1006,7 +1007,7 @@ void main() {
       );
       expect(
         tester
-            .widget<Text>(
+            .widget<KeepWordsText>(
               find.byKey(const ValueKey('patient-alert-time-morning')),
             )
             .data,

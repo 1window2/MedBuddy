@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 
 // Function Name: showMedBuddyConfirmDialog
 // Description: Show a standard confirmation dialog; treat cancellation, back navigation and barrier dismissal as false.
@@ -34,8 +35,8 @@ Future<bool> showMedBuddyConfirmDialog(
     builder: (dialogContext) => AlertDialog(
       key: dialogKey,
       scrollable: scrollable,
-      title: title == null ? null : Text(title),
-      content: Text(message),
+      title: title == null ? null : KeepWordsText(title),
+      content: KeepWordsText(message),
       actions: [
         TextButton(
           key: cancelKey,
@@ -48,7 +49,7 @@ Future<bool> showMedBuddyConfirmDialog(
           // - 없음.
           // 반환값: 콜백 결과는 없으며 선택값은 대화상자 종료 결과로 전달한다.
           onPressed: () => Navigator.pop(dialogContext, false),
-          child: Text(cancelLabel),
+          child: KeepWordsText(cancelLabel),
         ),
         FilledButton(
           key: confirmKey,
@@ -61,7 +62,7 @@ Future<bool> showMedBuddyConfirmDialog(
           // - 없음.
           // 반환값: 콜백 결과는 없으며 선택값은 대화상자 종료 결과로 전달한다.
           onPressed: () => Navigator.pop(dialogContext, true),
-          child: Text(confirmLabel),
+          child: KeepWordsText(confirmLabel),
         ),
       ],
     ),

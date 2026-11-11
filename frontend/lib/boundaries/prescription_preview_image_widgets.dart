@@ -335,7 +335,7 @@ class _RecognizedImageCanvasState extends State<_RecognizedImageCanvas> {
                 // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
                 errorBuilder: (context, error, stackTrace) {
                   return Center(
-                    child: Text(
+                    child: KeepWordsText(
                       widget.previewText.imageUnavailable,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
@@ -383,7 +383,7 @@ class _RecognizedImageCanvasState extends State<_RecognizedImageCanvas> {
                             vertical: 8,
                           ),
                           color: Colors.black.withValues(alpha: 0.62),
-                          child: Text(
+                          child: KeepWordsText(
                             widget.previewText.regionUnavailable,
                             textAlign: TextAlign.center,
                             style: const TextStyle(
@@ -573,7 +573,7 @@ class _ExpandedRecognizedImageView extends StatelessWidget {
                     icon: const Icon(Icons.close, color: Colors.white),
                   ),
                   Expanded(
-                    child: Text(
+                    child: KeepWordsText(
                       previewText.expandedImageTitle,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
@@ -634,7 +634,7 @@ class _ExpandedRecognizedImageView extends StatelessWidget {
                         ),
                         const SizedBox(width: 7),
                         Expanded(
-                          child: Text(
+                          child: KeepWordsText(
                             previewText.recognizedRegionGuide,
                             style: const TextStyle(
                               color: Colors.white,
@@ -699,7 +699,7 @@ class _PrivacyNoticeBanner extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
+            child: KeepWordsText(
               message,
               style: TextStyle(
                 color: MedBuddyColors.textBody,
@@ -793,7 +793,10 @@ class _AnalysisBottomBar extends StatelessWidget {
                               textStyle: textStyle,
                             ),
                             onPressed: onPressed,
-                            child: Text(label, textAlign: TextAlign.center),
+                            child: KeepWordsText(
+                              label,
+                              textAlign: TextAlign.center,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -804,7 +807,7 @@ class _AnalysisBottomBar extends StatelessWidget {
                             ),
                             style: buttonStyle,
                             onPressed: onContinue,
-                            child: Text(
+                            child: KeepWordsText(
                               continueLabel!,
                               textAlign: TextAlign.center,
                             ),
@@ -817,7 +820,7 @@ class _AnalysisBottomBar extends StatelessWidget {
                     key: const Key('prescription-analyze-button'),
                     style: buttonStyle,
                     onPressed: onPressed,
-                    child: Text(label, textAlign: TextAlign.center),
+                    child: KeepWordsText(label, textAlign: TextAlign.center),
                   ),
           ),
         ),

@@ -22,6 +22,7 @@ import 'medication_history_ui_boundary.dart';
 import '../widgets/medication_schedule_header.dart';
 import '../widgets/medication_thumbnail.dart';
 import '../widgets/as_needed_schedule_section.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: check_caregiver_medication_ui_boundary.dart
 // 역할: 연동 환자의 오늘 복약 일정과 시간대별 보호자 알림을 제공한다.
@@ -343,7 +344,7 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
             size: 52,
           ),
           const SizedBox(height: 16),
-          Text(
+          KeepWordsText(
             _isEnglish
                 ? 'Could not load the patient schedule.'
                 : '환자의 복약 일정을 불러오지 못했습니다.',
@@ -353,7 +354,7 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
           const SizedBox(height: 18),
           OutlinedButton(
             onPressed: _requestPatientMedicationInfo,
-            child: Text(_isEnglish ? 'Retry' : '다시 시도'),
+            child: KeepWordsText(_isEnglish ? 'Retry' : '다시 시도'),
           ),
         ],
       );
@@ -379,7 +380,7 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
                         size: 58,
                       ),
                       const SizedBox(height: 18),
-                      Text(
+                      KeepWordsText(
                         _isEnglish
                             ? 'No medication is scheduled for today.'
                             : '오늘 예정된 복약 일정이 없습니다.',
@@ -810,7 +811,7 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
   void _showMessage(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+      ..showSnackBar(SnackBar(content: KeepWordsText(message)));
   }
 
   // 함수이름: _openMedicationDetail
@@ -918,7 +919,7 @@ class _CaregiverSynchronizationBanner extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
+            child: KeepWordsText(
               _message(),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -1106,7 +1107,7 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 13, 16, 14),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text(
+                child: KeepWordsText(
                   isEnglish
                       ? 'No medication for this time'
                       : '이 시간에 복용할 약이 없습니다.',
@@ -1252,7 +1253,7 @@ class _CaregiverMedicationRow extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      KeepWordsText(
                         schedule.displayNameForLanguage(isEnglish ? 'en' : 'ko'),
                         softWrap: true,
                         style: TextStyle(
@@ -1267,7 +1268,7 @@ class _CaregiverMedicationRow extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      Text(
+                      KeepWordsText(
                         schedule.dosageLabelForLanguage(isEnglish ? 'en' : 'ko'),
                         style: const TextStyle(
                           color: MedBuddyColors.textSubtle,

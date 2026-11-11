@@ -24,6 +24,7 @@ import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:medbuddy_frontend/views/home_screen.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -499,13 +500,13 @@ void main() {
       expect(saved, !scenario.fail);
       final snackbar = tester.widget<SnackBar>(find.byType(SnackBar));
       final message = tester
-          .widget<Text>(
+          .widget<KeepWordsText>(
             find.descendant(
               of: find.byKey(const Key('home-dose-record-notice')),
-              matching: find.byType(Text),
+              matching: find.byType(KeepWordsText),
             ),
           )
-          .data!;
+          .data;
       expect(message.contains('놓친 복약은'), scenario.warning);
       if (scenario.warning) {
         expect(

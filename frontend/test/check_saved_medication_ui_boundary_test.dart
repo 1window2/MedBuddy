@@ -25,6 +25,7 @@ import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
 import 'package:medbuddy_frontend/widgets/medication_thumbnail.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -137,7 +138,7 @@ void main() {
     expect(find.text('약 1'), findsNothing);
     expect(
       tester
-          .widget<Text>(find.byKey(const Key('saved-date-selected-2026-01-02')))
+          .widget<KeepWordsText>(find.byKey(const Key('saved-date-selected-2026-01-02')))
           .data,
       '1개 선택',
     );
@@ -200,7 +201,7 @@ void main() {
               )
               .first,
         );
-        final label = tester.widget<Text>(
+        final label = tester.widget<KeepWordsText>(
           find.byKey(const Key('saved-medication-status-1')),
         );
         expect(label.style?.color, scenario.color);

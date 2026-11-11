@@ -15,6 +15,7 @@ import '../services/nearby_care_marker_diff.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/naver_map_sdk_gate.dart';
 import 'pharmacy_map_symbols.dart';
+import '../widgets/keep_words_text.dart';
 
 // Class Name: NearbyPharmacyMap
 // Role: Interactive nearby-care map with selection and favorites.
@@ -311,7 +312,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
                     key: const Key('pharmacy-search-this-area'),
                     onPressed: widget.isSearching ? null : _searchThisArea,
                     icon: const Icon(Icons.refresh),
-                    label: Text(
+                    label: KeepWordsText(
                       widget.searchAreaLabel,
                       textAlign: TextAlign.center,
                     ),
@@ -346,7 +347,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
                         horizontal: 12,
                         vertical: 8,
                       ),
-                      child: Text(
+                      child: KeepWordsText(
                         statusText,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -830,7 +831,7 @@ class _MapUnavailableState extends StatelessWidget {
             size: 34,
           ),
           const SizedBox(height: 8),
-          Text(
+          KeepWordsText(
             message,
             textAlign: TextAlign.center,
             style: const TextStyle(

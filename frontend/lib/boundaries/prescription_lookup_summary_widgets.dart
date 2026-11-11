@@ -40,7 +40,7 @@ class _PrescriptionReviewLayout extends StatelessWidget {
           child: SingleChildScrollView(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-              child: Text(
+              child: KeepWordsText(
                 title,
                 key: const Key('prescription-review-title'),
                 textAlign: TextAlign.center,
@@ -128,7 +128,7 @@ class _MedicationLookupSummary extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: Text(
+              child: KeepWordsText(
                 label,
                 style: TextStyle(
                   color: foreground,

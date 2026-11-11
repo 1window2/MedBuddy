@@ -7,6 +7,7 @@ import '../entities/patient_caregiver_link_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/home_medication_preview.dart';
 import '../widgets/home_medication_slot_pager.dart';
+import '../widgets/keep_words_text.dart';
 
 // 클래스명: CaregiverHomeSummaryUI
 // 역할: 보호자 홈의 연결 환자 현황과 읽기 전용 상세 진입을 제공한다.
@@ -207,7 +208,7 @@ class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
               key: const Key('caregiver-home-link'),
               onPressed: onLinkRequested,
               icon: const Icon(Icons.person_add_alt),
-              label: Text(isEnglish ? 'Link a patient' : '환자 연동'),
+              label: KeepWordsText(isEnglish ? 'Link a patient' : '환자 연동'),
             ),
           ],
         ],
@@ -227,7 +228,7 @@ class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
   // 함수역할: 복약 현황 안내를 높이 제한 없이 줄바꿈할 수 있게 표시한다.
   // 매개변수: message (String): 표시 안내.
   // 반환값: 상태 Text 위젯.
-  Widget _statusMessage(String message) => Text(
+  Widget _statusMessage(String message) => KeepWordsText(
     message,
     style: const TextStyle(fontSize: 15, color: MedBuddyColors.textMuted),
   );

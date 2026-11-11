@@ -57,7 +57,7 @@ class _SavedMedicationFilterControl extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              KeepWordsText(
                 text.selectedFilter(filterMode),
                 style: const TextStyle(
                   fontSize: 16,
@@ -67,7 +67,7 @@ class _SavedMedicationFilterControl extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
-              Text(
+              KeepWordsText(
                 '${_sortLabel(sortMode)} · ${_directionLabel(sortDirection)}',
                 style: const TextStyle(
                   fontSize: 14,
@@ -132,7 +132,7 @@ class _SavedMedicationFilterControl extends StatelessWidget {
                   child: Row(
                     children: [
                       Expanded(
-                        child: Text(
+                        child: KeepWordsText(
                           text.filterTitle,
                           style: const TextStyle(
                             fontSize: 22,
@@ -260,7 +260,7 @@ class _SavedMedicationFilterControl extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
+                KeepWordsText(
                   title,
                   style: const TextStyle(
                     fontSize: 18,
@@ -305,7 +305,7 @@ class _SavedMedicationFilterControl extends StatelessWidget {
         selected ? Icons.radio_button_checked : Icons.radio_button_off,
         color: selected ? MedBuddyColors.primary : MedBuddyColors.textMuted,
       ),
-      title: Text(
+      title: KeepWordsText(
         label,
         style: const TextStyle(
           fontSize: 17,
@@ -355,7 +355,7 @@ class _SavedMedicationFilteredEmptyState extends StatelessWidget {
   Widget build(BuildContext context) => _SavedMedicationStateShell(
     icon: Icons.medication_outlined,
     gap: 20,
-    message: Text(
+    message: KeepWordsText(
       isSearching
           ? (text.isEnglish
                 ? 'No medications match your search.'
@@ -376,7 +376,7 @@ class _SavedMedicationFilteredEmptyState extends StatelessWidget {
           minimumSize: const Size.fromHeight(48),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
-        child: Text(text.showAll, textAlign: TextAlign.center),
+        child: KeepWordsText(text.showAll, textAlign: TextAlign.center),
       ),
       if (filterMode == _SavedMedicationFilterMode.active) ...[
         const SizedBox(height: 12),
@@ -391,7 +391,7 @@ class _SavedMedicationFilteredEmptyState extends StatelessWidget {
             ),
           ),
           icon: const Icon(Icons.add),
-          label: Text(text.registerMedication, textAlign: TextAlign.center),
+          label: KeepWordsText(text.registerMedication, textAlign: TextAlign.center),
         ),
       ],
     ],

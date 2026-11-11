@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 import 'medbuddy_page_header.dart';
 
 // Class Name: MedicationScheduleHeader
@@ -49,7 +50,7 @@ class MedicationScheduleHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final progress = totalCount == 0 ? 0.0 : completedCount / totalCount;
-    final titleText = Text(
+    final titleText = KeepWordsText(
       title,
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
@@ -131,7 +132,7 @@ class MedicationScheduleHeader extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
+                      child: KeepWordsText(
                         progressLabel,
                         style: const TextStyle(
                           color: MedBuddyColors.onPrimaryMuted,
@@ -221,7 +222,7 @@ class MedicationSlotHeaderStrip extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                KeepWordsText(
                   title,
                   style: const TextStyle(
                     color: MedBuddyColors.textStrong,
@@ -230,7 +231,7 @@ class MedicationSlotHeaderStrip extends StatelessWidget {
                   ),
                 ),
                 if (status != null)
-                  Text(
+                  KeepWordsText(
                     status!,
                     key: statusKey,
                     style: TextStyle(

@@ -659,7 +659,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
               children: [
                 Semantics(
                   header: true,
-                  child: Text(
+                  child: KeepWordsText(
                     title,
                     style: const TextStyle(
                       fontSize: 18,
@@ -669,7 +669,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                 ),
                 if (description != null) ...[
                   const SizedBox(height: 8),
-                  Text(
+                  KeepWordsText(
                     description,
                     style: const TextStyle(
                       fontSize: 13,
@@ -701,7 +701,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                           shape: RoundedRectangleBorder(
                             borderRadius: MedBuddyRadii.small,
                           ),
-                          title: Text(
+                          title: KeepWordsText(
                             option.label,
                             style: TextStyle(
                               fontSize: option.labelFontSize ?? 17,
@@ -866,7 +866,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                   if (!mounted || supported) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(
+                      content: KeepWordsText(
                         text.isEnglish
                             ? 'Add MedBuddy from your home screen widget list.'
                             : '홈 화면의 위젯 목록에서 MedBuddy를 추가해주세요.',
@@ -986,13 +986,13 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
               ),
               onPressed: _isSaving ? null : _confirmAccountDeletion,
               icon: const Icon(Icons.delete_forever_outlined),
-              label: Text(text.deleteAccount),
+              label: KeepWordsText(text.deleteAccount),
             ),
           ),
         ],
         if (!hasMfaSettings && !hasSignOut && !hasDeleteAccount) ...[
           const SizedBox(height: 18),
-          Text(
+          KeepWordsText(
             text.noAccountActions,
             style: const TextStyle(
               color: MedBuddyColors.textMuted,
@@ -1106,8 +1106,8 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       builder: (dialogContext) => AlertDialog(
         key: const Key('unsaved-settings-dialog'),
         scrollable: true,
-        title: Text(english ? 'Save your changes?' : '변경한 설정을 저장할까요?'),
-        content: Text(
+        title: KeepWordsText(english ? 'Save your changes?' : '변경한 설정을 저장할까요?'),
+        content: KeepWordsText(
           english
               ? 'Your changes have not been saved yet.'
               : '아직 저장하지 않은 변경사항이 있습니다.',
@@ -1116,12 +1116,12 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
           TextButton(
             key: const Key('settings-keep-editing'),
             onPressed: () => Navigator.pop(dialogContext),
-            child: Text(english ? 'Keep editing' : '계속 편집'),
+            child: KeepWordsText(english ? 'Keep editing' : '계속 편집'),
           ),
           TextButton(
             key: const Key('settings-discard-changes'),
             onPressed: () => Navigator.pop(dialogContext, 'discard'),
-            child: Text(english ? 'Discard changes' : '변경 취소'),
+            child: KeepWordsText(english ? 'Discard changes' : '변경 취소'),
           ),
           FilledButton(
             key: const Key('settings-save-and-leave'),
@@ -1313,7 +1313,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       setState(() => _isPreviewSpeaking = false);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(text.previewFailed)));
+      ).showSnackBar(SnackBar(content: KeepWordsText(text.previewFailed)));
     }
   }
 
@@ -1399,7 +1399,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
+          content: KeepWordsText(
             saveResult.synchronizedWithServer
                 ? text.saved
                 : text.savedOnDeviceOnly,
@@ -1419,7 +1419,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       setState(() => _isSaving = false);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(text.saveFailed)));
+      ).showSnackBar(SnackBar(content: KeepWordsText(text.saveFailed)));
     }
   }
 
@@ -1478,7 +1478,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       setState(() => _isSaving = false);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(text.signOutFailed)));
+      ).showSnackBar(SnackBar(content: KeepWordsText(text.signOutFailed)));
     }
   }
 
@@ -1555,7 +1555,9 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_accountDeletionFailureMessage(error, text))),
+        SnackBar(
+          content: KeepWordsText(_accountDeletionFailureMessage(error, text)),
+        ),
       );
     }
   }
@@ -1745,7 +1747,7 @@ class _AccountWelcomePanel extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                KeepWordsText(
                   presentation.greeting,
                   style: const TextStyle(
                     color: MedBuddyColors.textStrong,
@@ -1756,7 +1758,7 @@ class _AccountWelcomePanel extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 5),
-                Text(
+                KeepWordsText(
                   presentation.detail,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -1835,7 +1837,7 @@ class _SettingsMenuTile extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        KeepWordsText(
                           title,
                           style: const TextStyle(
                             color: MedBuddyColors.textStrong,
@@ -1922,7 +1924,7 @@ class _MfaSettingsPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          KeepWordsText(
             text.smsMfaTitle,
             style: const TextStyle(
               color: MedBuddyColors.textStrong,
@@ -1931,7 +1933,7 @@ class _MfaSettingsPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
+          KeepWordsText(
             enabled
                 ? text.smsMfaEnrolled
                 : available
@@ -1944,7 +1946,7 @@ class _MfaSettingsPanel extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: onEnrollRequested,
               icon: const Icon(Icons.security_outlined),
-              label: Text(text.smsMfaEnable),
+              label: KeepWordsText(text.smsMfaEnable),
             ),
           ],
         ],
@@ -2024,7 +2026,7 @@ class _MfaEnrollmentDialogState extends State<_MfaEnrollmentDialog> {
           isEnglish: text.isEnglish,
         );
         return AlertDialog(
-          title: Text(
+          title: KeepWordsText(
             awaitingCode ? text.smsMfaVerifyPhone : text.smsMfaEnable,
           ),
           content: Column(
@@ -2045,7 +2047,7 @@ class _MfaEnrollmentDialogState extends State<_MfaEnrollmentDialog> {
               ),
               if (error != null) ...[
                 const SizedBox(height: 8),
-                Text(
+                KeepWordsText(
                   error,
                   key: const ValueKey('smsMfaError'),
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
@@ -2090,7 +2092,7 @@ class _MfaEnrollmentDialogState extends State<_MfaEnrollmentDialog> {
                         Navigator.pop(context);
                       }
                     },
-              child: Text(
+              child: KeepWordsText(
                 awaitingCode ? text.smsMfaVerify : text.smsMfaSendCode,
               ),
             ),
@@ -2154,7 +2156,7 @@ class _SettingSaveFooter extends StatelessWidget {
                 ),
               ),
               onPressed: isSaving ? null : onSaveRequested,
-              child: Text(isSaving ? text.saving : text.save),
+              child: KeepWordsText(isSaving ? text.saving : text.save),
             ),
           ),
         ),
@@ -2280,7 +2282,7 @@ class _PreviewPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          KeepWordsText(
             text.previewSentence,
             key: const ValueKey('settingsPreviewSentence'),
             style: TextStyle(
@@ -2307,7 +2309,9 @@ class _PreviewPanel extends StatelessWidget {
             icon: Icon(
               isSpeaking ? Icons.stop_rounded : Icons.volume_up_outlined,
             ),
-            label: Text(isSpeaking ? text.stopPreview : text.listenPreview),
+            label: KeepWordsText(
+              isSpeaking ? text.stopPreview : text.listenPreview,
+            ),
           ),
         ],
       ),

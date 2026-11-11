@@ -13,6 +13,7 @@ import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/medbuddy_page_header.dart';
 import 'medication_image_viewer_boundary.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: check_medication_detail_ui_boundary.dart
 // 역할: 약 상세정보 화면을 구성하고 음성 안내 요청을 처리한다.
@@ -281,7 +282,7 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI>
         final text = _MedicationDetailText(widget.userSetting.language);
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(content: Text(text.readAloudFailed)));
+          ..showSnackBar(SnackBar(content: KeepWordsText(text.readAloudFailed)));
       }
     }
   }
@@ -341,7 +342,7 @@ class _MedicationHeroCard extends StatelessWidget {
               ),
               const SizedBox(width: 7),
               Flexible(
-                child: Text(
+                child: KeepWordsText(
                   displayName,
                   textAlign: TextAlign.center,
                   maxLines: 3,
@@ -531,7 +532,7 @@ class _DetailQuestionSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        KeepWordsText(
           title,
           style: TextStyle(
             color: MedBuddyColors.textStrong,
@@ -542,7 +543,7 @@ class _DetailQuestionSection extends StatelessWidget {
         ),
         if (subtitle != null) ...[
           const SizedBox(height: 6),
-          Text(
+          KeepWordsText(
             subtitle!,
             style: TextStyle(
               color: MedBuddyColors.textMuted,
@@ -596,7 +597,7 @@ class _DetailValueTile extends StatelessWidget {
         borderRadius: MedBuddyRadii.control,
         border: Border.all(color: MedBuddyColors.divider),
       ),
-      child: Text(
+      child: KeepWordsText(
         value,
         textAlign: TextAlign.center,
         style: TextStyle(
@@ -764,7 +765,7 @@ class _DetailListCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (int index = 0; index < visibleItems.length; index++) ...[
-          Text(
+          KeepWordsText(
             visibleItems[index],
             style: TextStyle(
               color: MedBuddyColors.textMuted,
@@ -789,7 +790,7 @@ class _DetailListCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          KeepWordsText(
             title,
             style: TextStyle(
               color: MedBuddyColors.textStrong,
@@ -933,7 +934,7 @@ class _TtsButton extends StatelessWidget {
     return FilledButton.icon(
       onPressed: onPressed,
       icon: Icon(isSpeaking ? Icons.stop_circle_outlined : Icons.volume_up),
-      label: Text(isSpeaking ? text.stopReading : text.readAloud),
+      label: KeepWordsText(isSpeaking ? text.stopReading : text.readAloud),
       style: FilledButton.styleFrom(
         minimumSize: const Size.fromHeight(60),
         textStyle: const TextStyle(

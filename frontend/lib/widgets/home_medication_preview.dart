@@ -103,7 +103,7 @@ class HomeMedicationPreview extends StatelessWidget {
       ?titleLeading,
       // 이름 길이가 바뀌어도 양옆 탐색 버튼의 가로 위치를 유지한다.
       Expanded(
-        child: Text(
+        child: KeepWordsText(
           title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
@@ -191,7 +191,7 @@ class HomeMedicationPreview extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
+                    child: KeepWordsText(
                       progressTitle,
                       style: const TextStyle(
                         color: MedBuddyColors.textStrong,
@@ -201,7 +201,7 @@ class HomeMedicationPreview extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Text(
+                  KeepWordsText(
                     progressLabel,
                     style: const TextStyle(
                       color: MedBuddyColors.primaryDark,

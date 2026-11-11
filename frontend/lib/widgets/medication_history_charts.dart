@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../entities/medication_history_entity.dart';
 import '../entities/calendar_days.dart';
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 
 // 클래스명: MedicationHistoryChartCounts
 // 역할: 정기 복용 상태와 필요시 실제 복용 횟수를 겹치지 않게 집계한다.
@@ -195,7 +196,7 @@ class _MedicationHistoryChartsSummaryState
                     ),
                   ),
                   const SizedBox(height: 3),
-                  Text(
+                  KeepWordsText(
                     caption,
                     textAlign: TextAlign.center,
                     style: MedBuddyTextStyles.menuBody.copyWith(
@@ -252,7 +253,7 @@ class _MedicationHistoryChartsSummaryState
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
+                  child: KeepWordsText(
                     labels[i],
                     style: MedBuddyTextStyles.menuBody.copyWith(
                       fontSize: widget.compact ? 12 : 14,

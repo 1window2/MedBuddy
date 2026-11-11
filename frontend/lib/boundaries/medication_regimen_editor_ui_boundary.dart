@@ -17,6 +17,7 @@ import '../widgets/medbuddy_confirm_dialog.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../widgets/medication_dosing_mode_selector.dart';
 import '../widgets/medication_entry_fields.dart';
+import '../widgets/keep_words_text.dart';
 
 // 클래스명: MedicationRegimenEditorUI
 // 역할: 저장된 약의 처방 변경을 적용일과 함께 입력받는다.
@@ -256,9 +257,9 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
                                   title: _text('약 이름', 'Medication name'),
                                 ),
                                 const SizedBox(height: 8),
-                                Text(widget.medication.displayName),
+                                KeepWordsText(widget.medication.displayName),
                                 const SizedBox(height: 24),
-                                Text(
+                                KeepWordsText(
                                   _dateLabel,
                                   style: MedBuddyTextStyles.formSectionTitle,
                                 ),
@@ -287,7 +288,7 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                Text(
+                                KeepWordsText(
                                   _text(
                                     '이날부터 복용 일정과 알림에서 제외됩니다. 약 정보와 기존 기록은 남습니다. (한국 시간)',
                                     'Scheduled doses and reminders stop on this date. Medication information and earlier records are kept. (Korea time)',
@@ -377,7 +378,7 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
                                         _doseDays,
                                       )) ...[
                                     const SizedBox(height: 8),
-                                    Text(
+                                    KeepWordsText(
                                       describeDoseCycle(
                                         readDoseCycle(_doseDays),
                                         isEnglish: _english,
@@ -438,7 +439,7 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
                   child: SingleChildScrollView(
                     child: Semantics(
                       liveRegion: true,
-                      child: Text(
+                      child: KeepWordsText(
                         _error!,
                         key: const Key('regimen-error'),
                         style: TextStyle(
@@ -459,7 +460,7 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.check),
-                label: Text(
+                label: KeepWordsText(
                   _busy
                       ? _pendingChange == null
                             ? _text('변경 확인 중', 'Confirming')

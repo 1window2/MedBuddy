@@ -71,7 +71,7 @@ class _SavedMedicationEmptyState extends StatelessWidget {
   Widget build(BuildContext context) => _SavedMedicationStateShell(
     icon: Icons.medication_outlined,
     gap: 24,
-    message: Text(
+    message: KeepWordsText(
       text.emptyMessage,
       textAlign: TextAlign.center,
       style: TextStyle(
@@ -94,7 +94,10 @@ class _SavedMedicationEmptyState extends StatelessWidget {
           ),
         ),
         icon: const Icon(Icons.add),
-        label: Text(text.registerMedication, textAlign: TextAlign.center),
+        label: KeepWordsText(
+          text.registerMedication,
+          textAlign: TextAlign.center,
+        ),
       ),
     ],
   );
@@ -125,7 +128,7 @@ class _SavedMedicationLoadErrorState extends StatelessWidget {
   Widget build(BuildContext context) => _SavedMedicationStateShell(
     icon: Icons.cloud_off_outlined,
     gap: 24,
-    message: Text(
+    message: KeepWordsText(
       text.loadFailedMessage,
       textAlign: TextAlign.center,
       style: const TextStyle(
@@ -148,7 +151,7 @@ class _SavedMedicationLoadErrorState extends StatelessWidget {
           ),
         ),
         icon: const Icon(Icons.refresh),
-        label: Text(text.retry, textAlign: TextAlign.center),
+        label: KeepWordsText(text.retry, textAlign: TextAlign.center),
       ),
     ],
   );
@@ -199,7 +202,7 @@ class _SavedMedicationSelectionControl extends StatelessWidget {
       spacing: 16,
       runSpacing: 4,
       children: [
-        Text(
+        KeepWordsText(
           text.selectAll,
           style: const TextStyle(
             fontSize: 16,
@@ -208,7 +211,7 @@ class _SavedMedicationSelectionControl extends StatelessWidget {
             letterSpacing: 0,
           ),
         ),
-        Text(
+        KeepWordsText(
           text.selectedCount(selectedCount),
           key: const Key('saved-medication-selection-count'),
           style: const TextStyle(
@@ -269,7 +272,7 @@ class _SelectionDeleteBar extends StatelessWidget {
         ),
       ),
       icon: const Icon(Icons.delete_outline),
-      label: Text(
+      label: KeepWordsText(
         isDeleting ? text.deleting : text.deleteSelected,
         textAlign: TextAlign.center,
       ),
@@ -360,7 +363,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
             letterSpacing: 0,
           ),
         ),
-        Text(
+        KeepWordsText(
           text.medicationCount(group.medications.length),
           style: const TextStyle(
             color: MedBuddyColors.textSubtle,
@@ -370,7 +373,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
           ),
         ),
         if (isSelectionMode && !isExpanded && selectedCount > 0)
-          Text(
+          KeepWordsText(
             text.isEnglish ? '$selectedCount selected' : '$selectedCount개 선택',
             key: ValueKey('saved-date-selected-${group.displayDate}'),
             style: const TextStyle(

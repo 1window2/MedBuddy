@@ -28,6 +28,7 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:medbuddy_frontend/widgets/home_medication_preview.dart';
 import 'package:medbuddy_frontend/widgets/home_medication_slot_pager.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -1279,7 +1280,7 @@ void main() {
 
         // 저장된 시각은 바꾸지 않고 그대로 보여 준다.
         expect(find.textContaining('21:00'), findsOneWidget);
-        final guidance = tester.widget<Text>(
+        final guidance = tester.widget<KeepWordsText>(
           find.byKey(const Key('caregiver-deadline-guidance')),
         );
         expect(guidance.data, contains('22:00'));

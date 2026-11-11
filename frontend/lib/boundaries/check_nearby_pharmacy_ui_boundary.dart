@@ -20,6 +20,7 @@ import '../entities/user_setting_entity.dart';
 import '../services/pharmacy_favorite_service.dart';
 import '../theme/medbuddy_theme.dart';
 import 'nearby_pharmacy_map_widget.dart';
+import '../widgets/keep_words_text.dart';
 
 part 'pharmacy_details_sheet.dart';
 part 'pharmacy_list_panel.dart';
@@ -522,9 +523,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         _lastRefreshedAt = _now();
       });
       if (sharedPlaceMissing) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(_text.sharedPlaceMissing)));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: KeepWordsText(_text.sharedPlaceMissing)),
+        );
       }
       if (expanded) {
         final radius = result.searchArea!.radiusKm;
@@ -533,7 +534,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
             : '${radius.toStringAsFixed(0)}km';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
+            content: KeepWordsText(
               _text.isEnglish
                   ? 'Search expanded to $distance.'
                   : '반경 $distance까지 넓혀 검색했어요.',
@@ -690,7 +691,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
             ),
           ),
           Expanded(
-            child: Text(
+            child: KeepWordsText(
               message,
               style: const TextStyle(
                 fontSize: 13,
@@ -985,7 +986,10 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     required VoidCallback onPressed,
   }) {
     final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.3;
-    final labelWidget = Text(label, style: const TextStyle(letterSpacing: 0));
+    final labelWidget = KeepWordsText(
+      label,
+      style: const TextStyle(letterSpacing: 0),
+    );
     return Tooltip(
       message: tooltip,
       child: OutlinedButton(
@@ -1190,7 +1194,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                     if (widget.selectionMode)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
-                        child: Text(
+                        child: KeepWordsText(
                           _searchArea!.isFallback
                               ? (english
                                     ? 'Search area: Hongik University, Seoul (location unavailable)'
@@ -1214,7 +1218,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                         _errorMessage != null)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
-                        child: Text(
+                        child: KeepWordsText(
                           _errorMessage != null
                               ? (english
                                     ? 'Search failed. Move the map to try again, or refresh.'
@@ -1255,7 +1259,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                               key: const Key('pharmacy-map-filter-selector'),
                               onPressed: _isLoading ? null : _showFilterPicker,
                               icon: const Icon(Icons.filter_alt_outlined),
-                              label: Text(_text.filterPickerTitle),
+                              label: KeepWordsText(_text.filterPickerTitle),
                             ),
                           ),
                         ),
@@ -1386,7 +1390,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                   icon: Icon(
                     _listExpanded ? Icons.map_outlined : Icons.list_alt,
                   ),
-                  label: Text(
+                  label: KeepWordsText(
                     _listExpanded
                         ? (english ? 'Show map' : '지도 크게 보기')
                         : _text.showList(pharmacies.length),
@@ -1439,7 +1443,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                 letterSpacing: 0,
               ),
             ),
-            Text(
+            KeepWordsText(
               _text.callBeforeVisit,
               style: const TextStyle(
                 color: MedBuddyColors.primaryDark,
@@ -1517,7 +1521,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                         ),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: Text(
+                          child: KeepWordsText(
                             text.filterPickerTitle,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
@@ -1717,7 +1721,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   controlAffinity: ListTileControlAffinity.leading,
-                  title: Text(_text.phoneVerified),
+                  title: KeepWordsText(_text.phoneVerified),
                 ),
               SizedBox(
                 width: double.infinity,
@@ -1738,7 +1742,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                     );
                   },
                   icon: const Icon(Icons.send_outlined),
-                  label: Text(_text.shareInChat),
+                  label: KeepWordsText(_text.shareInChat),
                 ),
               ),
             ],
@@ -1967,7 +1971,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   void _showActionMessage(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+      ..showSnackBar(SnackBar(content: KeepWordsText(message)));
   }
 }
 
@@ -2005,7 +2009,7 @@ class _PharmacyDirectionsSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          KeepWordsText(
             text.directionsSheetTitle,
             style: const TextStyle(
               color: MedBuddyColors.textStrong,
@@ -2015,7 +2019,7 @@ class _PharmacyDirectionsSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Text(
+          KeepWordsText(
             text.directionsSheetDescription,
             style: const TextStyle(
               color: MedBuddyColors.textBody,
@@ -2025,7 +2029,7 @@ class _PharmacyDirectionsSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
+          KeepWordsText(
             pharmacy.address.isEmpty ? pharmacy.name : pharmacy.address,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -2121,7 +2125,7 @@ class _DirectionsChoiceTile extends StatelessWidget {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: Icon(icon, color: MedBuddyColors.primaryDark),
-      title: Text(
+      title: KeepWordsText(
         title,
         style: const TextStyle(
           color: MedBuddyColors.textStrong,
@@ -2130,7 +2134,7 @@ class _DirectionsChoiceTile extends StatelessWidget {
           letterSpacing: 0,
         ),
       ),
-      subtitle: Text(
+      subtitle: KeepWordsText(
         description,
         style: const TextStyle(
           color: MedBuddyColors.textBody,
@@ -2177,7 +2181,7 @@ class _PharmacyLoadingState extends StatelessWidget {
         children: [
           const CircularProgressIndicator(color: MedBuddyColors.primary),
           const SizedBox(height: 18),
-          Text(
+          KeepWordsText(
             message,
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -2235,7 +2239,7 @@ class _PharmacyMessageState extends StatelessWidget {
           children: [
             Icon(icon, size: 58, color: MedBuddyColors.textLight),
             const SizedBox(height: 20),
-            Text(
+            KeepWordsText(
               title,
               textAlign: TextAlign.center,
               style: const TextStyle(
@@ -2246,7 +2250,7 @@ class _PharmacyMessageState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            Text(
+            KeepWordsText(
               message,
               textAlign: TextAlign.center,
               style: const TextStyle(
@@ -2260,7 +2264,7 @@ class _PharmacyMessageState extends StatelessWidget {
             FilledButton.icon(
               onPressed: onAction,
               icon: const Icon(Icons.refresh),
-              label: Text(actionLabel),
+              label: KeepWordsText(actionLabel),
             ),
           ],
         ),
@@ -2344,7 +2348,7 @@ class _PharmacyCard extends StatelessWidget {
         color: statusSurface,
         borderRadius: MedBuddyRadii.pill,
       ),
-      child: Text(
+      child: KeepWordsText(
         statusLabel,
         style: TextStyle(
           color: statusColor,
@@ -2411,7 +2415,7 @@ class _PharmacyCard extends StatelessWidget {
                               : CrossAxisAlignment.start,
                           children: [
                             Expanded(
-                              child: Text(
+                              child: KeepWordsText(
                                 pharmacy.name,
                                 key: embedded
                                     ? const Key('pharmacy-detail-name')
@@ -2601,7 +2605,7 @@ class _PharmacyInfoLine extends StatelessWidget {
         Icon(icon, color: MedBuddyColors.primary, size: 20),
         const SizedBox(width: 9),
         Expanded(
-          child: Text(
+          child: KeepWordsText(
             text,
             style: const TextStyle(
               color: MedBuddyColors.textBody,
@@ -2641,7 +2645,7 @@ class _PharmacySourceNotice extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-      child: Text(
+      child: KeepWordsText(
         message,
         textAlign: TextAlign.center,
         style: const TextStyle(

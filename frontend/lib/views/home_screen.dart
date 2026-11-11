@@ -52,6 +52,7 @@ import '../entities/feature_search_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: home_screen.dart
 // 역할: ViewModel의 처방전 분석 상태에 따라 실제 표시할 화면을 선택한다.
@@ -667,8 +668,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: Text(english ? 'Leave analysis?' : '분석 결과를 나갈까요?'),
-          content: Text(
+          title: KeepWordsText(english ? 'Leave analysis?' : '분석 결과를 나갈까요?'),
+          content: KeepWordsText(
             english
                 ? 'You will return to the home screen. Unsaved results will be lost, and you will need to take or select the photo again.'
                 : '메인 화면으로 이동합니다. 저장하지 않은 결과는 사라지며 사진을 다시 촬영하거나 선택해야 합니다.',
@@ -1263,7 +1264,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   children: [
                     Padding(
                       padding: const EdgeInsets.all(20),
-                      child: Text(
+                      child: KeepWordsText(
                         viewModel.userSetting.isEnglish
                             ? 'Choose a patient'
                             : '환자 선택',
@@ -1276,7 +1277,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     for (final link in links)
                       ListTile(
                         leading: const Icon(Icons.person_outline),
-                        title: Text(
+                        title: KeepWordsText(
                           chat!.peerName(
                             link,
                             isEnglish: viewModel.userSetting.isEnglish,
@@ -1444,7 +1445,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               child: SingleChildScrollView(
                 key: const Key('home-dose-record-notice'),
-                child: Text(noticeText),
+                child: KeepWordsText(noticeText),
               ),
             ),
             if (success)
@@ -1465,7 +1466,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     messenger.hideCurrentSnackBar();
                     _selectDestination(MedBuddyDestination.schedule);
                   },
-                  child: Text(isEnglish ? 'View' : '일정 확인'),
+                  child: KeepWordsText(isEnglish ? 'View' : '일정 확인'),
                 ),
               ),
           ],

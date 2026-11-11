@@ -11,6 +11,7 @@ import '../entities/user_setting_entity.dart';
 import '../widgets/medbuddy_notice.dart';
 import '../widgets/medication_entry_fields.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: medication_schedule_review_ui_boundary.dart
 // 역할: 저장 전 여러 약의 복약 일정 비교·수정·검증을 제공한다.
@@ -187,7 +188,7 @@ class _MedicationScheduleReviewSheetState
                 ),
                 const SizedBox(width: 4),
                 Expanded(
-                  child: Text(
+                  child: KeepWordsText(
                     text.reviewTitle,
                     style: const TextStyle(
                       color: MedBuddyColors.textStrong,
@@ -205,7 +206,7 @@ class _MedicationScheduleReviewSheetState
               key: const Key('schedule-review-list'),
               padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
               children: [
-                Text(
+                KeepWordsText(
                   text.pillReviewDescription,
                   style: const TextStyle(
                     color: MedBuddyColors.textMuted,
@@ -255,7 +256,7 @@ class _MedicationScheduleReviewSheetState
                 minimumSize: const Size.fromHeight(54),
                 backgroundColor: MedBuddyColors.primary,
               ),
-              child: Text(
+              child: KeepWordsText(
                 text.confirmAndSave,
                 style: const TextStyle(
                   fontSize: 17,
@@ -386,7 +387,7 @@ class _MedicationScheduleReviewCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Text(
+                child: KeepWordsText(
                   medicationSchedule.displayNameForLanguage(
                     userSetting.language,
                   ),
@@ -489,7 +490,7 @@ class _ScheduleSummaryRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 82,
-            child: Text(
+            child: KeepWordsText(
               label,
               style: const TextStyle(
                 color: MedBuddyColors.textMuted,
@@ -501,7 +502,7 @@ class _ScheduleSummaryRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
+            child: KeepWordsText(
               displayValue,
               style: TextStyle(
                 color: value.trim().isEmpty
@@ -546,7 +547,7 @@ class _ScheduleValidationNotice extends StatelessWidget {
         color: MedBuddyColors.dangerSurface,
         borderRadius: MedBuddyRadii.small,
       ),
-      child: Text(
+      child: KeepWordsText(
         message,
         style: const TextStyle(
           color: MedBuddyColors.danger,
@@ -684,7 +685,7 @@ class _MedicationScheduleEditorDialogState
 
     return AlertDialog(
       scrollable: true,
-      title: Text(
+      title: KeepWordsText(
         text.editTitle,
         style: const TextStyle(
           color: MedBuddyColors.textStrong,
@@ -717,7 +718,7 @@ class _MedicationScheduleEditorDialogState
             ListTile(
               key: const Key('schedule-edit-start-date'),
               contentPadding: EdgeInsets.zero,
-              title: Text(text.startDate),
+              title: KeepWordsText(text.startDate),
               subtitle: Text(formatJsonDate(_startDate) ?? ''),
               trailing: const Icon(Icons.calendar_today_outlined),
               onTap: _selectStartDate,
@@ -752,7 +753,7 @@ class _MedicationScheduleEditorDialogState
             ),
             if (!_asNeeded) ...[
               const SizedBox(height: 16),
-              Text(
+              KeepWordsText(
                 text.doseDays,
                 style: const TextStyle(
                   color: MedBuddyColors.textStrong,
@@ -772,7 +773,7 @@ class _MedicationScheduleEditorDialogState
               if (_doseDays.isNotEmpty &&
                   !requiresDoseScheduleReview(_doseDays)) ...[
                 const SizedBox(height: 8),
-                Text(
+                KeepWordsText(
                   describeDoseCycle(
                     readDoseCycle(_doseDays),
                     isEnglish: text.isEnglish,
@@ -789,7 +790,7 @@ class _MedicationScheduleEditorDialogState
                 ),
               ],
               const SizedBox(height: 16),
-              Text(
+              KeepWordsText(
                 text.dailyFrequency,
                 style: const TextStyle(
                   color: MedBuddyColors.textStrong,
@@ -835,7 +836,7 @@ class _MedicationScheduleEditorDialogState
             ),
             if (!_asNeeded) ...[
               const SizedBox(height: 16),
-              Text(
+              KeepWordsText(
                 text.scheduleSlots,
                 style: const TextStyle(
                   color: MedBuddyColors.textStrong,
@@ -854,7 +855,7 @@ class _MedicationScheduleEditorDialogState
             ],
             if (_showSlotValidationError) ...[
               const SizedBox(height: 8),
-              Text(
+              KeepWordsText(
                 text.scheduleSlotCountMismatch(_frequencyCount),
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.error,

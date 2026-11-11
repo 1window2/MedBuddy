@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 
 // 클래스명: ChatDateDivider
 // 역할: 대화 목록에 날짜와 요일을 표시한다.
@@ -50,7 +51,7 @@ class ChatDateDivider extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             flex: 4,
-            child: Text(
+            child: KeepWordsText(
               label,
               textAlign: TextAlign.center,
               style: MedBuddyTextStyles.menuBody.copyWith(

@@ -18,6 +18,7 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/device_location_service.dart';
 import 'package:medbuddy_frontend/services/pharmacy_favorite_service.dart';
 import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 
 // 클래스명: _DelayedFavorites
 // 역할: 즐겨찾기 초기 조회와 저장의 지연·거절·예외를 재현한다.
@@ -1307,8 +1308,8 @@ void main() {
     final check = find.byType(CheckboxListTile);
     // 공유 영역에서 상세 제목을 반복하지 않되 전화 확인 기능은 유지한다.
     final title = tester
-        .widget<Text>(find.byKey(const Key('pharmacy-detail-name')))
-        .data!;
+        .widget<KeepWordsText>(find.byKey(const Key('pharmacy-detail-name')))
+        .data;
     expect(
       find.descendant(
         of: find.byKey(const Key('pharmacy-detail-sheet')),

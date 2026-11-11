@@ -12,6 +12,7 @@ import '../theme/medbuddy_theme.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../widgets/medbuddy_notice.dart';
 import 'linked_chat_ui_boundary.dart';
+import '../widgets/keep_words_text.dart';
 
 // 클래스명: ChatListUI
 // 역할: 대화 상대·최근 메시지와 갱신 상태를 표시하고 선택한 연동의 채팅을 연다.
@@ -98,7 +99,9 @@ class ChatListUI extends StatelessWidget {
                                 ? null
                                 : _refreshRequested,
                             icon: const Icon(Icons.refresh),
-                            label: Text(_isEnglish ? 'Retry' : '다시 시도'),
+                            label: KeepWordsText(
+                              _isEnglish ? 'Retry' : '다시 시도',
+                            ),
                           ),
                         ),
                       ),
@@ -108,7 +111,7 @@ class ChatListUI extends StatelessWidget {
                         !control.isLoading)
                       Padding(
                         padding: const EdgeInsets.all(24),
-                        child: Text(
+                        child: KeepWordsText(
                           _isEnglish ? 'No connected chats' : '연동된 대화가 없어요',
                         ),
                       ),
@@ -161,7 +164,7 @@ class ChatListUI extends StatelessWidget {
               size: 27,
             ),
           ),
-          title: Text(
+          title: KeepWordsText(
             control.peerName(link, isEnglish: _isEnglish),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -175,7 +178,7 @@ class ChatListUI extends StatelessWidget {
           ),
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 5),
-            child: Text(
+            child: KeepWordsText(
               _preview(link.linkId!, message),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,

@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/medication_schedule_review_ui_boundary.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 
 // 함수이름: main
 // 함수역할:
@@ -308,7 +309,9 @@ void main() {
     await tester.pump();
     expect(
       tester
-          .widget<Text>(find.byKey(const Key('schedule-edit-dose-days-notice')))
+          .widget<KeepWordsText>(
+            find.byKey(const Key('schedule-edit-dose-days-notice')),
+          )
           .data,
       '매일 복용하는 약이 아닙니다. 복용 시작일부터 7일마다 복용 일정과 알림을 만듭니다. '
       '총 투약일 28일 동안 복용하는 날은 4일입니다. 복용 시작일과 총 투약일을 확인해주세요.',

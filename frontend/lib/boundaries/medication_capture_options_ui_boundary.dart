@@ -7,6 +7,7 @@ import '../entities/user_setting_entity.dart';
 import '../widgets/medbuddy_option_sheet.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: medication_capture_options_ui_boundary.dart
 // 역할: 약 정보 분석 작업과 처방전 이미지 출처 선택을 제공한다.
@@ -167,7 +168,7 @@ Future<MedicationCaptureTask?> showPillCaptureModeOptions(
               ListTile(
                 minTileHeight: 56,
                 leading: Icon(icon, color: MedBuddyColors.primaryDark),
-                title: Text(
+                title: KeepWordsText(
                   label,
                   style: const TextStyle(
                     fontSize: 16,

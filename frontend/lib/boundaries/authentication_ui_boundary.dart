@@ -11,6 +11,7 @@ import '../services/foreground_recovery_service.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/medbuddy_confirm_dialog.dart';
 import '../widgets/medbuddy_wordmark.dart';
+import '../widgets/keep_words_text.dart';
 
 // Class Name: AuthenticationUI
 // Role: Represents sign-in methods and the account creation form.
@@ -174,7 +175,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
+                  KeepWordsText(
                     errorMessage ?? text.servicesUnavailable,
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 18),
@@ -188,7 +189,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
                         ? null
                         : control.retryInitialization,
                     icon: const Icon(Icons.refresh),
-                    label: Text(text.retryStartup),
+                    label: KeepWordsText(text.retryStartup),
                   ),
                 ],
               ),
@@ -205,7 +206,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
           child: Center(
             child: Padding(
               padding: const EdgeInsets.all(32),
-              child: Text(
+              child: KeepWordsText(
                 errorMessage ?? text.servicesUnavailable,
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 18),
@@ -247,7 +248,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
+                        KeepWordsText(
                           _createAccount
                               ? text.createAccountTitle
                               : text.signIn,
@@ -320,7 +321,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
                         ),
                         if (errorMessage != null) ...[
                           const SizedBox(height: 14),
-                          Text(
+                          KeepWordsText(
                             errorMessage,
                             style: const TextStyle(color: Colors.redAccent),
                           ),
@@ -333,7 +334,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
                                 ? null
                                 : control.retryBackendSession,
                             icon: const Icon(Icons.sync),
-                            label: Text(text.retrySecureSession),
+                            label: KeepWordsText(text.retrySecureSession),
                           ),
                         ],
                         const SizedBox(height: 24),
@@ -362,7 +363,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
                             onPressed: control.isBusy
                                 ? null
                                 : _sendPasswordReset,
-                            child: Text(text.forgotPassword),
+                            child: KeepWordsText(text.forgotPassword),
                           ),
                         TextButton(
                           onPressed: control.isBusy
@@ -380,7 +381,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
                               : () => setState(() {
                                   _createAccount = !_createAccount;
                                 }),
-                          child: Text(
+                          child: KeepWordsText(
                             _createAccount
                                 ? text.alreadyHaveAccount
                                 : text.newToMedBuddy,
@@ -405,7 +406,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
                               ? null
                               : control.signInWithGoogle,
                           icon: const Icon(Icons.account_circle_outlined),
-                          label: Text(text.continueWithGoogle),
+                          label: KeepWordsText(text.continueWithGoogle),
                         ),
                         if (control.phoneAuthenticationEnabled) ...[
                           const SizedBox(height: 8),
@@ -414,14 +415,14 @@ class _AuthenticationUIState extends State<AuthenticationUI>
                                 ? null
                                 : _startPhoneSignIn,
                             icon: const Icon(Icons.sms_outlined),
-                            label: Text(text.continueWithPhone),
+                            label: KeepWordsText(text.continueWithPhone),
                           ),
                         ],
                         const SizedBox(height: 8),
                         TextButton.icon(
                           onPressed: control.isBusy ? null : _continueAsGuest,
                           icon: const Icon(Icons.person_outline),
-                          label: Text(text.continueAsGuest),
+                          label: KeepWordsText(text.continueAsGuest),
                         ),
                       ],
                     ),
@@ -453,7 +454,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
                                 ),
                               ),
                               const SizedBox(width: 14),
-                              Text(text.processing),
+                              KeepWordsText(text.processing),
                             ],
                           ),
                         ),
@@ -532,7 +533,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(
+          content: KeepWordsText(
             _AuthenticationText(_languageControl.language).passwordResetSent,
           ),
         ),
@@ -554,7 +555,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
       // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
       // Returns: Widget subtree for the described layout or fallback.
       builder: (context) => AlertDialog(
-        title: Text(text.phoneSignIn),
+        title: KeepWordsText(text.phoneSignIn),
         content: TextField(
           controller: phoneController,
           autofocus: true,
@@ -582,7 +583,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
             // - None.
             // Returns: No callback payload; any selection is delivered through the route result.
             onPressed: () => Navigator.pop(context, phoneController.text),
-            child: Text(text.sendCode),
+            child: KeepWordsText(text.sendCode),
           ),
         ],
       ),
@@ -1093,13 +1094,13 @@ class _SmsCodeViewState extends State<_SmsCodeView> {
               color: MedBuddyColors.primary,
             ),
             const SizedBox(height: 20),
-            Text(
+            KeepWordsText(
               text.enterCode,
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 10),
-            Text(
+            KeepWordsText(
               text.codeSent(control.smsDestination),
               textAlign: TextAlign.center,
             ),
@@ -1116,7 +1117,7 @@ class _SmsCodeViewState extends State<_SmsCodeView> {
               ),
             ),
             if (errorMessage != null)
-              Text(
+              KeepWordsText(
                 errorMessage,
                 style: const TextStyle(color: Colors.redAccent),
               ),
@@ -1300,23 +1301,26 @@ class _EmailVerificationViewState extends State<_EmailVerificationView>
               color: MedBuddyColors.primary,
             ),
             const SizedBox(height: 20),
-            Text(
+            KeepWordsText(
               text.verifyEmail,
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 10),
-            Text(
+            KeepWordsText(
               text.verificationEmailSent(control.signedInEmail),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
-            Text(text.automaticEmailVerification, textAlign: TextAlign.center),
+            KeepWordsText(
+              text.automaticEmailVerification,
+              textAlign: TextAlign.center,
+            ),
             if (errorMessage != null) ...[
               const SizedBox(height: 12),
               Semantics(
                 liveRegion: true,
-                child: Text(
+                child: KeepWordsText(
                   errorMessage,
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
@@ -1336,7 +1340,7 @@ class _EmailVerificationViewState extends State<_EmailVerificationView>
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.refresh, size: 20),
-                label: Text(
+                label: KeepWordsText(
                   _checkingVerification
                       ? text.checkingEmailVerification
                       : text.checkEmailVerification,
@@ -1350,7 +1354,7 @@ class _EmailVerificationViewState extends State<_EmailVerificationView>
                   : () => control.resendEmailVerification(
                       language: languageControl.language,
                     ),
-              child: Text(text.resendEmail),
+              child: KeepWordsText(text.resendEmail),
             ),
           ],
         ),

@@ -52,7 +52,7 @@ class _MedicationImageDialog extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
+                    child: KeepWordsText(
                       medication.itemName.trim(),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -130,7 +130,7 @@ class _MedicationImageDialog extends StatelessWidget {
   Widget _buildImageLoadFailure() {
     return Padding(
       padding: const EdgeInsets.all(28),
-      child: Text(
+      child: KeepWordsText(
         text.imageLoadFailed,
         textAlign: TextAlign.center,
         style: TextStyle(
@@ -186,7 +186,7 @@ class _DeleteConfirmationDialog extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
+            KeepWordsText(
               text.deleteMessage(count),
               textAlign: TextAlign.center,
               style: const TextStyle(

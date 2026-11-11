@@ -14,6 +14,7 @@ import '../services/prescription_frame_analyzer.dart';
 import '../services/prescription_guide_layout.dart';
 import '../services/prescription_image_crop_service.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: guided_prescription_camera_ui_boundary.dart
 // 역할: 처방전 촬영 거리 안내와 카메라 생명주기 관리를 제공한다.
@@ -422,7 +423,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
     if (mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(_text.captureFailed)));
+      ).showSnackBar(SnackBar(content: KeepWordsText(_text.captureFailed)));
     }
     try {
       if (controller.value.isInitialized &&
@@ -473,7 +474,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text(_text.flashUnavailable)));
+        ).showSnackBar(SnackBar(content: KeepWordsText(_text.flashUnavailable)));
       }
     }
   }
@@ -755,7 +756,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
               size: 52,
             ),
             const SizedBox(height: 18),
-            Text(
+            KeepWordsText(
               _cameraErrorMessage,
               textAlign: TextAlign.center,
               style: const TextStyle(
@@ -770,7 +771,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
                 key: const ValueKey('guidedCameraOpenSettings'),
                 onPressed: _openAppSettings,
                 icon: const Icon(Icons.settings_outlined),
-                label: Text(_text.openSettings),
+                label: KeepWordsText(_text.openSettings),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(0, 48),
                 ),
@@ -780,7 +781,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
             OutlinedButton.icon(
               onPressed: _initializeCamera,
               icon: const Icon(Icons.refresh_rounded),
-              label: Text(_text.retry),
+              label: KeepWordsText(_text.retry),
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.white,
                 side: const BorderSide(color: Colors.white54),
@@ -819,7 +820,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
           ),
           const SizedBox(height: 14),
         ],
-        Text(
+        KeepWordsText(
           _text.captureHint,
           textAlign: TextAlign.center,
           style: TextStyle(
@@ -829,7 +830,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
           ),
         ),
         const SizedBox(height: 6),
-        Text(
+        KeepWordsText(
           _text.cropNotice,
           textAlign: TextAlign.center,
           style: TextStyle(
@@ -918,7 +919,7 @@ class _GuideMessage extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        child: Text(
+        child: KeepWordsText(
           message,
           textAlign: TextAlign.center,
           style: const TextStyle(

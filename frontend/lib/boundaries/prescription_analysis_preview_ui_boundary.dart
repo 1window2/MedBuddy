@@ -25,6 +25,7 @@ import '../widgets/medication_entry_fields.dart';
 import '../widgets/pinned_analysis_summary.dart';
 import '../widgets/responsive_card_header.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/keep_words_text.dart';
 
 part 'prescription_preview_image_widgets.dart';
 part 'prescription_preview_medication_widgets.dart';
@@ -248,7 +249,7 @@ class _PrescriptionAnalysisPreviewUIState
                               key: const Key('ocr-add-medication-button'),
                               onPressed: _showMedicationCreator,
                               icon: const Icon(Icons.add_rounded),
-                              label: Text(text.addMissingMedication),
+                              label: KeepWordsText(text.addMissingMedication),
                             ),
                           ),
                           const SizedBox(height: 10),

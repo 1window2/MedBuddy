@@ -558,7 +558,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
+        content: KeepWordsText(
           result.message(isEnglishLanguage(viewModel.userSetting.language)),
         ),
       ),
@@ -677,7 +677,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
       });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(text.deleteResult(result))));
+      ).showSnackBar(SnackBar(content: KeepWordsText(text.deleteResult(result))));
     } finally {
       if (mounted) {
         setState(() {
@@ -730,7 +730,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     if (!hasLocalImage && safeMedicationImageUrl(medication.imageUrl).isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(text.noImage)));
+      ).showSnackBar(SnackBar(content: KeepWordsText(text.noImage)));
       return;
     }
 

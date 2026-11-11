@@ -18,6 +18,7 @@ import '../theme/medbuddy_theme.dart';
 import '../services/user_facing_error_message.dart';
 import 'check_caregiver_medication_ui_boundary.dart';
 import 'linked_chat_ui_boundary.dart';
+import '../widgets/keep_words_text.dart';
 
 // 함수이름: LinkPatientCaregiverFactory
 // 함수역할: 사용자 해시 범위에 맞춘 연동 컨트롤러를 생성하는 콜백 계약이다.
@@ -483,8 +484,8 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
           return AlertDialog(
             key: const Key('unlink-confirmation-dialog'),
             scrollable: true,
-            title: Text(text.unlinkTitle),
-            content: Text(text.unlinkWarning(peerName)),
+            title: KeepWordsText(text.unlinkTitle),
+            content: KeepWordsText(text.unlinkWarning(peerName)),
             actions: [
               TextButton(
                 key: const Key('unlink-cancel'),
@@ -500,7 +501,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
                 ),
                 onPressed: () => respond(true),
                 icon: const Icon(Icons.link_off),
-                label: Text(text.delete),
+                label: KeepWordsText(text.delete),
               ),
             ],
           );
@@ -783,7 +784,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
       builder: (dialogContext) {
         return AlertDialog(
-          title: Text(
+          title: KeepWordsText(
             isCaregiver ? _text.patientLabelTitle : _text.caregiverLabelTitle,
           ),
           content: TextFormField(
@@ -918,7 +919,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(
+          content: KeepWordsText(
             labelCleared
                 ? _text.labelCleared
                 : _text.patientLabelSaved(confirmedLabel),
@@ -987,7 +988,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
-            content: Text(_text.chatUnavailable),
+            content: KeepWordsText(_text.chatUnavailable),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -1214,7 +1215,7 @@ class _LinkActionButton extends StatelessWidget {
           children: [
             Icon(icon, color: MedBuddyColors.primaryDark, size: 24),
             const SizedBox(height: 5),
-            Text(
+            KeepWordsText(
               title,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -1227,7 +1228,7 @@ class _LinkActionButton extends StatelessWidget {
             ),
             const SizedBox(height: 3),
             // 역할 안내는 중요한 정보이므로 13pt 이상으로 두고 잘리지 않게 3줄까지 허용한다.
-            Text(
+            KeepWordsText(
               subtitle,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
@@ -1294,7 +1295,7 @@ class _StatusCard extends StatelessWidget {
             const SizedBox(width: 12),
           ],
           Flexible(
-            child: Text(
+            child: KeepWordsText(
               statusMessage,
               textAlign: TextAlign.center,
               style: const TextStyle(
@@ -1403,7 +1404,7 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
                       ),
                     ),
                     Expanded(
-                      child: Text(
+                      child: KeepWordsText(
                         widget.text.registerPatient,
                         textAlign: TextAlign.center,
                         style: const TextStyle(
@@ -1530,7 +1531,7 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
     setState(() => _isRegistering = false);
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text(widget.statusMessageProvider())));
+    ).showSnackBar(SnackBar(content: KeepWordsText(widget.statusMessageProvider())));
   }
 }
 
@@ -1683,7 +1684,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                       ),
                     ),
                     Expanded(
-                      child: Text(
+                      child: KeepWordsText(
                         widget.text.patientCodeDialogTitle,
                         textAlign: TextAlign.center,
                         style: const TextStyle(
@@ -1716,7 +1717,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                               ClipboardData(text: widget.patientCode.code),
                             );
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(widget.text.codeCopied)),
+                              SnackBar(content: KeepWordsText(widget.text.codeCopied)),
                             );
                           },
                     child: Container(
@@ -1762,7 +1763,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                   ),
                 ),
                 const SizedBox(height: 7),
-                Text(
+                KeepWordsText(
                   expired ? widget.text.codeExpired : widget.text.copyHint,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
@@ -1799,7 +1800,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                       // 반환값: 없음. 화면 종료 결과로 true를 전달한다.
                       onPressed: () => Navigator.pop(context, true),
                       icon: const Icon(Icons.refresh),
-                      label: Text(widget.text.createNewCode),
+                      label: KeepWordsText(widget.text.createNewCode),
                     ),
                   )
                 else
@@ -1894,7 +1895,7 @@ class _PatientCodeNotice extends StatelessWidget {
       ),
       child: FittedBox(
         fit: BoxFit.scaleDown,
-        child: Text(
+        child: KeepWordsText(
           text,
           maxLines: 2,
           textAlign: TextAlign.center,
@@ -2103,7 +2104,7 @@ class _LinkedUserTile extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
+                child: KeepWordsText(
                   _peerLabel,
                   style: const TextStyle(
                     color: MedBuddyColors.textStrong,
@@ -2172,7 +2173,7 @@ class _LinkedUserTile extends StatelessWidget {
             childrenPadding: const EdgeInsets.only(bottom: 4),
             shape: const Border(),
             collapsedShape: const Border(),
-            title: Text(
+            title: KeepWordsText(
               text.linkManagement,
               style: const TextStyle(
                 color: MedBuddyColors.textMuted,
@@ -2203,7 +2204,7 @@ class _LinkedUserTile extends StatelessWidget {
                     letterSpacing: 0,
                   ),
                 ),
-                child: Text(text.delete),
+                child: KeepWordsText(text.delete),
               ),
             ],
           ),

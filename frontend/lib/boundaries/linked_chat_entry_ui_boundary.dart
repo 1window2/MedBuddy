@@ -11,6 +11,7 @@ import '../services/authenticated_api_client.dart';
 import '../widgets/medbuddy_page_header.dart';
 import 'link_patient_caregiver_ui_boundary.dart';
 import 'linked_chat_ui_boundary.dart';
+import '../widgets/keep_words_text.dart';
 
 // Class Name: LinkedChatEntryUI
 // Role: Notification-to-conversation entry with role resolution.
@@ -133,7 +134,7 @@ class _LinkedChatEntryUIState extends State<LinkedChatEntryUI> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
+        KeepWordsText(
           english
               ? 'Could not verify this conversation.\nCheck your connection and patient-caregiver link, then try again.'
               : '대화 상대를 확인하지 못했어요.\n네트워크와 환자·보호자 연동 상태를 확인한 뒤 다시 시도해 주세요.',
@@ -143,7 +144,7 @@ class _LinkedChatEntryUIState extends State<LinkedChatEntryUI> {
         FilledButton.icon(
           onPressed: _loadLink,
           icon: const Icon(Icons.refresh),
-          label: Text(english ? 'Try again' : '다시 시도'),
+          label: KeepWordsText(english ? 'Try again' : '다시 시도'),
         ),
       ],
     );
@@ -157,7 +158,7 @@ class _LinkedChatEntryUIState extends State<LinkedChatEntryUI> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
+        KeepWordsText(
           english
               ? 'This patient-caregiver link has ended.\nThe conversation is no longer available.'
               : '환자·보호자 연동이 종료되었어요.\n이 대화는 더 이상 이용할 수 없어요.',
@@ -168,7 +169,7 @@ class _LinkedChatEntryUIState extends State<LinkedChatEntryUI> {
         FilledButton.icon(
           onPressed: _openLinkManagement,
           icon: const Icon(Icons.people_alt_outlined),
-          label: Text(english ? 'Manage links' : '연동 관리 열기'),
+          label: KeepWordsText(english ? 'Manage links' : '연동 관리 열기'),
         ),
         const SizedBox(height: 8),
         OutlinedButton(

@@ -414,7 +414,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   void _message(String message) {
     if (!mounted) return;
     _messengerKey.currentState?.showSnackBar(
-      SnackBar(content: Text(message), duration: const Duration(seconds: 6)),
+      SnackBar(
+        content: KeepWordsText(message),
+        duration: const Duration(seconds: 6),
+      ),
     );
   }
 
@@ -693,7 +696,9 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
             builder: (context, _) => control.sessionInvalidated
                 ? _sessionEndedDialog(context, widget.isEnglish)
                 : AlertDialog(
-                    title: Text(tr('복약 기록 공유', 'Share medication history')),
+                    title: KeepWordsText(
+                      tr('복약 기록 공유', 'Share medication history'),
+                    ),
                     scrollable: true,
                     content: SizedBox(
                       width: 400,
@@ -753,7 +758,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                               },
                             ),
                             const SizedBox(height: 12),
-                            Text(
+                            KeepWordsText(
                               _chatShare == null
                                   ? tr(
                                       '최근 90일 · 최대 90일',
@@ -771,7 +776,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                                 exportError != null)
                               Padding(
                                 padding: const EdgeInsets.only(top: 8),
-                                child: Text(
+                                child: KeepWordsText(
                                   // 날짜를 바꾸면 지워지는 실패 안내가 채팅 기간 안내에 가려지지 않게 한다.
                                   exportError ??
                                       rangeError() ??
@@ -789,7 +794,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                               ),
                             const SizedBox(height: 16),
                             // 채팅 공유는 서버가 기간과 상태별 횟수만 만들어 보내므로 외부 공유와 구분해 알린다.
-                            Text(
+                            KeepWordsText(
                               key: const Key('history-share-privacy-notice'),
                               _chatShare == null
                                   ? tr(
@@ -826,7 +831,9 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                                         _HistoryShareDestination.chat,
                                       ),
                                 icon: const Icon(Icons.chat_bubble_outline),
-                                label: Text(tr('채팅으로 공유', 'Share in chat')),
+                                label: KeepWordsText(
+                                  tr('채팅으로 공유', 'Share in chat'),
+                                ),
                               ),
                               const SizedBox(height: 8),
                             ],
@@ -843,7 +850,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                                       _HistoryShareDestination.external,
                                     ),
                               icon: const Icon(Icons.share_outlined),
-                              label: Text(
+                              label: KeepWordsText(
                                 tr('다른 방법으로 공유', 'Share via other apps'),
                               ),
                             ),
@@ -941,10 +948,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(
+        title: KeepWordsText(
           tr('이 기기에서는 공유 창을 지원하지 않아요', 'Sharing is unavailable on this device'),
         ),
-        content: Text(
+        content: KeepWordsText(
           tr(
             '대신 복약 기록을 클립보드에 복사할까요? 복사한 복약 정보는 다른 앱에서 읽을 수 있습니다.',
             'Copy the medication records to the clipboard instead? Other apps may be able to read copied medication information.',
@@ -1098,7 +1105,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                         borderRadius: MedBuddyRadii.small,
                       ),
                     ),
-                    child: Text(switch (period) {
+                    child: KeepWordsText(switch (period) {
                       _HistoryPeriod.week => tr('주간', 'Weekly'),
                       _HistoryPeriod.month => tr('월간', 'Monthly'),
                       _HistoryPeriod.custom => tr('기간 선택', 'Date range'),
@@ -1122,7 +1129,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
           child: Center(child: CircularProgressIndicator()),
         )
       else if (_control.error != null) ...[
-        Text(
+        KeepWordsText(
           _failureText(_control.error!, widget.isEnglish),
           key: const Key('history-load-error'),
           style: const TextStyle(color: MedBuddyColors.danger),
@@ -1132,7 +1139,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
           OutlinedButton.icon(
             onPressed: _locked ? null : _reload,
             icon: const Icon(Icons.refresh),
-            label: Text(tr('다시 시도', 'Retry')),
+            label: KeepWordsText(tr('다시 시도', 'Retry')),
           ),
       ] else if (snapshot != null) ...[
         _sectionFrame(
@@ -1222,7 +1229,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                 ))
                   Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text(
+                    child: KeepWordsText(
                       tr(
                         '이 날짜에는 복약 일정이나 기록이 없어요.',
                         'No scheduled doses or records on this date.',
@@ -1284,7 +1291,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         child: Row(
           children: [
             Expanded(
-              child: Text(
+              child: KeepWordsText(
                 title,
                 style: const TextStyle(
                   fontSize: 17,
@@ -1532,7 +1539,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
             ),
           ),
         if (entries.any((entry) => entry.isAsNeeded))
-          Text(
+          KeepWordsText(
             '${tr('필요시 복용', 'As needed')} ${counts.asNeeded}',
             style: MedBuddyTextStyles.menuBody.copyWith(
               color: MedBuddyColors.infoBlue,
@@ -1561,7 +1568,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
       if (_control.loading && snapshot == null)
         const LinearProgressIndicator()
       else if (_control.error != null) ...[
-        Text(
+        KeepWordsText(
           _failureText(_control.error!, widget.isEnglish),
           key: const Key('history-load-error'),
           style: const TextStyle(color: MedBuddyColors.danger),
@@ -1571,7 +1578,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
           OutlinedButton.icon(
             onPressed: _locked ? null : _load,
             icon: const Icon(Icons.refresh),
-            label: Text(tr('다시 시도', 'Retry')),
+            label: KeepWordsText(tr('다시 시도', 'Retry')),
           ),
       ] else if (snapshot != null) ...[
         Row(
@@ -1597,7 +1604,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         if (snapshot.items.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 24),
-            child: Text(
+            child: KeepWordsText(
               tr(
                 '이 기간에는 복약 일정이나 기록이 없어요.',
                 'No scheduled doses or records in this period.',
@@ -1644,7 +1651,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
           Row(
             children: [
               Expanded(
-                child: Text(
+                child: KeepWordsText(
                   tr('복용 기록 현황', 'Record summary'),
                   style: const TextStyle(
                     color: Colors.white,
@@ -1741,7 +1748,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
+                  child: KeepWordsText(
                     entries.first.slotLabel(widget.isEnglish),
                     style: const TextStyle(
                       fontSize: 18,
@@ -1821,17 +1828,17 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
             entry.reason.isNotEmpty)
           const SizedBox(height: 8),
         if (entry.status == MedicationHistoryStatus.taken)
-          Text(
+          KeepWordsText(
             '${tr('실제 복용', 'Actual taken')}: ${entry.actualTakenAt == null ? tr('시각 미입력', 'Time not provided') : MedicationHistoryDates.timestamp(entry.actualTakenAt)}',
             style: MedBuddyTextStyles.menuBody,
           ),
         if (entry.recordedAt != null)
-          Text(
+          KeepWordsText(
             '${tr('기록 시각', 'Recorded at')}: ${MedicationHistoryDates.timestamp(entry.recordedAt)}',
             style: MedBuddyTextStyles.menuBody,
           ),
         if (entry.reason.isNotEmpty)
-          Text(
+          KeepWordsText(
             '${tr('이유', 'Reason')}: ${entry.reason}',
             style: MedBuddyTextStyles.menuBody,
           ),
@@ -1963,7 +1970,7 @@ class _HistoryChatShareDialogState extends State<_HistoryChatShareDialog> {
         : PopScope(
             canPop: !_sending,
             child: AlertDialog(
-              title: Text(tr('채팅으로 공유', 'Share in chat')),
+              title: KeepWordsText(tr('채팅으로 공유', 'Share in chat')),
               scrollable: true,
               content: SizedBox(
                 width: 400,
@@ -1980,7 +1987,7 @@ class _HistoryChatShareDialogState extends State<_HistoryChatShareDialog> {
                       if (_loading)
                         const LinearProgressIndicator()
                       else if (_loadFailed) ...[
-                        Text(
+                        KeepWordsText(
                           tr(
                             '대화 상대를 확인하지 못했어요.',
                             'Could not verify chat recipients.',
@@ -1989,10 +1996,10 @@ class _HistoryChatShareDialogState extends State<_HistoryChatShareDialog> {
                         OutlinedButton.icon(
                           onPressed: _load,
                           icon: const Icon(Icons.refresh),
-                          label: Text(tr('다시 조회', 'Retry')),
+                          label: KeepWordsText(tr('다시 조회', 'Retry')),
                         ),
                       ] else if (_recipients.isEmpty)
-                        Text(
+                        KeepWordsText(
                           tr(
                             '이 환자와 연결된 대화 상대가 없어요.',
                             'There are no connected chats for this patient.',
@@ -2019,14 +2026,16 @@ class _HistoryChatShareDialogState extends State<_HistoryChatShareDialog> {
                                   value: link.linkId!,
                                   enabled: !_sending,
                                   contentPadding: EdgeInsets.zero,
-                                  title: Text(widget.share.peerName(link)),
+                                  title: KeepWordsText(
+                                    widget.share.peerName(link),
+                                  ),
                                 ),
                             ],
                           ),
                         ),
                       if (_recipients.isNotEmpty) ...[
                         const SizedBox(height: 8),
-                        Text(
+                        KeepWordsText(
                           tr(
                             '선택한 상대에게 복약 기록 요약을 보냅니다.',
                             'The selected person will receive a medication record summary.',
@@ -2041,7 +2050,7 @@ class _HistoryChatShareDialogState extends State<_HistoryChatShareDialog> {
                       if (_sendFailed)
                         Padding(
                           padding: const EdgeInsets.only(top: 12),
-                          child: Text(
+                          child: KeepWordsText(
                             tr(
                               '전송 결과를 확인하지 못했어요. 연결 상태와 환자·보호자 연동을 확인한 뒤 다시 시도해 주세요.',
                               'Could not confirm delivery. Check your connection and patient-caregiver link, then retry.',
@@ -2067,7 +2076,7 @@ class _HistoryChatShareDialogState extends State<_HistoryChatShareDialog> {
                       ? null
                       : _send,
                   icon: Icon(_sendFailed ? Icons.refresh : Icons.send_outlined),
-                  label: Text(
+                  label: KeepWordsText(
                     _sendFailed
                         ? tr('다시 전송', 'Retry sending')
                         : tr('전송', 'Send'),
@@ -2267,9 +2276,11 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
             builder: (context, _) => widget.control.sessionInvalidated
                 ? _sessionEndedDialog(context, widget.isEnglish)
                 : AlertDialog(
-                    title: Text(tr('이 내용으로 기록할까요?', 'Save this record?')),
+                    title: KeepWordsText(
+                      tr('이 내용으로 기록할까요?', 'Save this record?'),
+                    ),
                     content: SingleChildScrollView(
-                      child: Text(
+                      child: KeepWordsText(
                         '${change.entry.itemName}\n${MedicationHistoryDates.format(change.entry.scheduleDate)} · '
                         '${change.entry.slotLabel(widget.isEnglish)}\n${change.status.label(widget.isEnglish)}'
                         '${change.actualTakenAt == null ? '' : '\n${tr('실제 복용', 'Actual taken')}: ${MedicationHistoryDates.timestamp(change.actualTakenAt)}'}'
@@ -2327,7 +2338,7 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
         : PopScope(
             canPop: !_submitting,
             child: AlertDialog(
-              title: Text(tr('복약 기록 수정', 'Edit medication record')),
+              title: KeepWordsText(tr('복약 기록 수정', 'Edit medication record')),
               content: SizedBox(
                 width: 480,
                 child: SingleChildScrollView(
@@ -2335,11 +2346,11 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      KeepWordsText(
                         widget.entry.itemName,
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
-                      Text(
+                      KeepWordsText(
                         '${widget.entry.isAsNeeded ? tr('기록일', 'Record date') : tr('예정일', 'Scheduled date')} ${MedicationHistoryDates.format(widget.entry.scheduleDate)} · ${widget.entry.slotLabel(widget.isEnglish)}',
                       ),
                       const SizedBox(height: 12),
@@ -2368,7 +2379,7 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
                                   value: status,
                                   enabled: !_fieldsLocked,
                                   contentPadding: EdgeInsets.zero,
-                                  title: Text(
+                                  title: KeepWordsText(
                                     widget.entry.isAsNeeded &&
                                             status ==
                                                 MedicationHistoryStatus
@@ -2385,7 +2396,7 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
                       ),
                       if (_status == MedicationHistoryStatus.taken) ...[
                         const SizedBox(height: 8),
-                        Text(
+                        KeepWordsText(
                           tr('실제 복용 시각 (한국 시간)', 'Actual taken time (Korea)'),
                         ),
                         Wrap(
@@ -2410,7 +2421,7 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
                         ),
                       ],
                       if (_status == MedicationHistoryStatus.skipped) ...[
-                        Text(
+                        KeepWordsText(
                           widget.entry.isAsNeeded
                               ? tr(
                                   '건너뛴 기록은 복용 완료로 처리되지 않습니다.',
@@ -2442,7 +2453,7 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
                       if (widget.entry.recordedAt != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 12),
-                          child: Text(
+                          child: KeepWordsText(
                             '${tr('이전 기록 시각', 'Previously recorded at')}: '
                             '${MedicationHistoryDates.timestamp(widget.entry.recordedAt)}',
                             style: Theme.of(context).textTheme.bodySmall,
@@ -2451,7 +2462,7 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
                       if (_error != null || widget.control.sessionInvalidated)
                         Padding(
                           padding: const EdgeInsets.only(top: 12),
-                          child: Text(
+                          child: KeepWordsText(
                             _failureText(
                               widget.control.sessionInvalidated
                                   ? const MedicationHistorySessionChanged()
@@ -2467,7 +2478,7 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
                       if (_pending != null && !_submitting && !_conflict)
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
-                          child: Text(
+                          child: KeepWordsText(
                             tr(
                               '입력한 내용 그대로 재시도합니다. 닫으면 서버 기록을 다시 조회합니다.',
                               'Retry sends the same record. Closing reloads the server history.',
@@ -2488,7 +2499,7 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
                   onPressed: _submitting
                       ? null
                       : () => Navigator.pop(context, false),
-                  child: Text(
+                  child: KeepWordsText(
                     _conflict
                         ? tr('닫고 새로고침', 'Close and refresh')
                         : tr('닫기', 'Close'),
@@ -2499,7 +2510,7 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
                     key: const Key('history-save'),
                     onPressed: _locked ? null : _save,
                     icon: const Icon(Icons.save_outlined),
-                    label: Text(
+                    label: KeepWordsText(
                       _pending != null
                           ? tr('같은 기록 재시도', 'Retry record')
                           : tr('기록 저장', 'Save record'),
@@ -2516,8 +2527,10 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
 // 매개변수: context (BuildContext): 현재 대화상자; english (bool): 영어 여부.
 // 반환값: 세션 종료 AlertDialog.
 Widget _sessionEndedDialog(BuildContext context, bool english) => AlertDialog(
-  title: Text(english ? 'Session changed' : '로그인 정보 변경'),
-  content: Text(_failureText(const MedicationHistorySessionChanged(), english)),
+  title: KeepWordsText(english ? 'Session changed' : '로그인 정보 변경'),
+  content: KeepWordsText(
+    _failureText(const MedicationHistorySessionChanged(), english),
+  ),
   actions: [
     TextButton(
       onPressed: () => Navigator.pop(context),

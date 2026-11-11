@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: set_notification_ui_boundary.dart
 // 역할: 휠·직접 입력을 통한 복약 알림 시각 선택을 제공한다.
@@ -199,7 +200,7 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
           icon: const Icon(Icons.close, size: 25),
         ),
         Expanded(
-          child: Text(
+          child: KeepWordsText(
             _isEnglish
                 ? '${widget.slotTitle} Reminder'
                 : '${widget.slotTitle} 알림',
@@ -447,7 +448,7 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
 
             return AlertDialog(
               backgroundColor: Colors.white,
-              title: Text(
+              title: KeepWordsText(
                 isHour
                     ? (_isEnglish ? 'Enter hour' : '시간 입력')
                     : (_isEnglish ? 'Enter minute' : '분 입력'),

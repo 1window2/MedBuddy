@@ -63,4 +63,28 @@ void main() {
     );
     semantics.dispose();
   });
+
+  // 함수이름: 줄 높이 전달 테스트
+  // 함수역할: 화면 제목이 쓰는 strutStyle과 다른 배치 설정이 그대로 Text에 전달되는지 확인한다. 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('passes strut style and layout options to the text', (
+    tester,
+  ) async {
+    const strut = StrutStyle(fontSize: 24, height: 1.2, forceStrutHeight: true);
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: KeepWordsText(
+            '오늘의 복약 일정',
+            strutStyle: strut,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
+    );
+    final rich = tester.widget<Text>(find.byType(Text));
+    expect(rich.strutStyle, strut);
+    expect(rich.maxLines, 2);
+    expect(rich.overflow, TextOverflow.ellipsis);
+  });
 }

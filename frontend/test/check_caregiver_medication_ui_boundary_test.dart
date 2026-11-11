@@ -15,6 +15,7 @@ import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 import 'medication_history_fixtures.dart';
 
 // 정기 일정이 없이 필요시 약만 있는 환자도 같은 조회 화면으로 확인한다.
@@ -501,7 +502,7 @@ void main() {
           };
           expect(
             tester
-                .widget<Text>(
+                .widget<KeepWordsText>(
                   find.byKey(const ValueKey('caregiver-alert-time-morning')),
                 )
                 .data,
@@ -752,7 +753,7 @@ void main() {
     expect(find.byIcon(Icons.notifications_active_outlined), findsNothing);
     expect(
       tester
-          .widget<Text>(
+          .widget<KeepWordsText>(
             find.byKey(const ValueKey('caregiver-alert-time-morning')),
           )
           .data,
@@ -1001,7 +1002,7 @@ void main() {
     );
     expect(
       tester
-          .widget<Text>(
+          .widget<KeepWordsText>(
             find.byKey(const ValueKey('caregiver-alert-time-morning')),
           )
           .data,
@@ -1085,7 +1086,7 @@ void main() {
     final alertLabel = find.byKey(
       const ValueKey('caregiver-alert-time-morning'),
     );
-    expect(tester.widget<Text>(alertLabel).data, '복용 완료 시 알림');
+    expect(tester.widget<KeepWordsText>(alertLabel).data, '복용 완료 시 알림');
 
     notificationControl.holdRequests = true;
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
@@ -1104,13 +1105,13 @@ void main() {
     expect(notificationControl.savedModes, [
       CaregiverNotificationMode.disabled,
     ]);
-    expect(tester.widget<Text>(alertLabel).data, '보호자 알림 꺼짐');
+    expect(tester.widget<KeepWordsText>(alertLabel).data, '보호자 알림 꺼짐');
 
     // 저장 전에 시작된 조회는 아침을 여전히 "복용 완료 시 알림"으로 돌려준다.
     notificationControl.pendingRequests.single.complete();
     await tester.pump();
     await tester.pump();
-    expect(tester.widget<Text>(alertLabel).data, '보호자 알림 꺼짐');
+    expect(tester.widget<KeepWordsText>(alertLabel).data, '보호자 알림 꺼짐');
 
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();

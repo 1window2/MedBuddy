@@ -4,6 +4,7 @@ import '../entities/prescription_change_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/expandable_medication_section.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: prescription_change_radar_ui_boundary.dart
 // 역할: 이전 처방 대비 약품 추가·일정 변경·미확인 항목 비교를 제공한다.
@@ -94,7 +95,7 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
         Icon(icon, color: MedBuddyColors.textMuted, size: 24),
         const SizedBox(width: 10),
         Expanded(
-          child: Text(
+          child: KeepWordsText(
             text.unavailableMessage(
               radar.comparisonStatus,
               radar.comparisonWindowDays,
@@ -120,7 +121,7 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        KeepWordsText(
           text.comparisonPeriod(
             radar.previousPrescriptionDate,
             radar.currentPrescriptionDate,
@@ -141,7 +142,7 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
           // - change (콜백 계약에서 추론): 약품 한 건의 추가·일정 변경·미확인 정보.
           // 반환값: 컬렉션 연산에 전달할 변환값.
         ] else if (radar.hasChanges)
-          Text(
+          KeepWordsText(
             text.isEnglish
                 ? 'Change details are unavailable.'
                 : '변경 상세 정보를 불러오지 못했습니다.',
@@ -199,7 +200,7 @@ class PrescriptionChangeRadarLoadingUI extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
+            child: KeepWordsText(
               text.loading,
               style: TextStyle(
                 color: MedBuddyColors.primaryDark,
@@ -270,7 +271,7 @@ class _RadarHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                KeepWordsText(
                   text.title,
                   style: TextStyle(
                     color: MedBuddyColors.textStrong,
@@ -279,7 +280,7 @@ class _RadarHeader extends StatelessWidget {
                     letterSpacing: 0,
                   ),
                 ),
-                Text(
+                KeepWordsText(
                   text.subtitle(comparisonWindowDays),
                   style: TextStyle(
                     color: MedBuddyColors.textMuted,
@@ -416,7 +417,7 @@ class _ChangeSummaryState extends State<_ChangeSummary> {
         if (_selected == PrescriptionChangeType.missing && changes.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 10),
-            child: Text(
+            child: KeepWordsText(
               text.missing,
               style: const TextStyle(
                 fontSize: 12.5,
@@ -427,7 +428,7 @@ class _ChangeSummaryState extends State<_ChangeSummary> {
         if (changes.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 24),
-            child: Text(
+            child: KeepWordsText(
               text.isEnglish
                   ? 'No medications in this category.'
                   : '이 분류에 해당하는 약이 없습니다.',
@@ -558,7 +559,7 @@ class _SummaryChip extends StatelessWidget {
             ),
             child: Column(
               children: [
-                Text(
+                KeepWordsText(
                   label,
                   textAlign: TextAlign.center,
                   style: TextStyle(
@@ -632,7 +633,7 @@ class _MedicationChangeRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                KeepWordsText(
                   change.itemName.isEmpty
                       ? text.unknownMedication
                       : change.itemName,
@@ -645,7 +646,7 @@ class _MedicationChangeRow extends StatelessWidget {
                 ),
                 if (change.changedFields.isNotEmpty) ...[
                   const SizedBox(height: 3),
-                  Text(
+                  KeepWordsText(
                     change.changedFields.map(text.fieldLabel).join(' · '),
                     style: const TextStyle(
                       color: MedBuddyColors.textMuted,
@@ -744,7 +745,7 @@ class _MedicationChangeRow extends StatelessWidget {
   // 반환값: 여백을 둔 Text 셀.
   Widget _detailCell(String value, {bool heading = false}) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-    child: Text(
+    child: KeepWordsText(
       value,
       style: TextStyle(
         color: heading ? MedBuddyColors.textMuted : MedBuddyColors.textStrong,
@@ -783,7 +784,7 @@ class _NoChangeMessage extends StatelessWidget {
         ),
         const SizedBox(width: 9),
         Expanded(
-          child: Text(
+          child: KeepWordsText(
             text.noChanges,
             style: TextStyle(
               color: MedBuddyColors.primaryDark,

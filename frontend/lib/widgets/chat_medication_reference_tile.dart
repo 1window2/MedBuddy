@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../entities/chat_medication_reference_entity.dart';
 import 'medication_thumbnail.dart';
+import 'keep_words_text.dart';
 
 // 클래스명: ChatMedicationReferenceTile
 // 역할: 검색 약품의 사진·이름·제조사와 미등록 상태를 표시한다.
@@ -39,12 +40,12 @@ class ChatMedicationReferenceTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              KeepWordsText(
                 reference.itemName,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-              Text(
+              KeepWordsText(
                 [
                   isEnglish ? 'Reference only - not saved' : '검색약 · 미등록',
                   if (reference.manufacturer.isNotEmpty) reference.manufacturer,

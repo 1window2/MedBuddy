@@ -19,6 +19,7 @@ import 'package:medbuddy_frontend/entities/identified_pill_save_request_entity.d
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/pill_identification_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 
 // Class Name: _FakeIdentifyPill
 // Role: Pill-identification fixture with a valid PNG and one confirmable candidate.
@@ -721,10 +722,10 @@ OutlinedButton _confirmButton(WidgetTester tester) {
 // 함수역할: 선택 확인 버튼에 표시된 문구를 읽는다. 매개변수: tester. 반환값: 버튼 문구.
 String? _confirmButtonLabel(WidgetTester tester) {
   return tester
-      .widget<Text>(
+      .widget<KeepWordsText>(
         find.descendant(
           of: find.byKey(const Key('confirm-pill-candidate-button')),
-          matching: find.byType(Text),
+          matching: find.byType(KeepWordsText),
         ),
       )
       .data;

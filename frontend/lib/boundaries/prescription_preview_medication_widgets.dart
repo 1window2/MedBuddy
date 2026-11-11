@@ -116,7 +116,7 @@ class _PreviewMedicationList extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
+          KeepWordsText(
             label,
             textAlign: TextAlign.center,
             style: const TextStyle(
@@ -222,7 +222,7 @@ class _PreviewMedicationList extends StatelessWidget {
                   key: Key('medication-candidates-$index'),
                   onPressed: () => onCandidateRequested!(index, review),
                   icon: const Icon(Icons.fact_check_outlined),
-                  label: Text(
+                  label: KeepWordsText(
                     previewText.isEnglish ? 'Review candidates' : '약품 후보 확인',
                   ),
                 ),
@@ -338,7 +338,7 @@ class _TableValueText extends StatelessWidget {
   // 반환값: 복약 표 값에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    return Text(
+    return KeepWordsText(
       value,
       textAlign: TextAlign.center,
       style: TextStyle(
@@ -393,7 +393,7 @@ class _MedicationNameTableValue extends StatelessWidget {
   // 반환값: 약품명·조회 상태·순번에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    final name = Text(
+    final name = KeepWordsText(
       schedule.displayNameForLanguage(previewText.language),
       key: Key('ocr-medication-name-$index'),
       style: const TextStyle(
@@ -544,7 +544,7 @@ class _MedicationLookupBadge extends StatelessWidget {
         color: background,
         borderRadius: MedBuddyRadii.small,
       ),
-      child: Text(
+      child: KeepWordsText(
         label,
         textAlign: TextAlign.center,
         style: TextStyle(
@@ -597,7 +597,7 @@ class _CorrectionBadge extends StatelessWidget {
             : MedBuddyColors.successSurface,
         borderRadius: MedBuddyRadii.pill,
       ),
-      child: Text(
+      child: KeepWordsText(
         label,
         style: TextStyle(
           color: isWarning
@@ -727,7 +727,7 @@ class _MedicationScheduleEditDialogState
 
     return AlertDialog(
       scrollable: true,
-      title: Text(
+      title: KeepWordsText(
         widget.isNewSchedule ? text.addTitle : text.editTitle,
         style: TextStyle(
           color: MedBuddyColors.textStrong,
@@ -767,7 +767,7 @@ class _MedicationScheduleEditDialogState
                     key: const Key('ocr-restore-original-name'),
                     onPressed: _restoreOriginalMedicationName,
                     icon: const Icon(Icons.restore_rounded),
-                    label: Text(text.restoreOriginalName),
+                    label: KeepWordsText(text.restoreOriginalName),
                   ),
                 ),
               const SizedBox(height: 16),
@@ -866,7 +866,7 @@ class _MedicationScheduleEditDialogState
                 const SizedBox(height: 18),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(
+                  child: KeepWordsText(
                     text.scheduleSlots,
                     style: TextStyle(
                       color: MedBuddyColors.textStrong,
@@ -923,7 +923,7 @@ class _MedicationScheduleEditDialogState
                 const SizedBox(height: 8),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(
+                  child: KeepWordsText(
                     text.scheduleSlotRequired,
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.error,

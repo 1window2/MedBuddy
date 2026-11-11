@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../entities/medication_detail_entity.dart';
+import '../widgets/keep_words_text.dart';
 
 // 클래스명: MedicationCandidateDialog
 // 역할: 약품 후보를 명시적으로 확인하는 선택 대화상자.
@@ -60,7 +61,7 @@ class _MedicationCandidateDialogState extends State<MedicationCandidateDialog> {
   Widget build(BuildContext context) {
     final english = widget.isEnglish;
     return AlertDialog(
-      title: Text(english ? 'Confirm the medication' : '약품 후보 확인'),
+      title: KeepWordsText(english ? 'Confirm the medication' : '약품 후보 확인'),
       scrollable: true,
       content: SizedBox(
         width: 460,
@@ -68,14 +69,14 @@ class _MedicationCandidateDialogState extends State<MedicationCandidateDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
+            KeepWordsText(
               english
                   ? 'Medication name: ${widget.originalName}'
                   : '약 이름: ${widget.originalName}',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
-            Text(
+            KeepWordsText(
               english
                   ? 'Compare the full name, strength and dosage form with your prescription. Cancel if unsure.'
                   : '처방전의 전체 약 이름·함량·제형이 같은지 확인해주세요. 확실하지 않으면 취소해주세요.',
@@ -91,8 +92,8 @@ class _MedicationCandidateDialogState extends State<MedicationCandidateDialog> {
                       : Icons.radio_button_off,
                 ),
                 selected: identical(_selected, widget.candidates[i]),
-                title: Text(widget.candidates[i].itemName),
-                subtitle: Text(
+                title: KeepWordsText(widget.candidates[i].itemName),
+                subtitle: KeepWordsText(
                   widget.candidates[i].manufacturer.isEmpty
                       ? (english ? 'Manufacturer unavailable' : '제조사 정보 없음')
                       : widget.candidates[i].manufacturer,
@@ -110,7 +111,9 @@ class _MedicationCandidateDialogState extends State<MedicationCandidateDialog> {
         FilledButton(
           key: const Key('confirm-medication-candidate'),
           onPressed: _selected == null ? null : () => _close(_selected),
-          child: Text(english ? 'Confirm this medication' : '이 약으로 확인'),
+          child: KeepWordsText(
+            english ? 'Confirm this medication' : '이 약으로 확인',
+          ),
         ),
       ],
     );

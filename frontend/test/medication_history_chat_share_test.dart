@@ -14,6 +14,7 @@ import 'package:medbuddy_frontend/controls/medication_history_control.dart';
 import 'package:medbuddy_frontend/controls/share_medication_history_control.dart';
 import 'package:medbuddy_frontend/entities/medication_history_entity.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 
 import 'medication_history_fixtures.dart';
 
@@ -236,7 +237,9 @@ Future<void> _openShare(WidgetTester tester) async {
   // Distinguish the counts shared in chat from the record text exported to other apps.
   expect(
     tester
-        .widget<Text>(find.byKey(const Key('history-share-privacy-notice')))
+        .widget<KeepWordsText>(
+          find.byKey(const Key('history-share-privacy-notice')),
+        )
         .data,
     contains('the chat gets only the period and the counts'),
   );
@@ -341,11 +344,17 @@ void main() {
     await tester.tap(find.byTooltip('Share'));
     await tester.pumpAndSettle();
     final message = find.byKey(const Key('history-export-error'));
-    expect(tester.widget<Text>(message).data, contains('Chat sharing covers'));
+    expect(
+      tester.widget<KeepWordsText>(message).data,
+      contains('Chat sharing covers'),
+    );
     server.items.first['item_name'] = List.filled(100001, 'x').join();
     await tester.tap(find.byKey(const Key('history-export-share')));
     await tester.pumpAndSettle();
-    expect(tester.widget<Text>(message).data, contains('Too many records'));
+    expect(
+      tester.widget<KeepWordsText>(message).data,
+      contains('Too many records'),
+    );
   });
 
   // 함수이름: recipient list is scoped to both patient and actor

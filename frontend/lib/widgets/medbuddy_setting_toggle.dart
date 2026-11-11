@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 
 // 클래스명: MedBuddySettingToggle
 // 역할: 이진 설정의 라벨·설명·현재 값을 담당한다.
@@ -54,7 +55,7 @@ class MedBuddySettingToggle extends StatelessWidget {
         onChanged: onChanged,
         activeThumbColor: MedBuddyColors.primary,
         contentPadding: const EdgeInsets.symmetric(vertical: 6),
-        title: Text(
+        title: KeepWordsText(
           title,
           style: const TextStyle(
             color: MedBuddyColors.textStrong,
@@ -65,7 +66,7 @@ class MedBuddySettingToggle extends StatelessWidget {
         ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 4),
-          child: Text(
+          child: KeepWordsText(
             description,
             style: const TextStyle(
               color: MedBuddyColors.textMuted,

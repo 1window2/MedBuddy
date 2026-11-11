@@ -5,6 +5,7 @@ import '../entities/medication_alarm_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import 'set_notification_ui_boundary.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: set_caregiver_notification_ui_boundary.dart
 // 역할: 보호자 알림 조건과 마감 시각 선택을 제공한다.
@@ -173,7 +174,7 @@ class SetCaregiverNotificationUI {
                             icon: const Icon(Icons.close),
                           ),
                           Expanded(
-                            child: Text(
+                            child: KeepWordsText(
                               slotLabel == null
                                   ? (isEnglish
                                         ? 'Caregiver alerts'
@@ -272,7 +273,7 @@ class SetCaregiverNotificationUI {
                         OutlinedButton.icon(
                           onPressed: selectDeadline,
                           icon: const Icon(Icons.schedule_outlined),
-                          label: Text(
+                          label: KeepWordsText(
                             '${isEnglish ? 'Check at' : '확인 시각'} '
                             '${userSetting.formatTime(deadline.hour, deadline.minute)}',
                           ),
@@ -281,7 +282,7 @@ class SetCaregiverNotificationUI {
                         // 알림 시각보다 이른 확인 시각은 저장할 수 없는 이유를 항상 보여 주고, 실제로 이를 때는 강조한다.
                         Semantics(
                           liveRegion: deadlineTooEarly,
-                          child: Text(
+                          child: KeepWordsText(
                             isEnglish
                                 ? (deadlineTooEarly
                                       ? 'Choose $reminderLabel or later. The $reminderLabel medication reminder has not gone off before then, so the dose is not late yet and you would be told it was missed.'
@@ -393,7 +394,7 @@ class _NotificationModeOption extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  KeepWordsText(
                     title,
                     style: const TextStyle(
                       color: MedBuddyColors.textStrong,
@@ -402,7 +403,7 @@ class _NotificationModeOption extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 3),
-                  Text(
+                  KeepWordsText(
                     description,
                     style: const TextStyle(
                       color: MedBuddyColors.textMuted,

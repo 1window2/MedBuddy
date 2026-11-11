@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../entities/medication_dose_rhythm.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 
 const medicationEntryDoseUnits = ['정', '캡슐', '포', 'mL', '방울'];
 
@@ -38,7 +39,7 @@ class MedicationEntrySectionTitle extends StatelessWidget {
     runSpacing: 4,
     crossAxisAlignment: WrapCrossAlignment.center,
     children: [
-      Text(title, style: MedBuddyTextStyles.formSectionTitle),
+      KeepWordsText(title, style: MedBuddyTextStyles.formSectionTitle),
       if (optional != null) ...[
         Text(
           optional!,
@@ -255,7 +256,7 @@ class MedicationEntryDateButton extends StatelessWidget {
     ),
     child: Column(
       children: [
-        Text(
+        KeepWordsText(
           label,
           textAlign: TextAlign.center,
           style: const TextStyle(
@@ -265,7 +266,7 @@ class MedicationEntryDateButton extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        Text(
+        KeepWordsText(
           value,
           textAlign: TextAlign.center,
           style: const TextStyle(fontWeight: FontWeight.w700),
@@ -329,7 +330,7 @@ class MedicationEntryPeriodFields extends StatelessWidget {
         },
       ),
       const SizedBox(height: 8),
-      Text(
+      KeepWordsText(
         summary,
         style: const TextStyle(
           color: MedBuddyColors.primaryDark,

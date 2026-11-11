@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../entities/prescription_flow_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: prescription_analysis_status_ui_boundary.dart
 // 역할: 처방 분석 실패 단계별 복구 동작을 제공한다.
@@ -86,7 +87,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
+                    KeepWordsText(
                       text.failureTitle,
                       style: TextStyle(
                         color: MedBuddyColors.textStrong,
@@ -110,7 +111,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    Text(
+                    KeepWordsText(
                       text.failureMessage(isMedicationAnalysisFailure),
                       textAlign: TextAlign.center,
                       style: TextStyle(
@@ -121,7 +122,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Text(
+                    KeepWordsText(
                       message.trim().isEmpty
                           ? text.failureDescription(isMedicationAnalysisFailure)
                           : message,
@@ -195,7 +196,10 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                           ),
                         ),
                         onPressed: onHomeRequested,
-                        child: Text(text.home, textAlign: TextAlign.center),
+                        child: KeepWordsText(
+                          text.home,
+                          textAlign: TextAlign.center,
+                        ),
                       ),
                     ),
                   ],
@@ -232,7 +236,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
       children: [
         Icon(icon, size: 20),
         const SizedBox(width: 6),
-        Flexible(child: Text(label, textAlign: TextAlign.center)),
+        Flexible(child: KeepWordsText(label, textAlign: TextAlign.center)),
       ],
     );
 
@@ -306,7 +310,7 @@ class _FailureReasonPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          KeepWordsText(
             text.failureReasons,
             style: TextStyle(
               color: MedBuddyColors.textStrong,
@@ -354,7 +358,7 @@ class _FailureReasonItem extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(
+          child: KeepWordsText(
             reason,
             style: TextStyle(
               color: MedBuddyColors.textMuted,

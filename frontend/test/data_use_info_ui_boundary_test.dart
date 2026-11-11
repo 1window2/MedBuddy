@@ -159,7 +159,7 @@ void main() {
         renderedTexts.addAll(
           tester
               .widgetList<Text>(find.byType(Text))
-              .map((text) => text.data ?? ''),
+              .map((text) => text.data ?? text.textSpan?.toPlainText() ?? ''),
         );
         expect(tester.takeException(), isNull);
       }

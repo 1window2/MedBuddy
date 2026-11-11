@@ -7,6 +7,7 @@ import '../theme/medbuddy_theme.dart';
 import '../widgets/medication_loading_tip.dart';
 import 'prescription_analysis_preview_ui_boundary.dart'
     show PrescriptionFlowBackButton;
+import '../widgets/keep_words_text.dart';
 
 // 파일명: prescription_analysis_progress_ui_boundary.dart
 // 역할: OCR 및 약물 분석의 현재 진행 단계를 제공한다.
@@ -178,7 +179,7 @@ class _PrescriptionAnalysisProgressUIState
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Text(
+                                        KeepWordsText(
                                           text.title,
                                           textAlign: TextAlign.center,
                                           style: TextStyle(
@@ -238,7 +239,7 @@ class _PrescriptionAnalysisProgressUIState
                                           ),
                                         ),
                                         const SizedBox(height: 12),
-                                        Text(
+                                        KeepWordsText(
                                           activeStep ==
                                                   AnalysisProgressStep
                                                       .prescriptionRecognition
@@ -323,7 +324,7 @@ class _ProgressStepLabel extends StatelessWidget {
   // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
-    return Text(
+    return KeepWordsText(
       label,
       textAlign: TextAlign.center,
       style: TextStyle(

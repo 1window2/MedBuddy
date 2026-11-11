@@ -10,6 +10,7 @@ import 'package:medbuddy_frontend/controls/authentication_control.dart';
 import 'package:medbuddy_frontend/controls/manage_account_control.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 
 // 함수이름: main
 // 함수역할:
@@ -161,7 +162,9 @@ void main() {
     await tester.tap(find.text('인증번호 보내기'));
     await tester.pumpAndSettle();
     expect(
-      tester.widget<Text>(find.byKey(const ValueKey('smsMfaError'))).data,
+      tester
+          .widget<KeepWordsText>(find.byKey(const ValueKey('smsMfaError')))
+          .data,
       '현재 버전에서는 문자 인증을 사용할 수 없습니다.',
     );
     expect(find.text('취소'), findsOneWidget);

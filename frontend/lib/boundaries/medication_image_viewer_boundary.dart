@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../entities/medication_image_url_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/keep_words_text.dart';
 
 // Class Name: MedicationImageViewer
 // Role: A static entry point for zooming a usable medication image.
@@ -134,7 +135,7 @@ class _MedicationImageViewerDialog extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
+                    child: KeepWordsText(
                       medicationName,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,

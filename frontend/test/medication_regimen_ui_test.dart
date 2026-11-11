@@ -16,6 +16,7 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
 import 'package:medbuddy_frontend/widgets/medication_entry_fields.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 
 // 함수이름: _medication
 // 함수역할:
@@ -270,7 +271,7 @@ void main() {
     expect(dialog, findsOneWidget);
     final texts = tester
         .widgetList<Text>(find.descendant(of: find.byType(AlertDialog), matching: find.byType(Text)))
-        .map((text) => text.data ?? '')
+        .map((text) => text.data ?? text.textSpan?.toPlainText() ?? '')
         .join('\n');
     expect(texts, contains('a day'));
     expect(texts, contains('2 tablets'));
@@ -312,7 +313,7 @@ void main() {
       await _tap(tester, 'regimen-submit');
       final texts = tester.widgetList<Text>(
         find.descendant(of: find.byType(AlertDialog), matching: find.byType(Text)),
-      ).map((text) => text.data ?? '').join('\n');
+      ).map((text) => text.data ?? text.textSpan?.toPlainText() ?? '').join('\n');
       expect(texts, contains(replacing ? '2 tablets' : '0.50 tablet'));
       expect(texts, isNot(contains(replacing ? '2정' : '0.50 정')));
       expect(texts, contains('테스트 약'));
@@ -908,12 +909,12 @@ void main() {
         await _tap(tester, entry.value);
         final title = find.byWidgetPredicate(
           (widget) =>
-              widget is Text &&
+              widget is KeepWordsText &&
               widget.data == entry.key &&
               widget.style == MedBuddyTextStyles.formSectionTitle,
         );
         expect(
-          tester.widget<Text>(title).style,
+          tester.widget<KeepWordsText>(title).style,
           MedBuddyTextStyles.formSectionTitle,
         );
         expect(

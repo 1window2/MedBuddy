@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/keep_words_text.dart';
 
 // 함수이름: showMedicationPhotoSourceOptions
 // 함수역할: 카메라와 갤러리를 스크롤 가능한 메뉴로 표시하고 출처를 하나 선택받는다.
@@ -99,7 +100,7 @@ class _PhotoSourceRow extends StatelessWidget {
               Icon(icon, color: MedBuddyColors.primaryDark),
               const SizedBox(width: 16),
               Expanded(
-                child: Text(
+                child: KeepWordsText(
                   label,
                   style: const TextStyle(
                     color: MedBuddyColors.textStrong,

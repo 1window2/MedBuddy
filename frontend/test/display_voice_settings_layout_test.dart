@@ -8,6 +8,7 @@ import 'package:medbuddy_frontend/controls/authentication_control.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/dose_home_widget_service.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 
 // 함수이름: main
 // 함수역할: 표시·홈·음성 설정의 초안 저장, 선택 취소, 재생 중지와 크기별 접근성을 검증하는 사례를 등록한다.
@@ -73,7 +74,7 @@ void main() {
       );
       expect(options, isNotEmpty);
       for (final option in options) {
-        final label = option.title! as Text;
+        final label = option.title! as KeepWordsText;
         expect(label.style!.fontWeight, FontWeight.w700);
         expect(option.selected, option.value == entry.$2);
         expect(option.activeColor, MedBuddyColors.primary);
@@ -87,7 +88,9 @@ void main() {
       }
       if (entry.$1 == 'fontSize') {
         expect(
-          options.map((option) => (option.title! as Text).style!.fontSize),
+          options.map(
+            (option) => (option.title! as KeepWordsText).style!.fontSize,
+          ),
           [14, 17, 23],
         );
       }

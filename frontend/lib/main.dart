@@ -44,6 +44,7 @@ import 'theme/medbuddy_text_scale.dart';
 import 'viewmodels/medbuddy_view_model.dart';
 import 'viewmodels/medbuddy_feature_updates.dart';
 import 'views/home_screen.dart';
+import 'widgets/keep_words_text.dart';
 
 // Function Name: main
 // Description: Initializes Flutter and background setup, starts authentication and language state, runs the app, then starts the map SDK after the first frame and initializes notifications with reported bootstrap failures.
@@ -643,7 +644,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
       if (context == null) return;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         SnackBar(
-          content: Text(
+          content: KeepWordsText(
             _appLanguageControl.language == 'en'
                 ? 'Email verified. You are now signed in.'
                 : '이메일 인증이 완료되어 로그인했습니다.',
@@ -971,7 +972,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
     }
     ScaffoldMessenger.maybeOf(navigator.context)?.showSnackBar(
       SnackBar(
-        content: Text(
+        content: KeepWordsText(
           success
               ? selection.action == MedicationNotificationAction.caregiverSnooze
                     ? (english
@@ -1040,7 +1041,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
           selection.action == MedicationNotificationAction.snoozeTenMinutes;
       ScaffoldMessenger.maybeOf(navigator.context)?.showSnackBar(
         SnackBar(
-          content: Text(
+          content: KeepWordsText(
             isEnglish
                 ? 'This reminder is for ${dayLabel ?? 'an earlier day'}, so ${snoozed ? 'it was not snoozed' : 'nothing was recorded for today'}. If you took that dose, correct it in your history.'
                 : '${dayLabel ?? '지난 날짜'} 알림이라 ${snoozed ? '다시 알리지 않았어요' : '오늘 일정에는 기록하지 않았어요'}. 그날 복용했다면 복약 기록에서 고쳐 주세요.',
@@ -1104,7 +1105,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
     messenger?.hideCurrentSnackBar();
     messenger?.showSnackBar(
       SnackBar(
-        content: Text(switch (selection.action) {
+        content: KeepWordsText(switch (selection.action) {
           MedicationNotificationAction.markSlotTaken =>
             succeeded
                 ? (isEnglish

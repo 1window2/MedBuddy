@@ -184,7 +184,7 @@ class _AccountSummaryCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                KeepWordsText(
                   accountLabel,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,

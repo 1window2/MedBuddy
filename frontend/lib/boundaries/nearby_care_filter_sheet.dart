@@ -76,7 +76,7 @@ class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
   // Returns: Padded Text widget.
   Widget _heading(String label) => Padding(
     padding: const EdgeInsets.only(bottom: 8),
-    child: Text(
+    child: KeepWordsText(
       label,
       style: const TextStyle(
         fontSize: 16,
@@ -105,7 +105,7 @@ class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
+                    child: KeepWordsText(
                       text.filterPickerTitle,
                       style: const TextStyle(
                         color: MedBuddyColors.textStrong,
@@ -228,7 +228,7 @@ class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      KeepWordsText(
                         widget.filterLabel(filter),
                         style: const TextStyle(
                           color: MedBuddyColors.textStrong,
@@ -238,7 +238,7 @@ class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
+                      KeepWordsText(
                         widget.text.filterDescription(filter),
                         style: const TextStyle(
                           color: MedBuddyColors.textMuted,

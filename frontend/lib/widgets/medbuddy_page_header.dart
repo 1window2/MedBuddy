@@ -143,7 +143,7 @@ class MedBuddyPageHeader extends StatelessWidget {
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
+                                KeepWordsText(
                                   title,
                                   key: titleKey,
                                   maxLines: titleMaxLines,

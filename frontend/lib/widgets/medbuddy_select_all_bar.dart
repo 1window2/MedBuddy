@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 
 // Class Name: MedBuddySelectAllBar
 // Role: Display select-all state and the current selection count.
@@ -66,7 +67,7 @@ class MedBuddySelectAllBar extends StatelessWidget {
         spacing: 16,
         runSpacing: 4,
         children: [
-          Text(
+          KeepWordsText(
             label,
             style: const TextStyle(
               fontSize: 16,
@@ -76,7 +77,7 @@ class MedBuddySelectAllBar extends StatelessWidget {
               color: MedBuddyColors.textStrong,
             ),
           ),
-          Text(
+          KeepWordsText(
             countLabel,
             key: countKey,
             style: TextStyle(

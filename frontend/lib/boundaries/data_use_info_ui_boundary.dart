@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/medbuddy_theme.dart';
 import '../widgets/medbuddy_page_header.dart';
+import '../widgets/keep_words_text.dart';
 
 // Class Name: DataUseInfoUI
 // Role: Displays the implemented data-use disclosures without inventing release terms or retention promises.
@@ -52,7 +53,7 @@ class DataUseInfoUI extends StatelessWidget {
             collapsedIconColor: MedBuddyColors.primaryDark,
             title: Semantics(
               header: true,
-              child: Text(
+              child: KeepWordsText(
                 title,
                 style: const TextStyle(
                   fontSize: 18,
@@ -64,7 +65,7 @@ class DataUseInfoUI extends StatelessWidget {
             children: [
               Align(
                 alignment: Alignment.centerLeft,
-                child: Text(
+                child: KeepWordsText(
                   body,
                   style: const TextStyle(fontSize: 16, height: 1.5),
                 ),

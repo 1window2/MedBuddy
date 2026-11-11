@@ -82,7 +82,7 @@ class MedBuddyPreferenceRow extends StatelessWidget {
                         constraints: BoxConstraints(
                           maxWidth: constraints.maxWidth * 0.42,
                         ),
-                        child: Text(
+                        child: KeepWordsText(
                           value!,
                           textAlign: TextAlign.end,
                           style: const TextStyle(

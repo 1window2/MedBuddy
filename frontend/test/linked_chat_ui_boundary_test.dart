@@ -29,6 +29,7 @@ import 'package:medbuddy_frontend/services/api_response_parser.dart';
 import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
 import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -3608,7 +3609,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         tester
-            .widget<Text>(
+            .widget<KeepWordsText>(
               find.byKey(const Key('schedule-medication-selection-count')),
             )
             .data,

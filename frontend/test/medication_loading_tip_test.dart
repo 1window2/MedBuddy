@@ -4,12 +4,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/widgets/medication_loading_tip.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 
 // 함수이름: _currentTip
 // 함수역할: 표시 중인 팁 하나를 읽는다. 매개변수: tester. 반환값: 현재 문구.
 String _currentTip(WidgetTester tester) => tester
-    .widget<Text>(find.byKey(const ValueKey('analysisMedicationTipText')))
-    .data!;
+    .widget<KeepWordsText>(
+      find.byKey(const ValueKey('analysisMedicationTipText')),
+    )
+    .data;
 
 // 함수이름: _screen
 // 함수역할: 언어와 접근성 옵션을 조정할 수 있는 테스트 화면을 구성한다.
@@ -65,7 +68,7 @@ void main() {
       expect(seen.add(_currentTip(tester)), isTrue);
       expect(tester.getSize(region), initialSize);
       final label = find.byKey(const ValueKey('analysisMedicationTipText'));
-      expect(tester.widget<Text>(label).textAlign, TextAlign.center);
+      expect(tester.widget<KeepWordsText>(label).textAlign, TextAlign.center);
       expect(tester.getCenter(label).dx, closeTo(centerX, 0.01));
     }
     final last = _currentTip(tester);

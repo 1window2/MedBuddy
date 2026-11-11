@@ -2,6 +2,7 @@
 // 역할: 보호자 계정 홈의 "연동된 환자 일정 보기" 안내를 테두리 없이 글자 높이에 맞춘 행으로 그린다.
 import 'package:flutter/material.dart';
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 
 // Class Name: HomeLinkedPatientHint
 // Role: Show a home-screen entry to linked-patient schedules.
@@ -49,7 +50,7 @@ class HomeLinkedPatientHint extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
+                    KeepWordsText(
                       isEnglish
                           ? 'View linked patient schedules'
                           : '연동된 환자 일정 보기',
@@ -61,7 +62,7 @@ class HomeLinkedPatientHint extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Text(
+                    KeepWordsText(
                       isEnglish
                           ? 'Switch Home to “Linked patients”.'
                           : '홈 일정을 ‘연동된 환자’로 바꿔요.',

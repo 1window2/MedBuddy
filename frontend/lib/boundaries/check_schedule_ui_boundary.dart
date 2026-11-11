@@ -423,7 +423,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
               if (overLimit)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Text(
+                  child: KeepWordsText(
                     text.isEnglish
                         ? 'Attach up to ${widget.maxSelectionCount} medications.'
                         : '약은 최대 ${widget.maxSelectionCount}개까지 첨부할 수 있어요.',
@@ -779,7 +779,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     if (!success) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(text.statusUpdateFailed),
+          content: KeepWordsText(text.statusUpdateFailed),
           duration: _failureSnackBarDuration,
         ),
       );
@@ -791,7 +791,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     if (!medicationStatus) {
       messenger.showSnackBar(
         SnackBar(
-          content: Text(
+          content: KeepWordsText(
             text.completionCancelled(
               schedule.displayNameForLanguage(text.language),
             ),
@@ -804,7 +804,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
 
     messenger.showSnackBar(
       SnackBar(
-        content: Text(
+        content: KeepWordsText(
           text.completionSaved(
             text.slotTitle(slot.key),
             schedule.displayNameForLanguage(text.language),
@@ -815,7 +815,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         action: SnackBarAction(
           label: text.undo,
           // 함수이름: _handleMedicationStatusChange.onPressed callback
-          // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에서 캡처된 작업 `viewModel.requestMedicationDoseStatusUpdate(slot.key, schedule, false); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(undoSucceeded ? text.completionCancelled(schedule.displayNameForLanguage(tex...`을 실행한다.
+          // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에서 캡처된 작업 `viewModel.requestMedicationDoseStatusUpdate(slot.key, schedule, false); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: KeepWordsText(undoSucceeded ? text.completionCancelled(schedule.displayNameForLanguage(tex...`을 실행한다.
           // 매개변수:
           // - 없음.
           // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
@@ -827,7 +827,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
             }
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(
+                content: KeepWordsText(
                   undoSucceeded
                       ? text.completionCancelled(
                           schedule.displayNameForLanguage(text.language),
@@ -903,7 +903,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
       SnackBar(
-        content: Text(
+        content: KeepWordsText(
           success
               ? medicationStatus
                     ? text.entireSlotCompletionSaved(text.slotTitle(slot.key))
@@ -1098,7 +1098,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
           key: const Key('schedule-reminder-configuration'),
           backgroundColor: MedBuddyColors.surface,
           scrollable: true,
-          title: Text(text.reminderTooltip(slotTitle)),
+          title: KeepWordsText(text.reminderTooltip(slotTitle)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1106,7 +1106,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
               SwitchListTile.adaptive(
                 key: const Key('schedule-reminder-enabled'),
                 contentPadding: EdgeInsets.zero,
-                title: Text(text.reminderEnabled),
+                title: KeepWordsText(text.reminderEnabled),
                 value: draft.isEnabled,
                 activeTrackColor: MedBuddyColors.primary,
                 // 함수역할: enabled를 임시 활성 상태로 반영한다. 반환값: 없음.
@@ -1119,7 +1119,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
               OutlinedButton.icon(
                 key: const Key('schedule-reminder-edit-time'),
                 icon: const Icon(Icons.schedule_outlined),
-                label: Text(
+                label: KeepWordsText(
                   '${text.reminderTime} ${userSetting.formatTime(draft.hour, draft.minute)}',
                 ),
                 style: OutlinedButton.styleFrom(
@@ -1180,7 +1180,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: KeepWordsText(message),
         backgroundColor: success
             ? MedBuddyColors.primaryDark
             : Theme.of(context).colorScheme.error,
@@ -1267,7 +1267,7 @@ class _HealthRecommendationFooter extends StatelessWidget {
           foregroundColor: MedBuddyColors.primaryDark,
           backgroundColor: Colors.white,
         ),
-        child: Text(
+        child: KeepWordsText(
           text.healthRecommendation,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
@@ -1368,7 +1368,7 @@ class _ScheduleSelectionFooter extends StatelessWidget {
             final textScale = MediaQuery.textScalerOf(context).scale(1);
             final useVerticalLayout =
                 constraints.maxWidth < 360 || textScale > 1.3;
-            final countLabel = Text(
+            final countLabel = KeepWordsText(
               text.selectedMedicationCount(selectedCount),
               style: const TextStyle(
                 color: MedBuddyColors.textMuted,
@@ -1381,7 +1381,7 @@ class _ScheduleSelectionFooter extends StatelessWidget {
               key: const ValueKey('scheduleMedicationSelectionConfirm'),
               onPressed: onConfirmRequested,
               icon: const Icon(Icons.check_rounded),
-              label: Text(text.confirmSelection),
+              label: KeepWordsText(text.confirmSelection),
             );
             return Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
@@ -1545,7 +1545,7 @@ class _TimeSlotCard extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(20, 13, 16, 14),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(
+                  child: KeepWordsText(
                     text.emptySlot,
                     style: const TextStyle(
                       color: MedBuddyColors.textSubtle,
@@ -1750,7 +1750,7 @@ class _MedicationScheduleRow extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Text(
+                    KeepWordsText(
                       schedule.dosageLabelForLanguage(text.language),
                       softWrap: true,
                       style: const TextStyle(
@@ -2038,7 +2038,7 @@ class _ScheduleEmptyState extends StatelessWidget {
               color: MedBuddyColors.primary,
             ),
             const SizedBox(height: 16),
-            Text(
+            KeepWordsText(
               text.emptySchedule,
               textAlign: TextAlign.center,
               style: const TextStyle(
@@ -2102,7 +2102,7 @@ class _ScheduleLoadErrorState extends StatelessWidget {
               color: MedBuddyColors.textMuted,
             ),
             const SizedBox(height: 16),
-            Text(
+            KeepWordsText(
               message,
               textAlign: TextAlign.center,
               style: const TextStyle(
@@ -2116,7 +2116,7 @@ class _ScheduleLoadErrorState extends StatelessWidget {
               key: const Key('schedule-load-retry'),
               onPressed: onRetryRequested,
               icon: const Icon(Icons.refresh),
-              label: Text(text.retry),
+              label: KeepWordsText(text.retry),
             ),
           ],
         ),

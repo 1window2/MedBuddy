@@ -8,6 +8,7 @@ import '../entities/medication_slot_label.dart';
 import '../theme/medbuddy_theme.dart';
 import 'home_medication_preview.dart';
 import 'medbuddy_confirm_dialog.dart';
+import 'keep_words_text.dart';
 
 // Class Name: HomeMedicationSlotPager
 // Role: Shows one scheduled medication slot at a time on the home screen.
@@ -247,7 +248,7 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
                   : Icon(
                       hasPending ? Icons.done_all_rounded : Icons.undo_rounded,
                     ),
-              label: Text(
+              label: KeepWordsText(
                 busy
                     ? (widget.isEnglish ? 'Saving...' : '저장 중...')
                     : unavailable
@@ -282,7 +283,9 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
               key: const Key('home-slot-view-schedule'),
               onPressed: widget.onDetailsRequested,
               icon: const Icon(Icons.calendar_month_outlined),
-              label: Text(widget.isEnglish ? 'View schedule' : '일정 보기'),
+              label: KeepWordsText(
+                widget.isEnglish ? 'View schedule' : '일정 보기',
+              ),
             ),
           ),
       ],

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 
 // 클래스명: MedicationLoadingTip
 // 역할: OCR·API 분석 화면에서 함께 쓰는 복약 팁 표시 영역이다.
@@ -200,7 +201,7 @@ class _MedicationLoadingTipState extends State<MedicationLoadingTip>
               ),
             ),
             Expanded(
-              child: Text(
+              child: KeepWordsText(
                 isEnglish ? 'Medication tip' : '복약 팁',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
@@ -236,7 +237,7 @@ class _MedicationLoadingTipState extends State<MedicationLoadingTip>
                     maintainState: true,
                     maintainAnimation: true,
                     maintainSize: true,
-                    child: Text(
+                    child: KeepWordsText(
                       labels[i],
                       key: i == selected
                           ? const ValueKey('analysisMedicationTipText')

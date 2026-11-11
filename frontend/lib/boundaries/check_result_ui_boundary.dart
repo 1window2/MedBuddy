@@ -13,6 +13,7 @@ import '../widgets/pinned_analysis_summary.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../widgets/responsive_card_header.dart';
 import 'prescription_change_radar_ui_boundary.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: check_result_ui_boundary.dart
 // 역할: 공공데이터 분석이 끝난 처방전 결과 목록 화면을 구성한다.
@@ -233,7 +234,7 @@ class CheckResultUI extends StatelessWidget {
   void _showSaveResultMessage(BuildContext context, bool success) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(statusMessageProvider()),
+        content: KeepWordsText(statusMessageProvider()),
         backgroundColor: success
             ? MedBuddyColors.primary
             : MedBuddyColors.danger,
@@ -350,7 +351,7 @@ class _SaveCompletedSheet extends StatelessWidget {
             size: 58,
           ),
           const SizedBox(height: 12),
-          Text(
+          KeepWordsText(
             text.saveCompletedTitle,
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -360,7 +361,7 @@ class _SaveCompletedSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
+          KeepWordsText(
             text.saveCompletedDescription,
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -374,7 +375,7 @@ class _SaveCompletedSheet extends StatelessWidget {
             FilledButton.icon(
               onPressed: onTodayScheduleRequested,
               icon: const Icon(Icons.event_available_outlined),
-              label: Text(text.openTodaySchedule),
+              label: KeepWordsText(text.openTodaySchedule),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(58),
                 backgroundColor: MedBuddyColors.primary,
@@ -385,7 +386,7 @@ class _SaveCompletedSheet extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: onSavedMedicationRequested,
               icon: const Icon(Icons.inventory_2_outlined),
-              label: Text(text.openSavedMedication),
+              label: KeepWordsText(text.openSavedMedication),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(58),
               ),
@@ -395,7 +396,7 @@ class _SaveCompletedSheet extends StatelessWidget {
             const SizedBox(height: 8),
             TextButton(
               onPressed: onHomeRequested,
-              child: Text(text.returnHome),
+              child: KeepWordsText(text.returnHome),
             ),
           ],
         ],
@@ -503,7 +504,7 @@ class _AnalysisSummary extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                KeepWordsText(
                   text.complete,
                   style: TextStyle(
                     color: MedBuddyColors.primaryDark,
@@ -512,7 +513,7 @@ class _AnalysisSummary extends StatelessWidget {
                     letterSpacing: 0,
                   ),
                 ),
-                Text(
+                KeepWordsText(
                   text.summary(count),
                   style: TextStyle(
                     color: MedBuddyColors.textMuted,
@@ -590,7 +591,7 @@ class _BulkSaveButton extends StatelessWidget {
                   isCompleted ? Icons.check_circle_outline : Icons.done_all,
                   size: 22,
                 ),
-          label: Text(
+          label: KeepWordsText(
             isCompleted
                 ? text.allSaved
                 : isSaving
@@ -670,7 +671,7 @@ class _MedicationResultCard extends StatelessWidget {
         isEnglish: text.isEnglish,
         toggleKey: Key('result-medication-toggle-$medicationIndex'),
         headerBuilder: (toggle) {
-          final name = Text(
+          final name = KeepWordsText(
             analyzedMedication.displayNameForLanguage(text.language),
             key: Key('result-medication-name-$medicationIndex'),
             style: const TextStyle(
@@ -890,7 +891,7 @@ class _DoseInfoCell extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          KeepWordsText(
             label,
             textAlign: TextAlign.center,
             style: const TextStyle(
@@ -900,7 +901,7 @@ class _DoseInfoCell extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 2),
-          Text(
+          KeepWordsText(
             value,
             textAlign: TextAlign.center,
             style: const TextStyle(

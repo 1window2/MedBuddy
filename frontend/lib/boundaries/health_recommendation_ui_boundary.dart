@@ -11,6 +11,7 @@ import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
 import '../widgets/medbuddy_page_header.dart';
 import 'medication_registration_flow.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: health_recommendation_ui_boundary.dart
 // 역할: 약 조합 기반 건강 관리 추천 화면을 구성한다.
@@ -216,7 +217,7 @@ class _HealthRecommendationLoading extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
+              KeepWordsText(
                 text.loadingTitle,
                 style: const TextStyle(
                   color: MedBuddyColors.textStrong,
@@ -235,7 +236,7 @@ class _HealthRecommendationLoading extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 34),
-              Text(
+              KeepWordsText(
                 text.loadingMessage,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
@@ -245,7 +246,7 @@ class _HealthRecommendationLoading extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              Text(
+              KeepWordsText(
                 text.loadingWait,
                 style: const TextStyle(
                   color: MedBuddyColors.textMuted,
@@ -375,7 +376,7 @@ class _RecommendationCard extends StatelessWidget {
                   Icon(icon, color: iconColor, size: 28),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
+                    child: KeepWordsText(
                       title,
                       style: const TextStyle(
                         color: MedBuddyColors.textStrong,
@@ -398,7 +399,7 @@ class _RecommendationCard extends StatelessWidget {
                     else
                       Padding(
                         padding: const EdgeInsets.only(bottom: 6),
-                        child: Text(
+                        child: KeepWordsText(
                           line,
                           style: const TextStyle(
                             color: MedBuddyColors.textBody,
@@ -472,7 +473,7 @@ class _CautionCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(
+                  child: KeepWordsText(
                     title,
                     style: const TextStyle(
                       color: MedBuddyColors.textStrong,
@@ -536,7 +537,7 @@ class _CautionItem extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: Text(
+          child: KeepWordsText(
             text,
             style: const TextStyle(
               color: MedBuddyColors.textMuted,
@@ -610,7 +611,7 @@ class _HealthRecommendationError extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 if (isEmpty) ...[
-                  Text(
+                  KeepWordsText(
                     text.emptyTitle,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
@@ -623,7 +624,7 @@ class _HealthRecommendationError extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                 ],
-                Text(
+                KeepWordsText(
                   message,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
@@ -639,7 +640,7 @@ class _HealthRecommendationError extends StatelessWidget {
                     key: const ValueKey('healthRegisterMedication'),
                     onPressed: onRegisterRequested,
                     icon: const Icon(Icons.document_scanner_outlined),
-                    label: Text(
+                    label: KeepWordsText(
                       text.registerMedication,
                       textAlign: TextAlign.center,
                     ),
@@ -663,7 +664,10 @@ class _HealthRecommendationError extends StatelessWidget {
                         ? null
                         : onRetryRequested,
                     icon: const Icon(Icons.refresh),
-                    label: Text(text.retry, textAlign: TextAlign.center),
+                    label: KeepWordsText(
+                      text.retry,
+                      textAlign: TextAlign.center,
+                    ),
                     style: TextButton.styleFrom(
                       foregroundColor: MedBuddyColors.primaryDark,
                       textStyle: const TextStyle(
@@ -679,7 +683,7 @@ class _HealthRecommendationError extends StatelessWidget {
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size.fromHeight(52),
                     ),
-                    child: Text(
+                    child: KeepWordsText(
                       text.retry,
                       style: const TextStyle(
                         fontSize: 17,

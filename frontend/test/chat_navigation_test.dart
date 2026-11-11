@@ -37,6 +37,7 @@ import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_bound
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/link_patient_caregiver_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_caregiver_medication_ui_boundary.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 
 // 함수이름: _emptyResponse
 // 함수역할:
@@ -1365,8 +1366,9 @@ void main() {
       (frame.shape! as RoundedRectangleBorder).borderRadius,
       MedBuddyRadii.largeCard,
     );
-    final titleStyle = (tile.title! as Text).style!;
-    final previewStyle = ((tile.subtitle! as Padding).child! as Text).style!;
+    final titleStyle = (tile.title! as KeepWordsText).style!;
+    final previewStyle = ((tile.subtitle! as Padding).child! as KeepWordsText)
+        .style!;
     expect(titleStyle.fontSize, 17);
     expect(titleStyle.fontWeight, FontWeight.w700);
     expect(previewStyle.fontSize, 13);
@@ -1424,7 +1426,7 @@ void main() {
             ),
           );
           final titleFinder = find.byKey(const ValueKey('chatListTitle'));
-          final title = tester.widget<Text>(titleFinder);
+          final title = tester.widget<KeepWordsText>(titleFinder);
           expect(title.data, language == 'en' ? 'Chat' : '채팅');
           expect(
             find.text(

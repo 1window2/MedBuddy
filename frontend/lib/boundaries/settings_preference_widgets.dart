@@ -40,7 +40,7 @@ class _SettingsSection extends StatelessWidget {
       children: [
         Semantics(
           header: true,
-          child: Text(
+          child: KeepWordsText(
             title,
             style: const TextStyle(
               color: MedBuddyColors.primaryDark,

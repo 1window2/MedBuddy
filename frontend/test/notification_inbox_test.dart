@@ -11,6 +11,7 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/notification_inbox_store.dart';
 import 'package:medbuddy_frontend/services/push_notification_service.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 
 // 함수이름: _entry
 // 함수역할: 고정 시각의 테스트 알림을 만든다. 매개변수: id, date, chat. 반환값: 알림.
@@ -838,7 +839,7 @@ void main() {
     expect(button.onPressed, isNull);
     await tester.tap(find.byKey(const Key('inbox-select-all')));
     await tester.pumpAndSettle();
-    final count = tester.widget<Text>(
+    final count = tester.widget<KeepWordsText>(
       find.byKey(const Key('inbox-selection-count')),
     );
     expect(count.data, '1개 선택');

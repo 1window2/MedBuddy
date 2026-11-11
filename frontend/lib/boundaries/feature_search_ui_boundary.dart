@@ -129,7 +129,7 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 32,
                                   ),
-                                  child: Text(
+                                  child: KeepWordsText(
                                     _english
                                         ? 'No matching features'
                                         : '검색 결과가 없어요',
@@ -237,7 +237,7 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
   // 반환값: 여백이 있는 Text 위젯.
   Widget _heading(String title) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 8),
-    child: Text(
+    child: KeepWordsText(
       title,
       style: const TextStyle(
         fontSize: 18,
@@ -259,7 +259,10 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
         key: ValueKey('feature-${entry.feature.name}'),
         contentPadding: const EdgeInsets.symmetric(vertical: 6),
         leading: Icon(_icon(entry.feature), color: MedBuddyColors.primaryDark),
-        title: Text(entry.title(_english), style: MedBuddyTextStyles.menuTitle),
+        title: KeepWordsText(
+          entry.title(_english),
+          style: MedBuddyTextStyles.menuTitle,
+        ),
         subtitle: KeepWordsText(
           entry.path(_english),
           style: MedBuddyTextStyles.menuBody,

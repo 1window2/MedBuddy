@@ -128,7 +128,7 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
           const Icon(Icons.info_outline, color: MedBuddyColors.primary),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
+            child: KeepWordsText(
               _text.intro,
               style: const TextStyle(
                 color: MedBuddyColors.textMuted,
@@ -171,7 +171,7 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
                 ),
               )
             : const Icon(Icons.save_outlined),
-        label: Text(
+        label: KeepWordsText(
           _isSaving
               ? _text.saving
               : _forms.length == 1
@@ -256,7 +256,7 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
     if (refreshFailed) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
+          content: KeepWordsText(
             _isEnglish
                 ? 'Saved medications are kept, but the list could not be refreshed. Tap save to retry.'
                 : '저장한 약은 유지되지만 목록을 갱신하지 못했습니다. 저장을 눌러 다시 시도해 주세요.',
@@ -270,7 +270,7 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_savedMessage())),
+      SnackBar(content: KeepWordsText(_savedMessage())),
     );
     Navigator.pop(context, true);
   }
@@ -350,7 +350,7 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
                                 ),
                               ),
                               if (_completed.contains(_forms[index]))
-                                Text(
+                                KeepWordsText(
                                   _isEnglish ? 'Saved' : '저장 완료',
                                   style: const TextStyle(
                                     color: MedBuddyColors.primary,
@@ -374,7 +374,7 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
                           ),
                           const SizedBox(height: 16),
                           if (_completed.contains(_forms[index]))
-                            Text(_savedNames[_forms[index]] ?? ''),
+                            KeepWordsText(_savedNames[_forms[index]] ?? ''),
                           Offstage(
                             offstage: _completed.contains(_forms[index]),
                             child: AbsorbPointer(
@@ -409,7 +409,7 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
                             unawaited(_reveal(key));
                           },
                     icon: const Icon(Icons.add),
-                    label: Text(_isEnglish ? 'Add another medication' : '약 추가'),
+                    label: KeepWordsText(_isEnglish ? 'Add another medication' : '약 추가'),
                   ),
                 ],
               ),
@@ -601,7 +601,7 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
             ),
           ],
         ),
-        Text(
+        KeepWordsText(
           _text.photoDescription,
           style: const TextStyle(color: MedBuddyColors.textMuted, height: 1.4),
         ),
@@ -632,7 +632,7 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
             size: 42,
           ),
           const SizedBox(height: 10),
-          Text(
+          KeepWordsText(
             _text.addPhoto,
             textAlign: TextAlign.center,
             style: const TextStyle(
@@ -991,7 +991,7 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
           borderRadius: MedBuddyRadii.card,
           border: Border.all(color: MedBuddyColors.dangerBorder),
         ),
-        child: Text(
+        child: KeepWordsText(
           _errorMessage,
           style: const TextStyle(
             color: MedBuddyColors.danger,

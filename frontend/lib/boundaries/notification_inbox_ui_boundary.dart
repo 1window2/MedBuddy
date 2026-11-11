@@ -131,7 +131,7 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
+            content: KeepWordsText(
               _english
                   ? 'Could not update notifications. Please try again.'
                   : '알림을 변경하지 못했어요. 다시 시도해주세요.',
@@ -168,8 +168,8 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
           letterSpacing: 0,
           color: MedBuddyColors.textMuted,
         ),
-        title: Text(_english ? 'Delete notifications?' : '알림을 삭제할까요?'),
-        content: Text(
+        title: KeepWordsText(_english ? 'Delete notifications?' : '알림을 삭제할까요?'),
+        content: KeepWordsText(
           _english
               ? 'Chat messages and medication records will remain.'
               : '채팅 내용과 복약 기록은 삭제되지 않아요.',
@@ -350,7 +350,7 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Text(
+                    KeepWordsText(
                       '${_date(entry.occurredAt)}${entry.isRead ? '' : (_english ? ' · Unread' : ' · 안 읽음')}',
                       style: const TextStyle(
                         fontSize: 12,
@@ -471,7 +471,7 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
                     child: Row(
                       children: [
                         Expanded(
-                          child: Text(
+                          child: KeepWordsText(
                             _english
                                 ? 'Could not load notifications.'
                                 : '알림을 불러오지 못했어요.',
@@ -505,7 +505,7 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 24,
                                 ),
-                                child: Text(
+                                child: KeepWordsText(
                                   _english ? 'No notifications' : '아직 알림이 없어요',
                                   textAlign: TextAlign.center,
                                   style: const TextStyle(
@@ -595,7 +595,7 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
                         ),
                       ),
                       icon: const Icon(Icons.delete_outline),
-                      label: Text(
+                      label: KeepWordsText(
                         selected.isEmpty
                             ? (_english ? 'Delete selected' : '선택한 알림 삭제')
                             : (_english
