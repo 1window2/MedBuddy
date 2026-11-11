@@ -56,6 +56,34 @@ void main() {
     expect(sent, isA<http.Abortable>());
   });
 
+  // 함수이름: 멀티파트 요청 전달 테스트
+  // 함수역할: 알약 사진 업로드처럼 멀티파트 요청을 보내도 경계가 든 Content-Type과 파일 부분이 그대로 가는지 검증한다.
+  // 매개변수: 없음. 반환값: Future<void>; 불일치 시 테스트 실패.
+  test('멀티파트 요청은 경계가 든 Content-Type과 파일 부분을 유지한다', () async {
+    final shared = _RecordingTransport();
+    final transport = PooledHttpTransport(shared: shared);
+    final request =
+        http.MultipartRequest('POST', Uri.parse('https://api.test/pill'))
+          ..files.add(
+            http.MultipartFile.fromBytes(
+              'front',
+              utf8.encode('jpeg'),
+              filename: 'pill-front.jpg',
+            ),
+          );
+
+    await transport.send(request);
+
+    final contentType = shared.requests.single.headers['content-type'] ?? '';
+    expect(contentType, startsWith('multipart/form-data; boundary='));
+    final boundary = contentType.split('boundary=').last;
+    expect(shared.bodies.single, contains('--$boundary'));
+    expect(
+      shared.bodies.single,
+      contains('name="front"; filename="pill-front.jpg"'),
+    );
+  });
+
   test('닫으면 자기 요청만 중단하고 공용 전송은 열어 둔다', () async {
     final shared = _RecordingTransport();
     final first = PooledHttpTransport(shared: shared);

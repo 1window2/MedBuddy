@@ -65,6 +65,8 @@ class PooledHttpTransport extends http.BaseClient {
     final callerTrigger = request is http.Abortable
         ? request.abortTrigger
         : null;
+    // finalize first: a multipart request writes its Content-Type with the part boundary only then.
+    final body = request.finalize();
     final copy =
         http.AbortableStreamedRequest(
             request.method,
@@ -81,7 +83,7 @@ class PooledHttpTransport extends http.BaseClient {
     // A body stream error is forwarded into the copy, so the shared transport fails the request as before.
     unawaited(
       copy.sink
-          .addStream(request.finalize())
+          .addStream(body)
           .whenComplete(copy.sink.close)
           .catchError((Object _) {}),
     );
