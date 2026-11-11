@@ -238,8 +238,22 @@ committed hashes.
       procedure for migration `f7a2c9e4b610`) avoids it.
 - [ ] Device check: the Taken action from a locked phone and with the app closed, a
       request arriving after midnight, and an offline tap updating the widget.
+      2026-11-12 (Galaxy Note10, signed `6ce1d32`, production): with the app process
+      killed, the Taken button of a caregiver's slot-check request recorded the slot,
+      removed the notification, cancelled that slot's snoozed reminder and posted the
+      completion card to the caregiver. Still open: locked phone, after midnight,
+      offline widget tap.
 
 ### Device checks
+
+Run on 2026-11-12 with the signed `6ce1d32` build (1.0.0+27) on the Galaxy Note10
+(patient) and the `medbuddy_pixel7` emulator (caregiver) against production; both
+updated over 0.2.5 with `adb install -r` and kept their sign-in and data. Also passed:
+pill identification upload (16 candidates), the mock prescription masking the name
+cell, chat both ways with push and live delivery, read notifications cleared.
+Found: after the reminder's Taken button is pressed with the app killed, the dose is
+recorded but the home progress card kept the old count (2/4 for 3/4) until another
+tab was opened; not reproduced in the foreground. To be reproduced on the emulator.
 
 - [ ] A snooze across midnight, and sign-out while the 12-hour reminder task runs.
 - [ ] Offline after midnight, caregiver alerts after an offline start, and push
@@ -248,10 +262,14 @@ committed hashes.
       alert withdrawn after a dose.
 - [ ] Notification actions with the app foregrounded, backgrounded and terminated,
       on a locked screen, after a reboot and with battery saver; disabling
-      medication notifications removes alarms and shown quick actions.
+      medication notifications removes alarms and shown quick actions. Foreground,
+      background and terminated Taken and the 10-minute snooze passed on 2026-11-12
+      (exact alarms, records on the server); locked screen, reboot, battery saver
+      and disabling notifications are still open.
 - [ ] Message deletion between two devices (reconnect, offline failure, delivered
       previews, the 24-hour deadline) and session cases (network loss during a
-      token refresh, 401 in chat).
+      token refresh, 401 in chat). Delete for everyone reached the other device in
+      about 3 s on 2026-11-12; the other cases are still open.
 - [ ] Prescription capture with the privacy filter on a real prescription, including a
       table whose name cell sits right of its label (fixed on 2026-11-11 with a mock
       prescription on the emulator).
