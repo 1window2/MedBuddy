@@ -88,9 +88,10 @@ class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
         for (final line in block.lines)
           if (line.text.trim().isNotEmpty) line,
     ];
-    final sensitiveFlags = _privacyFilter.sensitiveLineFlags([
-      for (final line in lines) line.text.trim(),
-    ]);
+    final lineTexts = [for (final line in lines) line.text.trim()];
+    final sensitiveFlags = _privacyFilter.withSameRowValues(lineTexts, [
+      for (final line in lines) line.boundingBox,
+    ], _privacyFilter.sensitiveLineFlags(lineTexts));
 
     for (var index = 0; index < lines.length; index += 1) {
       final line = lines[index];
@@ -356,6 +357,45 @@ class PrescriptionPrivacyFilter {
       nextLineMayJoinValues = false;
     }
     return flags;
+  }
+
+  // Function Name: withSameRowValues
+  // Description: Also mark, for each label-only line with a personal-information label, as many of the nearest lines
+  //   to its right on the same printed row as the line has labels. OCR can return a table's value column before its label
+  //   column, so the order-based sensitiveLineFlags alone can leave the value cell (a patient's name) in the sent text.
+  // Parameters: lines (List<String>): OCR lines; boxes (List<ui.Rect>): their pixel bounds, aligned with lines;
+  //   flags (List<bool>): sensitiveLineFlags of the same lines.
+  // Returns: List<bool>: a copy of flags with the same-row value cells marked; medication rows and other labels stay as they were.
+  List<bool> withSameRowValues(
+    List<String> lines,
+    List<ui.Rect> boxes,
+    List<bool> flags,
+  ) {
+    final result = List<bool>.of(flags);
+    for (var index = 0; index < lines.length; index += 1) {
+      final sensitiveLabels = _sensitiveLabelCount(lines[index]);
+      if (sensitiveLabels == 0 || !_isLabelOnlyLine(lines[index])) {
+        continue;
+      }
+      final label = boxes[index];
+      final valuesWanted =
+          sensitiveLabels +
+          _neutralLabelPattern.allMatches(lines[index]).length;
+      final candidates = [
+        for (var other = 0; other < lines.length; other += 1)
+          if (other != index &&
+              boxes[other].center.dy >= label.top &&
+              boxes[other].center.dy <= label.bottom &&
+              boxes[other].left >= label.center.dx &&
+              !_isLabelOnlyLine(lines[other]) &&
+              !_looksLikeMedicationRow(lines[other]))
+            other,
+      ]..sort((a, b) => boxes[a].left.compareTo(boxes[b].left));
+      for (final other in candidates.take(valuesWanted)) {
+        result[other] = true;
+      }
+    }
+    return result;
   }
 
   // Function Name: _sensitiveLabelCount
