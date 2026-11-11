@@ -31,7 +31,10 @@ the section that recorded it. Changes are listed in the
       post-frame reads when the account, language or home source changes; the poll
       is one small GET every 15 seconds and stops in the background; pausing it
       under a pushed screen would show a stale link list on return.
-- [ ] `KeepWordsText` for the one-off texts that still wrap by syllable.
+- [x] `KeepWordsText` for the one-off texts that still wrap by syllable. Done on
+      2026-11-11 (about 510 texts and the page titles). Left as `Text`: single-line
+      labels, selectable text, rich text with several spans, chat bubble cards, chips
+      in horizontal lists, and text-field hints and errors (drawn by the field).
 - [ ] A Postgres role without superuser rights for the API and catalog jobs
       (security audit). The code is ready since 2026-11-07
       (`scripts/provision_database_roles.py`, opt-in through
@@ -52,13 +55,12 @@ the section that recorded it. Changes are listed in the
       say 1.0.0 and describe the two 1.0.0 behaviour changes (yesterday's list after
       midnight, the per-account pharmacy limit); the class and overall sequence
       diagrams and the use case descriptions carry the 1.0.0 changes.
-- [ ] User guide screenshots from earlier versions (0.2.1 to 0.2.4 captures that
-      remain in the guide). On 2026-11-07 six steps were retaken on the emulator
-      against a local backend (2.6-7, 3.3-4, 3.3-5, 3.6-1, 3.6-2 and 9.9-4, which had
-      shown version 0.2.3). Still old: prescription and pill identification (2.2,
-      2.7-2.10; they need live AI and public-data lookups), the home widgets (6.1,
-      6.2; placed by hand on a launcher), the link screens (4.x; two accounts) and a
-      few settings and place screens whose content has not changed.
+- [x] User guide screenshots from earlier versions. On 2026-11-11 every remaining
+      older photo was compared with the current app on the emulator (local server with
+      offline AI and public-data fakes). Four no longer matched and were retaken
+      (2.3-4, 2.3-9, 2.12-8, 7.5-5); the prescription, pill, link, widget (4x1 and 4x2)
+      and settings photos match the current screens and stay. Not retaken: the map
+      screens (a debug build has no map key), which have not changed.
 
 ### Owner decisions
 
@@ -247,7 +249,9 @@ committed hashes.
 - [ ] Message deletion between two devices (reconnect, offline failure, delivered
       previews, the 24-hour deadline) and session cases (network loss during a
       token refresh, 401 in chat).
-- [ ] Prescription capture with the privacy filter on a real prescription.
+- [ ] Prescription capture with the privacy filter on a real prescription, including a
+      table whose name cell sits right of its label (fixed on 2026-11-11 with a mock
+      prescription on the emulator).
 - [ ] Not possible with the current devices: Android 16 on a phone, device-to-device
       transfer, more than three sessions on one link.
 

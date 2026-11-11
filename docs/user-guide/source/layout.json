@@ -874,21 +874,21 @@
         "identity": "ASM-P016:2",
         "number": 4,
         "crop": [
-          100,
-          560,
-          1000,
-          1160
+          0,
+          136,
+          1080,
+          2140
         ],
         "boxes": [
           [
-            190,
-            570,
-            891,
-            977
+            42,
+            620,
+            1038,
+            1850
           ]
         ],
         "callouts": [],
-        "image": "assets/prescription-review-legacy.png"
+        "image": "assets/prescription-image-card-1.0.0-2026-11-11.png"
       }
     ]
   },
@@ -1003,21 +1003,21 @@
         "identity": "ASM-P020:10",
         "number": 9,
         "crop": [
-          100,
-          560,
-          1000,
-          1160
+          0,
+          136,
+          1080,
+          2140
         ],
         "boxes": [
           [
-            457,
-            1011,
-            891,
-            1145
+            612,
+            1892,
+            1038,
+            2018
           ]
         ],
         "callouts": [],
-        "image": "assets/prescription-review-legacy.png"
+        "image": "assets/prescription-image-card-1.0.0-2026-11-11.png"
       }
     ]
   },
@@ -2240,20 +2240,20 @@
         "number": 8,
         "crop": [
           0,
-          1400,
+          700,
           1080,
           2337
         ],
         "boxes": [
           [
             53,
-            2117,
+            2111,
             1028,
-            2258
+            2253
           ]
         ],
         "callouts": [],
-        "image": "assets/guide-pill-saved-demo.png"
+        "image": "assets/pill-saved-1.0.0-2026-11-11.png"
       }
     ]
   },
@@ -5418,22 +5418,22 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            232,
-            1085,
-            849,
-            1219
+            236,
+            1225,
+            845,
+            1351
           ],
           [
-            590,
-            1274,
-            849,
-            1408
+            594,
+            1414,
+            845,
+            1540
           ]
         ],
         "callouts": [
@@ -5446,7 +5446,7 @@
             "text": "설정 최종 저장"
           }
         ],
-        "image": "source/assets/2816052dd74eb97b30d2236c806e568710c05e1a3a8cacc3eb0f47441130e877.png"
+        "image": "assets/schedule-alarm-save-1.0.0-2026-11-11.png"
       }
     ]
   },

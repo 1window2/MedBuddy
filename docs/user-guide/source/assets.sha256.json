@@ -6,7 +6,6 @@
   "assets/guide-pill-candidates-clean.png": "72931b6f61b917dc5db27a2b2ca6acecd066fdc63806296cde25a5ccc72902f9",
   "assets/guide-pill-selected.png": "3686906bb097a014b50835cbf47e9fe1dbedd26e9513aee717653d246027e94b",
   "assets/v025-chat-unread-current-medium.png": "68a91a8cf62a19ab23920ef4d7c559792ed0d80479e6f88d6e6222142c2924d9",
-  "assets/guide-pill-saved-demo.png": "ec0211ccf3b5be43f965ac493e9c71a63be2139f010cfe0e5a6ba7f337b93177",
   "assets/v025-prescription-candidate-demo.png": "1b96ba53fffec503d09c7027a994a3397ae9ffdf0252d9b64f29fc9ef1f6df61",
   "assets/v025-prescription-candidate-selected-demo.png": "6a745c015ceb0c44d0f370ea1ee26d7ddde7ef8e1da35cc6add885d389471e85",
   "assets/v025-med-replace-confirm-medium.png": "204014f9d18c9a1099f7d4910efa3a8c1566ffe24a8aea525264eac780d48083",
@@ -85,7 +84,6 @@
   "assets/prescription-saved-2026-10-29.png": "6a75f4daafe8b9879882e2341e883b4179cc2c148a641d6c5b8e6ddb09a878f8",
   "assets/chat-message-delete-2026-10-29.png": "b8252790ce32dfebf295d45303805b5aa5efe6c0dea312d5bf156b5e25773771",
   "assets/chat-place-reopened-2026-10-29.png": "9ca35b302c0369d376df50547ad98409e2e20a42f8fefef459014d24b95eec3a",
-  "assets/prescription-review-legacy.png": "8f2ab0d65d09fbb6ff31f570240954ddeb111c5bcc1a850a79ada60676b6902c",
   "assets/prescription-date-picker-legacy.png": "021dce11d9a849f5832d9c1c2dc82c6fbd809e13fd1dc29ff1907d885a23de18",
   "assets/v025-home-medium.png": "69476bf3b603177018392965e4d037a7281cddffd677bf6dfa2359de02f22001",
   "assets/v025-search-medium.png": "6abb71968c030676a7f6cf60832253f19e7ce0a84c387b506ab5296546ec9679",
@@ -120,7 +118,6 @@
   "source/assets/11daf23c30cb4735042a18673c1765d8fe73f133f5dbc635657b4b646b8e2302.png": "8778e29d0a63a1f8acb5537bac2058632907c12552c39a36b00de324174c1441",
   "source/assets/2393f932120a6e398a08f370a474639f584b6dc8d888bad044f3ff58d74234ef.png": "68595a6b038fb2d288a046320bb20b12e520ab5dd19b4a70d2604f0bb3f458c3",
   "source/assets/25a395e4d19c274c29055b40e11e36f474d09c5d49209108412081c63f81e839.png": "d025fb778942a2592becfe35045bd50dc52d78bc643561018adea496d147a6d7",
-  "source/assets/2816052dd74eb97b30d2236c806e568710c05e1a3a8cacc3eb0f47441130e877.png": "781d2016524d792e42e8a7e6695853aba686e277c75564a2df34552f7f4e3390",
   "source/assets/2833d315060a1ac527a0fab5b9b71a9a00f1a4502bd74f01c66626342c76acff.png": "c55f635e5328038a8cfe4d475a7c4206a102c8ce9362888bdfb2e9ea3efda279",
   "source/assets/2964035ba01e9a1941fa001c89674fcb50126dcdba62895b5f73811619001c81.png": "b0a500f1b394c93881bdb1d1960991075d2ffec2dcb5842174fda23014aea5b3",
   "source/assets/2be32d396f68b936afd40b4f2e84ab17ad9e826cbe9ab385033d07acd70749dc.png": "f6715edff2985a7f197df8be9cfe294013c04fa25671421770caca8f2674ffea",
@@ -202,5 +199,8 @@
   "assets/schedule-offline-undo-1.0.0-2026-11-07.png": "6bb6f9ced5fda63b98afcbc419a6ca9a70ddabce0cd7b59ed4fa8c38bf933ec0",
   "assets/schedule-sync-saved-1.0.0-2026-11-07.png": "aa644b34b9ab39512060f9d2c7e69b431b3adf7d27af3eee5f66021acbac3637",
   "assets/system-alarms-allowed-1.0.0-2026-11-07.png": "5c0a7535dd365216e2a922e70eb001508cf3ee265ac4a059fd4846d28f46231f",
-  "assets/chat-offline-current.png": "8d107e4c92e13d34ea93bd27a14243c1e346c8d8322eea287d7a9bf59f39a36e"
+  "assets/chat-offline-current.png": "8d107e4c92e13d34ea93bd27a14243c1e346c8d8322eea287d7a9bf59f39a36e",
+  "assets/prescription-image-card-1.0.0-2026-11-11.png": "c2da31e6b0e8c56f20f0763ad829ac9cbdf67a00c637e6861972e42cacbfab14",
+  "assets/schedule-alarm-save-1.0.0-2026-11-11.png": "433ebe80d61de85214547d06ff8d7975b01d5bdb1fde5f3ee55aeddf61fd8d6a",
+  "assets/pill-saved-1.0.0-2026-11-11.png": "3a2e1e9da1c4115720df733416a7bab04bea61730589b0c345e13417e1a1f5be"
 }

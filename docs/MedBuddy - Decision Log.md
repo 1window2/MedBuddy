@@ -430,6 +430,19 @@ endpoint after its registration. These are bounded by their own limits (route qu
 the pill upload cap) rather than by the gate. No setting changed; the slot count follows
 `DATABASE_POOL_SIZE` and `DATABASE_MAX_OVERFLOW`.
 
+## 2026-11-11: the privacy filter also masks the cell right of a personal label
+
+On-device OCR can return a prescription table's value column before its label column, so
+the filter, which masks the values that follow a personal label in recognition order,
+let a patient name printed in the cell right of "환자 성명" reach the server and Gemini.
+The filter now also uses the line positions: for each line that holds only personal (and
+age or sex) labels, it masks as many of the nearest lines to its right on the same
+printed row as the line has labels. Medication rows and other label lines are never
+taken. A wider rule (everything right of the label on that row) was not chosen because a
+four-column header ("성명 | 홍길동 | 교부일자 | 2026-…") would then lose the dispensing
+date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again in
+`PrescriptionLocalOcrService.recognizeAndMask`.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the
