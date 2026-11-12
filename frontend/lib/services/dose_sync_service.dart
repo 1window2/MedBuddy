@@ -12,6 +12,7 @@ import '../entities/medication_schedule_entity.dart';
 import '../entities/offline_schedule_window.dart';
 import 'api_config.dart';
 import 'dose_outbox_store.dart';
+import 'dose_store_change_signal.dart';
 
 // Function Name: doseScheduleDay
 // Description: Uses the shared widget/server clock instead of the display timezone.
@@ -69,6 +70,7 @@ Map<String, dynamic> withoutChatReceipt(Map<String, dynamic> operation) {
 // - openStore, scheduleWork, clock: Injected storage, background scheduling, and time providers.
 // - reconcileWork: Keeps background work only while network work remains (session start and app state changes).
 // - onStateChanged, loadScheduleWindow: Optional display publisher and offline-course loader.
+// - changeSignal: Cross-engine notice; the foreground service reloads when a background engine changed the store.
 // - _operations, _confirmed, _cacheDate: Pending changes and the dated authoritative snapshot.
 // - _disposed, _foreground, _timer: Session lifetime and retry scheduling state.
 class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
@@ -80,6 +82,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   final DateTime Function() clock;
   final Future<void> Function()? onStateChanged;
   final Future<List<MedicationSchedule>> Function()? loadScheduleWindow;
+  final DoseStoreChangeSignal changeSignal;
   Future<void>? _refreshingWindow;
   bool _windowRefreshAgain = false;
   DoseOutboxStore? _store;
@@ -87,6 +90,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   bool _initialized = false;
   bool _activationRequested = false;
   Future<void>? _draining;
+  bool _drainAgain = false;
   bool _publishing = false;
   bool _publishAgain = false;
   Timer? _timer;
@@ -127,6 +131,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   // - reconcileWork: 보낼 기록·위젯 갱신이 남았을 때만 백그라운드 작업을 두는 함수. 미지정이면 아무 작업도 하지 않는다.
   // - clock (DateTime Function()?): 날짜·재시도 기준 시계. 기본값은 DateTime.now
   // - onStateChanged, loadScheduleWindow: 선택적 표시 갱신 함수와 오프라인 기간 일정 로더
+  // - changeSignal (DoseStoreChangeSignal?): 다른 엔진과 주고받는 저장소 변경 알림. 기본값은 프로세스 공용 이름 등록
   // 반환값: 아직 시작되지 않은 DoseSyncService.
   DoseSyncService({
     required this.owner,
@@ -137,7 +142,9 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     DateTime Function()? clock,
     this.onStateChanged,
     this.loadScheduleWindow,
-  }) : openStore = openStore ?? DoseOutboxStore.open,
+    DoseStoreChangeSignal? changeSignal,
+  }) : changeSignal = changeSignal ?? DoseStoreChangeSignal(),
+       openStore = openStore ?? DoseOutboxStore.open,
        scheduleWork = scheduleWork ?? (() async {}),
        reconcileWork = reconcileWork ?? (() async {}),
        clock = clock ?? DateTime.now;
@@ -218,6 +225,11 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     if (_disposed) return;
     _observing = true;
     WidgetsBinding.instance.addObserver(this);
+    // 백그라운드 엔진(전송 작업, 알림 갱신)이 같은 저장소를 바꾸면 이 엔진은 모른다. 알림을 받으면 다시 읽어
+    // 화면이 옛 일정이나 이미 보낸 기록을 붙들지 않게 한다.
+    changeSignal.listen(() {
+      if (!_disposed) unawaited(reload().catchError((Object _) {}));
+    });
     // Records left from an earlier run get their upload job back; with nothing to send, no job is kept.
     unawaited(reconcileWork().catchError((_) {}));
     unawaited(drain());
@@ -462,6 +474,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     _operations = await _store!.pending(owner);
     // The next reload must not report this same snapshot as a new change.
     _fingerprint = _stateFingerprint(cache);
+    changeSignal.notify();
     await _publishState();
     final window = refreshScheduleWindow();
     if (awaitScheduleWindow) {
@@ -552,6 +565,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     });
     _operations = await _store!.pending(owner);
     if (!_disposed) notifyListeners();
+    changeSignal.notify();
     await _publishState();
     // OS 작업 예약이 실패해도 기록은 남아 다음 앱 실행이나 주기 작업에서 재전송한다.
     unawaited(scheduleWork().catchError((_) {}));
@@ -561,11 +575,30 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   // 함수이름: drain
-  // 함수역할: 동시 호출이 같은 전송 작업을 기다리도록 하며 완료 후 다음 전송을 허용한다.
+  // 함수역할: 동시 호출이 같은 전송 작업을 기다리도록 한다. 진행 중인 전송은 이미 큐를 읽었거나 마지막 재시도
+  //          판단을 하는 중일 수 있으므로, 그동안 들어온 요청은 한 번 더 전송하게 한다.
   // 매개변수: 없음.
-  // 반환값: 현재 큐 처리 완료 Future. 한 번에 전체 큐가 전송된다는 보장은 없다.
-  Future<void> drain() =>
-      _draining ??= _drain().whenComplete(() => _draining = null);
+  // 반환값: 현재 큐 처리(추가 요청분 포함) 완료 Future. 한 번에 전체 큐가 전송된다는 보장은 없다.
+  Future<void> drain() {
+    if (_draining != null) {
+      _drainAgain = true;
+      return _draining!;
+    }
+    return _draining = _drainUntilSettled().whenComplete(
+      () => _draining = null,
+    );
+  }
+
+  // Function Name: _drainUntilSettled
+  // Description: Runs upload passes until no drain request arrived during the last one.
+  // Parameters: None.
+  // Returns: Completion of the last pass; a disposed service stops repeating.
+  Future<void> _drainUntilSettled() async {
+    do {
+      _drainAgain = false;
+      await _drain();
+    } while (_drainAgain && !_disposed);
+  }
 
   // Function Name: _drain
   // Description: Leases at most 100 ordered operations, uploads and acknowledges them, and preserves retryable failures.
@@ -575,6 +608,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _drain() async {
     final acceptedBefore = _acceptedRevision;
     var reloaded = false;
+    var storeChanged = false;
     try {
       await initialize();
       for (var count = 0; count < 100 && !_disposed; count++) {
@@ -587,6 +621,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
           clock().millisecondsSinceEpoch,
         );
         if (op == null) break;
+        storeChanged = true;
         final id = op['operation_id'] as String;
         try {
           if (!await _store!.isActive(owner) || _disposed) {
@@ -662,6 +697,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
       if (!reloaded && _acceptedRevision != acceptedBefore && !_disposed) {
         notifyListeners();
       }
+      if (storeChanged) changeSignal.notify();
       await _scheduleRetryIfUploadable();
     }
   }
@@ -789,6 +825,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   void dispose() {
     _disposed = true;
     _timer?.cancel();
+    changeSignal.close();
     if (_observing) WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

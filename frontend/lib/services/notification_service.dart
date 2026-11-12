@@ -70,6 +70,12 @@ class NotificationService {
   static DateTime Function() clock = DateTime.now;
   static MedicationNotificationSelectionHandler? _selectionHandler;
   static MedicationNotificationSelection? _pendingSelection;
+  // Android가 앱을 띄운 알림 버튼을 시작 인텐트와 onNewIntent로 두 번 넘기면, 한 번 누른 버튼이 응답 콜백과
+  // 시작 정보로 모두 들어온다. 같은 버튼을 다시 누르려면 알림이 다시 떠야 하므로(가장 짧은 경우 10분 후 다시
+  // 알림) 이 시간 안의 같은 버튼 응답은 같은 누름이다.
+  static const Duration _actionCopyWindow = Duration(seconds: 30);
+  static String? _lastActionKey;
+  static DateTime? _lastActionAt;
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -674,6 +680,7 @@ class NotificationService {
   // 매개변수: response (NotificationResponse): 플랫폼이 전달한 페이로드·동작·알림 ID.
   // 반환값: void; 복약 확인 작업은 기다리지 않고 시작한다.
   static void _handleNotificationResponse(NotificationResponse response) {
+    if (_isRepeatedActionCopy(response)) return;
     if (response.actionId == SlotCheckNotificationContext.actionId) {
       unawaited(medBuddySlotCheckNotificationBackground(response));
       return;
@@ -683,6 +690,35 @@ class NotificationService {
       actionId: response.actionId,
       notificationId: response.id,
     );
+  }
+
+  // Function Name: handleNotificationResponseForTest
+  // Description: Runs the platform response handler, including the duplicate-copy check.
+  // Parameters: response (NotificationResponse): platform response to dispatch.
+  // Returns: void.
+  @visibleForTesting
+  static void handleNotificationResponseForTest(
+    NotificationResponse response,
+  ) => _handleNotificationResponse(response);
+
+  // Function Name: _isRepeatedActionCopy
+  // Description: Recognises the second delivery of one action-button press (launch details and response callback).
+  // Parameters: response (NotificationResponse): platform response; plain notification taps are never treated as copies.
+  // Returns: bool: true when the same button of the same notification was handled within the copy window.
+  static bool _isRepeatedActionCopy(NotificationResponse response) {
+    final actionId = response.actionId;
+    if (actionId == null || actionId.isEmpty) return false;
+    final key = '${response.id}|$actionId|${response.payload}';
+    final now = clock();
+    final last = _lastActionAt;
+    if (key == _lastActionKey &&
+        last != null &&
+        now.difference(last).abs() < _actionCopyWindow) {
+      return true;
+    }
+    _lastActionKey = key;
+    _lastActionAt = now;
+    return false;
   }
 
   // Function Name: requestPermission

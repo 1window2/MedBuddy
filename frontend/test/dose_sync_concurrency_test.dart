@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +12,7 @@ import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/entities/dose_widget_state.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/services/dose_outbox_store.dart';
+import 'package:medbuddy_frontend/services/dose_store_change_signal.dart';
 import 'package:medbuddy_frontend/services/dose_sync_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -375,4 +377,81 @@ void main() {
       expect(await foregroundStore.cacheRevision(_owner), before + 3);
     },
   );
+
+  // Function Name: background upload notice test
+  // Description: The background job's upload of a record the foreground queued reaches the foreground
+  //   service through the store-change signal, so its pending list and projected schedule follow the
+  //   server at once (the emulator showed 2/3 and "2 records waiting" for about a minute without it).
+  // Parameters: None.
+  // Returns: Future<void>; fails when the foreground service keeps the uploaded record as pending.
+  test('a background upload reaches the foreground service', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    await foregroundStore.saveCache(_owner, _cache(true, false));
+    await foregroundStore.enqueue(
+      _owner,
+      _operation('evening-dose', 'evening'),
+    );
+    final ports = <String, SendPort>{};
+    DoseStoreChangeSignal signal() => DoseStoreChangeSignal(
+      register: (port, name) {
+        if (ports.containsKey(name)) return false;
+        ports[name] = port;
+        return true;
+      },
+      lookup: (name) => ports[name],
+      remove: (name) => ports.remove(name) != null,
+    );
+    // The foreground cannot reach the server; only the background job uploads.
+    final offline = MockClient((_) async => http.Response('', 503));
+    final online = MockClient((request) async {
+      final operation = jsonDecode(request.body) as Map<String, dynamic>;
+      return http.Response(
+        jsonEncode({
+          'operation_id': operation['operation_id'],
+          'schedule_date': _day,
+          'data': _cache(true, true)['schedules'],
+        }),
+        200,
+      );
+    });
+    final foreground = DoseSyncService(
+      owner: _owner,
+      client: offline,
+      openStore: () async => foregroundStore,
+      clock: () => _now,
+      changeSignal: signal(),
+    );
+    final background = DoseSyncService(
+      owner: _owner,
+      client: online,
+      openStore: () async => backgroundStore,
+      clock: () => _now,
+      changeSignal: signal(),
+    );
+    addTearDown(() {
+      foreground.dispose();
+      background.dispose();
+      offline.close();
+      online.close();
+    });
+    await foreground.start();
+    await foreground.drain();
+    expect(foreground.pendingCount, 1);
+
+    final caughtUp = Completer<void>();
+    foreground.addListener(() {
+      if (foreground.pendingCount == 0 && !caughtUp.isCompleted) {
+        caughtUp.complete();
+      }
+    });
+    await background.drain();
+    await caughtUp.future.timeout(const Duration(seconds: 3));
+
+    expect(
+      foreground.schedules
+          .singleWhere((s) => s.medicationID == '92')
+          .isSlotCompleted('evening'),
+      isTrue,
+    );
+  });
 }

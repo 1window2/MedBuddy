@@ -17,6 +17,35 @@ import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/check_today_medication_info_control.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 
+// Class Name: _HeldCheckStore
+// Role: Store whose next uploadable-work check answers from a read made before it is released.
+// Responsibilities: Hold one hasUploadableOperation call open so a record can be queued while an upload pass finishes.
+// Attributes: hold - completer the next check waits on after reading.
+class _HeldCheckStore extends DoseOutboxStore {
+  Completer<void>? hold;
+
+  // Function Name: _HeldCheckStore
+  // Description: Wraps the real encrypted store on the test database.
+  // Parameters: db (Database), key (SecretKey): test database and key.
+  // Returns: _HeldCheckStore.
+  _HeldCheckStore(super.db, super.key);
+
+  // Function Name: hasUploadableOperation
+  // Description: Reads the queue, then waits on hold before answering with that earlier read.
+  // Parameters: owner (String): account.
+  // Returns: Future<bool>: whether work was uploadable when it was read.
+  @override
+  Future<bool> hasUploadableOperation(String owner) async {
+    final uploadable = await super.hasUploadableOperation(owner);
+    final waiting = hold;
+    if (waiting != null) {
+      hold = null;
+      await waiting.future;
+    }
+    return uploadable;
+  }
+}
+
 // 함수이름: main
 // 함수역할: 실제 암호화 저장소를 사용한 대기 기록 보존·재전송·계정 격리 테스트를 등록한다.
 // 매개변수: 없음. 반환값: 없음.
@@ -848,6 +877,48 @@ void main() {
     await service.drain();
     expect(service.pendingCount, 0);
     expect(service.hasScheduledRetry, isFalse);
+  });
+
+  // Function Name: record during a finishing pass test
+  // Description: A record queued while an upload pass is finishing (its last queue check already read
+  //   an empty queue) is still uploaded by the foreground service, instead of waiting for the background job.
+  // Parameters: None. Returns: Future<void>; fails when the queued record is not sent.
+  test('a record queued while an upload pass finishes gets its own pass', () async {
+    final sent = <String>[];
+    final client = MockClient((request) async {
+      final payload = jsonDecode(request.body) as Map<String, dynamic>;
+      sent.add(payload['operation_id'] as String);
+      return http.Response(
+        jsonEncode({'operation_id': payload['operation_id'], 'data': []}),
+        200,
+      );
+    });
+    addTearDown(client.close);
+    final held = _HeldCheckStore(db, key);
+    final service = DoseSyncService(
+      owner: 'patient-a',
+      client: client,
+      openStore: () async => held,
+      clock: () => now,
+    );
+    addTearDown(service.dispose);
+    await service.initialize();
+    final release = Completer<void>();
+    held.hold = release;
+
+    final finishing = service.drain();
+    // The empty pass is now waiting in its final uploadable-work check.
+    while (held.hold != null) {
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+    }
+    await held.enqueue('patient-a', op('queued-while-finishing'));
+    final requested = service.drain();
+    release.complete();
+    await finishing;
+    await requested;
+
+    expect(sent, ['queued-while-finishing']);
+    expect(service.pendingCount, 0);
   });
 
   // 함수이름: 채팅 한도 초과 대체 전송 테스트

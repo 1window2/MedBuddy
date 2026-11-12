@@ -62,20 +62,15 @@ file lists open items only, sorted by priority. Finished items were removed on
       503 for everyone until midnight. If the quota is not raised, the owner decides
       whether to charge detail calls per account, which would also limit ordinary
       users to a few searches a day.
-- [ ] Home progress card stale after a reminder action from a killed app (device
-      test on 2026-11-12, signed `6ce1d32`): the dose was recorded, but the card kept
-      the old count (2/4 for 3/4) until another tab was opened; not seen in the
-      foreground. Suspected: the launch load of today's schedule racing the action's
-      record (`_loadTodayMedicationSchedule` and `applyDoseProjection` in
-      `medbuddy_schedule_view_model.dart`), unconfirmed because the load epoch should
-      discard a stale result. Reproduce on the emulator, then fix it or record why
-      not.
 
 ## P1: before 1.0.0
 
 Device checks on the release build. The last pass (2026-11-12) is summarised in the
 [1.0.0 notes](releases/v1.0.0.md#device-and-operations-checks-2026-11-12).
 
+- [ ] With the next signed build on the phone: a reminder's Taken pressed while the
+      app is closed shows the new home count at once, and the server gets one record
+      (fixed on 2026-11-12, checked on the emulator).
 - [ ] Medication reminder actions on a locked screen, after a reboot and with
       battery saver; an offline completion failure and its retry; correcting one dose
       after an accidental Taken.

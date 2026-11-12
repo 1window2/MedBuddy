@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:medbuddy_frontend/entities/caregiver_alert_context_entity.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/linked_chat_entry_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
@@ -220,6 +221,56 @@ void main() {
     );
 
     expect(selection?.action, MedicationNotificationAction.open);
+  });
+
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: one action-button press handed over twice by Android (launch intent and
+  //   onNewIntent, seen on the emulator on 2026-11-12) is handled once; the same button shown again
+  //   later (a snoozed reminder) and another button are still handled.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
+  test('a doubled delivery of one action press is handled once', () {
+    var now = DateTime.utc(2026, 11, 12, 3, 15);
+    NotificationService.clock = () => now;
+    addTearDown(() => NotificationService.clock = DateTime.now);
+    final selections = <MedicationNotificationSelection>[];
+    NotificationService.setNotificationSelectionHandler(selections.add);
+    NotificationResponse press(String actionId) => NotificationResponse(
+      notificationResponseType:
+          NotificationResponseType.selectedNotificationAction,
+      id: 793622473,
+      actionId: actionId,
+      payload: 'schedule:evening:793622473',
+    );
+
+    NotificationService.handleNotificationResponseForTest(
+      press(NotificationService.markSlotTakenActionId),
+    );
+    now = now.add(const Duration(milliseconds: 130));
+    NotificationService.handleNotificationResponseForTest(
+      press(NotificationService.markSlotTakenActionId),
+    );
+    expect(selections, hasLength(1));
+    expect(
+      selections.single.action,
+      MedicationNotificationAction.markSlotTaken,
+    );
+
+    NotificationService.handleNotificationResponseForTest(
+      press(NotificationService.snoozeTenMinutesActionId),
+    );
+    now = now.add(const Duration(minutes: 10));
+    NotificationService.handleNotificationResponseForTest(
+      press(NotificationService.snoozeTenMinutesActionId),
+    );
+    expect(selections.map((selection) => selection.action), [
+      MedicationNotificationAction.markSlotTaken,
+      MedicationNotificationAction.snoozeTenMinutes,
+      MedicationNotificationAction.snoozeTenMinutes,
+    ]);
   });
 
   // 함수이름: test 콜백
