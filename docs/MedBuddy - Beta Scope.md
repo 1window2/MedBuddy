@@ -3,9 +3,9 @@
 ## Status
 
 - Scope review: 2026-09-30
-- Stable functional baseline: `v0.2.4-beta`
-- Active development branch: `beta/v0.2.5`
-- Target release tag: `v0.2.5-beta`
+- Stable functional baseline: `v0.2.5-beta`
+- Active development branch: `beta/v1.0.0` (1.0.0 release)
+- Target release tag: `v1.0.0`
 - Target platform: Android
 - iOS: deferred until after the Android public-release decision, no earlier than
   October 2026. The repository has no iOS project yet; the lone
@@ -16,7 +16,7 @@
   pharmacies), as the earlier fragment had.
 
 This document tracks the inherited Android beta baseline and the local
-`beta/v0.2.5` additions below. Features
+`beta/v0.2.5` additions below, now released as `v0.2.5-beta`. Features
 outside the list below do not enter the release without an explicit scope
 review covering safety, privacy, data integrity, and release operability.
 

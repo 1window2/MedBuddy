@@ -88,15 +88,11 @@ class _MedicationNameFallbackRequest:
     candidates: list[_CatalogMedicationName]
 
 
-# 클래스명: PrescriptionMedicationNameVerifier
-# 역할:
-# - 로컬 카탈로그와 OCR 변형으로 약품명을 검증하고 제한된 후보 내에서만 AI 보정을 허용한다.
-# 주요 책임:
-# - DB 세션 제약을 지키며 일치·접두어·유사 후보를 검증하고 AI 선택의 목록 포함 여부와 신뢰도 상한을 확인한다.
-# 속성:
-# - db (Session | None): 현재 작업에 사용할 SQLAlchemy 세션.
-# - ai_timeout_seconds (float): 카탈로그 후보 내 AI 보정의 최대 허용 시간(초).
-# Note: Async file-backed/PostgreSQL reads own Engine-bound worker sessions; only the in-memory fallback and sync verify() borrow db.
+# Class Name: PrescriptionMedicationNameVerifier
+# Role: Verifies OCR medication names against the local catalog, allowing AI correction only within bounded known candidates.
+# Responsibilities: Checks exact/prefix/fuzzy evidence, candidate membership, strength/form conflicts and confidence caps while respecting session ownership.
+# Attributes: db (Session | None), ai_timeout_seconds (float), worker-session policy and candidate/confidence constants configure lookup.
+# Note: Async file-backed/PostgreSQL reads own Engine-bound worker sessions; the in-memory fallback and synchronous verify borrow db.
 class PrescriptionMedicationNameVerifier:
     _MAX_CANDIDATES = 48
     _MAX_AI_CATALOG_CANDIDATES = 8
@@ -152,16 +148,10 @@ class PrescriptionMedicationNameVerifier:
             self._uses_memory_sqlite,
         ) = isolated_worker_session_policy(db)
 
-    # 함수이름: verify_many
-    # 함수역할:
-    # - 로컬 검증 후 미확정 이름만 AI 후보 선택으로 보완하며 원래 항목 순서를 유지한다.
-    # - AI 선택 결과는 호출 사이에 보관하지 않으며, 적용 직전에 함량·제형 충돌을 다시 확인한다.
-    # 매개변수:
-    # - raw_names (list[str]): 처방 순서대로 나열한 원본 OCR 약품명.
-    # - ai_client (genai.Client): 제한 시간 내 외부 텍스트 생성에 사용할 Gemini 클라이언트.
-    # - model_name (str): 사용할 AI 모델 식별자.
-    # 반환값:
-    # - 입력 약품명 순서의 검증 결과 목록.
+    # Function Name: verify_many
+    # Description: Preserves input order while performing local verification and optional bounded AI candidate selection, rechecking strength/form conflicts before applying corrections.
+    # Parameters: raw_names (list[str]) are OCR labels; ai_client (genai.Client) and model_name (str) configure fallback selection.
+    # Returns: Verification list in source order; unusable/out-of-range corrections are ignored, and AI choices are not cached across calls.
     async def verify_many(
         self,
         raw_names: list[str],
@@ -201,14 +191,10 @@ class PrescriptionMedicationNameVerifier:
             )
         return corrected_verifications
 
-    # 함수이름: _prepare_verifications
-    # 함수역할:
-    # - 동기 SQLAlchemy 카탈로그 조회와 AI 보완 후보 생성을 한 작업 스레드에서 처리한다.
-    # - FastAPI 이벤트 루프가 로컬 DB 조회 동안 다른 요청을 계속 처리할 수 있게 한다.
-    # 매개변수:
-    # - raw_names (list[str]): OCR에서 추출한 원본 약명 목록
-    # 반환값:
-    # - 로컬 검증 결과와 AI 보완이 필요한 후보 요청 목록
+    # Function Name: _prepare_verifications
+    # Description: Runs synchronous verification for every name and derives fallback requests for unresolved entries in the current owning thread.
+    # Parameters: raw_names (list[str]) are OCR names in source order.
+    # Returns: (local verifications, AI fallback requests); scheduling onto a worker is the caller's responsibility.
     def _prepare_verifications(
         self,
         raw_names: list[str],
@@ -222,26 +208,17 @@ class PrescriptionMedicationNameVerifier:
             verifications,
         )
 
-    # 함수이름: _requires_current_thread_session
-    # 함수역할:
-    # - 별도 연결에서 데이터가 사라지는 인메모리 SQLite 테스트인지 확인한다.
-    # - 실제 파일 DB와 PostgreSQL은 독립 작업 세션을 사용하게 한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - DB 세션이 없거나 별도 스레드 연결로 옮길 수 없는 인메모리 SQLite 세션이면 True.
-    # Note: Reads only composition-time policy, never a request-session bind after asynchronous work.
+    # Function Name: _requires_current_thread_session
+    # Description: Reads the captured composition policy without accessing a request-session bind after asynchronous work.
+    # Parameters: None.
+    # Returns: True when no worker factory exists or SQLite is connection-local in-memory; otherwise False.
     def _requires_current_thread_session(self) -> bool:
         return self._worker_session_factory is None or self._uses_memory_sqlite
 
-    # 함수이름: _prepare_verifications_with_isolated_session
-    # 함수역할:
-    # - 작업 스레드 안에서 새 SQLAlchemy 세션을 생성하여 스레드 간 세션 공유를 막는다.
-    # 매개변수:
-    # - raw_names (list[str]): OCR에서 추출한 원본 약명 목록
-    # 반환값:
-    # - 로컬 검증 결과와 AI 보완 후보 요청 목록
-    # Note: Captured Engine ownership lets cancelled request cleanup proceed without sharing or closing this worker's transaction.
+    # Function Name: _prepare_verifications_with_isolated_session
+    # Description: Creates and always closes an engine-owned worker session, preventing cancellation cleanup from sharing its transaction.
+    # Parameters: raw_names (list[str]) are OCR labels.
+    # Returns: Verification/fallback pair; uses the current verifier when no factory exists and propagates query errors.
     def _prepare_verifications_with_isolated_session(
         self,
         raw_names: list[str],

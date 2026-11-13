@@ -15,10 +15,21 @@ import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
 import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 
 // 함수이름: main
-// 함수역할: 화면 노출과 응답 순서에 따른 채팅 회귀 사례를 등록한다.
-// 매개변수: 없음. 반환값: 없음.
+// 함수역할:
+// - 화면 표시 상태·계정 및 연동 전환·지연 전송과 조회 응답이 읽음·초안·스크롤에 미치는 영향을 검사하는 사례를 등록한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - void; 반환값 없음.
 void main() {
   for (final fail in [false, true]) {
+    // 함수이름: empty and duplicate sends stay inert after disposal: $fail
+    // 함수역할:
+    // - 공백 전송은 무시하고 대기 중 반복 입력은 한 번만 보내며, 화면 해제 뒤 전송 성공·실패가 와도 추가 요청이나 화면 예외를 만들지 않는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
     testWidgets('empty and duplicate sends stay inert after disposal: $fail', (
       tester,
     ) async {
@@ -50,6 +61,13 @@ void main() {
     });
   }
 
+  // 함수이름: read receipt before send response never shows unread again
+  // 함수역할:
+  // - 전송 응답보다 먼저 받은 읽음 이벤트를 새 메시지에 적용하여 응답 완료 후에도 미확인 배지를 다시 표시하지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('read receipt before send response never shows unread again', (
     tester,
   ) async {
@@ -83,9 +101,13 @@ void main() {
     (name: 'link', userHash: 'patient-a', linkId: 18),
   ]) {
     for (final fails in [false, true]) {
-      // Function Name: pending outgoing scope-switch test
-      // Description: A late old account/link send cannot clear the new draft, add messages, or show an old error.
-      // Parameters: tester: Widget test driver. Returns: Asynchronous assertions.
+      // Function Name: ${outgoingScope.name} change ignores late send completion: failure=$fails
+      // Description:
+      // - After switching account or link, a late old send success/failure cannot clear the new draft, insert its message, display an old error, or send through the new scope.
+      // Parameters:
+      // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+      // Returns:
+      // - Future<void>; completes after the asynchronous assertions.
       testWidgets(
         '${outgoingScope.name} change ignores late send completion: failure=$fails',
         (tester) async {
@@ -154,7 +176,13 @@ void main() {
       patientHash: 'patient-b',
     ),
   ]) {
-    // Verifies each scope identity change replaces drafts, subscriptions and pending recovery ownership.
+    // Function Name: chat session replaces stale ${scope.name} state and ignores late history
+    // Description:
+    // - Changing account, link, or patient replaces the old draft and history owner; late old pages and realtime events cannot publish or trigger reads in the new conversation.
+    // Parameters:
+    // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+    // Returns:
+    // - Future<void>; completes after the asynchronous assertions.
     testWidgets(
       'chat session replaces stale ${scope.name} state and ignores late history',
       (tester) async {
@@ -209,7 +237,13 @@ void main() {
     );
   }
 
-  // Verifies same-conversation display changes retain composer and authenticated adapter lifetime.
+  // Function Name: same-scope settings and peer updates preserve the draft
+  // Description:
+  // - Changing peer display name and language within the same conversation preserves the composer draft and avoids restarting history lookup.
+  // Parameters:
+  // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('same-scope settings and peer updates preserve the draft', (
     tester,
   ) async {
@@ -243,9 +277,13 @@ void main() {
   });
 
   for (final background in [false, true]) {
-    // 함수이름: 보이지 않는 채팅 읽음 차단 테스트
-    // 함수역할: 다른 화면·백그라운드에서는 읽지 않고 채팅으로 돌아오면 읽음 처리한다.
-    // 매개변수: tester 화면 시험 도구. 반환값: 비동기 검증 완료.
+    // 함수이름: 가려진 채팅은 읽음 처리하지 않는다: background=$background
+    // 함수역할:
+    // - 다른 경로에 가려지거나 앱이 백그라운드에 있으면 상대 메시지를 읽음 처리하지 않고, 채팅으로 돌아온 뒤에만 읽음 요청을 보내는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
     testWidgets('가려진 채팅은 읽음 처리하지 않는다: background=$background', (tester) async {
       final flow = _ChatFlow();
       await flow.open(tester);
@@ -290,9 +328,13 @@ void main() {
     });
   }
 
-  // 함수이름: 읽음 응답 역전 테스트
-  // 함수역할: 실시간 읽음 이벤트 이후 오래된 이력 응답이 와도 읽음 표시를 되돌리지 않는다.
-  // 매개변수: tester 화면 시험 도구. 반환값: 비동기 검증 완료.
+  // 함수이름: 늦게 도착한 이력은 읽음 표시를 되돌리지 않는다
+  // 함수역할:
+  // - 실시간 읽음 표시를 적용한 뒤 이전 이력 응답이 도착해도 미확인 배지를 되살리지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('늦게 도착한 이력은 읽음 표시를 되돌리지 않는다', (tester) async {
     final flow = _ChatFlow()..history = [_message(1)];
     await flow.open(tester);
@@ -314,9 +356,13 @@ void main() {
     expect(find.byKey(const ValueKey('chat-unread-receipt-1')), findsNothing);
   });
 
-  // 함수이름: 이전 대화 스크롤 유지 테스트
-  // 함수역할: 이전 메시지를 읽는 동안 주기적 조회와 새 메시지가 강제로 하단 이동하지 않는다.
-  // 매개변수: tester 화면 시험 도구. 반환값: 비동기 검증 완료.
+  // 함수이름: 이전 대화를 읽는 동안 조회와 수신이 스크롤을 빼앗지 않는다
+  // 함수역할:
+  // - 이전 대화를 읽는 위치에서는 주기적 조회와 새 메시지가 스크롤 오프셋 600을 바꾸거나 아직 보지 않은 새 메시지를 읽음 처리하지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('이전 대화를 읽는 동안 조회와 수신이 스크롤을 빼앗지 않는다', (tester) async {
     final flow = _ChatFlow()
       ..history = List.generate(35, (i) => _message(i + 1));
@@ -338,9 +384,13 @@ void main() {
     expect(flow.readRequests, isNot(contains(36)));
   });
 
-  // 함수이름: 최신 대화 수신 스크롤 테스트
-  // 함수역할: 하단에서 대화 중이면 새 메시지가 도착할 때 계속 최신 메시지를 보여준다.
-  // 매개변수: tester 화면 시험 도구. 반환값: 비동기 검증 완료.
+  // 함수이름: 최신 대화를 보고 있으면 새 메시지를 따라간다
+  // 함수역할:
+  // - 최신 대화를 보는 상태에서는 새 메시지 도착 후에도 최신 위치를 유지하고 새 본문을 표시하며 해당 메시지를 읽음 처리하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('최신 대화를 보고 있으면 새 메시지를 따라간다', (tester) async {
     final flow = _ChatFlow()
       ..history = List.generate(35, (i) => _message(i + 1));
@@ -362,9 +412,15 @@ void main() {
   });
 }
 
-// 함수이름: _message
-// 함수역할: 개인정보 없는 채팅 메시지 응답을 만든다.
-// 매개변수: id 메시지 번호, sender 발신자. 반환값: API 형식 메시지.
+// Function Name: _message
+// Description:
+// - Create a non-sensitive wire message with explicit sender and conversation identity.
+// Parameters:
+// - id (int): message number and suffix used for body/client ID.
+// - sender (String): sender account, default patient-a.
+// - linkId (int): conversation scope, default 17.
+// Returns:
+// - Map<String, dynamic>; complete message payload at the fixed test timestamp.
 Map<String, dynamic> _message(
   int id, {
   String sender = 'patient-a',
@@ -378,9 +434,19 @@ Map<String, dynamic> _message(
   'created_at': '2026-09-24T03:00:00Z',
 };
 
-// 클래스명: _ChatFlow
-// 역할: 실제 채팅 UI·Control에 격리된 HTTP 응답과 실시간 이벤트를 연결한다.
-// 주요 책임: 읽음 요청을 기록하고 다음 이력 응답의 지연을 제어한다.
+// Class Name: _ChatFlow
+// Role: Connects real chat UI/control to controlled HTTP and realtime boundaries.
+// Responsibilities:
+// - Record history, send, and read operations while independently delaying the next history or send response.
+// Attributes:
+// - userHash (String), linkId (int): constructor-selected adapter scope.
+// - navigator (GlobalKey<NavigatorState>): controls covering routes in the test app.
+// - readRequests (List<int>): acknowledged message boundaries.
+// - historyRequests, sendRequests (int): request counters.
+// - history (List<Map<String, dynamic>>): default server history.
+// - nextHistory (Completer<List<Map<String, dynamic>>>?), nextSend (Completer<Map<String, dynamic>>?): one-shot response gates.
+// - client (MockClient), authentication (AuthenticatedApiClient): owned HTTP boundaries.
+// - control (ManageLinkedChat), realtime (_Realtime): conversation adapters.
 class _ChatFlow {
   final String userHash;
   final int linkId;
@@ -397,8 +463,13 @@ class _ChatFlow {
   late final _Realtime realtime;
 
   // Function Name: _ChatFlow
-  // Description: Connects history/read/context APIs without external network access.
-  // Parameters: userHash/linkId: Authenticated conversation scope. Returns: An isolated chat flow.
+  // Description:
+  // - Create the HTTP, authentication, and realtime adapters for the requested conversation scope.
+  // Parameters:
+  // - userHash (String): active account, default patient-a.
+  // - linkId (int): adapter conversation ID, default 17.
+  // Returns:
+  // - _ChatFlow; isolated request logs, no visible screen yet.
   _ChatFlow({this.userHash = 'patient-a', this.linkId = 17}) {
     client = MockClient(_respond);
     authentication = AuthenticatedApiClient(
@@ -412,8 +483,12 @@ class _ChatFlow {
   }
 
   // Function Name: _respond
-  // Description: Records history/read/send requests and independently gates selected completions.
-  // Parameters: request: Authenticated control request. Returns: Synthetic server response or gated failure.
+  // Description:
+  // - Consume the next optional send/history gate, record relevant requests, and return successful JSON; unmatched endpoints return empty data.
+  // Parameters:
+  // - request (http.Request): intercepted messages/read/context request.
+  // Returns:
+  // - Future<http.Response>; JSON 200 response; gated errors or malformed request bodies propagate.
   Future<http.Response> _respond(http.Request request) async {
     Object data = <Object>[];
     if (request.url.path.endsWith('/messages') && request.method == 'POST') {
@@ -440,8 +515,12 @@ class _ChatFlow {
   }
 
   // 함수이름: open
-  // 함수역할: 실제 채팅 화면을 띄워 초기 요청과 화면 배치를 완료한다.
-  // 매개변수: tester 화면 시험 도구. 반환값: 준비 완료 Future.
+  // 함수역할:
+  // - 앱을 전경으로 복원하고 기본 환자 patient-a·연동 17 화면에 이 fixture의 어댑터를 연결하여 초기 배치를 완료한다.
+  // 매개변수:
+  // - tester (WidgetTester): 앱 수명주기와 화면 표시를 제어한다.
+  // 반환값:
+  // - Future<void>; 초기 화면이 안정되면 완료한다.
   Future<void> open(WidgetTester tester) async {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpWidget(
@@ -461,8 +540,12 @@ class _ChatFlow {
   }
 
   // 함수이름: close
-  // 함수역할: 화면·타이머·통신 대역을 닫고 앱 수명주기 상태를 복원한다.
-  // 매개변수: tester 화면 시험 도구. 반환값: 정리 완료 Future.
+  // 함수역할:
+  // - 중지된 앱 상태를 전경으로 복원하고 화면·실시간 대역·컨트롤·인증 클라이언트를 순서대로 정리한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 제거와 수명주기 상태 복원을 수행한다.
+  // 반환값:
+  // - Future<void>; 대역을 해제하고 전경 상태로 돌아오면 완료한다.
   Future<void> close(WidgetTester tester) async {
     if (tester.binding.lifecycleState == AppLifecycleState.paused) {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
@@ -478,42 +561,70 @@ class _ChatFlow {
   }
 }
 
-// 클래스명: _Realtime
-// 역할: 실제 소켓 없이 메시지와 연결 이벤트를 제공한다.
-// 주요 책임: 이력 응답과 별도 순서로 실시간 이벤트를 주입한다.
+// Class Name: _Realtime
+// Role: Realtime subclass with a test-controlled message stream and no socket startup.
+// Responsibilities:
+// - Inject message/read events independently from HTTP completions while retaining inherited cleanup.
+// Attributes:
+// - _events (StreamController<Map<String, dynamic>>): owned broadcast event source.
 class _Realtime extends LinkedChatRealtimeService {
   final _events = StreamController<Map<String, dynamic>>.broadcast();
   // Function Name: _Realtime
-  // Description: Initializes a scoped, socket-free realtime adapter.
-  // Parameters: client: Authentication boundary; linkId/userHash: Conversation scope.
-  // Returns: A deterministic realtime adapter.
+  // Description:
+  // - Bind the realtime adapter to the supplied authentication client and conversation scope.
+  // Parameters:
+  // - client (AuthenticatedApiClient): authentication boundary passed to the base service.
+  // - linkId (int): conversation ID, default 17.
+  // - userHash (String): account identity, default patient-a.
+  // Returns:
+  // - _Realtime; events are manually driven, with start/stop overridden as no-ops.
   _Realtime(
     AuthenticatedApiClient client, {
     super.linkId = 17,
     super.userHash = 'patient-a',
   }) : super(authenticationClient: client);
   // 함수이름: events
-  // 함수역할: 시험이 제어하는 이벤트 스트림을 제공한다.
-  // 매개변수: 없음. 반환값: 메시지 이벤트 스트림.
+  // 함수역할:
+  // - 테스트가 제어하는 메시지 이벤트 스트림을 노출한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Stream<Map<String, dynamic>>; fixture가 소유하는 브로드캐스트 스트림.
   @override
   Stream<Map<String, dynamic>> get events => _events.stream;
   // 함수이름: emit
-  // 함수역할: 메시지 또는 읽음 이벤트를 화면에 전달한다.
-  // 매개변수: event 전달할 응답. 반환값: 없음.
+  // 함수역할:
+  // - 지정한 메시지·읽음 이벤트를 가짜 실시간 스트림에 추가한다.
+  // 매개변수:
+  // - event (Map<String, dynamic>): 화면에 전달할 서버 이벤트 payload.
+  // 반환값:
+  // - void; 반환값 없음.
   void emit(Map<String, dynamic> event) => _events.add(event);
   // 함수이름: start
-  // 함수역할: 실제 연결 없이 시작 요청을 완료한다.
-  // 매개변수: 없음. 반환값: 완료 Future.
+  // 함수역할:
+  // - 소켓이나 타이머를 만들지 않고 시작 호출을 완료한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 즉시 완료한다.
   @override
   Future<void> start() async {}
   // 함수이름: stop
-  // 함수역할: 실제 연결 없이 중지 요청을 완료한다.
-  // 매개변수: 없음. 반환값: 완료 Future.
+  // 함수역할:
+  // - 소켓 상태를 변경하지 않고 중지 호출을 완료한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 즉시 완료한다.
   @override
   Future<void> stop() async {}
   // 함수이름: dispose
-  // 함수역할: 시험 이벤트 스트림과 상위 서비스 자원을 정리한다.
-  // 매개변수: 없음. 반환값: 정리 완료 Future.
+  // 함수역할:
+  // - 가짜 이벤트 스트림을 닫고 상위 실시간 서비스 자원도 정리한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 스트림과 상위 서비스 해제 후 완료한다.
   @override
   Future<void> dispose() async {
     await _events.close();

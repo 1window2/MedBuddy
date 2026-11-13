@@ -9,19 +9,22 @@ import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 
-// 파일명: DoseWidgetLayout.kt
-// 역할: 런처가 배정한 높이에 따라 동일한 위젯 정보와 버튼을 배치한다.
-// 클래스명: DoseWidgetLayout
-// 주요 책임: 최소 크기에서도 48dp 조작 영역을 유지하고 크기별 표시 밀도를 선택한다.
+// File Name: DoseWidgetLayout.kt
+// Role: Fits the same widget state and actions to the launcher's allocated height.
+// Class Name: DoseWidgetLayout
+// Responsibilities: Select responsive layouts while preserving 48dp primary action targets.
+// Attributes: ROW_LIMIT (Int) separates the single-row and stacked layouts in dp.
 object DoseWidgetLayout {
-    // 함수이름: responsive
-    // 함수역할: Android 12 이상은 높이별 배치를 제공하고 이전 버전은 회전별 크기를 사용한다.
-    //           110dp 미만(1칸 높이)은 시간대·저장 상태·복용 버튼만 둔 한 줄 배치를 쓴다.
-    // 매개변수: context 실행 환경, base 내용과 클릭 동작, row 같은 내용의 한 줄 배치, options 런처 크기,
-    //           known 로그인 여부, overdue 놓친 일정 여부, hasPager 시간대 전환 여부.
-    // 반환값: 런처가 실제 크기에 맞춰 선택할 RemoteViews.
+    // Function Name: responsive
+    // Description: Uses size-keyed layouts on Android 12+ and orientation-specific layouts on older versions.
+    // Parameters: context (Context), base/row (RemoteViews), options (Bundle), known/overdue/hasPager (Boolean).
+    // Returns: RemoteViews; heights below ROW_LIMIT use the single-row layout with state and dose action.
     fun responsive(context: Context, base: RemoteViews, row: RemoteViews, options: Bundle,
         known: Boolean, overdue: Boolean, hasPager: Boolean): RemoteViews {
+        // Function Name: pick
+        // Description: Chooses the single-row or stacked layout for one launcher height.
+        // Parameters: height (Int) is the available height in dp; other state is captured from responsive.
+        // Returns: A resized RemoteViews clone without altering the supplied base views.
         fun pick(height: Int) = if (height < ROW_LIMIT) row(context, row, height, known, overdue)
             else sized(context, base, height, known, overdue, hasPager)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -37,11 +40,10 @@ object DoseWidgetLayout {
     // 1칸 높이 런처(세로 약 109dp, 가로 약 51dp)는 제목 줄과 48dp 버튼을 위아래로 둘 수 없다.
     const val ROW_LIMIT = 110
 
-    // 함수이름: row
-    // 함수역할: 한 줄 배치의 글씨를 글자 배율에 맞춰 줄여 48dp 버튼 높이 안에 두 줄을 넣는다.
-    //           배율 2.0에서도 실제 글씨는 기본 배율의 기본 크기보다 크다.
-    // 매개변수: context 글자 배율, base 한 줄 배치 원본, height 높이(dp), known 로그인 여부,
-    //           overdue 놓친 일정 여부. 반환값: 원본을 변경하지 않은 복사본.
+    // Function Name: row
+    // Description: Fits state and action text inside one row, reducing line count for short or large-font layouts.
+    // Parameters: context (Context), base (RemoteViews), height (Int, dp), known/overdue (Boolean).
+    // Returns: A resized RemoteViews clone; the original view remains unchanged.
     fun row(context: Context, base: RemoteViews, height: Int, known: Boolean, overdue: Boolean): RemoteViews {
         val views = base.clone()
         val scale = context.resources.configuration.fontScale
@@ -58,12 +60,10 @@ object DoseWidgetLayout {
         return views
     }
 
-    // 함수이름: sized
-    // 함수역할: 짧은 위젯은 여백과 상세 줄 수를 줄이고 진행 숫자·저장 상태·버튼을 유지한다.
-    //           4 x 2 가로 화면 높이(약 110dp)에서는 제목 줄에 시간대와 저장 상태만 남긴다.
-    // 매개변수: context 글자 배율과 밀도, base 원본 표시, height 높이(dp),
-    //           known 로그인 여부, overdue 안내 표시 여부, hasPager 시간대 전환 여부.
-    // 반환값: 원본을 변경하지 않은 크기별 표시 복사본.
+    // Function Name: sized
+    // Description: Reduces padding and optional detail at short heights while retaining state and primary actions.
+    // Parameters: context (Context), base (RemoteViews), height (Int, dp), known/overdue/hasPager (Boolean).
+    // Returns: A resized RemoteViews clone. Minimal layouts move time-slot and save state into the heading.
     @Suppress("DEPRECATION")
     fun sized(context: Context, base: RemoteViews, height: Int,
         known: Boolean, overdue: Boolean, hasPager: Boolean): RemoteViews {
@@ -122,10 +122,10 @@ object DoseWidgetLayout {
         return views
     }
 
-    // 함수이름: warning
-    // 함수역할: 본문을 숨긴 낮은 배치에서 놓친 약 안내를 시간대 오른쪽 빈 칸에 표시한다.
-    //           공간이 모자라면(보호자 이름·좁은 폭·큰 글씨) 끝을 말줄임으로 줄인다.
-    // 매개변수: views 대상 배치, scale 글자 배율, shown 놓친 일정 여부, lines 최대 줄 수. 반환값: 없음.
+    // Function Name: warning
+    // Description: Places missed-dose guidance beside the time slot when the main body is hidden.
+    // Parameters: views (RemoteViews), scale (Float), shown (Boolean), lines (Int) control visibility and fit.
+    // Returns: Unit. Updates the supplied view and permits ellipsis when available width is insufficient.
     private fun warning(views: RemoteViews, scale: Float, shown: Boolean, lines: Int) {
         views.setTextViewTextSize(R.id.widget_tiny_warning, TypedValue.COMPLEX_UNIT_SP,
             if (scale > 1.6f) 7f else if (scale > 1.15f) 9f else 11f)

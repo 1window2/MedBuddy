@@ -2,9 +2,9 @@
 // 역할: 처방전 촬영 가이드의 거리 판정 결과를 표현한다.
 
 // 클래스명: PrescriptionCameraGuideStatus
-// 역할: 문서 미탐색·너무 멂·정렬됨·너무 가까움 촬영 상태를 구분한다.
-// 주요 책임:
-// - 카메라 안내 화면이 문서 점유율에 맞는 거리 조정 안내를 선택하게 한다.
+// 역할: 문서 탐색 및 촬영 거리 상태를 구분한다.
+// 주요 책임: 문서 점유율 판정에 맞는 촬영 안내를 선택하게 한다.
+// 속성: searching/tooFar/aligned/tooClose: 탐색 중·너무 멂·정렬됨·너무 가까움.
 enum PrescriptionCameraGuideStatus { searching, tooFar, aligned, tooClose }
 
 // 클래스명: PrescriptionCameraGuideResult

@@ -4,9 +4,10 @@
 
 import sys
 import unittest
+from contextlib import AbstractContextManager
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
@@ -271,7 +272,7 @@ class SetNotificationTest(unittest.TestCase):
     # - None.
     # Returns:
     # - Patcher for SetNotification._find_setting on the control under test.
-    def _miss_first_lookup(self):
+    def _miss_first_lookup(self) -> AbstractContextManager[MagicMock]:
         find_setting = self.control._find_setting
         lookups: list[tuple[str, str]] = []
 

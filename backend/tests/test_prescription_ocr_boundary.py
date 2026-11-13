@@ -62,6 +62,8 @@ class _RecordingPrescriptionTextClient:
 # Role: Slow prescription text client double used to force boundary timeouts.
 # Responsibilities:
 # - Delays an empty JSON response so a short text-analysis deadline expires.
+# Attributes:
+# - None.
 class _SlowPrescriptionTextClient:
     # Function Name: generate_text_content
     # Description:

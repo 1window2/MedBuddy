@@ -1,4 +1,5 @@
-// 병원 모드가 공통 지도·목록 동작과 별도 진료과·즐겨찾기를 유지하는지 검증한다.
+// 파일명: check_nearby_hospital_ui_boundary_test.dart
+// 역할: 병원 모드가 공통 지도·목록 동작과 별도 진료과·즐겨찾기를 유지하는지 검증한다.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -14,6 +15,17 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/pharmacy_favorite_service.dart';
 import 'package:medbuddy_frontend/widgets/medbuddy_search_field.dart';
 
+// Class Name: _HospitalControl
+// Role: Hospital search double with configurable results and recorded user actions.
+// Responsibilities:
+// - Record search conditions and simulate delayed, empty, partial, or failed responses without network access.
+// Attributes:
+// - requests (List<record>): department, mode, requested area, and resolved time for each search.
+// - calls, directions (List<String>): dialed numbers and destination place IDs.
+// - fail, empty, truncated, regionScopeUncertain, radiusExpanded (bool): response and coverage switches.
+// - initialArea (NearbyCareSearchArea): default fallback search area when none is supplied.
+// - holidayStatus (String): calendar status controlling whether opening status is known.
+// - responseGate (Completer<void>?): optional barrier holding a search response.
 class _HospitalControl extends CheckNearbyHospital {
   final requests =
       <
@@ -39,7 +51,16 @@ class _HospitalControl extends CheckNearbyHospital {
   String holidayStatus = 'stale_fallback';
   Completer<void>? responseGate;
 
-  // 네트워크 없이 조회 조건과 지도 지역을 기록한다.
+  // Function Name: requestNearbyCareSearch
+  // Description:
+  // - Record the request, wait for the optional gate, then return the configured hospital fixture; fail raises StateError.
+  // Parameters:
+  // - searchMode (NearbyCareSearchMode): result mode, defaulting to openAtTime.
+  // - targetDateTime (DateTime?): searched time; null resolves to the current time.
+  // - maxDistanceKm (double): accepted interface argument, unused by this double.
+  // - searchArea (NearbyCareSearchArea?): explicit area or initialArea when omitted.
+  // Returns:
+  // - Future<NearbyCareSearchResult>; empty or single-hospital results with configured coverage/calendar flags.
   @override
   Future<NearbyCareSearchResult> requestNearbyCareSearch({
     NearbyCareSearchMode searchMode = NearbyCareSearchMode.openAtTime,
@@ -89,13 +110,26 @@ class _HospitalControl extends CheckNearbyHospital {
     );
   }
 
-  // 전화·길찾기는 실제 앱을 열지 않고 선택 대상을 기록한다.
+  // 함수이름: requestPhoneCall
+  // 함수역할:
+  // - 전화번호를 기록하고 실제 전화 앱을 실행하지 않는다.
+  // 매개변수:
+  // - telephone (String): 호출 기록에 추가할 번호.
+  // 반환값:
+  // - Future<bool>; 항상 true로 완료한다.
   @override
   Future<bool> requestPhoneCall(String telephone) async {
     calls.add(telephone);
     return true;
   }
 
+  // Function Name: requestInstalledMapDirections
+  // Description:
+  // - Record the destination without launching a map application.
+  // Parameters:
+  // - pharmacy (NearbyCarePlace): hospital destination whose placeId is recorded.
+  // Returns:
+  // - Future<bool>; resolves to true.
   @override
   Future<bool> requestInstalledMapDirections(NearbyCarePlace pharmacy) async {
     directions.add(pharmacy.placeId);
@@ -103,13 +137,37 @@ class _HospitalControl extends CheckNearbyHospital {
   }
 }
 
+// Class Name: _MapProbe
+// Role: Lightweight map replacement exposing search and selection interactions.
+// Responsibilities:
+// - Capture the latest map callbacks and render selectable hospital markers.
+// Attributes:
+// - search (Future<bool> Function(NearbyCareSearchArea)): latest area-search callback.
+// - locate (VoidCallback): latest current-location callback.
+// - selected (String?): selected place ID from the most recent build.
+// - area (NearbyCareSearchArea?): most recently rendered search area.
 class _MapProbe {
   late Future<bool> Function(NearbyCareSearchArea) search;
   late VoidCallback locate;
   String? selected;
   NearbyCareSearchArea? area;
 
-  // 지도 계약은 그대로 두고 결과 이름과 선택 콜백만 표시한다.
+  // Function Name: build
+  // Description:
+  // - Capture map state and callbacks, then render status text and buttons that select the supplied hospitals.
+  // Parameters:
+  // - searchArea (NearbyCareSearchArea): area retained for assertions.
+  // - centerRevision (int), isSearching (bool): accepted map state, unused by this probe.
+  // - onSearchAreaRequested (Future<bool> Function(NearbyCareSearchArea)): callback exposed as search.
+  // - onCurrentLocationRequested (VoidCallback): callback exposed as locate.
+  // - pharmacies (List<NearbyCarePlace>): places rendered as keyed marker buttons.
+  // - selectedPharmacyId (String?): selection retained for assertions.
+  // - onPharmacySelected (ValueChanged<NearbyCarePlace>): invoked when a marker is tapped.
+  // - onAttributionRequested (VoidCallback): accepted attribution action, not rendered.
+  // - statusText (String?): optional two-line status label.
+  // - selectMarkerHint, zoomInTooltip, zoomOutTooltip, configurationUnavailableText, unavailableText (String): interface labels unused by this replacement.
+  // Returns:
+  // - Widget; a scrollable white map substitute with stable keys.
   Widget build({
     required NearbyCareSearchArea searchArea,
     required int centerRevision,
@@ -153,7 +211,20 @@ class _MapProbe {
   }
 }
 
-// 화면 크기·언어·글씨 배율을 명시해 병원 화면을 연다.
+// 함수이름: _pumpHospital
+// 함수역할:
+// - 720px 높이의 병원 화면에 가짜 검색·지도를 연결하고, 필요하면 전체 진료과를 선택한다. 종료 시 화면 크기를 복원하고 컨트롤을 해제한다.
+// 매개변수:
+// - tester (WidgetTester): 화면을 렌더링하고 비동기 표시를 기다리는 도구.
+// - control (_HospitalControl), map (_MapProbe): 검색 응답과 지도 입력을 제어할 대역.
+// - width (double): 화면 너비, 기본 360.
+// - scale (double): 텍스트 배율, 기본 1.
+// - language (String): 사용자 언어, 기본 ko.
+// - selection (bool): 채팅 공유용 선택 화면 여부, 기본 false.
+// - chooseDepartment (bool): 초기 전체 진료과 선택 여부, 기본 true.
+// - clock (DateTime Function()?): 검색 시각 주입 함수; null이면 화면 기본 시계를 사용한다.
+// 반환값:
+// - Future<void>; 초기 화면과 선택에 따른 표시가 안정되면 완료한다.
 Future<void> _pumpHospital(
   WidgetTester tester,
   _HospitalControl control,
@@ -199,7 +270,15 @@ Future<void> _pumpHospital(
   }
 }
 
-// 운영 조건 선택창에서 스크롤이 필요한 항목도 선택한다.
+// 함수이름: _chooseFilter
+// 함수역할:
+// - 운영 조건 선택창에서 지정한 항목을 찾아 적용하고 변경된 결과를 기다린다.
+// 매개변수:
+// - tester (WidgetTester): 탭·스크롤 및 화면 대기를 수행한다.
+// - value (String): operating-filter 옵션 키의 값.
+// - map (bool): true는 지도, false는 목록의 선택창을 연다.
+// 반환값:
+// - Future<void>; 조건 적용 후 화면이 안정되면 완료한다.
 Future<void> _chooseFilter(
   WidgetTester tester,
   String value, {
@@ -225,7 +304,14 @@ Future<void> _chooseFilter(
   await tester.pumpAndSettle();
 }
 
-// 진료과목 선택창에서 공식 코드를 선택한다.
+// 함수이름: _chooseDepartment
+// 함수역할:
+// - 지도에서 진료과 선택창을 열고 지정한 공식 코드 항목을 선택한다.
+// 매개변수:
+// - tester (WidgetTester): 선택창과 항목에 입력을 전달한다.
+// - code (String): 진료과 코드; 빈 문자열은 전체 진료과를 뜻한다.
+// 반환값:
+// - Future<void>; 진료과 선택에 따른 화면 갱신 후 완료한다.
 Future<void> _chooseDepartment(WidgetTester tester, String code) async {
   await tester.tap(find.byKey(const Key('hospital-map-department-selector')));
   await tester.pumpAndSettle();
@@ -236,7 +322,14 @@ Future<void> _chooseDepartment(WidgetTester tester, String code) async {
   await tester.pumpAndSettle();
 }
 
-// 진료과는 왼쪽, 운영 조건은 오른쪽이며 텍스트가 버튼 밖으로 나가지 않는다.
+// 함수이름: _expectFilterLayout
+// 함수역할:
+// - 진료과와 운영 조건 버튼이 같은 행에 좌우로 배치되고 텍스트가 잘리거나 넘치지 않는지 검증한다.
+// 매개변수:
+// - tester (WidgetTester): 버튼·텍스트의 위치와 렌더링 예외를 읽는다.
+// - map (bool): true는 지도, false는 목록의 필터 행을 검사한다.
+// 반환값:
+// - void; 배치·텍스트 범위 또는 렌더링 예외가 기대와 다르면 검증이 실패한다.
 void _expectFilterLayout(WidgetTester tester, {bool map = true}) {
   final left = find.byKey(
     Key(
@@ -264,9 +357,22 @@ void _expectFilterLayout(WidgetTester tester, {bool map = true}) {
   expect(tester.takeException(), isNull);
 }
 
-// 병원 전용 표시와 약국 기본 경로의 호환성을 검증한다.
+// Function Name: main
+// Description:
+// - Register hospital search boundary tests covering specialty gating, date/filter state, notices, actions, and pharmacy-default compatibility.
+// Parameters:
+// - None.
+// Returns:
+// - void; no return value.
 void main() {
   for (final fail in [false, true]) {
+    // 함수이름: late hospital search is inert after disposal: $fail
+    // 함수역할:
+    // - 화면을 닫은 뒤 지연된 검색이 성공하거나 실패해도 false로 끝나고, 추가 요청이나 해제된 상태 갱신이 발생하지 않는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증이 끝나면 완료한다.
     testWidgets('late hospital search is inert after disposal: $fail', (
       tester,
     ) async {
@@ -287,9 +393,15 @@ void main() {
     });
   }
 
-  // 일반 검색과 채팅 공유 모두 사용자가 진료과를 고르기 전에는 검색하지 않는다.
   for (final selection in [false, true]) {
     for (final language in ['ko', 'en']) {
+      // Function Name: specialty is chosen before search: $selection/$language
+      // Description:
+      // - In both languages and normal/selection modes at 320px with enlarged text, require an explicit specialty before any search, including resume; verify the initial panel styling and first request.
+      // Parameters:
+      // - tester (WidgetTester): renders widgets, performs gestures, and inspects the resulting UI.
+      // Returns:
+      // - Future<void>; completes after the asynchronous checks.
       testWidgets('specialty is chosen before search: $selection/$language', (
         tester,
       ) async {
@@ -366,8 +478,14 @@ void main() {
     }
   }
 
-  // 전체 선택도 취소나 미선택과 구분하여 첫 요청을 한 번만 만든다.
   for (final language in ['ko', 'en']) {
+    // 함수이름: 증상 검색은 선택 전 조회하지 않고 초기화 가능: $language
+    // 함수역할:
+    // - 한국어·영어 증상 검색이 추천 진료과와 빈 결과를 구분하고, 검색·초기화만으로는 요청하지 않으며 진료과를 선택할 때 검색하는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증이 끝나면 완료한다.
     testWidgets('증상 검색은 선택 전 조회하지 않고 초기화 가능: $language', (tester) async {
       final control = _HospitalControl();
       await _pumpHospital(
@@ -417,6 +535,13 @@ void main() {
     });
   }
 
+  // 함수이름: all departments requires an explicit first selection
+  // 함수역할:
+  // - 전체 진료과도 명시적으로 선택해야 첫 검색을 보내고, 선택창을 다시 열었다 닫으면 요청을 늘리지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets('all departments requires an explicit first selection', (
     tester,
   ) async {
@@ -435,7 +560,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 처음 선택하지 않고 화면을 종료하면 뒤늦은 조회도 발생하지 않는다.
+  // 함수이름: leaving before specialty selection never searches
+  // 함수역할:
+  // - 진료과 선택 전에 화면을 떠나면 시간이 지나도 초기 검색이나 지연 요청이 발생하지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets('leaving before specialty selection never searches', (
     tester,
   ) async {
@@ -448,7 +579,13 @@ void main() {
   });
 
   for (final language in ['ko', 'en']) {
-    // 날짜·상태를 고르는 동안 조회하지 않고, 취소와 적용을 구분하며 지도 높이를 유지한다.
+    // Function Name: hospital date and status apply together in $language
+    // Description:
+    // - At a fixed evening time in both languages, stage date and operating mode together: cancel discards changes, apply searches at noon, and open-now restores the current date/time without shrinking the map.
+    // Parameters:
+    // - tester (WidgetTester): renders widgets, performs gestures, and inspects the resulting UI.
+    // Returns:
+    // - Future<void>; completes after the asynchronous checks.
     testWidgets('hospital date and status apply together in $language', (
       tester,
     ) async {
@@ -532,7 +669,13 @@ void main() {
     ('ko', 'ㅎ', 'D007'),
     ('en', 'T', 'D007'),
   ]) {
-    // 초성 이동은 조회하지 않으며 과목 선택 후에만 기존 검색 지역을 유지해 재조회한다.
+    // 함수이름: specialty index jumps and selects $language/$initial
+    // 함수역할:
+    // - 진료과 초성 이동은 검색하지 않고 선택한 코드만 영역을 유지해 재검색하며, 같은 코드 재선택과 전체 진료과 선택을 구분하는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증이 끝나면 완료한다.
     testWidgets('specialty index jumps and selects $language/$initial', (
       tester,
     ) async {
@@ -567,7 +710,13 @@ void main() {
     });
   }
 
-  // 좁은 화면의 큰 글씨에서도 목록과 초성 영역이 분리되고 취소 시 조회 조건이 유지된다.
+  // 함수이름: large specialty text stays outside the index rail
+  // 함수역할:
+  // - 320px·2배 글자에서 진료과 목록과 초성 색인이 겹치지 않고 초성 이동 후 항목을 누를 수 있으며, 닫기는 검색 조건을 바꾸지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets('large specialty text stays outside the index rail', (
     tester,
   ) async {
@@ -595,7 +744,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 부분 조회 안내가 떠도 환자 위치로 오인하지 않도록 실제 검색 기준을 유지한다.
+  // Function Name: chat selection keeps fallback area visible with partial results
+  // Description:
+  // - Keep the fallback search-location explanation visible in selection mode with partial results, including after applying the late-hours condition.
+  // Parameters:
+  // - tester (WidgetTester): renders widgets, performs gestures, and inspects the resulting UI.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   testWidgets(
     'chat selection keeps fallback area visible with partial results',
     (tester) async {
@@ -610,6 +765,13 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  // 함수이름: setUp
+  // 함수역할:
+  // - 각 테스트에 병원 검색 안내를 이미 확인한 저장값을 주입하여 최초 안내가 다른 검증을 방해하지 않게 한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - void; 테스트용 SharedPreferences 초기값을 설정한다.
   setUp(
     () => SharedPreferences.setMockInitialValues({
       'medbuddy.hospital_search_guide_v1': true,
@@ -617,7 +779,13 @@ void main() {
   );
 
   for (final language in ['ko', 'en']) {
-    // 안내는 5초 뒤 사라지고 같은 제한 상태의 재조회로 다시 나타나지 않는다.
+    // 함수이름: partial hospital guide hides after five seconds in $language
+    // 함수역할:
+    // - 한국어·영어 부분 결과 안내가 5초 후 사라지고 같은 상태의 재검색·필터 변경으로 재등장하지 않으며, 지도 인스턴스를 유지한 채 높이를 돌려주는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증이 끝나면 완료한다.
     testWidgets(
       'partial hospital guide hides after five seconds in $language',
       (tester) async {
@@ -672,9 +840,14 @@ void main() {
     );
   }
 
-  // 하단 부분 조회 안내가 위치 실패나 채팅 공유의 검색 기준을 숨기지 않는다.
   for (final expanded in [true, false]) {
-    // 넓은 반경 자체가 아니라 Control이 알린 자동 확대만 안내하고 지도를 다시 맞춘다.
+    // Function Name: automatic radius expansion notice follows the control: $expanded
+    // Description:
+    // - Show the automatic-expansion notice only when the result marks radiusExpanded, even when both fixtures use the same 1km radius.
+    // Parameters:
+    // - tester (WidgetTester): renders widgets, performs gestures, and inspects the resulting UI.
+    // Returns:
+    // - Future<void>; completes after the asynchronous checks.
     testWidgets('automatic radius expansion notice follows the control: '
         '$expanded', (tester) async {
       final control = _HospitalControl()
@@ -692,6 +865,13 @@ void main() {
     });
   }
 
+  // 함수이름: fallback area survives transient partial hospital guide
+  // 함수역할:
+  // - 부분 결과 안내가 만료되어도 선택 화면의 홍익대학교 기준 위치와 위치 확인 실패 설명은 남는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets('fallback area survives transient partial hospital guide', (
     tester,
   ) async {
@@ -704,7 +884,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 안내 표시 중 재조회가 실패해도 오류는 시간 제한 없이 남아 있어야 한다.
+  // 함수이름: search failure replaces the partial hospital guide
+  // 함수역할:
+  // - 부분 결과 뒤 검색이 실패하면 일시 안내 대신 재검색 오류가 표시되고 기존 안내 만료 시간이 지나도 오류가 유지되는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets('search failure replaces the partial hospital guide', (
     tester,
   ) async {
@@ -719,7 +905,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 완료 결과에서는 숨기고 다시 부분 결과가 되면 표시한다.
+  // 함수이름: complete results clear and partial results restore the guide
+  // 함수역할:
+  // - 완전한 검색 결과는 부분 결과 안내를 즉시 지우고, 다시 부분 결과가 오면 새 안내를 표시한 뒤 5초 후 숨기는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets('complete results clear and partial results restore the guide', (
     tester,
   ) async {
@@ -741,7 +933,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 안내 중 화면을 닫아도 종료된 화면을 뒤늦게 갱신하지 않는다.
+  // 함수이름: closing hospital screen does not update disposed state
+  // 함수역할:
+  // - 부분 결과 안내 타이머가 살아 있는 상태로 화면을 닫아도 만료 시 해제된 위젯을 갱신하지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets('closing hospital screen does not update disposed state', (
     tester,
   ) async {
@@ -755,7 +953,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 확인한 최초 안내는 재진입 시 반복하지 않고, 경고는 그와 독립적으로 남긴다.
+  // 함수이름: first hospital notice is acknowledged once per device
+  // 함수역할:
+  // - 최초 병원 안내 확인을 기기에 저장하여 화면을 다시 열어도 같은 안내를 표시하지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets('first hospital notice is acknowledged once per device', (
     tester,
   ) async {
@@ -771,6 +975,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: partial warning has no misleading dismiss button
+  // 함수역할:
+  // - 부분 결과 경고에는 최초 안내용 확인 버튼을 붙이지 않고 5초 후 자동으로 숨기는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets('partial warning has no misleading dismiss button', (
     tester,
   ) async {
@@ -786,9 +997,14 @@ void main() {
     expect(find.byKey(const Key('hospital-search-notice')), findsNothing);
   });
 
-  // 반경 안내는 실제 검색한 3km부터 잠깐 표시하며 작은 반경에서도 부분 조회가 우선한다.
   for (final language in ['ko', 'en']) {
-    // 병원이 없는 지역의 첫 안내가 범위를 더 좁히라는 잘못된 방향을 제시하지 않는다.
+    // Function Name: empty rural introduction does not ask to narrow in $language
+    // Description:
+    // - For empty rural results with uncertain regional coverage, show the general data-quality introduction in each language without incorrectly asking for a smaller area.
+    // Parameters:
+    // - tester (WidgetTester): renders widgets, performs gestures, and inspects the resulting UI.
+    // Returns:
+    // - Future<void>; completes after the asynchronous checks.
     testWidgets(
       'empty rural introduction does not ask to narrow in $language',
       (tester) async {
@@ -817,7 +1033,13 @@ void main() {
       },
     );
 
-    // 최초 안내가 긴 언어에서도 확인 버튼과 지도·목록을 가리지 않는다.
+    // 함수이름: first guide fits narrow large-text screen in $language
+    // 함수역할:
+    // - 320px·1.6배 글자의 한국어·영어 화면에서도 최초 안내가 지도와 목록 전환 버튼을 밀어내지 않고 확인 버튼으로 닫히는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증이 끝나면 완료한다.
     testWidgets('first guide fits narrow large-text screen in $language', (
       tester,
     ) async {
@@ -844,6 +1066,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // 함수이름: wide area notice follows searched radius in $language
+    // 함수역할:
+    // - 한국어·영어로 반경 2.9→3→10→1km를 검색할 때 넓은 영역 안내는 3km 진입에서만 잠시 표시하고, 이후 부분 결과 안내는 목록 전환에도 유지하는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증이 끝나면 완료한다.
     testWidgets('wide area notice follows searched radius in $language', (
       tester,
     ) async {
@@ -884,6 +1113,13 @@ void main() {
   }
 
   for (final language in ['ko', 'en']) {
+    // Function Name: hospital filters stay left/right at 320px in $language
+    // Description:
+    // - Keep specialty and operating filters aligned left/right at 320px with enlarged Korean and English text, before and after holiday-mode selection and in list view.
+    // Parameters:
+    // - tester (WidgetTester): renders widgets, performs gestures, and inspects the resulting UI.
+    // Returns:
+    // - Future<void>; completes after the asynchronous checks.
     testWidgets('hospital filters stay left/right at 320px in $language', (
       tester,
     ) async {
@@ -906,6 +1142,13 @@ void main() {
     });
   }
 
+  // Function Name: specialty and operating filters preserve map and chosen date
+  // Description:
+  // - Changing specialty preserves the map instance, searched area, and selected noon date; selecting all clears the specialty and open-now removes the separate date display.
+  // Parameters:
+  // - tester (WidgetTester): renders widgets, performs gestures, and inspects the resulting UI.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   testWidgets('specialty and operating filters preserve map and chosen date', (
     tester,
   ) async {
@@ -958,8 +1201,14 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 상세창은 이름을 한 번만 표시하고 공유 버튼을 전화·길찾기에 이어 배치한다.
   for (final scale in [1.0, 1.8]) {
+    // 함수이름: hospital share action follows directions at scale $scale
+    // 함수역할:
+    // - 각 글자 배율에서 병원 선택 상세의 채팅 공유 버튼이 길찾기 바로 아래 8px 간격과 같은 오른쪽 정렬을 유지하며 눌릴 수 있는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증이 끝나면 완료한다.
     testWidgets('hospital share action follows directions at scale $scale', (
       tester,
     ) async {
@@ -991,6 +1240,13 @@ void main() {
     });
   }
 
+  // 함수이름: hospital list and details reuse phone directions and separate favorites
+  // 함수역할:
+  // - 병원 목록·상세가 진료과와 전화·길찾기를 연결하고, 병원 즐겨찾기를 약국과 분리하며 약국 전용 표시는 노출하지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets(
     'hospital list and details reuse phone directions and separate favorites',
     (tester) async {
@@ -1042,6 +1298,13 @@ void main() {
     },
   );
 
+  // 함수이름: hospital source notice excludes pharmacy designation and roster claims
+  // 함수역할:
+  // - The hospital source notice names hospital public data without claiming pharmacy late-night designation or emergency-roster coverage.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets(
     'hospital source notice excludes pharmacy designation and roster claims',
     (tester) async {
@@ -1067,7 +1330,13 @@ void main() {
   );
 
   for (final language in ['ko', 'en']) {
-    // 실패해도 날짜와 조건을 바꿔 바로 정상 결과로 복구할 수 있다.
+    // Function Name: holiday search failure keeps controls in $language
+    // Description:
+    // - After a failed holiday search in either language, retain usable list filters and the date picker, then recover a hospital card by applying all-results mode.
+    // Parameters:
+    // - tester (WidgetTester): renders widgets, performs gestures, and inspects the resulting UI.
+    // Returns:
+    // - Future<void>; completes after the asynchronous checks.
     testWidgets('holiday search failure keeps controls in $language', (
       tester,
     ) async {
@@ -1114,7 +1383,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    // 평일은 날짜 선택을 안내하고, 평일인 대체공휴일의 결과도 정상 표시한다.
+    // Function Name: weekday holiday filter leads to date selection in $language
+    // Description:
+    // - On a non-holiday weekday, guide both languages toward changing the date; applying October 5 removes the prompt while waiting and searches holiday mode at noon.
+    // Parameters:
+    // - tester (WidgetTester): renders widgets, performs gestures, and inspects the resulting UI.
+    // Returns:
+    // - Future<void>; completes after the asynchronous checks.
     testWidgets('weekday holiday filter leads to date selection in $language', (
       tester,
     ) async {
@@ -1170,6 +1445,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // 함수이름: hospital empty and error messages use $language hospital wording
+    // 함수역할:
+    // - 한국어·영어에서 빈 병원 결과와 검색 실패가 지도·목록 모두 병원 용어를 쓰고 약국 문구를 섞지 않는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증이 끝나면 완료한다.
     testWidgets(
       'hospital empty and error messages use $language hospital wording',
       (tester) async {
@@ -1218,7 +1500,13 @@ void main() {
   }
 
   for (final language in ['ko', 'en']) {
-    // 한 건을 정상 조회한 경우 주소 표본만으로 지도 아래 경고를 만들지 않는다.
+    // 함수이름: sampled region does not add a limit banner in $language
+    // 함수역할:
+    // - 지역 범위 추정만 불확실한 정상 결과에는 별도 제한 배너를 띄우지 않고, 목록 출처 설명에서 주소 기반 검색임을 알리는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증이 끝나면 완료한다.
     testWidgets('sampled region does not add a limit banner in $language', (
       tester,
     ) async {
@@ -1251,7 +1539,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    // 지역이 표본인 빈 결과는 주변에 병원이 없다는 단정 대신 확인한 범위로 한정한다.
+    // 함수이름: sampled empty region is not an exhaustive search in $language
+    // 함수역할:
+    // - 한국어·영어의 추정 지역 빈 결과가 전체 병원이 없다는 결론 대신 조회한 병원 중 일치 항목이 없다고 지도와 목록에 표시하는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증이 끝나면 완료한다.
     testWidgets(
       'sampled empty region is not an exhaustive search in $language',
       (tester) async {
@@ -1273,6 +1567,13 @@ void main() {
     );
   }
 
+  // 함수이름: partial empty hospital results do not claim an exhaustive search
+  // 함수역할:
+  // - 부분 조회의 빈 결과는 안내가 만료된 뒤에도 조회한 병원만 대상으로 표현하고, 전체 진료 중 병원이 없다는 문구를 표시하지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 사용자 입력과 렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets(
     'partial empty hospital results do not claim an exhaustive search',
     (tester) async {
@@ -1297,7 +1598,13 @@ void main() {
   );
 
   for (final language in ['ko', 'en']) {
-    // 달력 장애는 일반 빈 결과 안내로 표시하고, 복구 후에는 정상 진료 결과로 돌아간다.
+    // Function Name: calendar recovery restores results without a setup notice in $language
+    // Description:
+    // - Unknown calendar status shows unverifiable consultation status rather than no-open-hospital or setup prompts; refresh restores open results and preserves map identity and filter layout in both languages.
+    // Parameters:
+    // - tester (WidgetTester): renders widgets, performs gestures, and inspects the resulting UI.
+    // Returns:
+    // - Future<void>; completes after the asynchronous checks.
     testWidgets(
       'calendar recovery restores results without a setup notice in $language',
       (tester) async {
@@ -1370,6 +1677,13 @@ void main() {
     );
   }
 
+  // 함수이름: pharmacy constructors remain the default and selection stays pharmacy-only
+  // 함수역할:
+  // - 기본 생성자와 선택 생성자가 명시적인 병원 옵션 없이는 약국 모드를 유지하고 선택 생성자만 선택 모드를 켜는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - void; 반환값 없음.
   test(
     'pharmacy constructors remain the default and selection stays pharmacy-only',
     () {

@@ -31,6 +31,7 @@ import 'support/fake_notification_service.dart';
 // - Expose the number of OCR rows successfully parsed into schedules.
 // - Expose the number of OCR rows omitted from analysis.
 // Attributes:
+// - schedules (List<MedicationSchedule>): Fixed recognized rows returned after selection.
 // - rawCount (int): Number of medication rows before OCR filtering.
 // - parsedCount (int): Number of OCR medication rows successfully parsed.
 // - skippedCount (int): OCR rows excluded from the recognized schedule result.
@@ -93,6 +94,7 @@ class _FakeInputPrescription extends InputPrescription {
   // Parameters:
   // - onImageSelected (PrescriptionImageSelectedCallback?): Callback announcing that an image has been
   //   selected.
+  // - onProgress (PrescriptionRecognitionProgressCallback?): Accepted but not emitted by this fixed-result fixture.
   // Returns:
   // - The configured schedule list after the optional selection callback.
   @override
@@ -109,6 +111,7 @@ class _FakeInputPrescription extends InputPrescription {
 // Role: OCR fixture whose preview-region lookup fails after the schedules were recognized.
 // Responsibilities:
 // - Leave recognized rows without any medication lookup so the flow can return to the pre-lookup preview.
+// Attributes: Inherits schedules and recognition counters; introduces no additional state.
 class _RegionFailureInputPrescription extends _FakeInputPrescription {
   // Function Name: _RegionFailureInputPrescription
   // Description:
@@ -135,6 +138,7 @@ class _RegionFailureInputPrescription extends _FakeInputPrescription {
 // Role: Medication-detail stub with a designated unresolvable drug name.
 // Responsibilities:
 // - Return no match for missing-tablet and construct details for all other recognized names.
+// Attributes: No additional fixture state; the outcome depends only on the requested name.
 class _FakeCheckMedicationDetail extends CheckMedicationDetail {
   // Function Name: requestMedicationDetail
   // Description:
@@ -159,9 +163,20 @@ class _FakeCheckMedicationDetail extends CheckMedicationDetail {
   }
 }
 
+// 클래스명: _ProgressCheckMedicationDetail
+// 역할: 약명별 조회 완료 시점을 수동 제어한다.
+// 주요 책임: 성공·실패·취소 응답 순서를 재현할 완료 제어기를 노출한다.
+// 속성: pending은 약명에 대응하는 Completer이며 같은 이름의 새 호출은 이전 항목을 교체한다.
 class _ProgressCheckMedicationDetail extends CheckMedicationDetail {
   final pending = <String, Completer<MedicationDetail?>>{};
 
+  // 함수이름: requestMedicationDetail
+  // 함수역할:
+  // - 약명별 새 완료 제어기를 등록하고 테스트가 응답할 때까지 조회를 보류한다.
+  // 매개변수:
+  // - schedule(MedicationSchedule): 응답을 구분할 약명.
+  // 반환값:
+  // - Future<MedicationDetail?>: pending의 완료 값 또는 주입 오류.
   @override
   Future<MedicationDetail?> requestMedicationDetail(
     MedicationSchedule schedule,
@@ -173,6 +188,7 @@ class _ProgressCheckMedicationDetail extends CheckMedicationDetail {
 // 역할: OCR 수정 약명이 실제 상세조회 요청에 전달되는지 기록한다.
 // 주요 책임:
 // - 상세조회에 전달된 수정 일정을 기록하고 해당 약명의 상세정보를 제공한다.
+// 속성: requestedSchedule은 가장 최근 상세조회에 전달된 일정이다.
 class _CapturingCheckMedicationDetail extends CheckMedicationDetail {
   MedicationSchedule? requestedSchedule;
 
@@ -201,6 +217,7 @@ class _CapturingCheckMedicationDetail extends CheckMedicationDetail {
 // Role: Prescription-input stub whose OCR result is released explicitly by the test.
 // Responsibilities:
 // - Signal image selection immediately but defer recognized schedules until the test completes OCR.
+// Attributes: progress retains the latest progress receiver; completer controls the recognized result or error.
 class _DeferredInputPrescription extends InputPrescription {
   PrescriptionRecognitionProgressCallback? progress;
   final Completer<List<MedicationSchedule>?> completer =
@@ -212,8 +229,9 @@ class _DeferredInputPrescription extends InputPrescription {
   // Parameters:
   // - onImageSelected (PrescriptionImageSelectedCallback?): Callback announcing that an image has been
   //   selected.
+  // - onProgress (PrescriptionRecognitionProgressCallback?): Stored for the test to emit recognition stages.
   // Returns:
-  // - The pending recognition completer Future.
+  // - The pending recognition completer Future, including any injected failure.
   @override
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
@@ -249,6 +267,7 @@ class _GalleryPickInputPrescription extends InputPrescription {
   // Description: Waits for the held picker when one is set, signals selection only for a chosen image, and returns null for a cancelled picker.
   // Parameters:
   // - onImageSelected (PrescriptionImageSelectedCallback?): Receiver notified after an image was actually chosen.
+  // - onProgress (PrescriptionRecognitionProgressCallback?): Accepted but not emitted by this picker fixture.
   // Returns: The configured schedules for a chosen image, or null when the pick was cancelled.
   @override
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
@@ -271,6 +290,7 @@ class _GalleryPickInputPrescription extends InputPrescription {
 // Role: Medication-detail stub with controllable response timing for stale-result tests.
 // Responsibilities:
 // - Hold the detail response until the test releases its completion barrier.
+// Attributes: completer supplies the same pending result or error to each request.
 class _DeferredCheckMedicationDetail extends CheckMedicationDetail {
   final Completer<MedicationDetail?> completer = Completer<MedicationDetail?>();
 
@@ -296,6 +316,7 @@ class _DeferredCheckMedicationDetail extends CheckMedicationDetail {
 // - Count save attempts while keeping the first result pending to expose overlapping requests.
 // Attributes:
 // - requestCount (int): Number of intercepted control requests.
+// - completer (Completer<MedicationSaveResult>): Shared result barrier for intercepted save requests.
 class _DeferredCheckSavedMedication extends CheckSavedMedication {
   final Completer<MedicationSaveResult> completer =
       Completer<MedicationSaveResult>();
@@ -467,19 +488,30 @@ class _FakeCheckPrescriptionChange extends CheckPrescriptionChange {
   }
 }
 
-// 함수이름: main
-// 함수역할:
-// - 처방 분석 상태, 부분 재시도, 오래된 응답과 중복 저장 차단 검증 사례와 테스트 대역을 등록한다.
-// 매개변수:
-// - 없음.
-// 반환값:
-// - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
+// 클래스명: _AccountLockedMedicationDetail
+// 역할: 계정별 동시 조회 잠금을 재현한다.
+// 주요 책임: 호출 횟수를 기록하고 겹친 요청 또는 상시 잠금에 재시도 가능한 오류를 반환한다.
+// 속성: calls는 약명별 요청 수, active는 진행 요청 수, alwaysBusy는 상시 잠금 여부.
 class _AccountLockedMedicationDetail extends CheckMedicationDetail {
   final Map<String, int> calls = {};
   int active = 0;
   final bool alwaysBusy;
+  // 함수이름: _AccountLockedMedicationDetail
+  // 함수역할:
+  // - 계정 잠금이 영구적으로 지속될지 설정한다.
+  // 매개변수:
+  // - alwaysBusy(bool): true이면 모든 조회가 잠금 오류; 기본 false.
+  // 반환값:
+  // - 새 _AccountLockedMedicationDetail 인스턴스.
   _AccountLockedMedicationDetail({this.alwaysBusy = false});
 
+  // 함수이름: requestMedicationDetail
+  // 함수역할:
+  // - 호출을 센 뒤 동시 실행 또는 상시 잠금이면 즉시 거부하고, 단독 실행은 짧은 지연 뒤 약 상세를 반환한다.
+  // 매개변수:
+  // - schedule(MedicationSchedule): 조회할 약명.
+  // 반환값:
+  // - Future<MedicationDetail?>: 같은 이름의 상세; 잠금 시 대기 시간이 0인 MedicationLookupBusy.
   @override
   Future<MedicationDetail?> requestMedicationDetail(
     MedicationSchedule schedule,
@@ -502,6 +534,10 @@ class _AccountLockedMedicationDetail extends CheckMedicationDetail {
   }
 }
 
+// 클래스명: _ReviewMedicationDetail
+// 역할: 모든 조회에 명시적 후보 확인을 요구한다.
+// 주요 책임: 고정 후보 한 개의 동일한 검토 예외를 전달한다.
+// 속성: review는 제품 ID와 이름을 가진 후보 목록.
 class _ReviewMedicationDetail extends CheckMedicationDetail {
   final review = MedicationMatchReview(const [
     MedicationDetail(
@@ -513,6 +549,13 @@ class _ReviewMedicationDetail extends CheckMedicationDetail {
     ),
   ]);
 
+  // 함수이름: requestMedicationDetail
+  // 함수역할:
+  // - 입력과 관계없이 보관한 후보 검토 예외를 발생시킨다.
+  // 매개변수:
+  // - schedule(MedicationSchedule): 조회 계약의 입력; 후보 선택에 사용하지 않는다.
+  // 반환값:
+  // - Future<MedicationDetail?>: 항상 MedicationMatchReview로 실패.
   @override
   Future<MedicationDetail?> requestMedicationDetail(
     MedicationSchedule schedule,
@@ -550,12 +593,30 @@ class _MixedReviewMedicationDetail extends _ReviewMedicationDetail {
   }
 }
 
+// 클래스명: _OutcomeMedicationDetail
+// 역할: 약명별 성공·미검색·실패 응답을 구분하는 조회 대역.
+// 주요 책임: 요청 순서를 기록하고 변경 가능한 결과 맵으로 재조회 복구를 재현한다.
+// 속성: results는 약명별 상세/null/예외, requests는 요청한 약명 순서.
 class _OutcomeMedicationDetail extends CheckMedicationDetail {
   final Map<String, Object?> results;
   final List<String> requests = [];
 
+  // 함수이름: _OutcomeMedicationDetail
+  // 함수역할:
+  // - 재조회 중에도 변경할 수 있는 응답 맵을 보관한다.
+  // 매개변수:
+  // - results(Map<String, Object?>): 약명별 상세, null 또는 던질 오류.
+  // 반환값:
+  // - 새 _OutcomeMedicationDetail 인스턴스.
   _OutcomeMedicationDetail(this.results);
 
+  // 함수이름: requestMedicationDetail
+  // 함수역할:
+  // - 약명을 기록하고 맵의 상세/null을 반환하거나 나머지 값을 예외로 던진다.
+  // 매개변수:
+  // - schedule(MedicationSchedule): 결과를 조회할 약명.
+  // 반환값:
+  // - Future<MedicationDetail?>: 상세 또는 미검색 null; 그 외 설정 값은 오류로 전달.
   @override
   Future<MedicationDetail?> requestMedicationDetail(
     MedicationSchedule schedule,
@@ -569,9 +630,23 @@ class _OutcomeMedicationDetail extends CheckMedicationDetail {
   }
 }
 
+// Function Name: main
+// Description:
+// - Registers prescription recognition, lookup review, progress, retry and save-lifecycle regressions with controlled providers.
+// Parameters:
+// - None.
+// Returns:
+// - No value; the test framework runs the registered scenarios.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  // 함수이름: 저장한 검색 방식의 후속 조회 반영
+  // 함수역할:
+  // - 기본 balanced와 이후 저장한 fast·thorough·balanced가 다음 상세조회 요청의 search_mode에 순서대로 반영되는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('앱에서 저장한 검색 방식을 다음 조회와 재조회 요청에 반영한다', () async {
     SharedPreferences.setMockInitialValues({});
     final requestedModes = <String>[];
@@ -603,6 +678,13 @@ void main() {
     expect(requestedModes, ['balanced', 'fast', 'thorough', 'balanced']);
   });
 
+  // 함수이름: 화면 종료 후 인식 진행 콜백
+  // 함수역할:
+  // - 진행 단계 갱신 후 흐름을 초기화하면 늦은 완료 콜백과 OCR 응답이 기본 인식 단계·idle 상태를 바꾸지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'recognition progress ignores callbacks after leaving the flow',
     () async {
@@ -626,6 +708,13 @@ void main() {
       expect(model.prescriptionFlowState, PrescriptionFlowState.idle);
     },
   );
+  // 함수이름: 조회 결과 배지와 선택적 재조회
+  // 함수역할:
+  // - 확인·후보·미검색·기술 실패를 구분하고 상태 맵 수정을 막으며 후보 확인·행 수정·추가 후 필요한 행만 재조회하고 초기화하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'lookup badges distinguish outcomes and follow edits and retries',
     () async {
@@ -737,6 +826,13 @@ void main() {
     expect(model.medicationLookupStatuses, isEmpty);
   });
 
+  // 함수이름: 모든 조회가 기술 실패한 상태
+  // 함수역할:
+  // - 전체 조회가 실패해도 검토 화면에 행별 failed 배지·오류 안내·미확인 인덱스를 유지하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'all technical failures retain row badges and retry in review',
     () async {
@@ -761,6 +857,13 @@ void main() {
       expect(model.unverifiedMedicationScheduleIndexes, {0});
     },
   );
+  // 함수이름: 자동 조회 완료와 새 사진 선택 잠금
+  // 함수역할:
+  // - 이전 자동 조회가 끝나도 진행 중인 새 사진 선택을 중복 실행하지 않고 취소 후 기존 검토 결과를 유지하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'a completed automatic lookup does not release a newer gallery picker',
     () async {
@@ -793,6 +896,13 @@ void main() {
       );
     },
   );
+  // 함수이름: 수정한 행만 다시 조회
+  // 함수역할:
+  // - 자동 조회가 미리보기를 건너뛰고 두 행을 확인한 뒤 한 행의 용량 수정은 그 행만 미확인으로 바꾸고 재조회하며 자동 저장하지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'automatic lookup keeps matching rows and rechecks only an edited row',
     () async {
@@ -1060,6 +1170,13 @@ void main() {
   );
 
   for (final alwaysBusy in [false, true]) {
+    // 함수이름: 계정 잠금의 제한된 순차 재시도
+    // 함수역할:
+    // - 일시·상시 잠금에서 약별 호출 횟수와 최대 한 번 재시도, 성공/검토 상태 및 완료 진행 개수를 확인한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     test(
       'account lock retry is serialized and bounded (always busy: $alwaysBusy)',
       () async {
@@ -1091,6 +1208,13 @@ void main() {
       },
     );
   }
+  // 함수이름: 후보 확인 시 처방 정보 보존
+  // 함수역할:
+  // - 명시적 후보 확정이 용량·기간·OCR 원문을 보존한 분석 결과를 만들고 검토 목록을 비우되 저장 완료로 처리하지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'candidate confirmation preserves intake and never saves automatically',
     () async {
@@ -1131,6 +1255,13 @@ void main() {
     },
   );
 
+  // 함수이름: 수정 후 오래된 후보 무효화
+  // 함수역할:
+  // - 약명 수정은 이전 후보를 제거하고 추가 용량 수정에도 user_edit를 보존하며 초기화 뒤 늦은 후보 확정은 무시하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'editing a name invalidates stale candidates and preserves explicit edits',
     () async {
@@ -1328,6 +1459,13 @@ void main() {
     );
   });
 
+  // 함수이름: 조회 완료별 진행률과 취소
+  // 함수역할:
+  // - 순서가 뒤바뀐 미검색·오류 응답도 각각 완료 수를 늘리되 초기화 뒤 마지막 응답은 진행 수와 idle 상태를 되살리지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'analysis progress counts each finished lookup and ignores cancelled responses',
     () async {

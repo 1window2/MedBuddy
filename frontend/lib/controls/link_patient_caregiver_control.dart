@@ -11,16 +11,10 @@ import '../services/api_response_parser.dart';
 // File Name: link_patient_caregiver_control.dart
 // Role: Manages patient-caregiver link codes, registration, aliases, and unlink requests.
 
-// 클래스명: LinkPatientCaregiver
-// 역할: 환자 코드 생성, 보호자 등록, 연동 해제를 처리한다.
-// 주요 책임:
-// - 현재 사용자 해시 기준의 연동 목록을 조회한다.
-// - 환자 측 임시 연동 코드를 생성한다.
-// - 보호자 측에서 환자 코드를 등록하거나 기존 연동을 해제한다.
-// 속성:
-// - baseUrl (String): 복약 API 기본 주소
-// - userHash (String): 현재 사용자 소유권·표시·저장 범위의 해시
-// - _client (http.Client): 요청에 사용할 HTTP 클라이언트; 주입 여부에 따른 소유권은 생성자 설명 참조
+// Class Name: LinkPatientCaregiver
+// Role: Manage patient-caregiver pairing and aliases for one current user.
+// Responsibilities: Fetch links, issue/register pairing codes, change aliases and unlink participants.
+// Attributes: baseUrl/userHash (String): API and owner scope; _client (http.Client): transport; _ownsClient (bool): disposal responsibility.
 class LinkPatientCaregiver {
   final String baseUrl;
   final String userHash;
@@ -138,13 +132,10 @@ class LinkPatientCaregiver {
     );
   }
 
-  // 함수이름: savePatientAlias
-  // 함수역할: 현재 보호자가 지정한 환자 표시 이름을 서버 연동 관계에 저장한다. 빈 문자열은 별칭을 삭제하고 기본 표시 이름으로 되돌린다.
-  // 매개변수:
-  // - linkId (int): 조회·전송·감시 대상 연동 ID
-  // - patientAlias (String): 보호자가 설정한 환자 별칭; 빈 문자열은 별칭 해제
-  // 반환값:
-  // - Future<PatientCaregiverLink>: 현재 보호자가 지정한 환자 표시 이름을 서버 연동 관계에 저장한다. 빈 문자열은 별칭을 삭제하고 기본 표시 이름으로 되돌린다.
+  // Function Name: savePatientAlias
+  // Description: Persist the caregiver's patient alias; an empty string clears it. HTTP and decoding failures propagate through the request guard.
+  // Parameters: linkId (int): link to update; patientAlias (String): alias or empty reset.
+  // Returns: Future<PatientCaregiverLink>: updated server link.
   Future<PatientCaregiverLink> savePatientAlias({
     required int linkId,
     required String patientAlias,
@@ -172,10 +163,10 @@ class LinkPatientCaregiver {
     );
   }
 
-  // 함수이름: saveCaregiverAlias
-  // 함수역할: 환자 본인의 활성 연결에 보호자 별칭을 저장한다. 빈 값은 별칭 해제다.
-  // 매개변수: linkId (int): 연결 ID, caregiverAlias (String): 보호자 표시 이름.
-  // 반환값: 갱신된 연결 정보. 실패하거나 응답이 유효하지 않으면 StateError.
+  // Function Name: saveCaregiverAlias
+  // Description: Persist a caregiver alias on the patient's link; an empty string resets the alias. HTTP and decoding failures propagate through the request guard.
+  // Parameters: linkId (int): link to update; caregiverAlias (String): alias or empty reset.
+  // Returns: Future<PatientCaregiverLink>: updated server link.
   Future<PatientCaregiverLink> saveCaregiverAlias({
     required int linkId,
     required String caregiverAlias,

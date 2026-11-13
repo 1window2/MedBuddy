@@ -88,6 +88,13 @@ void main() {
   //   원래 예외를 보존해 호출자가 연결·지연 안내를 고를 수 있게 하는지 검증한다.
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   test('summary failures keep the status code or the transport cause', () async {
+    // Function Name: control
+    // Description:
+    // - Builds a patient-scoped summary control with the supplied failure-producing HTTP client.
+    // Parameters:
+    // - client (MockClient): Transport or status response to exercise.
+    // Returns:
+    // - CheckTodayMedicationInfo: Uses localhost and patient-a without issuing a request yet.
     CheckTodayMedicationInfo control(MockClient client) =>
         CheckTodayMedicationInfo(
           baseUrl: 'http://localhost',

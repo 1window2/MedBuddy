@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 // 파일명: medbuddy_theme.dart
 // 역할: MedBuddy 화면에서 반복 사용하는 색상, 모서리, 그림자 값을 모아 관리한다.
 
-// Class Name: MedBuddyColors
-// Role: Provides shared semantic color tokens for MedBuddy screens.
-// Responsibilities:
-// - Keep text contrast, statuses, schedule slots, surfaces, and accents consistent across features.
+// 클래스명: MedBuddyColors
+// 역할: 화면에서 함께 사용하는 의미별 색상 값을 제공한다.
+// 주요 책임: 브랜드·본문·표면·상태·복용 시간대 색상을 일관되게 참조하게 한다.
+// 속성: 모든 값은 정적 Color 상수이며 인스턴스 상태는 없다.
 class MedBuddyColors {
   // A deeper pharmacy green keeps white labels above WCAG AA contrast.
   static const Color primary = Color(0xFF0E7C5A);
@@ -49,14 +49,10 @@ class MedBuddyColors {
   static const Color butterSurface = Color(0xFFF8F0DC);
 }
 
-// Class Name: MedBuddySlotStyle
-// Role: Gives each dose time one shared color, light tint and icon.
-// Responsibilities:
-// - Keeps home, schedule and caregiver slot visuals identical.
-// Attributes:
-// - color (Color): AA-contrast slot color for icons, accents and white labels.
-// - tint (Color): Light surface behind slot headers and summaries.
-// - icon (IconData): Time-of-day symbol.
+// 클래스명: MedBuddySlotStyle
+// 역할: 복용 시간대마다 색상·밝은 배경색·아이콘의 공통 조합을 제공한다.
+// 주요 책임: 홈·일정·보호자 화면이 같은 시간대 표현을 사용하도록 한다.
+// 속성: color: 강조색; tint: 밝은 배경; icon: 시간대 표시; 정적 값에는 필요시 복용도 포함된다.
 class MedBuddySlotStyle {
   final Color color;
   final Color tint;
@@ -94,11 +90,10 @@ class MedBuddySlotStyle {
     Icons.medication_outlined,
   );
 
-  // Function Name: of
-  // Description: Selects the style for a dose-time key; unknown keys use bedtime.
-  // Parameters:
-  // - slotKey (String): morning, lunch, evening or bedtime.
-  // Returns: The matching slot style.
+  // 함수이름: of
+  // 함수역할: 복용 구간 키에 해당하는 공통 스타일을 선택한다.
+  // 매개변수: slotKey: morning/lunch/evening/as_needed 등의 구간 키.
+  // 반환값: 해당 스타일; 등록되지 않은 키는 bedtime 스타일.
   static MedBuddySlotStyle of(String slotKey) => switch (slotKey) {
     'morning' => morning,
     'lunch' => lunch,
@@ -108,10 +103,10 @@ class MedBuddySlotStyle {
   };
 }
 
-// 클래스명: MedBuddyRadii
-// 역할: 배지·입력·버튼, 카드·큰 카드·pill 버튼의 공통 모서리 반경을 제공한다.
-// 주요 책임:
-// - 화면별 반복 도형의 라운딩 값을 한곳에서 공유한다.
+// Class Name: MedBuddyRadii
+// Role: Provides shared corner radii for badges, controls and card surfaces.
+// Responsibilities: Keep repeated shapes consistent across screens.
+// Attributes: Static BorderRadius tokens: small, control, card, largeCard and pill.
 class MedBuddyRadii {
   static const BorderRadius small = BorderRadius.all(Radius.circular(8));
   static const BorderRadius control = BorderRadius.all(Radius.circular(12));
@@ -121,17 +116,18 @@ class MedBuddyRadii {
 }
 
 // 클래스명: MedBuddySpacing
-// 역할: 화면의 여백과 정보 밀도에 사용할 공통 치수를 제공한다.
-// 주요 책임:
-// - 페이지 좌우 여백·섹션·항목 간격 및 콘텐츠 최대 폭을 일관되게 유지한다.
+// 역할: 화면 여백과 정보 밀도의 공통 치수를 제공한다.
+// 주요 책임: 페이지 좌우 여백과 최대 콘텐츠 폭을 일관되게 유지한다.
+// 속성: pageHorizontal/contentMaxWidth: 정적 double 치수.
 class MedBuddySpacing {
   static const double pageHorizontal = 20;
-  static const double section = 24;
-  static const double item = 12;
   static const double contentMaxWidth = 720;
 }
 
-// 약 등록과 변경 화면의 항목 제목을 같은 크기와 굵기로 유지한다.
+// 클래스명: MedBuddyTextStyles
+// 역할: 검색 메뉴와 약 등록·변경 화면의 글자 위계를 공유한다.
+// 주요 책임: 반복되는 제목·보조 설명·폼 구역 제목의 크기와 굵기를 통일한다.
+// 속성: menuTitle/menuBody/formSectionTitle: 정적 TextStyle 상수.
 class MedBuddyTextStyles {
   // 검색 결과·선택 메뉴는 같은 제목과 보조 설명 위계를 사용한다.
   static const menuTitle = TextStyle(
@@ -153,10 +149,10 @@ class MedBuddyTextStyles {
   );
 }
 
-// 클래스명: MedBuddyShadows
-// 역할: 카드 UI의 기본 및 강조 그림자 스타일을 제공한다.
-// 주요 책임:
-// - 화면마다 같은 색·흐림·오프셋의 표면 구분 효과를 재사용한다.
+// Class Name: MedBuddyShadows
+// Role: Provides reusable surface-shadow presets.
+// Responsibilities: Share color, blur and offset choices for subtle and card surfaces.
+// Attributes: soft and card: Immutable BoxShadow lists.
 class MedBuddyShadows {
   static const List<BoxShadow> soft = [
     BoxShadow(
@@ -175,9 +171,15 @@ class MedBuddyShadows {
   ];
 }
 
-// 기존 브랜드 색상과 기본 제목·본문·명령 버튼 규칙을 앱 전체에 적용한다.
+// Class Name: MedBuddyTheme
+// Role: Builds the application's shared Material theme.
+// Responsibilities: Apply semantic colors, typography and common component defaults.
+// Attributes: No instance state; light constructs a ThemeData from the shared token classes.
 class MedBuddyTheme {
-  // 매개변수 없이 기본 밝은 테마를 반환한다. 화면의 명시적 상태 색상은 유지한다.
+  // 함수이름: light
+  // 함수역할: 브랜드 색상과 글자 위계 및 입력·버튼·대화상자 기본 스타일을 적용한 밝은 테마를 만든다.
+  // 매개변수: 없음.
+  // 반환값: Material 3 ThemeData; 화면이 직접 지정한 상태별 스타일을 변경하지 않는다.
   static ThemeData light() {
     final scheme = ColorScheme.fromSeed(seedColor: MedBuddyColors.primary)
         .copyWith(

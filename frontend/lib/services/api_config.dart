@@ -3,12 +3,11 @@
 
 import 'package:flutter/foundation.dart';
 
-// 클래스명: ApiConfig
-// 역할: 빌드에서 지정한 복약 API 주소와 계약 버전을 앱 전체에 제공한다.
-// 주요 책임:
-// - 같은 서버의 인증·약국·채팅 주소를 만들고 운영 HTTPS 및 제한된 로컬 개발 주소 정책을 검증한다.
-// 속성:
-// - baseUrl (String): 복약 API 기본 주소
+// Class Name: ApiConfig
+// Role: Centralizes build-time API endpoints, contract version, and supported client features.
+// Responsibilities: Construct same-server endpoints and enforce HTTPS with narrowly scoped debug-only local HTTP exceptions.
+// Attributes: baseUrl/contractVersion/clientFeatures (String): Server address and compatibility headers;
+// - _localHttpRequested/_allowLocalHttpForDevelopment (bool): Build flag and debug-mode allowance.
 class ApiConfig {
   static const bool _localHttpRequested = bool.fromEnvironment(
     'MEDBUDDY_ALLOW_LOCAL_HTTP',
@@ -65,6 +64,10 @@ class ApiConfig {
   }
 
   // 병원 조회도 약국과 동일한 서버·인증 경로를 사용한다.
+  // 함수이름: hospitalUrl
+  // 함수역할: 복약 API와 같은 서버의 hospitals 리소스 주소를 만든다.
+  // 매개변수: path (String) - 병원 API에 붙일 하위 경로.
+  // 반환값: 완성된 병원 API 주소. 경로 결합과 서버 정책은 _siblingApiUrl을 따른다.
   static String hospitalUrl(String path) {
     return _siblingApiUrl('hospitals', path);
   }

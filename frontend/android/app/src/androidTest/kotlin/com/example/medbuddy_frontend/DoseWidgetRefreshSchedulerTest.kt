@@ -22,7 +22,9 @@ import java.util.concurrent.TimeUnit
 // 역할: 기존 실패·취소 뒤에도 새 위젯 요청이 실행되는지 Android 작업 관리자에서 확인한다.
 // 실제 복약 기록과 위젯 대기열은 건드리지 않고 시험 전용 작업만 사용한다.
 // 클래스명: DoseWidgetRefreshSchedulerTest
-// 주요 책임: 콜백 입력, 실패 복구와 정상 대기열 순서를 검증한다. 별도 보관 속성은 없다.
+// 역할: Android 작업 관리자의 위젯 갱신 정책을 검증하는 계측 테스트.
+// 주요 책임: 콜백 입력, 실패 복구와 정상 대기열 순서를 검증한다.
+// 속성: 별도 보관 속성 없음. 시험마다 독립된 작업 대기열을 사용한다.
 @RunWith(AndroidJUnit4::class)
 class DoseWidgetRefreshSchedulerTest {
     // 함수이름: refreshRequestKeepsPluginContractAndAllowsOfflineStorage
@@ -79,7 +81,8 @@ class DoseWidgetRefreshSchedulerTest {
 
     // 함수이름: withQueue
     // 함수역할: 각 시험에 독립된 대기열을 만들고 종료 시 해당 시험 작업만 취소한다.
-    // 매개변수: check 검증 동작. 반환값: 없음.
+    // 매개변수: check((WorkManager, String) -> Unit)는 관리자와 대기열 이름을 받는 검증 동작이다.
+    // 반환값: Unit. 검증 실패는 전파하며 finally에서 해당 시험 대기열을 취소한다.
     private fun withQueue(check: (WorkManager, String) -> Unit) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val manager = WorkManager.getInstance(context)
@@ -90,7 +93,8 @@ class DoseWidgetRefreshSchedulerTest {
 
     // 함수이름: awaitState
     // 함수역할: Android 비동기 작업의 실제 결과를 제한 시간 안에 확인한다.
-    // 매개변수: manager 작업 관리자, id 작업 번호, expected 기대 상태. 반환값: 없음.
+    // 매개변수: manager(WorkManager), id(UUID), expected(WorkInfo.State)는 조회 대상과 기대 상태다.
+    // 반환값: Unit. 다른 종료 상태나 제한 시간 초과는 단언 실패로 보고한다.
     private fun awaitState(manager: WorkManager, id: UUID, expected: WorkInfo.State) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
         do {
@@ -104,16 +108,24 @@ class DoseWidgetRefreshSchedulerTest {
 }
 
 // 클래스명: WidgetFailureProbe
-// 역할: 실패 전파를 재현한다. 파일, 네트워크, 복약 데이터와 별도 보관 속성은 사용하지 않는다.
-// 생성자: context 실행 환경과 parameters 작업 설정을 Android Worker에 전달한다.
+// 역할: 실패 전파를 재현하는 시험용 Worker.
+// 주요 책임: 파일·네트워크·복약 데이터에 접근하지 않고 실패 결과만 반환한다.
+// 속성: 별도 보관 속성 없음.
+// 함수이름: WidgetFailureProbe / 함수역할: 시험 작업의 실행 환경을 상위 Worker에 전달한다.
+// 매개변수: context(Context)는 실행 환경, parameters(WorkerParameters)는 작업 설정이다.
+// 반환값: WidgetFailureProbe 인스턴스.
 class WidgetFailureProbe(context: Context, parameters: WorkerParameters) : Worker(context, parameters) {
     // 함수이름: doWork / 함수역할: 시험용 실패를 반환한다. 매개변수: 없음. 반환값: 실패 상태.
     override fun doWork(): Result = Result.failure()
 }
 
 // 클래스명: WidgetSuccessProbe
-// 역할: 복구된 작업의 실행 여부를 확인한다. 복약 데이터와 별도 보관 속성은 사용하지 않는다.
-// 생성자: context 실행 환경과 parameters 작업 설정을 Android Worker에 전달한다.
+// 역할: 복구된 작업의 실행 여부를 확인하는 시험용 Worker.
+// 주요 책임: 복약 데이터에 접근하지 않고 성공 결과만 반환한다.
+// 속성: 별도 보관 속성 없음.
+// 함수이름: WidgetSuccessProbe / 함수역할: 시험 작업의 실행 환경을 상위 Worker에 전달한다.
+// 매개변수: context(Context)는 실행 환경, parameters(WorkerParameters)는 작업 설정이다.
+// 반환값: WidgetSuccessProbe 인스턴스.
 class WidgetSuccessProbe(context: Context, parameters: WorkerParameters) : Worker(context, parameters) {
     // 함수이름: doWork / 함수역할: 실행 완료를 반환한다. 매개변수: 없음. 반환값: 성공 상태.
     override fun doWork(): Result = Result.success()

@@ -64,11 +64,15 @@ class _FileImagePicker extends ImagePicker {
 
   // Function Name: pickImage
   // Description:
-  // - Return the configured file without platform interaction.
+  // - Returns the configured file without platform interaction; all picker options are accepted but ignored.
   // Parameters:
-  // - source (ImageSource): Requested source; the remaining picker options are accepted but not consumed.
+  // - source (ImageSource): Requested camera or gallery.
+  // - maxWidth, maxHeight (double?): Requested size limits.
+  // - imageQuality (int?): Requested compression quality.
+  // - preferredCameraDevice (CameraDevice): Requested camera; defaults to rear.
+  // - requestFullMetadata (bool): Requested metadata flag.
   // Returns:
-  // - An XFile for the configured path.
+  // - Future<XFile?>: An XFile for the configured path.
   @override
   Future<XFile?> pickImage({
     required ImageSource source,
@@ -841,6 +845,13 @@ void main() {
   // Returns:
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
   for (final multiple in [false, true]) {
+    // Function Name: single and multiple identification timeout
+    // Description:
+    // - For both upload routes, verifies a short timeout reports the typed timedOut failure and aborts the underlying request.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('identification aborts after timeout (multiple: $multiple)', () async {
       final client = _AbortAwareClient();
       final control = IdentifyPill(

@@ -131,13 +131,13 @@ def test_parse_records_rejects_invalid_xml() -> None:
         NationalEmergencyMedicalCenterPharmacyAPI._parse_records(b"not xml")
 
 
-# 함수이름: test_search_nearby_uses_location_api_without_exposing_key
-# 함수역할:
-# - 위치 API 경로에 정밀 좌표와 결과 상한을 전달하여 약국 레코드를 얻는지 검증한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_search_nearby_uses_location_api_without_exposing_key
+# Description:
+# - Send three-decimal coordinates and the requested row limit to the location endpoint and parse the pharmacy response.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_search_nearby_uses_location_api_without_exposing_key() -> None:
     captured_request: httpx.Request | None = None
@@ -173,13 +173,13 @@ async def test_search_nearby_uses_location_api_without_exposing_key() -> None:
     assert captured_request.url.params["numOfRows"] == "10"
 
 
-# 함수이름: test_search_nearby_stops_at_the_daily_budget
-# 함수역할:
-# - 위치 조회가 프로세스 전체의 하루 예산을 넘으면 제공자를 부르지 않고 거절하고, 다음 날 다시 허용하는지 확인한다.
-# 매개변수:
-# - monkeypatch (pytest.MonkeyPatch): 예산 설정을 시험 값으로 바꾼다.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_search_nearby_stops_at_the_daily_budget
+# Description:
+# - Stop provider calls at the process-wide daily location-query budget and allow them again on the next day.
+# Parameters:
+# - monkeypatch: pytest.MonkeyPatch; restores temporary dependency replacements.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_search_nearby_stops_at_the_daily_budget(
     monkeypatch: pytest.MonkeyPatch,
@@ -191,6 +191,13 @@ async def test_search_nearby_stops_at_the_daily_budget(
     monkeypatch.setattr(settings, "PHARMACY_API_DAILY_REQUEST_BUDGET", 2)
     calls = 0
 
+    # Function Name: respond
+    # Description:
+    # - Counts provider requests and returns the valid location XML fixture.
+    # Parameters:
+    # - request: httpx.Request; intercepted request, unused.
+    # Returns:
+    # - httpx.Response; HTTP 200 with valid XML.
     def respond(request: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1

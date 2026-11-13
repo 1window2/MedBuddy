@@ -11,6 +11,7 @@ import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 // Class Name: _PendingSaved
 // Role: Deterministic list and deletion boundary.
 // Responsibilities: Hold list responses until a test completes them.
+// Attributes: requests preserves each independently completable list read in call order.
 class _PendingSaved extends CheckSavedMedication {
   final requests = <Completer<List<MedicationDetail>>>[];
   // Function Name: requestSavedMedicationInfo
@@ -36,7 +37,9 @@ class _GatedImageStore extends ManualMedicationImageStore {
   final paths = <int, String>{};
   Completer<void> gate = Completer<void>();
   // Function Name: findImagePath
-  // Description: Waits for the gate, then reports the scripted path. Parameters: patientHash, medicationId. Returns: Path or empty text.
+  // Description: Waits for the current gate, then reads the scripted photo path without touching disk.
+  // Parameters: patientHash (String) is accepted but ignored; medicationId (int) selects a path.
+  // Returns: Future<String> with the path or empty text when absent; gate failures propagate.
   @override
   Future<String> findImagePath({
     required String patientHash,
@@ -58,9 +61,13 @@ class _GatedImageStore extends ManualMedicationImageStore {
 
 // Class Name: _Model
 // Role: Avoids unrelated networking during deletion refresh.
+// Responsibilities: Injects controlled saved-medication and image readers while suppressing schedule refresh.
+// Attributes: No additional state; injected controls are owned through the base view model.
 class _Model extends MedBuddyViewModel {
   // Function Name: _Model
-  // Description: Injects controlled reads and an optional photo store. Parameters: control, store. Returns: Test facade.
+  // Description: Injects controlled reads and an optional photo store.
+  // Parameters: control (_PendingSaved) supplies delayed list results; store (ManualMedicationImageStore?) supplies photo lookups.
+  // Returns: A view model with unrelated schedule requests disabled.
   _Model(_PendingSaved control, {ManualMedicationImageStore? store})
     : super(checkSavedMedication: control, manualMedicationImageStore: store);
   // Function Name: fetchTodayMedicationSchedule
@@ -192,8 +199,10 @@ void main() {
     expect(model.savedMedicationInfoList.single.localImagePath, '/photos/7.jpg');
 
     final published = <String>[];
-    // Function Name: saved-medication listener
-    // Description: Records the photo path of every published list state. Parameters: None. Returns: None.
+    // Function Name: record
+    // Description: Appends each currently visible medication's photo path to the publication history whenever the saved-medication listener fires.
+    // Parameters: None.
+    // Returns: No value; updates the local published list.
     void record() => published.addAll(
       model.savedMedicationInfoList.map((item) => item.localImagePath),
     );

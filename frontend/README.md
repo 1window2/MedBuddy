@@ -2,8 +2,7 @@
 
 Flutter client for the MedBuddy Android beta source and local demo.
 
-Current app version: **0.2.5+26**. Active development line:
-**`beta/v0.2.5`**.
+Current app version: **1.0.0+27**. Release line: **`beta/v1.0.0`**.
 
 ## Role
 
@@ -160,6 +159,27 @@ flutter analyze --no-pub
 flutter test --no-pub
 ```
 
+## Android APK Distribution
+
+The Android CI and signed-release workflows build two standalone APKs:
+
+- `app-arm64-v8a-release.apk`: ARM 64-bit Android devices.
+- `app-armeabi-v7a-release.apk`: ARM 32-bit Android devices.
+
+Install only the APK matching the device's supported ABI; these are not parts
+that must be installed together. Both builds retain the same application ID,
+version name, version code, and release signing identity. The workflows build
+each target separately instead of using `--split-per-abi`, because the pinned
+Flutter SDK adds an ABI offset to the version code with that flag. Keeping the
+normal version code avoids blocking later updates from the universal APK or
+Play bundle distribution. A published update must still use an increased build
+number and the compatible signing certificate.
+
+Each APK's native libraries and Flutter engine are checked against its one
+expected ABI. Signed releases verify both APK signatures and upload separate
+ARM 32-bit and ARM 64-bit artifacts with checksums. The Play AAB build is
+unchanged, and the Naver Map and on-device OCR features remain included.
+
 ## Quality Assurance
 
 Automated widget tests cover compact viewports, large system text, accessibility
@@ -197,6 +217,51 @@ builds may use the local demo backend only when
 `localhost`, and `::1`, all on port `8000`. Other private-network and
 clear-text endpoints are rejected.
 
-See the repository-level [`README.md`](../README.md) for complete backend and
-device setup, and [`CONTRIBUTING.md`](../CONTRIBUTING.md) for release
-verification commands.
+## Local Setup
+
+Use **Flutter 3.41.5 (stable)**, matching both CI and the signed Android release
+workflow. The application commits `frontend/pubspec.lock`; do not delete it or
+regenerate it with a different SDK to work around a resolution failure.
+
+```powershell
+cd frontend
+flutter --version
+flutter pub get --enforce-lockfile
+flutter devices
+flutter run -d "[your-device-id]"
+```
+
+For an intentional dependency change, use Flutter 3.41.5, run `flutter pub get`
+without enforcement, review and commit the lockfile diff, then verify
+`flutter pub get --enforce-lockfile`, `flutter analyze --no-pub`, and
+`flutter test --no-pub`. SDK upgrades must update both workflow pins and the
+lockfile together. CI and signed builds reject dependency drift rather than
+silently resolving different versions.
+
+For authenticated beta testing, keep the real `google-services.json` in
+`frontend/android/app` and out of Git. Provide the Firebase configuration that
+matches the registered `com.medbuddy.app` Android application:
+
+```powershell
+flutter run -d "[your-device-id]" `
+  --dart-define=MEDBUDDY_AUTH_MODE=firebase `
+  --dart-define=MEDBUDDY_FIREBASE_API_KEY=your_api_key `
+  --dart-define=MEDBUDDY_FIREBASE_APP_ID=your_android_app_id `
+  --dart-define=MEDBUDDY_FIREBASE_MESSAGING_SENDER_ID=your_sender_id `
+  --dart-define=MEDBUDDY_FIREBASE_PROJECT_ID=medbuddy-26 `
+  --dart-define=MEDBUDDY_NAVER_MAP_CLIENT_ID=your_naver_dynamic_map_client_id `
+  --dart-define=MEDBUDDY_PHONE_AUTH_ENABLED=false
+```
+
+Release and profile builds require Firebase authentication and the same public
+HTTPS backend contract. Authentication, App Check, and signing requirements are
+documented in
+[`docs/MedBuddy - Beta Security Architecture.md`](../docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).
+For an already installed physical-device beta, increment `frontend/pubspec.yaml`
+version code and use `frontend/tool/install_update_preserving_data.ps1`. The
+helper verifies the package/signing identity, performs only `adb install -r`,
+and refuses any fallback that would uninstall the app or clear Firebase and
+reminder state.
+
+The backend setup is in the [backend README](../backend/README.md), and
+release verification commands are in [`CONTRIBUTING.md`](../CONTRIBUTING.md).

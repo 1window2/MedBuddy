@@ -4,12 +4,13 @@
 
 import sys
 import unittest
+from collections.abc import Sequence
 from pathlib import Path
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy import event
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, UOWTransaction, sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -20,18 +21,21 @@ from core.database import Base  # noqa: E402
 from entities.user_setting_entity import _UserSetting  # noqa: E402
 
 
-# 클래스명: ManageUserSettingTest
-# 역할: 사용자별 표시·음성·알림 설정과 기존 스키마 이행을 검증하는 테스트 모음이다.
-# 주요 책임:
-# - 설정이 없으면 한국어·24시간제·기본 글꼴·낭독속도·알림·복약 시각을 제공하되 DB 행은 생성하지 않는지 검증한다.
-# - 범위를 벗어난 글꼴·속도와 잘못된 언어·시간 형식·알림 상세·복약 시각을 각각 400으로 거절하는지 검증한다.
-# - 구형 설정 테이블에 누락 컬럼과 기본값을 채우고 동일 사용자 중복 행을 하나로 정리하는지 검증한다.
-# 속성:
-# - engine (Engine): 격리 인메모리 SQLite 엔진.
-# - db (Session): 이 테스트의 DB 상태만 보관하는 SQLAlchemy 세션.
-# - control (ManageUserSetting): 운영 상태와 분리하여 검증할 유스케이스 control.
+# Class Name: ManageUserSettingTest
+# Role: Tests per-user display, voice, notification, and schedule preferences.
+# Responsibilities:
+# - Verify nonpersisting defaults, validation, legacy requests, revision advancement, and conflicting concurrent saves.
+# Attributes:
+# - engine (Engine): isolated SQLite engine. db (Session): test session. extra_sessions (list[Session]): concurrent sessions to close. control (ManageUserSetting): settings control.
 class ManageUserSettingTest(unittest.TestCase):
     # 함수역할: 최신 저장 뒤 늦게 도착한 요청은 거절하고 알림 끄기를 유지한다.
+    # 함수이름: test_late_save_cannot_overwrite_newer_setting
+    # 함수역할:
+    # - 오래된 개정으로 저장하면 최신 개정과 409를 반환하고 기존 알림 값·다른 계정 기본값을 보존하는지 확인한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - None.
     def test_late_save_cannot_overwrite_newer_setting(self) -> None:
         self.assertEqual(self.control.requestUserSetting("user-a")["revision"], 0)
         saved = self.control.saveUserSetting(
@@ -52,6 +56,13 @@ class ManageUserSettingTest(unittest.TestCase):
         self.assertEqual(self.control.requestUserSetting("user-b")["revision"], 0)
 
     # 함수역할: 같은 값 저장도 새 버전이며 구형 앱 저장 후에는 버전 기반 요청을 다시 확인한다.
+    # 함수이름: test_identical_and_legacy_saves_advance_revision
+    # 함수역할:
+    # - 같은 값과 이전 형식 저장도 개정을 증가시키며 최신 개정으로만 후속 저장이 허용되는지 확인한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - None.
     def test_identical_and_legacy_saves_advance_revision(self) -> None:
         first = self.control.saveUserSetting("user-a", 16, 1.0, "ko", expected_revision=0)
         same = self.control.saveUserSetting("user-a", 16, 1.0, "ko", expected_revision=first["revision"])
@@ -66,13 +77,29 @@ class ManageUserSettingTest(unittest.TestCase):
         self.assertEqual(retried["data"]["font_size"], 24)
 
     # 함수역할: 버전 확인과 커밋 사이에 다른 세션이 저장해도 SQL 조건으로 오래된 변경을 거절한다.
+    # 함수이름: test_concurrent_update_after_revision_check_is_rejected
+    # 함수역할:
+    # - 개정 확인 뒤 다른 세션이 먼저 저장하면 409로 거부하고 승리한 설정을 유지하는지 확인한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - None.
     def test_concurrent_update_after_revision_check_is_rejected(self) -> None:
         self.control.saveUserSetting("user-a", 16, 1.0, "ko", expected_revision=0)
         other_db = sessionmaker(bind=self.engine)()
         self.extra_sessions.append(other_db)
         other = ManageUserSetting(other_db)
 
-        def save_newer(session, context, instances):
+        # 함수이름: save_newer
+        # 함수역할:
+        # - 현재 flush 직전에 다른 세션에서 개정 1의 설정을 먼저 저장한다.
+        # 매개변수:
+        # - session: Session; flush 중인 세션(사용하지 않음).
+        # - context: UOWTransaction; flush 문맥(사용하지 않음).
+        # - instances: object; flush 대상(사용하지 않음).
+        # 반환값:
+        # - None.
+        def save_newer(session: Session, context: UOWTransaction, instances: Sequence[object] | None) -> None:
             other.saveUserSetting(
                 "user-a", 20, 1.0, "ko",
                 medication_notifications_enabled=False, expected_revision=1,
@@ -87,7 +114,13 @@ class ManageUserSettingTest(unittest.TestCase):
         self.assertEqual(actual["data"]["font_size"], 20)
         self.assertFalse(actual["data"]["medication_notifications_enabled"])
 
-    # 함수역할: 구형 앱 저장의 재시도 중에도 다른 저장이 먼저 끝나면 500 대신 409로 끝낸다.
+    # Function Name: test_legacy_save_losing_twice_returns_conflict
+    # Description:
+    # - Requires a legacy save that loses both update attempts to return 409 while retaining the winning revision and values.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_legacy_save_losing_twice_returns_conflict(self) -> None:
         self.control.saveUserSetting("user-a", 16, 1.0, "ko")
         other_db = sessionmaker(bind=self.engine)()
@@ -95,7 +128,16 @@ class ManageUserSettingTest(unittest.TestCase):
         other = ManageUserSetting(other_db)
         flushes = []
 
-        def save_newer(session, context, instances):
+        # Function Name: save_newer
+        # Description:
+        # - Wins the first two flush races from a second session to exhaust the legacy save retry.
+        # Parameters:
+        # - session: Session; flushing session, unused.
+        # - context: UOWTransaction; flush context, unused.
+        # - instances: object; flush targets, unused.
+        # Returns:
+        # - None.
+        def save_newer(session: Session, context: UOWTransaction, instances: Sequence[object] | None) -> None:
             flushes.append(1)
             if len(flushes) <= 2:
                 other.saveUserSetting("user-a", 18 + len(flushes), 1.0, "ko")
@@ -110,11 +152,27 @@ class ManageUserSettingTest(unittest.TestCase):
         self.assertEqual(actual["data"]["font_size"], 20)
 
     # 함수역할: 처음 저장하는 두 요청도 한 요청만 생성하고 나머지는 충돌로 반환한다.
+    # 함수이름: test_concurrent_initial_save_is_rejected
+    # 함수역할:
+    # - 최초 설정 생성 경합에서도 먼저 저장된 행을 덮어쓰지 않고 409로 거부하는지 확인한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - None.
     def test_concurrent_initial_save_is_rejected(self) -> None:
         other_db = sessionmaker(bind=self.engine)()
         self.extra_sessions.append(other_db)
 
-        def save_newer(session, context, instances):
+        # 함수이름: save_newer
+        # 함수역할:
+        # - 현재 최초 삽입 직전에 다른 세션에서 개정 0의 설정을 생성한다.
+        # 매개변수:
+        # - session: Session; flush 중인 세션(사용하지 않음).
+        # - context: UOWTransaction; flush 문맥(사용하지 않음).
+        # - instances: object; flush 대상(사용하지 않음).
+        # 반환값:
+        # - None.
+        def save_newer(session: Session, context: UOWTransaction, instances: Sequence[object] | None) -> None:
             ManageUserSetting(other_db).saveUserSetting(
                 "user-a", 20, 1.0, "ko", expected_revision=0,
             )
@@ -126,6 +184,13 @@ class ManageUserSettingTest(unittest.TestCase):
         self.assertEqual(self.control.requestUserSetting("user-a")["data"]["font_size"], 20)
 
     # 함수역할: 홈 선택을 계정별로 저장하며 구형 앱 저장에서도 보존하는지 검증한다.
+    # 함수이름: test_home_schedule_source_persists_and_preserves_legacy_requests
+    # 함수역할:
+    # - 홈 일정 출처는 계정별로 저장되고 생략한 이전 요청에도 유지되며 잘못된 출처는 거부되는지 확인한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - None.
     def test_home_schedule_source_persists_and_preserves_legacy_requests(self) -> None:
         self.assertEqual(self.control.requestUserSetting("user-a")["data"]["home_schedule_source"], "self")
         saved = self.control.saveUserSetting("user-a", 16, 1.0, "ko", home_schedule_source="patients")
@@ -141,13 +206,12 @@ class ManageUserSettingTest(unittest.TestCase):
         self.assertEqual(error.exception.status_code, 400)
 
 
-    # Function Name: setUp
-    # Description:
-    # - Creates an isolated user-settings database, upgrades its schema, and prepares the
-    #   settings control.
-    # Parameters:
-    # - None.
-    # Returns:
+    # 함수이름: setUp
+    # 함수역할:
+    # - 격리된 메모리 DB에 현행 테이블과 설정 제어 객체를 만들고 추가 세션 정리 목록을 준비한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
     # - None.
     def setUp(self) -> None:
         self.extra_sessions = []
@@ -164,12 +228,12 @@ class ManageUserSettingTest(unittest.TestCase):
         self.db = session_factory()
         self.control = ManageUserSetting(self.db)
 
-    # Function Name: tearDown
-    # Description:
-    # - Closes the settings-test session and disposes its database engine.
-    # Parameters:
-    # - None.
-    # Returns:
+    # 함수이름: tearDown
+    # 함수역할:
+    # - 추가 세션과 기본 설정 세션을 닫고 테스트 엔진을 해제한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
     # - None.
     def tearDown(self) -> None:
         for session in self.extra_sessions:

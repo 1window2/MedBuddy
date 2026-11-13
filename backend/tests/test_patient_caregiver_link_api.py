@@ -43,6 +43,8 @@ from entities.authenticated_principal_entity import (  # noqa: E402
 # Responsibilities:
 # - Raises an intentional Redis connection error for every atomic quota request.
 # - Accepts client cleanup without side effects because the Redis double owns no connection.
+# Attributes:
+# - None.
 class _UnavailableRedis:
     # Function Name: eval
     # Description:
@@ -74,13 +76,12 @@ class _UnavailableRedis:
         return None
 
 
-# Function Name: test_patient_and_caregiver_clients_complete_link_lifecycle
-# Description:
-# - Runs separate patient and caregiver clients through code creation, link registration, shared
-#   listing, and unlink removal.
-# Parameters:
-# - None.
-# Returns:
+# 함수이름: test_patient_and_caregiver_clients_complete_link_lifecycle
+# 함수역할:
+# - 분리된 환자·보호자 클라이언트로 코드 발급, 연동 등록, 목록 공유와 해제 흐름을 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
 # - None.
 def test_patient_and_caregiver_clients_complete_link_lifecycle() -> None:
     engine = create_engine(
@@ -142,13 +143,12 @@ def test_patient_and_caregiver_clients_complete_link_lifecycle() -> None:
         AuthenticatedPrincipal.development_principal
     )
 
-    # Function Name: run_link_lifecycle
-    # Description:
-    # - Requires both device clients to see the same active link, then empty lists after a
-    #   successful caregiver unlink.
-    # Parameters:
-    # - None.
-    # Returns:
+    # 함수이름: run_link_lifecycle
+    # 함수역할:
+    # - 두 클라이언트의 활성 연동이 일치하고 보호자 해제 뒤 양쪽 목록이 비는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
     # - None.
     async def run_link_lifecycle() -> None:
         async with (
@@ -212,6 +212,13 @@ def test_patient_and_caregiver_clients_complete_link_lifecycle() -> None:
             # 매개변수: 없음. 반환값: 인증된 환자 주체.
             authenticated_hash = "patient-device"
 
+            # 함수이름: authenticated_patient
+            # 함수역할:
+            # - 캡처한 사용자 해시를 인증된 환자 주체로 반환한다.
+            # 매개변수:
+            # - 없음.
+            # 반환값:
+            # - AuthenticatedPrincipal; 해당 테스트 사용자의 인증 결과.
             def authenticated_patient() -> AuthenticatedPrincipal:
                 return AuthenticatedPrincipal(
                     subject=authenticated_hash, issuer="test", user_hash=authenticated_hash

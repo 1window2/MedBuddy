@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 
 // 클래스명: MedicationLoadingTip
 // 역할: OCR·API 분석 화면에서 함께 쓰는 복약 팁 표시 영역이다.
@@ -27,10 +28,10 @@ class MedicationLoadingTip extends StatefulWidget {
   State<MedicationLoadingTip> createState() => _MedicationLoadingTipState();
 }
 
-// 클래스명: _MedicationLoadingTipState
-// 역할: 분석 요청과 독립적으로 팁을 순환하고 화면 종료 시 타이머를 해제한다.
-// 주요 책임: 모든 팁을 한 번씩 표시한 뒤 다시 섞고 연속 중복은 방지한다.
-// 속성: _order는 팁 순서, _position은 현재 위치, _timer는 자동 전환 타이머이다.
+// Class Name: _MedicationLoadingTipState
+// Role: Manage randomized medication tips during loading.
+// Responsibilities: Rotate tips under lifecycle/accessibility conditions and allow manual advancement.
+// Attributes: _random/_order/_position: shuffled tip selection; _timer/_automaticRotation/_lifecycleState: rotation eligibility; _tips: localized content.
 class _MedicationLoadingTipState extends State<MedicationLoadingTip>
     with WidgetsBindingObserver {
   final Random _random = Random();
@@ -175,9 +176,10 @@ class _MedicationLoadingTipState extends State<MedicationLoadingTip>
     super.dispose();
   }
 
-  // 함수이름: build
-  // 함수역할: 제목과 팁을 중앙 정렬하고, 전체 길이에 맞는 고정 공간에서 현재 문장만 표시·읽기 대상으로 제공한다.
-  // 매개변수: context는 언어·접근성 문맥. 반환값: 제목, 팁, 다음 팁 버튼.
+  // Function Name: build
+  // Description: Display the selected localized tip with a next action, retaining other tips' layout size while exposing only current text to accessibility.
+  // Parameters: context (BuildContext): widget build context.
+  // Returns: Widget: stable-height tip panel.
   @override
   Widget build(BuildContext context) {
     final isEnglish = isEnglishLanguage(widget.language);
@@ -199,7 +201,7 @@ class _MedicationLoadingTipState extends State<MedicationLoadingTip>
               ),
             ),
             Expanded(
-              child: Text(
+              child: KeepWordsText(
                 isEnglish ? 'Medication tip' : '복약 팁',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
@@ -235,7 +237,7 @@ class _MedicationLoadingTipState extends State<MedicationLoadingTip>
                     maintainState: true,
                     maintainAnimation: true,
                     maintainSize: true,
-                    child: Text(
+                    child: KeepWordsText(
                       labels[i],
                       key: i == selected
                           ? const ValueKey('analysisMedicationTipText')

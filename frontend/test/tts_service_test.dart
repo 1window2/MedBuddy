@@ -4,14 +4,14 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
+import 'package:medbuddy_frontend/services/device_speech_engine.dart';
 import 'package:medbuddy_frontend/services/tts_service.dart';
 
 
 // 함수이름: main
 // 함수역할:
-// - TTS 완료 대기, 오디오 포커스, 읽기 속도와 엔진 시작 실패 검증 사례와 테스트 대역을 등록한다.
+// - TTS 이전 발화 중지, 오디오 포커스, 읽기 속도와 엔진 시작 실패 검증 사례와 테스트 대역을 등록한다.
 // 매개변수:
 // - 없음.
 // 반환값:
@@ -21,14 +21,14 @@ void main() {
 
   // 함수이름: test 콜백
   // 함수역할:
-  // - 기대 동작: TTS 재생은 완료 대기와 오디오 포커스를 활성화한다.
+  // - 기대 동작: TTS 재생은 이전 발화를 멈추고 오디오 포커스를 요청한다.
   // 매개변수:
   // - 없음.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  test('TTS 재생은 완료 대기와 오디오 포커스를 활성화한다', () async {
-    final flutterTts = _FakeFlutterTts();
-    final service = TTSService(flutterTts: flutterTts);
+  test('TTS 재생은 이전 발화를 멈추고 오디오 포커스를 요청한다', () async {
+    final engine = _FakeSpeechEngine();
+    final service = TTSService(engine: engine);
     var completed = false;
 
     await service.speak(
@@ -44,12 +44,11 @@ void main() {
       onComplete: () => completed = true,
     );
 
-    expect(flutterTts.stoppedBeforeSpeaking, isTrue);
-    expect(flutterTts.awaitCompletion, isTrue);
-    expect(flutterTts.language, 'ko-KR');
-    expect(flutterTts.speechRate, 0.66);
-    expect(flutterTts.spokenText, '복약 안내 문장입니다.');
-    expect(flutterTts.requestedAudioFocus, isTrue);
+    expect(engine.stoppedBeforeSpeaking, isTrue);
+    expect(engine.language, 'ko-KR');
+    expect(engine.speechRate, 0.66);
+    expect(engine.spokenText, '복약 안내 문장입니다.');
+    expect(engine.requestedAudioFocus, isTrue);
     expect(completed, isTrue);
   });
 
@@ -68,15 +67,15 @@ void main() {
     ];
 
     for (final speedCase in speedCases) {
-      final flutterTts = _FakeFlutterTts();
-      final service = TTSService(flutterTts: flutterTts);
+      final engine = _FakeSpeechEngine();
+      final service = TTSService(engine: engine);
 
       await service.speak(
         '복약 안내 문장입니다.',
         UserSetting(readingSpeed: speedCase.$1),
       );
 
-      expect(flutterTts.speechRate, speedCase.$2);
+      expect(engine.speechRate, speedCase.$2);
     }
   });
 
@@ -88,8 +87,8 @@ void main() {
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   test('TTS 엔진이 발화를 시작하지 못하면 오류를 반환한다', () async {
-    final flutterTts = _FakeFlutterTts()..speakResult = 0;
-    final service = TTSService(flutterTts: flutterTts);
+    final engine = _FakeSpeechEngine()..speakResult = 0;
+    final service = TTSService(engine: engine);
 
     expect(
       // 함수이름: expect 콜백
@@ -112,8 +111,8 @@ void main() {
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   test('재생 중 플랫폼 오류는 기다리지 않고 완료 콜백과 오류로 끝낸다', () async {
-    final flutterTts = _FakeFlutterTts()..holdSpeak = true;
-    final service = TTSService(flutterTts: flutterTts);
+    final engine = _FakeSpeechEngine()..holdSpeak = true;
+    final service = TTSService(engine: engine);
     var completedCount = 0;
 
     final speaking = service.speak(
@@ -123,10 +122,10 @@ void main() {
       onComplete: () => completedCount += 1,
     );
     await pumpEventQueue();
-    expect(flutterTts.spokenText, '복약 안내 문장입니다.');
+    expect(engine.spokenText, '복약 안내 문장입니다.');
     expect(completedCount, 0);
 
-    flutterTts.reportError('synthesis failed');
+    engine.reportError('synthesis failed');
 
     await expectLater(
       speaking.timeout(const Duration(seconds: 1)),
@@ -149,8 +148,8 @@ void main() {
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   test('재생 중 중지는 엔진 시작 실패가 아니라 취소로 끝난다', () async {
-    final flutterTts = _FakeFlutterTts()..holdSpeak = true;
-    final service = TTSService(flutterTts: flutterTts);
+    final engine = _FakeSpeechEngine()..holdSpeak = true;
+    final service = TTSService(engine: engine);
     var completedCount = 0;
 
     final speaking = service.speak(
@@ -160,7 +159,7 @@ void main() {
       onComplete: () => completedCount += 1,
     );
     await pumpEventQueue();
-    expect(flutterTts.spokenText, '복약 안내 문장입니다.');
+    expect(engine.spokenText, '복약 안내 문장입니다.');
 
     await service.stop();
 
@@ -176,8 +175,8 @@ void main() {
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   test('준비 중 중지한 재생은 뒤늦게 시작하지 않는다', () async {
-    final flutterTts = _FakeFlutterTts();
-    final service = TTSService(flutterTts: flutterTts);
+    final engine = _FakeSpeechEngine();
+    final service = TTSService(engine: engine);
     var completedCount = 0;
 
     final speaking = service.speak(
@@ -189,7 +188,7 @@ void main() {
     await service.stop();
     await speaking;
 
-    expect(flutterTts.spokenText, isNull);
+    expect(engine.spokenText, isNull);
     expect(completedCount, 1);
   });
 
@@ -201,34 +200,31 @@ void main() {
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   test('영어 설정은 영어 음성 로케일로 읽는다', () async {
-    final flutterTts = _FakeFlutterTts();
-    final service = TTSService(flutterTts: flutterTts);
+    final engine = _FakeSpeechEngine();
+    final service = TTSService(engine: engine);
 
     await service.speak(
       'Medication guide.',
       const UserSetting(language: 'en-US'),
     );
 
-    expect(flutterTts.language, 'en-US');
+    expect(engine.language, 'en-US');
   });
 }
 
-// 클래스명: _FakeFlutterTts
+// 클래스명: _FakeSpeechEngine
 // 역할: 음성 출력 없이 발화 설정, 완료 콜백과 엔진 결과를 기록하는 TTS 대역.
 // 주요 책임:
 // - 이전 발화를 먼저 중지했는지 기록하고 엔진 성공 값을 제공한다.
-// - 발화 완료 대기 옵션을 기록하고 설정 성공 값을 제공한다.
 // - 성공한 모의 발화가 호출할 완료 처리기를 보관한다.
 // - 요청하면 발화를 끝내지 않고 붙잡아 재생 중 오류와 중지를 재현한다.
 // 속성:
-// - awaitCompletion (bool): 엔진 발화 완료까지 대기할지 여부.
 // - language (String?): 화면 문구 또는 알림 내용의 언어 코드.
 // - holdSpeak (bool): 발화 요청을 중지될 때까지 끝내지 않을지 여부.
-class _FakeFlutterTts extends FlutterTts {
+class _FakeSpeechEngine implements DeviceSpeechEngine {
   dynamic speakResult = 1;
   bool holdSpeak = false;
   bool stoppedBeforeSpeaking = false;
-  bool awaitCompletion = false;
   bool requestedAudioFocus = false;
   String? language;
   double? speechRate;
@@ -236,7 +232,7 @@ class _FakeFlutterTts extends FlutterTts {
 
   VoidCallback? _completionHandler;
   VoidCallback? _cancelHandler;
-  ErrorHandler? _errorHandler;
+  SpeechErrorHandler? _errorHandler;
   Completer<dynamic>? _pendingSpeak;
 
   // 함수이름: stop
@@ -275,11 +271,11 @@ class _FakeFlutterTts extends FlutterTts {
   // 함수역할:
   // - 모의 재생 오류가 호출할 오류 처리기를 보관한다.
   // 매개변수:
-  // - handler (ErrorHandler): 음성 엔진 대역에 보관할 오류 처리기.
+  // - handler (SpeechErrorHandler): 음성 엔진 대역에 보관할 오류 처리기.
   // 반환값:
   // - 없음; 오류 콜백이 교체된다.
   @override
-  void setErrorHandler(ErrorHandler handler) {
+  void setErrorHandler(SpeechErrorHandler handler) {
     _errorHandler = handler;
   }
 
@@ -292,19 +288,6 @@ class _FakeFlutterTts extends FlutterTts {
   // - 없음; 보관된 오류 처리기가 실행된다.
   void reportError(String message) {
     _errorHandler?.call(message);
-  }
-
-  // 함수이름: awaitSpeakCompletion
-  // 함수역할:
-  // - 발화 완료 대기 옵션을 기록하고 설정 성공 값을 제공한다.
-  // 매개변수:
-  // - awaitCompletion (bool): 엔진 발화 완료까지 대기할지 여부.
-  // 반환값:
-  // - 설정 성공을 나타내는 1.
-  @override
-  Future<dynamic> awaitSpeakCompletion(bool awaitCompletion) async {
-    this.awaitCompletion = awaitCompletion;
-    return 1;
   }
 
   // 함수이름: setCompletionHandler

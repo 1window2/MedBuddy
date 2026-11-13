@@ -18,8 +18,9 @@ from entities.chat_notification_job_entity import ChatNotificationJob as Job, ut
 
 
 # Class Name: Claim
-# Role: Detached lease metadata; contains no message text or device credentials.
-# Attributes: message_id/recipient/link_id - routing; attempt - fencing token; created_at - expiry.
+# Role: Carry detached notification-job lease metadata without message text or device credentials.
+# Responsibilities: Route delivery and fence completion writes from stale workers.
+# Attributes: message_id, recipient and link_id identify routing; attempt is the fencing token; created_at determines job age.
 class Claim(NamedTuple):
     message_id: int
     recipient: str
@@ -58,8 +59,9 @@ class ProcessChatNotifications:
         self.connected, self.reserve = connected, reserve
 
     # Function Name: claim
-    # Description: Atomically acquire one due job; increasing attempts fences stale completion writes.
-    # Parameters: None. Returns: Detached claim or None when no job was acquired.
+    # Description: Atomically acquire one due job for five minutes, incrementing its attempt to fence stale completion writes.
+    # Parameters: None; uses a fresh session from the configured factory.
+    # Returns: Claim after committing the lease, or None when no candidate exists or another worker won; database failures propagate.
     def claim(self) -> Claim | None:
         now = utc_now()
         with self.sessions() as db:

@@ -136,17 +136,17 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
         self.db.close()
         self.engine.dispose()
 
-    # 함수이름: _save_medication
-    # 함수역할:
-    # - 지정 환자·약명·처방일·기간의 약을 저장하고 갱신한 행을 반환하여 활성 복약 범위를 준비한다.
-    # 매개변수:
-    # - item_name (str): 공식 카탈로그 또는 저장 약 레코드의 제품명.
-    # - patient_hash (str): 약 또는 연동 데이터 범위를 식별할 환자 소유자 해시.
-    # - prescription_date (date | None): 처방 또는 복용 시작일이며 None이면 fixture 기본 날짜 사용.
-    # - total_days (str): 처방된 복용 기간 문자열이며 미상일 수 있음.
-    # - information (str | None): 효능·용법·주의 세 칸에 똑같이 저장할 문구; 생략하면 칸마다 실제 정보 문구를 저장.
-    # 반환값:
-    # - _SavedMedication: 생성된 ID를 포함하여 저장·갱신한 약 행.
+    # Function Name: _save_medication
+    # Description:
+    # - Persist a medication with configurable owner, name, treatment window, and guidance, then return its refreshed row.
+    # Parameters:
+    # - item_name: str; saved product name.
+    # - patient_hash: str; owning patient identifier.
+    # - prescription_date: date | None; treatment start, or the fixture default.
+    # - total_days: str; course duration, possibly unknown.
+    # - information: str | None; shared text for all three guidance fields, or distinct defaults.
+    # Returns:
+    # - _SavedMedication; persisted and refreshed medication row.
     def _save_medication(
         self,
         *,
@@ -324,7 +324,9 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
 
         # Function Name: record
         # Description: Collects the SQL text of each statement sent to the test engine.
-        # Parameters: statement (str): SQL text; the other SQLAlchemy hook arguments are unused.
+        # Parameters: statement (str): SQL text; _connection/_cursor/_parameters/_context
+        # (object): unused SQLAlchemy connection, cursor, bound values and execution context;
+        # _executemany (bool): unused batch-execution flag.
         # Returns: None.
         def record(
             _connection: object, _cursor: object, statement: str,
@@ -408,13 +410,13 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(calls, ["database_complete", "cleanup"])
         self.assertEqual(self.llm_service.generation_count, 0)
 
-    # Function Name: test_health_route_denies_scope_before_generating_guidance
-    # Description:
-    # - Performs the unchanged caregiver-aware authorization off-loop and stops before recommendation generation when denied.
-    # Parameters:
+    # 함수이름: test_health_route_denies_scope_before_generating_guidance
+    # 함수역할:
+    # - 보호자 권한을 포함한 환자 범위 검사를 작업 스레드에서 실행하고 거절되면 건강 안내 생성 전에 중단하는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
     # - None.
-    # Returns:
-    # - None; fails if denial is bypassed or the LLM is called.
     async def test_health_route_denies_scope_before_generating_guidance(self) -> None:
         loop_thread = threading.get_ident()
 
@@ -715,6 +717,8 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
 # Role: Response-normalization tests for bounded health-recommendation caution lists.
 # Responsibilities:
 # - Preserves diet and exercise text while limiting caution items to the first five entries.
+# Attributes:
+# - None.
 class LLMServiceTest(unittest.TestCase):
     # Function Name: test_normalize_response_limits_caution_items
     # Description:
@@ -747,6 +751,8 @@ class LLMServiceTest(unittest.TestCase):
 # Responsibilities:
 # - Requires the diagram-named operation to return a successful recommendation containing the
 #   active medication name.
+# Attributes:
+# - None.
 class CheckHealthRecommendationContractTest(unittest.IsolatedAsyncioTestCase):
     # Function Name: test_diagram_method_name_executes_recommendation_flow
     # Description:

@@ -9,7 +9,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from entities.catalog_refresh_state_entity import (
     CATALOG_REFRESH_SCHEDULE_NAME,
@@ -54,7 +54,7 @@ _HOUR = 3_600
     ],
 )
 def test_wait_follows_the_last_success_and_the_last_failed_attempt(
-    last_success, last_attempt, expected,
+    last_success: timedelta | None, last_attempt: timedelta | None, expected: int,
 ) -> None:
     assert schedule.seconds_until_next_refresh(
         now=_NOW,
@@ -112,7 +112,7 @@ def test_attempt_and_success_are_stored_and_drive_the_wait(fk_db: Session) -> No
 # - capsys (pytest.CaptureFixture[str]): Captures the command output.
 # Returns:
 # - None.
-def test_command_line_prints_only_the_wait(fk_session_factory, monkeypatch, capsys) -> None:
+def test_command_line_prints_only_the_wait(fk_session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setattr(schedule, "SessionLocal", fk_session_factory)
 
     schedule.main(["wait-seconds", "--interval-seconds", str(_WEEK), "--retry-seconds", "900"])

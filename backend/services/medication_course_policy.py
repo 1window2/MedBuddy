@@ -37,6 +37,7 @@ MAX_DAILY_FREQUENCY = 4
 # - Own the course end date and the dose-slot derivation shared by schedule and chat.
 # - Decide whether a medication is active on a requested date.
 # - Decide whether a medication has passed a retention window.
+# Attributes: None; stateless rules read dates and labels from supplied medication-like objects.
 class MedicationCoursePolicy:
     # Function Name: is_active_during
     # Description:
@@ -79,18 +80,10 @@ class MedicationCoursePolicy:
 
         return start_date <= target_date <= end_date
 
-    # Function Name: is_due_on
-    # Description:
-    # - Checks whether a dose of the medication is due on a date: the course includes the date
-    #   and, for a medication that is not taken every day ("주 1회", "격일"), the date is one of
-    #   its dose days counted from the start of the course.
-    # - A non-daily medication without a recorded start date has no day to count from and is
-    #   treated as daily, as it was before dose days were read.
-    # Parameters:
-    # - medication (Any): Saved medication-like object with date, total_days and daily_frequency.
-    # - target_date (date): Date asked about.
-    # Returns:
-    # - True when the medication belongs on that day's schedule.
+    # 함수이름: is_due_on
+    # 함수역할: 필요시 약·비활성 기간을 제외하고 비매일 주기를 시작일 기준으로 계산한다.
+    # 매개변수: medication (Any)은 복용 모드·기간·횟수 정보, target_date (date)는 확인 날짜다.
+    # 반환값: 해당 날짜 정기 일정에 포함되면 True. 비매일 약도 기록된 시작일이 없으면 활성 기간 동안 매일로 취급한다.
     def is_due_on(self, medication: Any, target_date: date) -> bool:
         if medication_dosing_mode(medication) == "as_needed":
             return False
@@ -160,30 +153,20 @@ class MedicationCoursePolicy:
         delete_after_date = end_date + timedelta(days=retention_days)
         return target_date >= delete_after_date
 
-    # Function Name: read_start_date
-    # Description:
-    # - Prefers prescription_date and falls back to created_date.
-    # Parameters:
-    # - medication (Any): Saved medication-like object.
-    # - fallback_date (date): Date used when no valid date exists.
-    # Returns:
-    # - Parsed medication course start date.
+    # 함수이름: read_start_date
+    # 함수역할: 처방일·생성일의 유효 시작일 또는 대체일을 고른 뒤 처방 버전 적용일보다 앞서지 않게 한다.
+    # 매개변수: medication (Any)은 저장 약 같은 객체, fallback_date (date)는 기록된 날짜가 없을 때의 기준이다.
+    # 반환값: 선택된 시작일과 regimen_effective_from 중 늦은 date.
     def read_start_date(self, medication: Any, fallback_date: date) -> date:
         recorded_date = self._read_recorded_start_date(medication)
         start = fallback_date if recorded_date is None else recorded_date
         effective_from = getattr(medication, "regimen_effective_from", None)
         return max(start, effective_from) if isinstance(effective_from, date) else start
 
-    # Function Name: read_end_date
-    # Description:
-    # - Returns the last day of a medication course: start date plus total_days minus one.
-    # - Single owner of the course-end rule behind the active, window and retention checks.
-    # Parameters:
-    # - medication (Any): Saved medication-like object with date and total_days fields.
-    # - fallback (date | None): Start date assumed when the row holds no valid date.
-    # Returns:
-    # - Course end date; None when no positive duration can be read, or when the row
-    #   holds no valid date and no fallback is given.
+    # 함수이름: read_end_date
+    # 함수역할: 원래 시작일과 기간으로 마지막 복용일을 계산하고 중단일이 있으면 그 전날까지로 제한한다.
+    # 매개변수: medication (Any)은 날짜·기간·중단 정보, fallback (date | None)은 시작일 누락 시 기준이다.
+    # 반환값: 마지막 date. 기간·시작일이 불명확해도 중단일이 있으면 그 전날, 종료 근거가 전혀 없으면 None이다.
     def read_end_date(
         self,
         medication: Any,

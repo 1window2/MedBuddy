@@ -7,6 +7,28 @@ records are patient reports, not proof that medication was swallowed. Medication
 changes must follow the prescription or professional instructions; the app does
 not select a treatment or recommend stopping one.
 
+## Manual Registration and Search
+
+Standalone medication search opens product information without saving a medication
+or creating a schedule. Manual registration can select a confirmed search result;
+it keeps that product only while the entered name matches. Renaming clears the
+selection. The saved-medication feature reuses the selected product instead of
+looking it up again; without one it attempts the existing detail lookup and still
+allows manual registration when that lookup fails.
+
+Manual registration accepts up to ten independent entries. All remaining entries
+are validated before saving, then submitted sequentially through the existing
+single-medication save contract. A failure stops the sequence; completed or
+duplicate entries remain completed in that screen and are skipped on retry.
+This is not an atomic batch or a durable batch-resume queue. Each entry keeps its
+own dates, dose, mode and optional device-only photo.
+
+Scheduled entries support a custom interval of 1 through 90 days in addition to
+the existing cycle choices. The shared cycle calculation anchors the interval to
+the course start; monthly remains a 30-day interval. PRN entries omit scheduled
+slots and cycle instructions. These values express the user's instructions, not
+a recommended dose or treatment.
+
 ## Medication Lifecycle
 
 - The pillbox exposes edit, stop and replace actions with an effective date and
@@ -61,7 +83,10 @@ not select a treatment or recommend stopping one.
   individual requests, not an all-or-nothing transaction.
 - Initial schedule loading hides partial PRN cards while their read continues.
   The PRN section itself shows loading until its first snapshot or error and
-  retains a same-day snapshot during later refreshes. A pending-store failure
+  retains a nonempty same-day snapshot during later refreshes. If the previous
+  eligible list is empty, a refresh shows loading until it completes instead of
+  exposing an empty card or intake controls. Errors remain distinct from an empty
+  successful result. A pending-store failure
   blocks new intake, not an otherwise readable list and count.
 - The as-needed bell configures an optional, one-time check at the next selected
   time. It defaults off and has no missed-dose warning, automatic repeat, dose
@@ -203,6 +228,16 @@ access check; cards outside the 90-day lookup window explain expiration. Its
 summary includes PRN counts and is not scheduled-dose adherence or proof of intake.
 Push carries only a generic message notice. Existing idempotent chat requests and
 current account/link checks apply; copies already shared are not recalled.
+
+The chat composer also opens this workflow through its history-sharing action.
+Both patient and caregiver enter read-only history for the **conversation's
+patient**, not automatically for the signed-in account. After the first successful
+read, the period dialog opens; the recipient dialog filters currently authorized
+recipients to the originating link and still requires send confirmation. If that
+link is no longer available, another recipient is not substituted. Successful
+sharing returns to the conversation and refreshes its messages. This explicit
+chat entry is the exception to read-only history not automatically opening export;
+ordinary read-only history and shared-card entry keep their existing behavior.
 
 Settings > Account > Privacy & Data includes a data-use guide covering
 authentication, medication data, on-device OCR, external AI processing, caregiver

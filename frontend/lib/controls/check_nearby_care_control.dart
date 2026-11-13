@@ -71,20 +71,24 @@ List<NearbyCarePlace> sortNearbyCarePlaces(
   return sorted;
 }
 
-// 공유된 장소가 수신 기기의 현재 검색 결과에 없을 때, 이미 받은 주변 결과와 함께 알린다.
+// Class Name: SharedPlaceNotFound
+// Role: Reports that a shared place could not be found in fresh recipient-side searches.
+// Responsibilities: Preserve the already fetched nearby results when the selected place is unavailable.
+// Attributes: nearby: The usable NearbyCareSearchResult from the initial area.
 class SharedPlaceNotFound implements Exception {
+  // Function Name: SharedPlaceNotFound
+  // Description: Attaches nearby results to a missing shared-place exception.
+  // Parameters: nearby: Fresh initial-area search results.
+  // Returns: An exception carrying those results without repeating the search.
   const SharedPlaceNotFound(this.nearby);
 
   final NearbyCareSearchResult nearby;
 }
 
-// Class Name: CheckNearbyCare
-// Role: Owns shared hospital/pharmacy transport and device operations, not provider policy.
-// Responsibilities:
-// - Resolve fresh GPS or an explicitly selected map/fallback area.
-// - Parse the existing shared display DTO without inventing provider availability.
-// - Reject new HTTP work after disposal; close only internally created clients.
-// Attributes: location, HTTP and external-action boundaries; client ownership and disposal flags.
+// 클래스명: CheckNearbyCare
+// 역할: 병원·약국 조회의 위치와 HTTP 및 외부 앱 실행 경계를 공유한다.
+// 주요 책임: 명시된 지역 또는 새 위치로 검색하고 원본 응답의 운영 정보 불확실성을 유지하며 종료 후 새 요청을 막는다.
+// 속성: 위치·HTTP·외부 동작 의존성, 클라이언트 소유권과 종료 상태; 제공자별 정책은 하위 Control이 결정한다.
 abstract class CheckNearbyCare {
   final DeviceLocationBoundary _locationBoundary;
   final http.Client _client;
@@ -124,11 +128,10 @@ abstract class CheckNearbyCare {
        ),
        _ownsClient = client == null;
 
-  // Function Name: requestNearbyCareSearch
-  // Description: Searches an explicit area or fresh location, preserving fallback provenance and server failures.
-  // Parameters: searchMode, targetDateTime, maxDistanceKm, searchArea: filter, time, radius and optional area.
-  // Returns: The existing shared display result with catalog/calendar uncertainty unchanged.
-  // Note: Neutral display identifiers never replace provider-specific backend wire fields.
+  // 함수이름: requestNearbyCareSearch
+  // 함수역할: 지정 지역 또는 현재 위치로 주변 의료 장소를 조회하고 운영 정보의 불확실성을 그대로 전달한다.
+  // 매개변수: searchMode: 조회 조건; targetDateTime: 기준 시각; maxDistanceKm: 위치 조회 반경; searchArea: 명시적 검색 지역.
+  // 반환값: 장소 목록과 기준 지역·갱신 정보를 담은 결과; 종료·잘못된 지역·통신·응답 오류는 전파한다.
   Future<NearbyCareSearchResult> requestNearbyCareSearch({
     NearbyCareSearchMode searchMode = NearbyCareSearchMode.openAtTime,
     DateTime? targetDateTime,
@@ -216,7 +219,10 @@ abstract class CheckNearbyCare {
     );
   }
 
-  // 공유된 본문이나 영업시간은 사용하지 않고 수신 기기의 현재 검색 결과에서 같은 ID를 연다.
+  // Function Name: requestSelectedPlaceSearch
+  // Description: Finds a shared place by ID in fresh local results, retrying in a 0.3 km area around the shared coordinates if necessary.
+  // Parameters: place: Shared ID and coordinate hint, not trusted opening details; targetDateTime: Search time; maxDistanceKm/searchArea: Initial area.
+  // Returns: Fresh combined results with distance from the original center; SharedPlaceNotFound retains nearby results if the ID remains absent.
   Future<NearbyCareSearchResult> requestSelectedPlaceSearch({
     required NearbyCarePlace place,
     required DateTime targetDateTime,
@@ -276,9 +282,10 @@ abstract class CheckNearbyCare {
     );
   }
 
-  // 함수이름: requestSearchArea
-  // 함수역할: 현재 위치를 시도하고 권한·GPS·시간 초과·잘못된 좌표는 홍익대 기본 지역으로 대체한다.
-  // 매개변수: radiusKm: 검색 반경. 반환값: 실제 위치 또는 기본 검색 지역.
+  // Function Name: requestSearchArea
+  // Description: Requests a fresh location and falls back to the configured Hongik-area center on location failure.
+  // Parameters: radiusKm: Finite radius from 0.1 to 50 km.
+  // Returns: A search area marked as fallback when needed; invalid radius and disposal throw rather than starting a search.
   Future<NearbyCareSearchArea> requestSearchArea({double radiusKm = 20}) async {
     if (_disposed) throw StateError('Nearby care search is disposed.');
     if (!radiusKm.isFinite || radiusKm < 0.1 || radiusKm > 50) {
@@ -301,22 +308,18 @@ abstract class CheckNearbyCare {
     );
   }
 
-  // 함수이름: requestPhoneCall
-  // 함수역할: 약국 전화번호를 외부 동작 서비스에 전달해 전화 앱 실행을 요청한다.
-  // 매개변수:
-  // - telephone (String): 약국 전화번호 원문
-  // 반환값:
-  // - Future<bool>: 약국 전화번호를 외부 동작 서비스에 전달해 전화 앱 실행을 요청한다.
+  // Function Name: requestPhoneCall
+  // Description: Delegates opening the dialer for a care location.
+  // Parameters: telephone: Raw telephone number.
+  // Returns: The external-action service's launch result.
   Future<bool> requestPhoneCall(String telephone) async {
     return _externalActionService.requestPhoneCall(telephone);
   }
 
-  // 함수이름: requestDirections
-  // 함수역할: 약국명과 주소를 목적지로 지정한 외부 지도 길찾기를 실행한다.
-  // 매개변수:
-  // - pharmacy (NearbyCarePlace): 전화·주소·길찾기 대상 약국
-  // 반환값:
-  // - Future<bool>: 약국명과 주소를 목적지로 지정한 외부 지도 길찾기를 실행한다.
+  // Function Name: requestDirections
+  // Description: Delegates directions using a care location's name, address and coordinates.
+  // Parameters: pharmacy: Shared place DTO used for either care-provider type.
+  // Returns: The external-action service's directions result.
   Future<bool> requestDirections(NearbyCarePlace pharmacy) async {
     return _externalActionService.requestDirections(
       name: pharmacy.name,
@@ -326,12 +329,10 @@ abstract class CheckNearbyCare {
     );
   }
 
-  // 함수이름: requestInstalledMapDirections
-  // 함수역할: 사용자가 설치한 지도 앱 중 하나를 선택해 약국 길찾기를 시작한다.
-  // 매개변수:
-  // - pharmacy (NearbyCarePlace): 전화·주소·길찾기 대상 약국
-  // 반환값:
-  // - Future<bool>: 사용자가 설치한 지도 앱 중 하나를 선택해 약국 길찾기를 시작한다.
+  // Function Name: requestInstalledMapDirections
+  // Description: Delegates destination opening through installed map applications.
+  // Parameters: pharmacy: Place name and destination coordinates.
+  // Returns: The external-action service's launch result.
   Future<bool> requestInstalledMapDirections(NearbyCarePlace pharmacy) {
     return _externalActionService.requestInstalledMapDirections(
       name: pharmacy.name,
@@ -340,12 +341,10 @@ abstract class CheckNearbyCare {
     );
   }
 
-  // 함수이름: requestGoogleMapDirections
-  // 함수역할: Google 지도 앱 또는 웹 브라우저에서 약국 길찾기를 시작한다.
-  // 매개변수:
-  // - pharmacy (NearbyCarePlace): 전화·주소·길찾기 대상 약국
-  // 반환값:
-  // - Future<bool>: Google 지도 앱 또는 웹 브라우저에서 약국 길찾기를 시작한다.
+  // Function Name: requestGoogleMapDirections
+  // Description: Delegates Google Maps directions for the selected care location.
+  // Parameters: pharmacy: Destination name, address and coordinates.
+  // Returns: The external-action service's launch result.
   Future<bool> requestGoogleMapDirections(NearbyCarePlace pharmacy) {
     return _externalActionService.requestGoogleMapDirections(
       name: pharmacy.name,
@@ -355,50 +354,40 @@ abstract class CheckNearbyCare {
     );
   }
 
-  // 함수이름: copyPharmacyAddress
-  // 함수역할: 지도 앱을 열 수 없는 상황에 대비해 약국 주소를 복사한다.
-  // 매개변수:
-  // - address (String): 복사하거나 표시할 약국 주소
-  // 반환값:
-  // - Future<bool>: 지도 앱을 열 수 없는 상황에 대비해 약국 주소를 복사한다.
+  // Function Name: copyPharmacyAddress
+  // Description: Copies a care location's address through the external-action boundary.
+  // Parameters: address: Text to place on the clipboard.
+  // Returns: The service's copy result.
   Future<bool> copyPharmacyAddress(String address) {
     return _externalActionService.copyAddress(address);
   }
 
-  // 함수이름: requestMapAttribution
-  // 함수역할: 앱 내 지도 제공자인 네이버 지도의 안내 페이지를 연다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<bool>: 앱 내 지도 제공자인 네이버 지도의 안내 페이지를 연다.
+  // Function Name: requestMapAttribution
+  // Description: Opens the embedded map provider's attribution page.
+  // Parameters: None.
+  // Returns: The external-action service's launch result.
   Future<bool> requestMapAttribution() {
     return _externalActionService.requestMapAttribution();
   }
 
-  // 함수이름: openApplicationSettings
-  // 함수역할: 앱별 위치 권한을 변경할 수 있는 운영체제 설정 화면을 연다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<bool>: 앱별 위치 권한을 변경할 수 있는 운영체제 설정 화면을 연다.
+  // Function Name: openApplicationSettings
+  // Description: Opens application settings where location permission can be changed.
+  // Parameters: None.
+  // Returns: The location boundary's settings-launch result.
   Future<bool> openApplicationSettings() =>
       _locationBoundary.openApplicationSettings();
 
-  // 함수이름: openDeviceLocationSettings
-  // 함수역할: 기기 위치 서비스 활성화를 위한 운영체제 설정 화면을 연다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<bool>: 기기 위치 서비스 활성화를 위한 운영체제 설정 화면을 연다.
+  // Function Name: openDeviceLocationSettings
+  // Description: Opens the device location-service settings.
+  // Parameters: None.
+  // Returns: The location boundary's settings-launch result.
   Future<bool> openDeviceLocationSettings() =>
       _locationBoundary.openDeviceLocationSettings();
 
-  // 함수이름: dispose
-  // 함수역할: 직접 생성한 HTTP 클라이언트만 닫고 외부에서 주입한 클라이언트의 수명은 호출자에게 맡긴다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음.
+  // Function Name: dispose
+  // Description: Prevents further searches and closes only a client created by this control.
+  // Parameters: None.
+  // Returns: None; repeated disposal is ignored and injected clients remain open.
   void dispose() {
     if (_disposed) return;
     _disposed = true;

@@ -1,3 +1,6 @@
+// 파일명: prescription_radar_tabs_test.dart
+// 역할: 처방 변경 결과의 범주별 접기·펼치기와 빈 범주·갱신 후 선택 상태를 검증한다.
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -8,6 +11,14 @@ import 'package:medbuddy_frontend/entities/prescription_change_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 
+// 함수이름: radar
+// 함수역할:
+// - 변경·추가·누락 범주를 가진 처방 비교 결과를 만들고 변경 개수와 미분류 항목을 조절한다.
+// 매개변수:
+// - changedCount(int): 변경 목록 길이; 요약의 변경 수 5는 유지된다.
+// - unknown(bool): 미분류 항목을 추가할지 여부.
+// 반환값:
+// - PrescriptionChangeRadar: 고정 이전/현재 처방 날짜와 범주별 항목.
 PrescriptionChangeRadar radar({int changedCount = 5, bool unknown = false}) =>
     PrescriptionChangeRadar(
       hasPreviousPrescription: true,
@@ -51,6 +62,15 @@ PrescriptionChangeRadar radar({int changedCount = 5, bool unknown = false}) =>
       ],
     );
 
+// 함수이름: screen
+// 함수역할:
+// - 변경 비교 위젯을 스크롤 가능한 화면에 언어·텍스트 배율과 함께 배치한다.
+// 매개변수:
+// - language(String): 표시 언어; 기본 ko.
+// - scale(double): 텍스트 배율.
+// - data(PrescriptionChangeRadar?): 결과 데이터; 생략하면 기본 radar.
+// 반환값:
+// - Widget: 테마와 Scaffold를 갖춘 테스트 앱.
 Widget screen({
   String language = 'ko',
   double scale = 1,
@@ -74,6 +94,14 @@ Widget screen({
   ),
 );
 
+// 함수이름: tap
+// 함수역할:
+// - 스크롤로 대상을 보이게 한 뒤 누르고 전환 애니메이션을 완료한다.
+// 매개변수:
+// - tester(WidgetTester): 화면 제어기.
+// - target(Finder): 표시하고 누를 대상.
+// 반환값:
+// - Future<void>: 상호작용 완료; 대상 누락이나 정착 실패는 테스트 오류.
 Future<void> tap(WidgetTester tester, Finder target) async {
   await tester.ensureVisible(target);
   await tester.pumpAndSettle();
@@ -81,7 +109,21 @@ Future<void> tap(WidgetTester tester, Finder target) async {
   await tester.pumpAndSettle();
 }
 
+// 함수이름: main
+// 함수역할:
+// - 변경 범주 탭의 초기 배치, 결과 축소 후 탐색과 접근성 사례를 등록한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - 없음; 등록된 사례와 준비·정리 훅은 테스트 프레임워크에서 실행한다.
 void main() {
+  // 함수이름: setUpAll
+  // 함수역할:
+  // - 환경 변수로 지정된 테스트 글꼴이 있으면 텍스트·아이콘 글꼴을 로드하고, 없으면 기본 글꼴을 유지한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 글꼴 로드 완료; 지정 파일을 읽지 못하면 실패한다.
   setUpAll(() async {
     final font = Platform.environment['MEDBUDDY_TEST_FONT'];
     if (font == null) return;
@@ -96,6 +138,13 @@ void main() {
 
   for (final language in ['ko', 'en']) {
     for (final large in [false, true]) {
+      // 함수이름: 범주별 페이지와 단일 상세
+      // 함수역할:
+      // - 언어·큰 글씨 조합에서 접기/펼치기, 세 항목씩 페이지 이동, 한 개 상세 유지, 마지막 페이지 비활성화와 범주 전환을 검증한다.
+      // 매개변수:
+      // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+      // 반환값:
+      // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
       testWidgets(
         'tabs page three medications and open one detail $language $large',
         (tester) async {
@@ -180,6 +229,13 @@ void main() {
     }
   }
 
+  // 함수이름: 짧아진 결과와 빈 범주
+  // 함수역할:
+  // - 두 번째 페이지에서 결과를 줄이면 유효 페이지로 돌아오고 빈 범주 안내 후에도 추가 범주를 열 수 있는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('empty category and refreshed shorter results remain usable', (
     tester,
   ) async {
@@ -198,6 +254,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: 요약 없는 미분류 항목
+  // 함수역할:
+  // - 요약 개수가 없어도 미분류 범주와 해당 약을 표시하고 화면 오류가 없는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets(
     'unknown change type is not lost when summary counts are absent',
     (tester) async {

@@ -1,3 +1,5 @@
+# File Name: schema_initialization.py
+# Role: Bootstraps only empty development databases and verifies migration heads and required ORM columns.
 """Bootstrap empty development databases with Alembic; never guess a legacy revision."""
 
 from functools import lru_cache
@@ -16,16 +18,28 @@ from core.database import Base
 _migration_logger = logging.getLogger("alembic.runtime.migration")
 
 
+# Function Name: migration_config
+# Description: Resolves Alembic configuration relative to this backend, independent of the working directory.
+# Parameters: None.
+# Returns: Config for backend/alembic.ini; loading/validation is left to Alembic consumers.
 def migration_config() -> Config:
     return Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
 
 
+# Function Name: _expected_heads
+# Description: Reads and caches the repository migration heads for the process lifetime.
+# Parameters: None.
+# Returns: frozenset[str] of head revision IDs; invalid migration configuration propagates.
 @lru_cache(maxsize=1)
 def _expected_heads() -> frozenset[str]:
     """Reads the migration scripts once; they do not change while the process runs."""
     return frozenset(ScriptDirectory.from_config(migration_config()).get_heads())
 
 
+# Function Name: _current_heads
+# Description: Reads applied revisions while temporarily suppressing repetitive Alembic INFO logging, restoring the prior level even on failure.
+# Parameters: connection (Connection) is the caller's open database connection.
+# Returns: set[str] of current heads, empty for an unstamped database; database errors propagate.
 def _current_heads(connection: Connection) -> set[str]:
     """Reads the applied revisions without Alembic's two INFO lines per call.
 
@@ -40,6 +54,10 @@ def _current_heads(connection: Connection) -> set[str]:
         _migration_logger.setLevel(previous_level)
 
 
+# Function Name: verify_database_revision
+# Description: Requires the applied revision set to equal the shipped heads without stamping or modifying the database.
+# Parameters: connection (Connection) is the database to inspect.
+# Returns: None on agreement; raises RuntimeError with recovery guidance for missing or mismatched revisions.
 def verify_database_revision(connection: Connection) -> None:
     expected = set(_expected_heads())
     current = _current_heads(connection)
@@ -57,6 +75,10 @@ def verify_database_revision(connection: Connection) -> None:
         )
 
 
+# Function Name: prepare_database_schema
+# Description: Migrates only an empty unstamped database when enabled, then checks exact heads and required ORM tables/columns.
+# Parameters: db_engine (Engine) supplies the transaction; auto_create (bool) permits empty-database bootstrap, never repair of existing schemas.
+# Returns: None on success; migration/connection errors propagate and RuntimeError rejects revision or column mismatches.
 def prepare_database_schema(db_engine: Engine, *, auto_create: bool) -> None:
     """Only empty databases may be initialized automatically; existing ones are read-only."""
     with db_engine.begin() as connection:

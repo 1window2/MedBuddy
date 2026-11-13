@@ -2,7 +2,7 @@
 # Role: Owns process-local account serialization and cancellation-safe lock cleanup.
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from threading import Lock
@@ -22,14 +22,15 @@ class _AccountLockEntry:
 
 
 # Class Name: AccountOperationLocks
-# Role: Serializes SQLite account operations within one application event loop.
+# Role: Serializes one account's operations within one application event loop.
 # Responsibilities:
 # - Retain one lock per active account without storing idle account identities.
 # - Release holders and waiter references on success, failure, timeout or cancellation.
 # Attributes:
 # - _entries (dict[str, _AccountLockEntry]): Active account holders and waiters.
 # - _registry_guard (Lock): Protects registry reference updates, not database work.
-# Note: PostgreSQL uses database transaction locks instead; this is process-local only.
+# Note: SQLite holds it for the request; PostgreSQL queues in front of its transaction locks
+#   with it (core.request_database_gate). It is process-local only.
 class AccountOperationLocks:
     # Function Name: __init__
     # Description:
@@ -54,6 +55,65 @@ class AccountOperationLocks:
         with self._registry_guard:
             return len(self._entries)
 
+    # Function Name: acquire
+    # Description:
+    # - Retains and acquires an account lock without a context manager, for owners whose release
+    #   happens outside the acquiring frame.
+    # Parameters:
+    # - user_hash (str): Server-verified account serialization scope.
+    # - timeout (float): Maximum seconds to await ownership.
+    # Returns:
+    # - Idempotent release callback; call it on the event loop that acquired the lock.
+    #   Timeout and cancellation propagate after the waiter reference is dropped.
+    async def acquire(self, user_hash: str, *, timeout: float) -> Callable[[], None]:
+        # Step 1: Retain the same entry for every holder and waiter in this scope.
+        with self._registry_guard:
+            entry = self._entries.setdefault(user_hash, _AccountLockEntry())
+            entry.references += 1
+        try:
+            # Step 2: Bound the asynchronous wait.
+            if timeout <= 0:
+                raise TimeoutError
+            # Inline acquisition preserves cancellation at ownership handoff;
+            # wait_for can swallow it when its acquisition child has just finished.
+            async with asyncio.timeout(timeout):
+                await entry.lock.acquire()
+        except BaseException:
+            self._drop_reference(user_hash, entry)
+            raise
+        released = False
+
+        # Function Name: release
+        # Description:
+        # - Releases ownership and the holder reference once; later calls do nothing.
+        # Parameters:
+        # - None.
+        # Returns:
+        # - None.
+        def release() -> None:
+            nonlocal released
+            if released:
+                return
+            released = True
+            entry.lock.release()
+            self._drop_reference(user_hash, entry)
+
+        return release
+
+    # Function Name: _drop_reference
+    # Description:
+    # - Drops one holder or waiter reference and forgets the account once nobody uses it.
+    # Parameters:
+    # - user_hash (str): Account scope of the entry.
+    # - entry (_AccountLockEntry): Entry the reference was taken on.
+    # Returns:
+    # - None.
+    def _drop_reference(self, user_hash: str, entry: _AccountLockEntry) -> None:
+        with self._registry_guard:
+            entry.references -= 1
+            if entry.references == 0:
+                del self._entries[user_hash]
+
     # Function Name: hold
     # Description:
     # - Retains and acquires an account lock, cleaning up even a cancelled waiter.
@@ -64,26 +124,8 @@ class AccountOperationLocks:
     # - Yields while ownership is held; propagates timeout, cancellation or body errors.
     @asynccontextmanager
     async def hold(self, user_hash: str, *, timeout: float) -> AsyncIterator[None]:
-        # Step 1: Retain the same entry for every holder and waiter in this scope.
-        with self._registry_guard:
-            entry = self._entries.setdefault(user_hash, _AccountLockEntry())
-            entry.references += 1
-        acquired = False
+        release = await self.acquire(user_hash, timeout=timeout)
         try:
-            # Step 2: Bound the asynchronous wait and hold through endpoint execution.
-            if timeout <= 0:
-                raise TimeoutError
-            # Inline acquisition preserves cancellation at ownership handoff;
-            # wait_for can swallow it when its acquisition child has just finished.
-            async with asyncio.timeout(timeout):
-                await entry.lock.acquire()
-            acquired = True
             yield
         finally:
-            # Step 3: Release ownership and always drop the waiter/holder reference.
-            if acquired:
-                entry.lock.release()
-            with self._registry_guard:
-                entry.references -= 1
-                if entry.references == 0:
-                    del self._entries[user_hash]
+            release()

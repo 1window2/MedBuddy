@@ -1,40 +1,162 @@
 {
-  "version": "0.2.5 (사진 정리와 본문 수정, 2026-11-06)",
-  "pages": 224,
-  "subsections": 84,
-  "steps": 321,
-  "pdf_internal_links_verified": 206,
-  "pdf_bookmarks_verified": 94,
-  "visual_review": {
-    "status": "reviewed",
-    "renderer": "Poppler pdftoppm",
-    "rendered_pages": 224,
-    "contact_sheets": 14,
-    "changed_pages_checked": [
-      1,
-      100,
-      104,
-      141
+  "reviewed_on": "2026-11-11",
+  "app_version": "1.0.0 development branch",
+  "edition": "portrait-and-landscape",
+  "default_edition": "landscape",
+  "pdf_file": "MedBuddy_User_Guide_ko.pdf",
+  "chapters": 10,
+  "subsections": 92,
+  "steps": 328,
+  "pages": 138,
+  "pdf_internal_links_verified": 102,
+  "pdf_bookmarks_verified": 102,
+  "all_step_text_verified": true,
+  "all_source_note_text_verified": true,
+  "preservation_checks": {
+    "previous_steps": 328,
+    "existing_step_ids_preserved_exactly_once": true,
+    "step_order": "Unchanged.",
+    "image_crop_and_annotation_geometry_preserved": false,
+    "added_step_ids": [],
+    "refreshed_assets": [
+      "ASM-P016:2",
+      "ASM-P020:10",
+      "CURRENT-2.10:saved-demo",
+      "ASM-P058:5"
     ],
-    "comparison": "2026-11-05 발행본과 60dpi 전체 페이지 렌더 해시 비교: 1(표지 날짜), 100(5.1-3), 104(5.3-1), 141(7.6-5)페이지만 변경",
-    "limitations": "1.5-2와 10.1-2는 테스트 글꼴을 적용한 실제 인증 위젯 시뮬레이션으로, 기기 글꼴 및 시스템 표시줄은 다를 수 있습니다."
+    "added_assets": [
+      "assets/prescription-image-card-1.0.0-2026-11-11.png",
+      "assets/pill-saved-1.0.0-2026-11-11.png",
+      "assets/schedule-alarm-save-1.0.0-2026-11-11.png"
+    ],
+    "all_manifest_hashes_verified": true,
+    "all_captions_below_photos": true,
+    "portrait_pages": 147,
+    "landscape_pages": 138
+  },
+  "visual_review": {
+    "portrait": {
+      "pages": 147,
+      "rendered_pages": 147,
+      "contact_sheets_reviewed": 10,
+      "glyphs_checked": 49126,
+      "out_of_page_glyphs": [],
+      "pdf_sha256": "adb24b5913714509010cdc5734a8fc8b16b28ea767f2368e89b01cb399c86552",
+      "visual_review": "reviewed",
+      "observed_layout_defects": [],
+      "changed_pages_reviewed": [
+        19,
+        21,
+        37,
+        97
+      ]
+    },
+    "landscape": {
+      "pages": 138,
+      "rendered_pages": 138,
+      "contact_sheets_reviewed": 9,
+      "glyphs_checked": 47885,
+      "out_of_page_glyphs": [],
+      "pdf_sha256": "bcf81a549880424a6332cafe7281a6427618c011217a311fa78f12de2d807dc1",
+      "visual_review": "reviewed",
+      "observed_layout_defects": [],
+      "changed_pages_reviewed": [
+        18,
+        20,
+        36,
+        92
+      ]
+    }
+  },
+  "revision": {
+    "captures": "Replace the screenshots of 2.3-4 and 2.3-9 (photo card and 'add a missing medication' below it), 2.12-8 (pill saved) and 7.5-5 (reminder dialog) with captures of the 1.0.0 app; the previous images showed the removed review table, a debug ribbon and the earlier bottom tabs.",
+    "text": "README text unchanged; the four steps still describe the captured screens.",
+    "removed_assets": [
+      "assets/prescription-review-legacy.png",
+      "assets/guide-pill-saved-demo.png",
+      "source/assets/2816052dd74eb97b30d2236c806e568710c05e1a3a8cacc3eb0f47441130e877.png"
+    ],
+    "provenance": "SOURCE_NOTES.md records this revision and earlier capture methods."
+  },
+  "pdf_sha256": "bcf81a549880424a6332cafe7281a6427618c011217a311fa78f12de2d807dc1",
+  "markdown_sha256": "f9e0b2f7857f6d12e56d63452e1eb251192a8dd409b6df31f6a474e4fa0094cd",
+  "content_sha256": "76dc19df6cc8cb3d2af5fc0a87c68096a3d61bbd03f26b9932164b7591c7cb82",
+  "layout_sha256": "69f73887fac8d074f463d9710318611222bd0c5aa870d83c1e9c4916d0f38699",
+  "asset_manifest_sha256": "41d825e9dca473f2eae24468043315311b10bfdd1618f251d1502d428c88794e",
+  "fonts_sha256": {
+    "NanumBarunGothic.ttf": "9b872773134e2e4d8c0b17021266786576db06c843ede0d0b523b214a450756c",
+    "NanumBarunGothicBold.ttf": "39bba4cd9bd2986143825c8654abbb62443914ab33b346c0c929a916f5d98bf2"
+  },
+  "libraries": {
+    "reportlab": "4.4.9",
+    "pypdf": "6.21.4",
+    "Pillow": "13.0.0",
+    "pypdfium2": "5.14.0"
+  },
+  "review_scope": {
+    "method": "All 285 pages of both editions rendered and compared with the previous publication; only portrait pages 19, 21, 37 and 97 and landscape pages 18, 20, 36 and 92 differ, and those were inspected at full size.",
+    "full_page_images_inspected": {
+      "portrait": [
+        19,
+        21,
+        37,
+        97
+      ],
+      "landscape": [
+        18,
+        20,
+        36,
+        92
+      ]
+    },
+    "runtime_changes": "Captured from the 1.0.0 debug build on beta/v1.0.0 (includes the 2026-11-11 word-wrap and privacy-mask changes).",
+    "source_paths": "Only repository-relative paths recorded."
+  },
+  "portrait": {
+    "pdf_file": "MedBuddy_User_Guide_ko_portrait.pdf",
+    "pages": 147,
+    "steps": 328,
+    "pdf_sha256": "adb24b5913714509010cdc5734a8fc8b16b28ea767f2368e89b01cb399c86552",
+    "internal_links_verified": 211,
+    "bookmarks_verified": 102,
+    "all_step_text_verified": true,
+    "all_notes_verified": true
+  },
+  "landscape": {
+    "pdf_file": "MedBuddy_User_Guide_ko.pdf",
+    "pages": 138,
+    "steps": 328,
+    "pdf_sha256": "bcf81a549880424a6332cafe7281a6427618c011217a311fa78f12de2d807dc1",
+    "internal_links_verified": 102,
+    "bookmarks_verified": 102,
+    "all_step_text_verified": true,
+    "all_notes_verified": true,
+    "continuation_columns": 0,
+    "screenshots_aligned_to_step_numbers": true
+  },
+  "review_evidence": [
+    {
+      "report": ".build/audit.json",
+      "sha256": "3bd32da5a39b39ba1fb4d073f4be136d241910632e4c73ae78a4e59e2bf01ee2"
+    },
+    {
+      "report": ".build/landscape-audit.json",
+      "sha256": "8eb4d56d06713b16b06d1017441805bf0abc98ff7a48bd881924f497abe95498"
+    }
+  ],
+  "previous_revision_capture_environment": {
+    "refreshed_images": 0,
+    "added_images": 0,
+    "kind": "Reuse existing reviewed captures; no new captures for the chapter reorganization.",
+    "limitations": "No application behavior or live service was exercised for this document-only revision."
   },
   "capture_environment": {
-    "kind": "별도 테스트 에뮬레이터 캡처 및 테스트 위젯 시뮬레이션",
-    "data": "시험용 Firebase 설정과 예시 데이터; 실제 계정 및 인증 메일 전송 미사용",
-    "scope": "1.5-2와 10.1-2는 실제 AuthenticationUI에 가짜 Firebase를 주입한 위젯 테스트; 나머지 최근 인증 화면은 별도 테스트 에뮬레이터 캡처",
-    "screenshot_status_bar_cropped": "에뮬레이터 캡처는 상태 표시줄을 제외; 위젯 시뮬레이션에는 시스템 표시줄이 없음"
-  },
-  "clean_rebuild": {
-    "passed": true,
-    "pdf_sha256_identical": true,
-    "markdown_sha256_identical": true,
-    "note": "저장소 밖 별도 복사본에서 캐시 없이 재생성(이전 PDF는 입력으로 읽지 않음)"
-  },
-  "pdf_sha256": "ca4740fb02d4fbc792ba92172dc013c983928378d9a09f5e595db9e446f38a59",
-  "markdown_sha256": "fc5d4b0975184b7b7330a3a1a598c4ebd99aae3d3bd366054d7e0b9cf15da954",
-  "fonts_sha256": {
-    "NanumBarunGothic": "9b872773134e2e4d8c0b17021266786576db06c843ede0d0b523b214a450756c",
-    "NanumBarunGothicBold": "39bba4cd9bd2986143825c8654abbb62443914ab33b346c0c929a916f5d98bf2"
+    "refreshed_images": 4,
+    "added_images": 3,
+    "kind": "medbuddy_rc emulator (Android 14, 1080x2400), debug build 1.0.0+27 against a local backend whose AI and public-data services were offline fakes; demo prescription and pill photos drawn for the guide",
+    "app_text_size": "medium",
+    "text_scale": 1.0,
+    "device_system_bars": "cropped",
+    "limitations": "No production account, server or live AI/public-data lookup was used; medication names and results are demo data."
   }
 }

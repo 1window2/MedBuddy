@@ -20,6 +20,7 @@ _T = TypeVar("_T")
 # Responsibilities:
 # - Own a fresh ORM session for each worker operation and close it before returning.
 # - Keep SQL work off the event loop and away from a request-owned session.
+# Attributes: _session_factory creates an independent ORM session for each worker operation.
 class AsyncPharmacyCatalog:
     # Function Name: __init__
     # Description: Retains a session factory without opening a transaction.
@@ -33,6 +34,10 @@ class AsyncPharmacyCatalog:
     # Parameters: operation: Synchronous operation against a new repository.
     # Returns: Operation result, detached from the ORM session.
     async def _run(self, operation: Callable[[PharmacyCatalogRepository], _T]) -> _T:
+        # Function Name: execute
+        # Description: Runs the captured repository operation in a fresh session and closes it on success or failure.
+        # Parameters: None; captures operation and the adapter's session factory.
+        # Returns: Operation result (_T); repository/database errors propagate to the awaiting caller.
         def execute() -> _T:
             with self._session_factory() as db:
                 return operation(PharmacyCatalogRepository(db))

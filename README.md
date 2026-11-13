@@ -1,374 +1,58 @@
-[![CodeQL](https://github.com/1window2/MedBuddy/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/1window2/MedBuddy/actions/workflows/github-code-scanning/codeql) [![FastAPI](https://img.shields.io/github/actions/workflow/status/1window2/MedBuddy/backend-ci.yml?label=FastAPI&logo=fastapi)](https://github.com/1window2/MedBuddy/actions/workflows/backend-ci.yml) [![Flutter](https://img.shields.io/github/actions/workflow/status/1window2/MedBuddy/frontend-ci.yml?label=Flutter&logo=flutter)](https://github.com/1window2/MedBuddy/actions/workflows/frontend-ci.yml) [![Android](https://img.shields.io/github/actions/workflow/status/1window2/MedBuddy/release-android.yml?label=Android&logo=android)](https://github.com/1window2/MedBuddy/actions/workflows/release-android.yml) [![Dependabot](https://img.shields.io/github/issues-pr/1window2/MedBuddy/dependencies?label=Dependabot&logo=dependabot)](https://github.com/1window2/MedBuddy/pulls?q=is%3Apr+is%3Aopen+author%3Aapp%2Fdependabot)
+[![CodeQL](https://github.com/1window2/MedBuddy/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/1window2/MedBuddy/actions/workflows/github-code-scanning/codeql) [![FastAPI](https://img.shields.io/github/actions/workflow/status/1window2/MedBuddy/backend-ci.yml?label=FastAPI&logo=fastapi)](https://github.com/1window2/MedBuddy/actions/workflows/backend-ci.yml) [![Flutter](https://img.shields.io/github/actions/workflow/status/1window2/MedBuddy/frontend-ci.yml?label=Flutter&logo=flutter)](https://github.com/1window2/MedBuddy/actions/workflows/frontend-ci.yml) [![Android](https://img.shields.io/github/actions/workflow/status/1window2/MedBuddy/release-android.yml?label=Android&logo=android)](https://github.com/1window2/MedBuddy/actions/workflows/release-android.yml)
 
 # MedBuddy
 
 > **AI-Powered Medication Management System**
 >
-> A Flutter and FastAPI medication assistant that analyzes prescriptions and loose-pill photos, supports direct medication entry, enriches medication information with Korean public data and Gemini, and helps patients and caregivers manage schedules, reminders, linked medication context, and nearby-pharmacy and chat flows.
+> An Android app (Flutter) with a FastAPI backend that reads prescriptions and pill
+> photos, keeps medication schedules and reminders, and connects patients with their
+> caregivers.
 
-## User Guide
+- **Download:** [GitHub Releases](https://github.com/1window2/MedBuddy/releases) (Android APK, ARM 64-bit and 32-bit)
+- **User guide (Korean):** [web](docs/user-guide/README.md) · [PDF](docs/user-guide/MedBuddy_User_Guide_ko.pdf)
 
-- [Read the Korean user guide on GitHub](docs/user-guide/README.md).
-- [Open the illustrated Korean PDF guide](docs/user-guide/MedBuddy_User_Guide_ko.pdf).
-- The guide follows the v0.2.5 development line; part of its screenshots still show earlier versions. [Capture and version notes](docs/user-guide/SOURCE_NOTES.md) list what changed.
+## Features
 
-## Key Features
-
-### Home and Notification Inbox
-
-- Keep a 2x2 home menu: medication registration and identification, health recommendations, nearby hospitals and pharmacies, and settings. Reminder settings remain available from Schedule and Settings.
-- Open one latest-first notification list from the header bell, with an unread badge, received chat previews, read actions, and notification-only deletion.
-- History is stored per account on the current device, not in a server mailbox. Chat previews respect content-visibility settings; reminder entries reflect scheduled events rather than proof of delivery or medication intake.
-- See [the notification inbox design note](docs/MedBuddy%20-%20Notification%20Inbox.md) for storage and lifecycle boundaries.
-
-### Prescription and Pill-Envelope Analysis
-
-- Capture or select prescription and pill-envelope images, with a guided prescription camera that supports portrait and landscape framing only while the camera is active.
-- Perform Korean OCR and privacy masking on-device, then send only de-identified text to the authenticated FastAPI analysis pipeline.
-- Review recognized fields, correct or add medications, confirm schedule details, and save verified results to the medication list.
-
-### Medication Detail and Guidance
-
-- Resolve normalized medication names through the local catalog, Redis cache, and Korean public drug APIs.
-- Present validated medication information, images, patient-friendly guidance, and focused TTS playback.
-
-### Experimental Loose-Pill Identification
-
-- Compare front and optional reverse-side photos against the MFDS pill-identification catalog using visible attributes and deterministic ranking.
-- Treat results as candidates requiring explicit user confirmation, with guidance to verify packaging or consult a pharmacist.
-
-### Direct Medication Entry
-
-- Users can register a medication without a prescription or pill-identification request by entering its name, dose, unit, start date, end date, and schedule slots.
-- An optional camera or gallery image is copied into app-owned patient storage. Orphaned local images are removed when they are no longer referenced.
-- Direct entries reuse the same saved-medication and schedule contracts as analyzed medications, so filtering, reminders, completion tracking, caregiver views, and medication-context chat do not require a separate data path.
-
-### Nearby Operating Pharmacies
-
-- Open pharmacy search from the home menu's nearby hospitals-and-pharmacies shortcut.
-
-- Pharmacy search is a standard feature and needs no setting; choices made in the retired laboratory menu do not restrict access.
-- Users can request nearby pharmacies after granting foreground location permission. Location is requested only while this feature is in use.
-- The Flutter client sends coordinates to the authenticated MedBuddy API. The backend keeps the public-data credential private and adapts the National Emergency Medical Center pharmacy response into the app contract.
-- Results are filtered on the server before the 30-result limit is applied. The default view shows pharmacies that are open now without asking the user to enter a time. One filter button offers open-now, late-hours, exact-date weekend/holiday, and all-nearby views; the late-hours view combines officially designated public late-night pharmacies with pharmacies whose reported schedules run late. Date-based views ask only for a date. A Naver Map view appears above the filter; selecting either a pharmacy card or marker synchronizes the selection and centers the map on that pharmacy. Open pharmacies are ranked before closed pharmacies and late-hours pharmacies are prioritized next, followed by user-scoped favorites and distance within the same operating group.
-- Weekly National Emergency Medical Center schedules, Korean legal holidays, and exact-date NEMC holiday emergency rosters are cached in PostgreSQL. Responses expose catalog freshness and whether an exact roster, a bounded stale cache, or a weekly fallback supplied the schedule. Official designation records retain their authority URL and verification date and are not inferred from closing time alone.
-- Naver Dynamic Map is initialized with a compile-time client identifier. Each pharmacy card lets the user choose an installed map app or Google Maps; if neither can be opened, MedBuddy copies the validated pharmacy address for use in another map or notes app.
-- The screen distinguishes pharmacies that are closing soon from closed pharmacies with a known next regular opening, and shows the public-catalog refresh time when available. If optional map configuration is unavailable, the list, phone, and directions actions remain usable with a clear configuration message instead of a misleading coordinate error.
-- Manual refresh uses a cooldown to prevent accidental repeated public-data requests. Telephone and directions launches are centralized in one validated external-action service.
-- Operating hours are informational public data and may change on holidays or at short notice, so the screen asks users to confirm by phone before visiting. A selected pharmacy can be shared into an authorized medication conversation, with phone-confirmed sharing represented separately from an ordinary location share.
-
-### User Settings and Voice Playback
-
-- Persist medication, caregiver, and chat notification preferences; lock-screen privacy; schedule defaults; font size; reading speed; language; and time format with a local fallback.
-- Apply display and voice preferences consistently without changing existing confirmed medication schedules.
-
-### Saved Medication and Schedule Management
-
-- Save patient-scoped medications with prescription dates, dosage details, treatment periods, and schedule slots.
-- Filter active and completed courses, track each daily dose independently, and undo accidental completion updates.
-- Surface the next dose and daily progress on the home screen while retaining completed medication history.
-
-### Patient and Caregiver Link Flow
-
-- Link patients and caregivers through temporary codes backed by authenticated, server-derived ownership.
-- Let caregivers view linked medication data, unlink safely, and configure per-slot completion or missed-dose alerts.
-- Deliver transition-based FCM alerts in beta mode without exposing internal patient identifiers.
-- Support medication-context chat as a standard v0.2.0 feature with server-verified schedules, medication cards, pharmacy snapshots, idempotent events, and participant-scoped unread state.
-- Show a Chat bottom tab only when the current user has an active patient-caregiver connection. The conversation list shows peer names and recent messages, supports multiple linked patients or caregivers, and opens the existing context chat. Local link changes refresh the tab immediately; foreground checks and app resume also detect remote changes.
-- Select chat messages for private deletion at any time, or redact your own messages for both participants within 24 hours of sending. Server-side authorization and time checks apply; medication records remain unchanged.
-
-### Health Recommendations and Reminders
-
-- Generate patient-scoped health recommendations from saved medication context.
-- Schedule persistent per-slot medication reminders and caregiver notification preferences.
-
-## Roadmap
-
-1. **v0.2.5 usability line and carried-over verification:** v0.2.4-beta is published as a limited off-Play pre-release; v0.2.5 makes existing features easier to find and prepares the app for the graduation exhibition (2026-11-26 to 11-27) and is to be finished by 2026-11-20. Remaining physical reboot/offline recovery, two-device caregiver/chat checks, and measured recognition validation are tracked in the [release TODO](docs/TODO.md).
-2. **Android production verification:** Validate the dedicated
-   FastAPI/PostgreSQL/Redis production host behind Cloudflare Tunnel, complete
-   backup and restore rehearsal, and finish authenticated two-device, Wi-Fi,
-   cellular, outage-recovery, and signed-device smoke tests.
-3. **Local pill-vision model:** Evaluate a licensed or locally trained lightweight model against the current `PillVisualFeatures` boundary before replacing the external visual-attribute adapter. The current MFDS ranking and mandatory confirmation contract must remain unchanged.
+- **Registration:** photograph a prescription or pill envelope (OCR and privacy masking run on the device), identify loose pills against the MFDS catalogue, search, or enter a medicine by hand.
+- **Schedule and reminders:** per-slot reminders with Taken and snooze buttons, a home-screen widget, and dose records that work offline and sync later.
+- **Medication information:** public drug data with plain-language guidance and read-aloud.
+- **Patient and caregiver:** link by code, caregiver views, completion and missed-dose alerts, and a chat with medication, pharmacy and history cards.
+- **Nearby care:** open hospitals and pharmacies on a map, including late-night and holiday hours.
+- **History and health tips:** weekly and monthly records, and diet and activity tips for the current medicines.
 
 ## Architecture
 
-MedBuddy is implemented around the project UML diagrams and follows a Boundary-Control-Entity style structure:
+| Part | Stack |
+| --- | --- |
+| App | Flutter / Dart (Android), Firebase Auth and Cloud Messaging |
+| Server | FastAPI, PostgreSQL, Redis, Alembic; Cloudflare Tunnel in production |
+| AI and data | Gemini, OpenCV, Korean public data APIs (MFDS, NEMC, KASI) |
 
-- **Boundary/UI** classes render screens and collect user input.
-- **Frontend boundary/service** classes wrap on-device prescription OCR, text-region mapping, privacy filtering, camera-guide cropping, local manual-entry images, foreground location, embedded pharmacy-map rendering, pharmacy favorites and validated external actions, local notifications, TTS, and linked-chat WebSocket events.
-- **Backend boundaries** receive de-identified prescription text and isolate public drug and pharmacy APIs, Gemini text recovery, loose-pill vision extraction, and FCM delivery from the use-case controls.
-- **Control** classes coordinate use cases, API calls, scope resolution, persistence, OCR correction policy, bounded multi-pill work, nearby-pharmacy queries, and linked chat without placing domain logic in screens or routers.
-- **Entity/Model** classes preserve application data contracts such as prescription analysis results, medication schedules, saved medication snapshots, manual entries, nearby pharmacies, chat messages and medication context, user settings, notification preferences, and patient-caregiver links.
-- Backend medication, pharmacy, and chat routers remain thin boundary adapters around cohesive controls.
-
-The implementation-grounded class view is maintained in
-[`docs/UML/class/README.md`](docs/UML/class/README.md).
-The frozen Android beta boundary and planned security architecture are defined
-in [`docs/MedBuddy - Beta Scope.md`](docs/MedBuddy%20-%20Beta%20Scope.md) and
-[`docs/MedBuddy - Beta Security Architecture.md`](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).
-Contribution rules for preserving the UML-aligned structure are documented in
-[`CONTRIBUTING.md`](CONTRIBUTING.md).
-
-## Tech Stack
-
-### Frontend
-
-![Flutter](https://img.shields.io/badge/Flutter-%2302569B.svg?style=for-the-badge&logo=Flutter&logoColor=white)
-![Dart](https://img.shields.io/badge/dart-%230175C2.svg?style=for-the-badge&logo=dart&logoColor=white)
-
-### Backend
-
-![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)
-![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
-![SQLite](https://img.shields.io/badge/sqlite-%2307405e.svg?style=for-the-badge&logo=sqlite&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/postgresql-%23316192.svg?style=for-the-badge&logo=postgresql&logoColor=white)
-![Firebase](https://img.shields.io/badge/firebase-%23FFCA28.svg?style=for-the-badge&logo=firebase&logoColor=black)
-
-### AI and Data
-
-![Gemini](https://img.shields.io/badge/Google%20Gemini-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)
-![OpenCV](https://img.shields.io/badge/opencv-%23white.svg?style=for-the-badge&logo=opencv&logoColor=white)
-![Redis](https://img.shields.io/badge/redis-%23DD0031.svg?style=for-the-badge&logo=redis&logoColor=white)
-![Public Data](https://img.shields.io/badge/Public%20Data-009900?style=for-the-badge)
-
-### Collaboration
-
-![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)
-![Figma](https://img.shields.io/badge/figma-%23F24E1E.svg?style=for-the-badge&logo=figma&logoColor=white)
-
-## UI / UX Design
-
-#### Figma: [MedBuddy Design](https://www.figma.com/design/YS6yFzx1dpT7a0FxnefWUy/MedBuddy)
-- Designed by [@onlyone130](https://github.com/onlyone130)
-- Flutter UI colors are centralized in `frontend/lib/theme/medbuddy_theme.dart` from the Figma palette, including primary greens, mint borders, schedule slot colors, surface shades, dividers, and text colors.
+The code follows the project UML in a Boundary-Control-Entity structure
+([class view](docs/UML/class/README.md)). UI design:
+[Figma](https://www.figma.com/design/YS6yFzx1dpT7a0FxnefWUy/MedBuddy) by
+[@onlyone130](https://github.com/onlyone130).
 
 ## Getting Started
 
-### Prerequisites
-
-- Python 3.11 for the backend CI target
-- Flutter SDK and Android Studio
-- A running Android emulator or physical Android device
-- Gemini API key
-- Korean public data portal API key authorized for the drug, NEMC pharmacy/hospital, and KASI holiday services listed below
-- Redis server, optional for local cache and rate-limit testing; required for distributed production quotas
-- Optional local medication catalog database at `backend/medbuddy.db`
-
-### Backend Setup
-
-From the repository root:
-
-```powershell
-cd backend
-py -3.11 -m venv ..\.venv
-..\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-Copy-Item .env.example .env
-```
-
-Open `backend/.env` and set at least:
-
-```dotenv
-GEMINI_API_KEY=your_gemini_api_key
-PUBLIC_DATA_API_KEY=your_public_data_api_key
-# Optional: leave blank to reuse PUBLIC_DATA_API_KEY for hospital requests.
-HOSPITAL_API_KEY=
-APP_ENV=development
-AUTH_MODE=disabled
-AUTO_CREATE_SCHEMA=true
-PILL_IMAGE_API_ENABLED=true
-PILL_IMAGE_API_TIMEOUT_SECONDS=8
-PILL_IDENTIFICATION_MODEL_NAME=gemini-3.1-flash-lite
-PILL_IDENTIFICATION_TIMEOUT_SECONDS=20
-PILL_IDENTIFICATION_CATALOG_TTL_HOURS=168
-PILL_IDENTIFICATION_CATALOG_REFRESH_TIMEOUT_SECONDS=30
-```
-
-The public-data key must be authorized for the `e약은요`, medication approval,
-medication pill-identification, and pharmacy-location APIs. Pill images are optional; lookups keep
-working with the existing placeholder when that API is unavailable or the dosage
-form has no public pill image. Set `PILL_IMAGE_API_ENABLED=false` only when the
-optional saved-medication image enrichment must be disabled. The experimental
-loose-pill flow still requires the MFDS identification catalog.
-
-### Nearby Care API Credentials
-
-The values above are placeholders, not working credentials. Enter your own keys
-only in the ignored `backend/.env` (or `deploy/backend.env` on the server).
-Do not commit either file, service-account JSON, Firebase configuration originals,
-local demo settings, or logs containing credentials. Never put public-data or
-Gemini keys in Flutter `--dart-define` values or client source.
-
-| Service to apply for | Used for | Backend setting |
-| --- | --- | --- |
-| [국립중앙의료원 전국 병·의원 찾기 서비스](https://www.data.go.kr/data/15000736/openapi.do) | Hospital coordinates, departments, contact information and weekly consultation hours | `HOSPITAL_API_KEY`; when blank, reuses `PUBLIC_DATA_API_KEY` |
-| [한국천문연구원 특일 정보](https://www.data.go.kr/data/15012690/openapi.do) | Determines whether a selected Korean date is a legal holiday, for both hospital and pharmacy hours | `PUBLIC_DATA_API_KEY` |
-| 국립중앙의료원 전국 약국 정보 조회 서비스 (`ErmctInsttInfoInqireService`) | Pharmacy catalog and weekly business hours | `PUBLIC_DATA_API_KEY` |
-| [국립중앙의료원 명절 비상진료기관 및 약국 조회 서비스](https://www.data.go.kr/data/15000480/openapi.do) | Exact-date holiday pharmacy rosters | `PUBLIC_DATA_API_KEY` |
-
-Apply for each service separately in the Public Data Portal and check approval
-for the key used by the running backend. A key that works for medication or
-hospital data does not automatically authorize holiday queries. `HOSPITAL_API_KEY`
-does not override the key used by the KASI calendar or pharmacy services.
-The backend URL-encodes request parameters; use the portal's decoded key value.
-
-Restart the backend after editing its local environment. For a 403 or
-`SERVICE_KEY_IS_NOT_REGISTERED_ERROR`, check service approval and the configured
-key without copying the real key or a credential-bearing request URL into an
-issue. Public-data failures are not treated as proof that a hospital is closed
-or that a date is an ordinary weekday. Visit-time availability still requires
-confirmation with the institution.
-
-The hospital request/cache limits and service base URLs are documented in
-`backend/.env.example`; retain those defaults for initial testing. Map rendering
-uses the existing Naver client-ID setup below, independently of backend data keys.
-
-DB 초기화 및 갱신 정책:
-
-- `AUTO_CREATE_SCHEMA=true`는 **빈 DB만** Alembic `head`로 초기화한다.
-  기존 DB에 `create_all()`이나 임의의 컬럼 보정을 적용하지 않는다.
-- 이미 Alembic으로 관리되는 DB는 Backend/worker를 중지하고 백업한 뒤,
-  `backend/`에서 아래 명령으로 갱신한다. 개발·staging·production 모두 같은
-  migration 체인을 사용하며, 운영에서는 `AUTO_CREATE_SCHEMA=false`를 유지한다.
-
-```powershell
-python -m alembic current
-python -m alembic heads
-python -m alembic upgrade head
-```
-
-- 기존 테이블은 있지만 `alembic_version`이 없는 구형 로컬 DB는 자동 변환하지 않는다.
-  먼저 SQLite backup API로 WAL까지 포함한 일관된 백업을 만들고, 복사본의
-  테이블·컬럼·제약조건·데이터 무결성을 특정 migration revision과 대조한다.
-  확인된 baseline에만 `alembic stamp <검증한_revision>`을 수행하고
-  `alembic upgrade head`를 적용해 데이터 보존을 확인한 후 실제 DB에 적용한다.
-  다른 DB의 revision을 그대로 사용하거나 `stamp head`로 누락된 migration을
-  건너뛰지 않는다. DB 삭제·수동 `ALTER TABLE`은 필요하지 않다.
-- 앱은 migration revision 및 ORM 필수 컬럼 불일치 시 worker 시작 전에 중단한다.
-  따라서 `AUTO_CREATE_SCHEMA=true`도 기존 DB의 migration을 대체하지 않는다.
-- v0.2.2 통합 migration head는 `f2c8a6d4e901`이다. Catalog 갱신 상태
-  `c5e1a7f3b902`와 ID·Push 등록 보호 `d19e7c4b2a60`을 합치며 기존 revision을 바꾸지 않는다.
-- `d19e7c4b2a60` 적용 전 각 기기의 복용 대기 기록 동기화를 완료하고 실패·보류
-  항목을 확인한다. 기록을 일괄 폐기하거나 조용히 삭제하지 않으며, 대상이 불명확하면
-  자동 재전송하지 않고 사용자 확인 후 진행한다. 앱과 Backend/worker를 중지하고
-  일관된 백업 및 복사본 검증 후 전용 Alembic 연결로 갱신한다.
-  SQLite의 `foreign_keys=OFF`는 이 전용 migration 연결에만 해당하며 서비스 연결은 끄지 않는다.
-  SQLite 약·채팅 ID의 현재 행과 적용 후 발급 이력은 재사용을 방지하지만,
-  적용 전 이미 삭제된 최고 ID는 복원할 수 없다. 큰 timestamp ID를 시딩하거나
-  기존 ID를 바꾸지 않는다. 상세 절차와 rollback 제한은
-  [운영 갱신 안내](docs/Production%20Deployment.md#delayed-request-rollout-d19e7c4b2a60)를 따른다.
-
-Start the API server:
-
-```powershell
-python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-API documentation is available at:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-This loopback-only server is retained for backend development and automated
-testing only. The Android application does not use it as its default API
-endpoint.
-
-Production runs on the dedicated Ubuntu host behind Cloudflare Tunnel. See
-[MedBuddy Production Deployment](docs/Production%20Deployment.md).
-
-### Optional Local Public-Data Catalogs
-
-Local development stores medication, pill-reference, and weekly pharmacy schedule rows in `backend/medbuddy.db`. Production uses the same ORM mappings in Alembic-managed PostgreSQL, and the catalog synchronization job is the sole production writer. Generated `.db` files are intentionally ignored by Git.
-
-Build or refresh the optional local medication catalog from the public drug APIs:
-
-```powershell
-python scripts/sync_drug_catalog.py --dataset all --page-size 500 --max-retries 5
-python scripts/sync_pharmacy_catalog.py --page-size 1000 --max-retries 5
-```
-
-Resume an interrupted long-running sync from a known API page:
-
-```powershell
-python scripts/sync_drug_catalog.py --dataset approval --page-size 500 --start-page 120 --max-retries 5
-```
-
-### Frontend Setup
-
-Use **Flutter 3.41.5 (stable)**, matching both CI and the signed Android release
-workflow. The application commits `frontend/pubspec.lock`; do not delete it or
-regenerate it with a different SDK to work around a resolution failure.
-
-Open another terminal from the repository root:
+The Android app uses the production API by default, so app development needs no
+local server:
 
 ```powershell
 cd frontend
-flutter --version
 flutter pub get --enforce-lockfile
-flutter devices
 flutter run -d "[your-device-id]"
 ```
 
-Use the device id shown by `flutter devices`.
+Use Flutter 3.41.5. For the backend, Firebase settings and the public-data API keys,
+see the [frontend README](frontend/README.md), the [backend README](backend/README.md)
+and [Production Deployment](docs/Production%20Deployment.md).
 
-For an intentional dependency change, use Flutter 3.41.5, run `flutter pub get`
-without enforcement, review and commit the lockfile diff, then verify
-`flutter pub get --enforce-lockfile`, `flutter analyze --no-pub`, and
-`flutter test --no-pub`. SDK upgrades must update both workflow pins and the
-lockfile together. CI and signed builds reject dependency drift rather than
-silently resolving different versions.
+## Documentation
 
-The Android application defaults to the production API endpoint:
-
-```text
-https://api.medbuddy.pp.ua/api/v1/medication
-```
-
-ADB debugging, Flutter hot reload, breakpoints, and physical-device testing do
-not require a backend process on the development laptop or a device on the same
-LAN. The Android client reaches the production API over ordinary HTTPS.
-
-`MEDBUDDY_API_BASE_URL` remains a compile-time `String.fromEnvironment` value.
-Profile and release builds accept only a public HTTPS endpoint whose path is
-`/api/v1/medication`. Debug builds additionally accept only the local demo
-hosts `10.0.2.2`, `127.0.0.1`, `localhost`, or `::1` over port `8000` when
-`MEDBUDDY_ALLOW_LOCAL_HTTP=true` is supplied. Other private-network and
-clear-text endpoints remain rejected.
-
-For authenticated beta testing, keep the real `google-services.json` in
-`frontend/android/app` and out of Git. Provide the Firebase configuration that
-matches the registered `com.medbuddy.app` Android application:
-
-```powershell
-flutter run -d "[your-device-id]" `
-  --dart-define=MEDBUDDY_AUTH_MODE=firebase `
-  --dart-define=MEDBUDDY_FIREBASE_API_KEY=your_api_key `
-  --dart-define=MEDBUDDY_FIREBASE_APP_ID=your_android_app_id `
-  --dart-define=MEDBUDDY_FIREBASE_MESSAGING_SENDER_ID=your_sender_id `
-  --dart-define=MEDBUDDY_FIREBASE_PROJECT_ID=medbuddy-26 `
-  --dart-define=MEDBUDDY_NAVER_MAP_CLIENT_ID=your_naver_dynamic_map_client_id `
-  --dart-define=MEDBUDDY_PHONE_AUTH_ENABLED=false
-```
-
-Release and profile builds require Firebase authentication and the same public
-HTTPS backend contract. Production deployment details are documented in
-[`docs/Production Deployment.md`](docs/Production%20Deployment.md), and
-authentication, App Check, and signing requirements are documented in
-[`docs/MedBuddy - Beta Security Architecture.md`](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).
-For an already installed physical-device beta, increment `frontend/pubspec.yaml`
-version code and use `frontend/tool/install_update_preserving_data.ps1`. The
-helper verifies the package/signing identity, performs only `adb install -r`,
-and refuses any fallback that would uninstall the app or clear Firebase and
-reminder state. Server-side medication history remains in the named PostgreSQL
-Compose volume; never use `docker compose down -v` during a rebuild. See the
-self-hosted guide above for the complete update and backup procedure.
-
-## Contributing
-
-Development workflow, verification commands, UML alignment rules, documentation standards, and commit message conventions are maintained in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+- [Release notes](docs/releases/v1.0.0.md) and the [release TODO](docs/TODO.md)
+- [Scope](docs/MedBuddy%20-%20Beta%20Scope.md), [security architecture](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md) and [decision log](docs/MedBuddy%20-%20Decision%20Log.md)
+- [Contributing](CONTRIBUTING.md) and [security policy](SECURITY.md)
 
 ## Contributors
 

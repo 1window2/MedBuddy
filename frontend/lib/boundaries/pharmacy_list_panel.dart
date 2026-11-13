@@ -3,8 +3,9 @@
 part of 'check_nearby_pharmacy_ui_boundary.dart';
 
 // 클래스명: _PharmacyListPanel
-// 역할: 상단 드래그 영역과 독립적으로 스크롤되는 약국 목록을 배치한다.
-// 속성: header: 조회 상태, child: 목록, onDismissed: 지도 복귀, showMapLabel: 접근성 안내.
+// 역할: 독립 스크롤 목록과 지도 복귀용 상단 드래그 영역.
+// 주요 책임: 조회 상태·목록·지도 복귀 동작을 패널 상태에 전달한다.
+// 속성: header/child (Widget): 상태·목록; onDismissed (VoidCallback): 복귀; showMapLabel (String): 접근성 문구.
 class _PharmacyListPanel extends StatefulWidget {
   final Widget header;
   final Widget child;
@@ -29,9 +30,9 @@ class _PharmacyListPanel extends StatefulWidget {
 }
 
 // 클래스명: _PharmacyListPanelState
-// 역할: 상단 제스처만 처리해 목록 스크롤과 지도 복귀를 구분한다.
-// 속성: _offset: 내려온 거리, _height: 패널 높이, _closing: 중복 닫기 방지.
-// - _dragCancelled: 운영체제가 취소한 제스처를 닫기로 처리하지 않는 표시.
+// 역할: 시설 목록의 상단 드래그와 닫기 애니메이션 상태.
+// 주요 책임: 목록 스크롤을 방해하지 않고 취소된 제스처·중복 종료를 막는다.
+// 속성: _offset (AnimationController): 내려온 거리; _height (double): 높이; _closing/_dragCancelled (bool): 종료·취소 상태.
 class _PharmacyListPanelState extends State<_PharmacyListPanel>
     with SingleTickerProviderStateMixin {
   late final _offset = AnimationController.unbounded(vsync: this);

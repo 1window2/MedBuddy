@@ -38,17 +38,15 @@ void installDoseHomeWidgetReaders() {
   };
 }
 
-// 함수이름: doseHomeWidgetCallback
-// 함수역할: 앱이 떠 있지 않을 때 위젯의 새로고침 요청을 받아 조회 함수를 연결한 뒤 위젯 상태를 갱신한다.
-//   플러그인이 이 함수의 핸들을 기기에 저장하므로 최상위 함수로 두고 이름과 파일 위치를 유지한다.
-// 매개변수:
-// - uri (Uri?): 위젯이 보낸 요청 주소. medbuddy-widget://refresh만 처리한다.
-// 반환값:
-// - Future<void>: 갱신이 끝나면 완료된다.
+// Function Name: doseHomeWidgetCallback
+// Description: Handle background widget refresh requests after binding initialization; keep this top-level entry point stable because the platform persists its handle.
+// Parameters: uri (Uri?): only medbuddy-widget://refresh is accepted.
+// Returns: Future<void>: completes after refresh, or immediately for unrelated requests.
 @pragma('vm:entry-point')
 Future<void> doseHomeWidgetCallback(Uri? uri) async {
   WidgetsFlutterBinding.ensureInitialized();
   if (uri?.scheme != 'medbuddy-widget' || uri?.host != 'refresh') return;
   installDoseHomeWidgetReaders();
   await DoseHomeWidget.refreshInBackground(requestedByWidget: true);
+  await DoseHomeWidget.retryWhileStale();
 }

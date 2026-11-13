@@ -18,7 +18,7 @@ import httpx
 import numpy as np
 from google import genai
 from google.genai import types
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, JpegImagePlugin, UnidentifiedImageError
 from sqlalchemy.orm import Session
 
 from core.bounded_thread_work import run_thread_keeping_capacity
@@ -43,6 +43,34 @@ MAX_PILL_IMAGE_PIXELS = 24_000_000
 # A progressive JPEG decodes every scan over the whole image, so a few bytes per extra scan buy
 # seconds of CPU each. Normal encoders write about 10 scans; the limit leaves room for any of them.
 MAX_PILL_JPEG_SCANS = 100
+
+
+# EXIF orientation values and the transpose that puts the image upright (as in Pillow's
+# ImageOps.exif_transpose).
+_EXIF_ORIENTATION_TRANSPOSE = {
+    2: Image.Transpose.FLIP_LEFT_RIGHT,
+    3: Image.Transpose.ROTATE_180,
+    4: Image.Transpose.FLIP_TOP_BOTTOM,
+    5: Image.Transpose.TRANSPOSE,
+    6: Image.Transpose.ROTATE_270,
+    7: Image.Transpose.TRANSVERSE,
+    8: Image.Transpose.ROTATE_90,
+}
+
+
+# Function Name: _apply_exif_orientation
+# Description:
+# - Turns a decoded image upright according to its EXIF orientation tag.
+# - ImageOps.exif_transpose also re-encodes the whole EXIF block after turning the image, and
+#   that work grows with whatever metadata the upload carries (one oversized tag made a 128 px
+#   image cost seconds of CPU). Only the pixels are analysed, so the metadata is left alone.
+# Parameters:
+# - source (Image.Image): Loaded image.
+# Returns:
+# - The upright image (the source itself when no turn is needed).
+def _apply_exif_orientation(source: Image.Image) -> Image.Image:
+    method = _EXIF_ORIENTATION_TRANSPOSE.get(source.getexif().get(0x0112, 1))
+    return source if method is None else source.transpose(method)
 
 
 # Function Name: _count_jpeg_scans
@@ -86,6 +114,7 @@ def _count_jpeg_scans(data: bytes, limit: int = MAX_PILL_JPEG_SCANS) -> int:
 # - Signals that a pill photo lacks safe, reliable evidence for analysis.
 # Responsibilities:
 # - Report invalid images, unsafe sizes, multiple pills or insufficient visual quality as retake conditions.
+# Attributes: Inherited exception arguments only; no additional instance state.
 class PillImageQualityError(ValueError):
     """Raised when a pill photo cannot be analyzed safely or reliably."""
 
@@ -95,6 +124,7 @@ class PillImageQualityError(ValueError):
 # - Signals that no usable public pill-catalog snapshot can be served.
 # Responsibilities:
 # - Distinguish unavailable or unsynchronized reference data from image-analysis failures.
+# Attributes: Inherited exception arguments only; no additional instance state.
 class PillCatalogUnavailableError(RuntimeError):
     """Raised when neither MFDS nor the local catalog cache is available."""
 
@@ -104,6 +134,7 @@ class PillCatalogUnavailableError(RuntimeError):
 # - Signals temporary failure of the external visual-attribute service.
 # Responsibilities:
 # - Wrap provider execution errors without exposing SDK details to use-case controls.
+# Attributes: Inherited exception arguments only; no additional instance state.
 class PillVisionUnavailableError(RuntimeError):
     """Raised when the external visual-attribute service is unavailable."""
 
@@ -113,6 +144,7 @@ class PillVisionUnavailableError(RuntimeError):
 # - Signals an invalid visual-analysis response contract.
 # Responsibilities:
 # - Separate malformed or inconsistent provider output from image quality and network availability errors.
+# Attributes: Inherited exception arguments only; no additional instance state.
 class PillVisionResponseError(RuntimeError):
     """Raised when the visual service returns an invalid response contract."""
 
@@ -163,16 +195,6 @@ class PillImageProcessingBoundary:
 
     _MAX_ANALYSIS_DIMENSION = 1600
     _MIN_IMAGE_DIMENSION = 128
-
-    # 함수이름: preprocessPillImage
-    # 함수역할:
-    # - 개수 판정을 포함한 전처리를 사용하되 기존 호출자에게 정규화 이미지 바이트만 돌려준다.
-    # 매개변수:
-    # - image (bytes): 업로드한 원본 알약 사진 바이트.
-    # 반환값:
-    # - 분석용 JPEG 바이트; 유효하지 않은 이미지는 PillImageQualityError.
-    def preprocessPillImage(self, image: bytes) -> bytes:
-        return self.preprocessPillImageWithAssessment(image).image
 
     # Function Name: preprocessMultiplePillImage
     # Description:
@@ -259,20 +281,20 @@ class PillImageProcessingBoundary:
                     raise PillImageQualityError(
                         "The pill image resolution is too large."
                     )
-                if (
-                    source.format == "JPEG"
-                    and _count_jpeg_scans(image) > MAX_PILL_JPEG_SCANS
-                ):
+                # A JPEG with an MPF segment opens as MpoImageFile (format "MPO"), a JpegImageFile
+                # subclass, so the class decides here rather than the format name.
+                is_jpeg = isinstance(source, JpegImagePlugin.JpegImageFile)
+                if is_jpeg and _count_jpeg_scans(image) > MAX_PILL_JPEG_SCANS:
                     raise PillImageQualityError(
                         "The uploaded file is not a valid image."
                     )
-                if source.format == "JPEG":
+                if is_jpeg:
                     source.draft(
                         "RGB",
                         (self._MAX_ANALYSIS_DIMENSION, self._MAX_ANALYSIS_DIMENSION),
                     )
                 source.load()
-                oriented = ImageOps.exif_transpose(source)
+                oriented = _apply_exif_orientation(source)
                 oriented.thumbnail(
                     (self._MAX_ANALYSIS_DIMENSION, self._MAX_ANALYSIS_DIMENSION),
                     Image.Resampling.LANCZOS,
@@ -472,6 +494,7 @@ class PillImageProcessingBoundary:
 # - Extracts visible pill attributes through Gemini without identifying products.
 # Responsibilities:
 # - Send one/two-sided JPEG evidence or one multiple-pill photo with constrained JSON schemas and reject empty output.
+# Attributes: None; callers supply the Gemini client, model and image/schema inputs per request.
 class GeminiPillVisionAPI:
     """External Gemini boundary that extracts only visible pill attributes."""
 
@@ -1026,15 +1049,10 @@ class PillVisionBoundary:
         )
         return intersection / union
 
-    # 함수이름: _extract_visual_features
-    # 함수역할:
-    # - 로컬 전처리 개수와 AI 개수를 교차 확인하고 양면 일치 및 품질 조건을 검증한다.
-    # - 동일 알약 신뢰도가 낮으면 주의 문구를 추가하고, 사용 가능한 특징이 없는 저품질 응답은 재촬영 오류로 처리한다.
-    # 매개변수:
-    # - front_image (bytes): 앞면 원본 사진 바이트.
-    # - back_image (bytes | None): 선택 뒷면 원본 사진 바이트; 없으면 None.
-    # 반환값:
-    # - 검증된 PillVisualFeatures; 품질·응답 형식·외부 서비스 실패는 해당 경계 예외.
+    # Function Name: _extract_visual_features
+    # Description: Preprocesses photos under retained worker capacity, compares local/provider pill counts and validates front/back consistency and usable visual evidence.
+    # Parameters: front_image (bytes) is required; back_image (bytes | None) is the optional reverse photo.
+    # Returns: PillVisualFeatures, with an uncertainty note for weak side agreement; raises image-quality, malformed-response or provider-unavailable errors as appropriate.
     async def _extract_visual_features(
         self,
         front_image: bytes,
@@ -1162,13 +1180,10 @@ class PillVisionBoundary:
             back_pill_count,
         )
 
-    # 함수이름: _preprocess_one_image
-    # 함수역할:
-    # - 개수 판정을 포함한 전처리 API로 한쪽 면을 정규화한다. 주입되는 전처리 경계는 이 API를 반드시 제공해야 한다.
-    # 매개변수:
-    # - image (bytes): 전처리할 한쪽 면의 원본 이미지 바이트.
-    # 반환값:
-    # - 정규화 이미지와 판정 개수; 개수를 확정할 수 없으면 None.
+    # Function Name: _preprocess_one_image
+    # Description: Delegates preprocessing and local pill-count assessment to the image-processing boundary.
+    # Parameters: image (bytes) is an uploaded pill photo.
+    # Returns: (processed image bytes, detected count or None); preprocessing failures propagate.
     def _preprocess_one_image(
         self,
         image: bytes,

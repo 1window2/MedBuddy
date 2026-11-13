@@ -10,14 +10,22 @@ import '../widgets/medbuddy_page_header.dart';
 import '../widgets/medbuddy_select_all_bar.dart';
 
 // 클래스명: NotificationInboxUI
-// 역할: 알림함 화면. 목록과 저장 명령은 Control에 위임한다.
+// 역할: 계정별 알림 목록과 확인·이동 명령을 연결한다.
+// 주요 책임: 목록 및 저장은 제어기에 맡기고 선택한 알림 이동을 부모에게 전달한다.
+// 속성: control (ManageNotificationInbox): 목록 제어기; userSetting (UserSetting): 표시 설정; onOpen (ValueChanged<NotificationInboxEntry>): 알림 열기.
 class NotificationInboxUI extends StatefulWidget {
   final ManageNotificationInbox control;
   final UserSetting userSetting;
   final ValueChanged<NotificationInboxEntry> onOpen;
 
   // 함수이름: NotificationInboxUI
-  // 함수역할: 계정별 제어기와 설정·이동 콜백을 연결한다. 매개변수: control, userSetting, onOpen. 반환값: 화면.
+  // 함수역할: 계정별 알림 목록과 선택한 알림의 대상 화면 이동을 연결한다.
+  // 매개변수:
+  // - key (Key?): 알림함 화면 식별 키.
+  // - control (ManageNotificationInbox): 알림 목록 조회와 읽음 처리를 담당할 계정별 제어기.
+  // - userSetting (UserSetting): 언어와 화면 표시 설정.
+  // - onOpen (ValueChanged<NotificationInboxEntry>): 사용자가 누른 알림 항목을 받아 대상 화면으로 이동할 콜백.
+  // 반환값: 설정과 이동 동작이 연결된 알림함 화면.
   const NotificationInboxUI({
     super.key,
     required this.control,
@@ -31,8 +39,10 @@ class NotificationInboxUI extends StatefulWidget {
   State<NotificationInboxUI> createState() => _NotificationInboxUIState();
 }
 
-// 클래스명: _NotificationInboxUIState
-// 역할: 알림 확인 창을 관리하며 큰 글씨에서도 통합 목록의 전체 내용을 표시한다.
+// Class Name: _NotificationInboxUIState
+// Role: Notification inspection and multi-selection state.
+// Responsibilities: Serializes actions and retains only selected identifiers still present in the controller list.
+// Attributes: _busy/_selecting (bool): operation and selection modes; _selectedIds (Set<String>): selected notifications.
 class _NotificationInboxUIState extends State<NotificationInboxUI> {
   bool _busy = false;
   bool _selecting = false;
@@ -94,8 +104,10 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
     if (!didPop && _selecting) _endSelection();
   }
 
-  // 함수이름: _english
-  // 함수역할: 현재 언어를 판별한다. 매개변수: 없음. 반환값: 영어 여부.
+  // Function Name: _english
+  // Description: Reads the current language choice for inbox labels.
+  // Parameters: None.
+  // Returns: True when English is selected.
   bool get _english => widget.userSetting.isEnglish;
 
   // 함수이름: initState
@@ -119,7 +131,7 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
+            content: KeepWordsText(
               _english
                   ? 'Could not update notifications. Please try again.'
                   : '알림을 변경하지 못했어요. 다시 시도해주세요.',
@@ -132,8 +144,10 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
     }
   }
 
-  // 함수이름: _delete
-  // 함수역할: 선택 당시의 목록을 확인받고 알림 내역만 지운다. 매개변수: entries. 반환값: 완료.
+  // Function Name: _delete
+  // Description: Confirms deletion against the selected entry snapshot and removes only inbox history, not the referenced medication or conversation data.
+  // Parameters: entries: selected notification entries at confirmation time.
+  // Returns: Future completing after confirmation and any inbox deletion.
   Future<void> _delete(List<NotificationInboxEntry> entries) async {
     if (_busy || entries.isEmpty) return;
     final confirmed = await showDialog<bool>(
@@ -154,8 +168,8 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
           letterSpacing: 0,
           color: MedBuddyColors.textMuted,
         ),
-        title: Text(_english ? 'Delete notifications?' : '알림을 삭제할까요?'),
-        content: Text(
+        title: KeepWordsText(_english ? 'Delete notifications?' : '알림을 삭제할까요?'),
+        content: KeepWordsText(
           _english
               ? 'Chat messages and medication records will remain.'
               : '채팅 내용과 복약 기록은 삭제되지 않아요.',
@@ -201,17 +215,20 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
     }
   }
 
-  // 함수이름: _date
-  // 함수역할: 알림 시각을 지역 날짜와 사용자의 오전/오후·24시간 설정에 맞춘 시간으로 표시한다.
-  // 매개변수: date. 반환값: 시각 문자열.
+  // Function Name: _date
+  // Description: Formats the notification timestamp in local time using the user's 12/24-hour preference.
+  // Parameters: date (DateTime): notification timestamp.
+  // Returns: The local date/time string.
   String _date(DateTime date) {
     final local = date.toLocal();
     final time = widget.userSetting.formatTime(local.hour, local.minute);
     return '${local.month}/${local.day} $time';
   }
 
-  // 함수이름: _sameDay
-  // 함수역할: 두 알림 시각이 기기 시간대에서 같은 날짜인지 확인한다. 매개변수: a, b. 반환값: 같은 날짜 여부.
+  // Function Name: _sameDay
+  // Description: Compares calendar dates after converting both timestamps to the device time zone.
+  // Parameters: a/b (DateTime): notification timestamps.
+  // Returns: True when both fall on the same local day.
   bool _sameDay(DateTime a, DateTime b) {
     final first = a.toLocal();
     final second = b.toLocal();
@@ -220,8 +237,10 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
         first.day == second.day;
   }
 
-  // 함수이름: _dateHeader
-  // 함수역할: 같은 날짜 알림 묶음 위에 지역 날짜를 제목으로 표시한다. 매개변수: date. 반환값: 날짜 제목.
+  // Function Name: _dateHeader
+  // Description: Formats the local calendar date used to group inbox entries.
+  // Parameters: date (DateTime): group timestamp.
+  // Returns: The localized date heading.
   Widget _dateHeader(DateTime date) {
     final local = date.toLocal();
     final month = local.month.toString().padLeft(2, '0');
@@ -244,8 +263,10 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
     );
   }
 
-  // 함수이름: _entryTile
-  // 함수역할: 알림 한 건의 내용과 선택·열기·삭제 동작을 표시한다. 매개변수: control, entry. 반환값: 알림 행.
+  // Function Name: _entryTile
+  // Description: Displays one notification with selection, opening and deletion actions.
+  // Parameters: control: inbox state/actions; entry: notification to display.
+  // Returns: The notification row.
   Widget _entryTile(
     ManageNotificationInbox control,
     NotificationInboxEntry entry,
@@ -329,7 +350,7 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Text(
+                    KeepWordsText(
                       '${_date(entry.occurredAt)}${entry.isRead ? '' : (_english ? ' · Unread' : ' · 안 읽음')}',
                       style: const TextStyle(
                         fontSize: 12,
@@ -368,8 +389,10 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
     );
   }
 
-  // 함수이름: build
-  // 함수역할: 상태 안내와 최신순 통합 알림 목록을 구성한다. 매개변수: context. 반환값: 알림함 화면.
+  // Function Name: build
+  // Description: Builds inbox state feedback and the unified newest-first notification list.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) => PopScope(
     canPop: !_selecting,
@@ -448,7 +471,7 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
                     child: Row(
                       children: [
                         Expanded(
-                          child: Text(
+                          child: KeepWordsText(
                             _english
                                 ? 'Could not load notifications.'
                                 : '알림을 불러오지 못했어요.',
@@ -482,7 +505,7 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 24,
                                 ),
-                                child: Text(
+                                child: KeepWordsText(
                                   _english ? 'No notifications' : '아직 알림이 없어요',
                                   textAlign: TextAlign.center,
                                   style: const TextStyle(
@@ -572,7 +595,7 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
                         ),
                       ),
                       icon: const Icon(Icons.delete_outline),
-                      label: Text(
+                      label: KeepWordsText(
                         selected.isEmpty
                             ? (_english ? 'Delete selected' : '선택한 알림 삭제')
                             : (_english

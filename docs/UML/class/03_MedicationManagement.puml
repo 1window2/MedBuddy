@@ -34,6 +34,9 @@ package "Flutter Frontend" #E8F4FF {
   class CheckScheduleUI <<UI>>
   class CheckSavedMedicationUI <<UI>>
   class CheckMedicationDetailUI <<UI>>
+  class MedicationSearchUI <<UI>>
+  class ManualMedicationEntryUI <<UI>>
+  class ManualMedicationEntry <<Entity>>
   class MedicationRegimenEditorUI <<UI>>
   class MedicationHistoryUI <<UI>>
   class MedicationHistoryMonthCalendar <<UI>>
@@ -115,6 +118,20 @@ AsNeededScheduleSection --> AsNeededCheckReminderControl : patient only
 AsNeededCheckReminderControl --> NotificationService : one future check; default off
 MedicationHistoryUI --> ExportProvider : 확인한 기간의 자연어 텍스트 (파일 없음)
 CheckMedicationDetailUI --> MedBuddyViewModel
+MedicationSearchUI --> FCheckMedicationDetail : 기존 검색 방식·후보 조회
+MedicationSearchUI --> CheckMedicationDetailUI : 독립 조회; 저장 없음
+ManualMedicationEntryUI --> MedicationSearchUI : 확인 후 품목 선택
+ManualMedicationEntryUI --> ManualMedicationEntry : 항목별 검증·입력
+ManualMedicationEntryUI --> MedBuddySavedMedicationViewModel : onSaveRequested 경유 순차 저장
+ManualMedicationEntry --> FMedicationSchedule : 날짜·모드·주기 변환
+ManualMedicationEntry --> FMedicationDetail : 이름 일치 시 선택 품목 유지
+note bottom of ManualMedicationEntryUI
+  남은 입력을 모두 검증한 뒤 단일 약 저장을 순서대로 호출한다.
+  실패 시 멈추고 같은 화면의 성공·중복 완료 항목은 재시도에서 제외한다.
+  전체 원자적 저장이나 재시작 복구 큐가 아니다.
+  정기는 기타 1~90일 간격, PRN은 시간대·주기 없이 입력한다.
+  선택 품목의 이름을 바꾸면 품목 연결을 해제한다.
+end note
 MedBuddyViewModel *-- MedBuddyScheduleViewModel
 MedBuddyViewModel *-- MedBuddySavedMedicationViewModel
 MedBuddyViewModel *-- MedBuddyReminderViewModel
@@ -186,6 +203,8 @@ note bottom of MedicationHistoryMonthCalendar
   보호자는 같은 달력을 읽기 전용으로 본다.
 end note
 note bottom of AsNeededScheduleSection
+  첫 조회 또는 빈 목록 재조회 중에는 로딩을 표시한다.
+  비어 있지 않은 당일 스냅샷은 재조회 중 유지하며 오류와 빈 결과를 구분한다.
   저장 안내의 실행 취소는 이번 동작으로 만든 필요시 기록만 '미기록'으로 되돌린다.
   일정 화면을 떠난 뒤에도 공유 기록 Control로 동작하며 보낸 보호자 알림은 회수하지 않는다.
   지난날 미확정 기록을 다시 보낸 경우에는 실행 취소 대신 다시 누르도록 안내한다.

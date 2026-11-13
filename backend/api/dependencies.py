@@ -13,9 +13,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from google import genai
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.requests import HTTPConnection
 
 from boundaries.firebase_identity_boundary import (
     FirebaseIdentityDeletionBoundary,
+    FirebaseSessionRevocationBoundary,
 )
 from boundaries.korean_holiday_api_boundary import (
     KoreanHolidayAPI,
@@ -58,15 +60,23 @@ from boundaries.push_notification_boundary import (
 )
 from core.config import settings
 from core.account_operation_locks import AccountOperationLocks
-from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operations
+from core.account_database_lock import (
+    ACCOUNT_BUSY_DETAIL,
+    ACCOUNT_DELETED_DETAIL,
+    lock_account_operations,
+)
 from core.database import get_db
+from core.request_database_gate import RequestDatabaseGate
 from core.request_database_work import run_request_database_work
 from core.request_rate_limits import (
     DAILY_QUOTA_EXCEEDED_DETAIL,
+    IP_LIMIT_MULTIPLIER,
+    QUOTA_STORAGE_UNAVAILABLE_DETAIL,
     RATE_LIMIT_EXCEEDED_DETAIL,
     RateLimitRule,
     RequestRateLimitStore,
     mounted_route_template,
+    request_ip_identity,
     resolve_daily_quota,
     resolve_rate_limit_rule,
 )
@@ -101,6 +111,7 @@ from controls.set_notification_control import SetNotification
 from controls.sync_dose_control import SyncDose
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from repositories.async_pharmacy_catalog import AsyncPharmacyCatalog
+from repositories.medication_search_cache_repository import AsyncMedicationSearchCache
 from repositories.korean_holiday_cache import SessionScopedKoreanHolidayCache
 
 logger = logging.getLogger(__name__)
@@ -130,6 +141,20 @@ _push_notification_boundary_lock = Lock()
 _push_notification_boundary: PushNotificationBoundary | None = None
 _sqlite_account_lock_registry = AccountOperationLocks()
 _SQLITE_ACCOUNT_LOCK_WAIT_SECONDS = 5.0
+# 입장 없이 연결을 쓰는 작업 몫으로 연결 하나를 남긴다: 백그라운드 작업자와 응답 뒤 알림 전송,
+# 채팅 스트림 확인, 외부 조회의 카탈로그·캐시 작업 세션, 등록 뒤 외부 조회 endpoint의 DB 사용.
+# 계정 순서 대기는 PostgreSQL lock_timeout과 같은 5초다.
+_DATABASE_CONNECTIONS_OUTSIDE_GATE = 1
+_postgres_request_gate = RequestDatabaseGate(
+    slots=max(
+        1,
+        settings.DATABASE_POOL_SIZE
+        + settings.DATABASE_MAX_OVERFLOW
+        - _DATABASE_CONNECTIONS_OUTSIDE_GATE,
+    ),
+    account_wait_seconds=5.0,
+    slot_wait_seconds=settings.DATABASE_POOL_TIMEOUT_SECONDS,
+)
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 # 공개 정보 조회만 조기에 연결을 반환한다. 사용자 데이터 변경 경로는 포함하지 않는다.
@@ -160,6 +185,7 @@ def get_oidc_token_verifier() -> OIDCTokenVerifier:
             _oidc_token_verifier = OIDCTokenVerifier(
                 settings.FIREBASE_PROJECT_ID,
                 check_revoked=settings.FIREBASE_CHECK_REVOKED_TOKENS,
+                revocation_cache_seconds=settings.FIREBASE_REVOCATION_CACHE_SECONDS,
             )
         return _oidc_token_verifier
 
@@ -338,16 +364,11 @@ def get_recently_authenticated_principal(
     return principal
 
 
-# Function Name: _lock_account_operation
-# Description:
-# - Serializes each authenticated account request with account deletion.
-# - Uses a transaction-scoped PostgreSQL advisory lock in beta deployments and a short SQLite write transaction while registering the account scope.
-# - SQLite request-lifetime serialization is provided by the per-account lock retained by get_registered_principal because endpoint controls commit.
-# Parameters:
-# - db (Session): Request-scoped SQLAlchemy session shared by endpoint controls.
-# - user_hash (str): Server-derived account scope used only as a lock namespace.
-# Returns:
-# - None. PostgreSQL holds the lock for its transaction; SQLite holds it until account registration commits inside _register_account_scope.
+# 함수이름: _lock_account_operation
+# 함수역할: 아직 트랜잭션이 없는 인증 요청에서 계정 삭제와 직렬화할 계정 DB 잠금을 획득한다.
+# 매개변수: db (Session)는 요청 세션, user_hash (str)는 서버가 검증한 계정 잠금 범위다.
+# 반환값: None. 기존 트랜잭션이면 추가 잠금 없이 반환하며 획득 오류는 전달한다.
+# 비고: PostgreSQL 잠금은 트랜잭션 수명, SQLite 요청 전체 직렬화는 get_registered_principal의 계정 잠금이 담당한다.
 def _lock_account_operation(db: Session, user_hash: str) -> None:
     if db.in_transaction():
         return
@@ -374,10 +395,10 @@ def _register_account_scope(db: Session, user_hash: str) -> None:
         db.commit()
 
 
-# 외부 조회 등록과 연결 반환을 한 작업으로 묶어 중간에 연결을 빌린 채 대기하지 않는다.
 # 함수이름: _register_detached_lookup_scope
-# 함수역할: 인증 계정 등록을 commit하고 실패·취소 시 rollback한다.
-# 매개변수: db: 요청 세션, user_hash: 인증된 계정 식별자. 반환값: 없음.
+# 함수역할: 외부 조회용 계정 등록과 commit을 한 작업으로 묶어 연결을 반환하고 실패·취소 시 rollback한다.
+# 매개변수: db (Session)는 요청 세션, user_hash (str)는 검증된 계정 식별자다.
+# 반환값: None. 등록·commit 실패를 rollback 뒤 다시 전달한다.
 def _register_detached_lookup_scope(db: Session, user_hash: str) -> None:
     try:
         _register_account_scope(db, user_hash)
@@ -390,13 +411,14 @@ def _register_detached_lookup_scope(db: Session, user_hash: str) -> None:
 # Function Name: get_registered_principal
 # Description:
 # - Enforces per-user request quotas and account registration, holding the SQLite account lock through endpoint execution and allowing deletion retries.
+# - PostgreSQL requests first wait on the event loop for their account turn and a database slot (core.request_database_gate).
 # - Routes with a daily cost quota are also counted per account for the day.
 # Parameters:
 # - request (Request): Incoming FastAPI request used to access application state.
 # - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
 # - db (Session): SQLAlchemy session for this unit of work.
 # Returns:
-# - Yields the registered principal once; releases the SQLite lock during dependency teardown.
+# - Yields the registered principal once; releases the SQLite lock or the PostgreSQL admission during dependency teardown.
 async def get_registered_principal(
     request: Request,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
@@ -427,6 +449,17 @@ async def get_registered_principal(
         daily_quota = resolve_daily_quota(request.method, route_path)
         if daily_quota is not None:
             daily_rule, daily_scope = daily_quota
+            # 계정을 여러 개 만들어 계정별 하루 한도를 늘리는 것을 주소 단위로도 막는다. 인증된
+            # 요청만 세므로 인증되지 않은 주소는 하루짜리 카운터를 남기지 않는다.
+            await enforce_address_quota(
+                request,
+                request_scope=daily_scope,
+                rule=RateLimitRule(
+                    daily_rule.max_requests * IP_LIMIT_MULTIPLIER,
+                    daily_rule.window_seconds,
+                ),
+                exceeded_detail=DAILY_QUOTA_EXCEEDED_DETAIL,
+            )
             await enforce_user_quota(
                 request,
                 user_hash=principal.user_hash,
@@ -434,10 +467,20 @@ async def get_registered_principal(
                 rule=daily_rule,
                 exceeded_detail=DAILY_QUOTA_EXCEEDED_DETAIL,
             )
-    # Step 1: Hold SQLite ownership through registration and endpoint teardown.
+    # Step 1: Hold SQLite ownership through registration and endpoint teardown, or queue a
+    # PostgreSQL request on the event loop until its transaction may hold a pooled connection.
     async with AsyncExitStack() as account_scope:
+        dialect_name = db.get_bind().dialect.name
         # 공개 조회와 재검증형 추천은 DB 단계만 잠그고 외부 응답 대기에는 계정을 붙잡지 않는다.
-        if db.get_bind().dialect.name == "sqlite" and not detach_registration:
+        if dialect_name == "postgresql":
+            # 대기는 작업 스레드 밖에서 한다. 스레드가 연결이나 계정 잠금을 기다리며 묶이면
+            # 연결을 가진 요청이 끝낼 스레드를 얻지 못해 서버 전체가 시간 초과까지 멈춘다.
+            # 트랜잭션을 남기지 않은 작업 단위가 끝나면 입장을 돌려주므로 외부 조회 대기에는
+            # 자리를 붙잡지 않는다. 동기 endpoint는 한 스레드에서 끝까지 연결을 쓰므로 요청 끝까지 쥔다.
+            await account_scope.enter_async_context(
+                _postgres_request_gate.admit(db, principal.user_hash)
+            )
+        elif dialect_name == "sqlite" and not detach_registration:
             try:
                 await account_scope.enter_async_context(
                     _sqlite_account_lock_registry.hold(
@@ -477,7 +520,7 @@ async def get_registered_principal(
             if not is_account_deletion_retry:
                 raise HTTPException(
                     status_code=410,
-                    detail="This MedBuddy account has been deleted.",
+                    detail=ACCOUNT_DELETED_DETAIL,
                 ) from exc
         except OperationalError as exc:
             db.rollback()
@@ -518,11 +561,11 @@ async def get_authenticated_app_principal(
 # Description:
 # - Reads the application's initialized quota store and rejects missing or invalid shared state.
 # Parameters:
-# - request (Request): Incoming FastAPI request used to access application state.
+# - connection (HTTPConnection): Incoming HTTP request or WebSocket used to access application state.
 # Returns:
 # - Application-wide RequestRateLimitStore.
-def get_request_rate_limit_store(request: Request) -> RequestRateLimitStore:
-    rate_limit_store = getattr(request.app.state, "request_rate_limit_store", None)
+def get_request_rate_limit_store(connection: HTTPConnection) -> RequestRateLimitStore:
+    rate_limit_store = getattr(connection.app.state, "request_rate_limit_store", None)
     if not isinstance(rate_limit_store, RequestRateLimitStore):
         raise RuntimeError("Request rate-limit store is not initialized.")
     return rate_limit_store
@@ -549,16 +592,62 @@ async def enforce_user_quota(
     rule: RateLimitRule,
     exceeded_detail: str,
 ) -> None:
+    await _enforce_quota(
+        request,
+        identity=f"user:{user_hash}",
+        request_scope=request_scope,
+        rule=rule,
+        exceeded_detail=exceeded_detail,
+    )
+
+
+# Function Name: enforce_address_quota
+# Description:
+# - Counts one request of the caller's network address (an IPv6 address as its /64) against a
+#   quota, answering like enforce_user_quota.
+# Parameters:
+# - request (Request): Incoming request; its ASGI client address is the counted identity.
+# - request_scope, rule, exceeded_detail: as for enforce_user_quota.
+# Returns:
+# - None; raises HTTP 429 or 503 as enforce_user_quota does.
+async def enforce_address_quota(
+    request: Request,
+    *,
+    request_scope: str,
+    rule: RateLimitRule,
+    exceeded_detail: str,
+) -> None:
+    await _enforce_quota(
+        request,
+        identity=request_ip_identity(request.scope),
+        request_scope=request_scope,
+        rule=rule,
+        exceeded_detail=exceeded_detail,
+    )
+
+
+# Function Name: _enforce_quota
+# Description: Consumes a quota unit in the application store and maps exhaustion or unavailable storage to retryable HTTP responses.
+# Parameters: request (Request) locates the store; identity and request_scope (str) name the counter; rule (RateLimitRule) defines the window; exceeded_detail (str) is safe rejection text.
+# Returns: None when allowed; raises HTTP 429 with remaining wait or HTTP 503 with five-second Retry-After on store failure.
+async def _enforce_quota(
+    request: Request,
+    *,
+    identity: str,
+    request_scope: str,
+    rule: RateLimitRule,
+    exceeded_detail: str,
+) -> None:
     try:
         allowed, retry_after = await get_request_rate_limit_store(request).consume(
-            identity=f"user:{user_hash}",
+            identity=identity,
             request_scope=request_scope,
             rule=rule,
         )
     except RuntimeError as exc:
         raise HTTPException(
             status_code=503,
-            detail="Request quota storage is temporarily unavailable.",
+            detail=QUOTA_STORAGE_UNAVAILABLE_DETAIL,
             headers={"Retry-After": "5"},
         ) from exc
     if not allowed:
@@ -699,7 +788,10 @@ async def close_pharmacy_boundary() -> None:
             )
 
 
-# 병원 경계의 공유 캐시와 연결을 서버 종료 시 회수한다.
+# 함수이름: close_hospital_boundary
+# 함수역할: 서버 종료 시 공유 병원 조회 작업·캐시·내부 소유 HTTP 연결을 회수한다.
+# 매개변수: 없음. 프로세스 공용 _hospital_api를 사용한다.
+# 반환값: None. 경계의 연결 종료 오류는 호출자에게 전달한다.
 async def close_hospital_boundary() -> None:
     await _hospital_api.close()
 
@@ -912,13 +1004,20 @@ def get_check_medication_detail(
     )
 
 
-# 함수이름: get_check_nearby_pharmacy
-# 함수역할:
-# - 공유 약국 API와 DB 카탈로그·공휴일 캐시를 연결해 위치 기반 조회를 구성한다.
-# 매개변수:
-# - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
-# 반환값:
-# - 독립적인 작업 세션을 사용하는 CheckNearbyPharmacy.
+# Function Name: get_medication_search_cache
+# Description: Builds an async search-result cache whose workers create sessions from the request database's bind rather than sharing its active session.
+# Parameters: db (Session) supplies the database bind.
+# Returns: AsyncMedicationSearchCache; construction does not read or write cached products.
+def get_medication_search_cache(
+    db: Session = Depends(get_db),
+) -> AsyncMedicationSearchCache:
+    return AsyncMedicationSearchCache(sessionmaker(bind=db.get_bind()))
+
+
+# Function Name: get_check_nearby_pharmacy
+# Description: Composes shared pharmacy/holiday providers with isolated-session catalog and persistent holiday-cache adapters.
+# Parameters: db (Session) supplies the common bind for worker session factories.
+# Returns: CheckNearbyPharmacy; no location lookup is performed during composition.
 def get_check_nearby_pharmacy(
     db: Session = Depends(get_db),
 ) -> CheckNearbyPharmacy:
@@ -934,7 +1033,10 @@ def get_check_nearby_pharmacy(
     )
 
 
-# 요청 DB의 검증된 공휴일 캐시만 공유하고 약국 당번표와 지정 정보는 사용하지 않는다.
+# Function Name: get_check_nearby_hospital
+# Description: Builds hospital lookup with a persistent holiday cache whose sessions use the request database's bind, without sharing its active session across async lookups.
+# Parameters: db (Session) is injected only to derive the cache session factory.
+# Returns: CheckNearbyHospital using shared provider boundaries and isolated holiday-cache sessions; no search is performed here.
 def get_check_nearby_hospital(
     db: Session = Depends(get_db),
 ) -> CheckNearbyHospital:
@@ -997,6 +1099,19 @@ def get_manage_push_token(
     db: Session = Depends(get_db),
 ) -> ManagePushToken:
     return ManagePushToken(db=db)
+
+
+# Function Name: get_session_revocation_boundary
+# Description:
+# - Provides the Firebase session-revocation lookup in Firebase mode; local modes have none.
+# Parameters:
+# - None.
+# Returns:
+# - FirebaseSessionRevocationBoundary or None.
+def get_session_revocation_boundary() -> FirebaseSessionRevocationBoundary | None:
+    if settings.AUTH_MODE != "firebase":
+        return None
+    return FirebaseSessionRevocationBoundary(settings.FIREBASE_PROJECT_ID)
 
 
 # Function Name: get_check_today_medication_info

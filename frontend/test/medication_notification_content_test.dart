@@ -1,4 +1,5 @@
-// Regression coverage at the Android notification channel boundary.
+// File Name: medication_notification_content_test.dart
+// Role: Regression coverage at the Android notification channel boundary, including privacy, localization and dated reminder refresh.
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -10,64 +11,148 @@ import 'package:timezone/timezone.dart' as timezone;
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Class Name: _CountingPreferences
-// Role: Counts the reloads and writes a reminder refresh makes on the device preference store.
+// Role: Counts preference reloads and writes made by reminder refreshes without changing storage behavior.
 // Responsibilities:
-// - Forward every call to the real in-memory test store, so behavior is unchanged.
-// Attributes: reloads - number of reload calls; writes - keys written or removed, in order.
+// - Forward supported operations to the wrapped store and reject any unexpected interface call.
+// Attributes:
+// - _inner (SharedPreferences): underlying in-memory test store.
+// - reloads (int): reload attempts. writes (List<String>): written or removed keys in call order.
 class _CountingPreferences implements SharedPreferences {
   // Function Name: _CountingPreferences
-  // Description: Wraps the store returned by SharedPreferences.getInstance.
-  // Parameters: _inner - the real test store. Returns: The counting wrapper.
+  // Description:
+  // - Wrap the real test preference store so refresh side effects can be counted.
+  // Parameters:
+  // - _inner (SharedPreferences): store receiving forwarded operations.
+  // Returns:
+  // - _CountingPreferences; wrapper with empty counters.
   _CountingPreferences(this._inner);
 
   final SharedPreferences _inner;
   int reloads = 0;
   final List<String> writes = [];
 
+  // Function Name: reload
+  // Description:
+  // - Count a reload attempt before forwarding it to the underlying store.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completion or failure from the wrapped reload.
   @override
   Future<void> reload() {
     reloads++;
     return _inner.reload();
   }
 
+  // Function Name: getKeys
+  // Description:
+  // - Read the complete key set from the wrapped preference cache.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Set<String>; keys currently present in the store.
   @override
   Set<String> getKeys() => _inner.getKeys();
 
+  // Function Name: containsKey
+  // Description:
+  // - Check whether the wrapped store contains a given key.
+  // Parameters:
+  // - key (String): preference key to look up.
+  // Returns:
+  // - bool; true when the key exists.
   @override
   bool containsKey(String key) => _inner.containsKey(key);
 
+  // Function Name: get
+  // Description:
+  // - Read a preference without coercing its stored type.
+  // Parameters:
+  // - key (String): preference key to look up.
+  // Returns:
+  // - Object?; stored value or null when absent.
   @override
   Object? get(String key) => _inner.get(key);
 
+  // Function Name: getString
+  // Description:
+  // - Read a string preference using the wrapped store's type checks.
+  // Parameters:
+  // - key (String): preference key to look up.
+  // Returns:
+  // - String?; stored text or null, with type errors delegated to the store.
   @override
   String? getString(String key) => _inner.getString(key);
 
+  // Function Name: getBool
+  // Description:
+  // - Read a boolean preference using the wrapped store's type checks.
+  // Parameters:
+  // - key (String): preference key to look up.
+  // Returns:
+  // - bool?; stored flag or null, with type errors delegated to the store.
   @override
   bool? getBool(String key) => _inner.getBool(key);
 
+  // Function Name: setString
+  // Description:
+  // - Record the key of a string write before forwarding the original value.
+  // Parameters:
+  // - key (String): destination preference key.
+  // - value (String): text to persist.
+  // Returns:
+  // - Future<bool>; wrapped write result or propagated storage failure.
   @override
   Future<bool> setString(String key, String value) {
     writes.add(key);
     return _inner.setString(key, value);
   }
 
+  // Function Name: setBool
+  // Description:
+  // - Record the key of a boolean write before forwarding the original flag.
+  // Parameters:
+  // - key (String): destination preference key.
+  // - value (bool): flag to persist.
+  // Returns:
+  // - Future<bool>; wrapped write result or propagated storage failure.
   @override
   Future<bool> setBool(String key, bool value) {
     writes.add(key);
     return _inner.setBool(key, value);
   }
 
+  // Function Name: remove
+  // Description:
+  // - Record a removal attempt before deleting the key through the wrapped store.
+  // Parameters:
+  // - key (String): preference key to remove.
+  // Returns:
+  // - Future<bool>; wrapped removal result or propagated storage failure.
   @override
   Future<bool> remove(String key) {
     writes.add(key);
     return _inner.remove(key);
   }
 
-  // The reminder path uses only the members above; any other call fails the test.
+  // Function Name: noSuchMethod
+  // Description:
+  // - Reject calls outside the preference operations used by the reminder path.
+  // Parameters:
+  // - invocation (Invocation): unsupported member invocation.
+  // Returns:
+  // - dynamic; delegates to Object.noSuchMethod, which throws NoSuchMethodError.
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+// Function Name: main
+// Description:
+// - Register mocked platform-channel cases for reminder contents, actions, privacy changes and differential rescheduling.
+// Parameters:
+// - None.
+// Returns:
+// - No value; the framework executes the registered cases and fixture hooks.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const channel = MethodChannel('dexterous.com/flutter/local_notifications');
@@ -80,6 +165,13 @@ void main() {
   // Android 14 default: exact alarms are refused until the user allows "Alarms & reminders".
   var exactDenied = false;
 
+  // Function Name: as-needed check has neutral copy and no take or snooze action
+  // Description:
+  // - Schedule an as-needed check with neutral review wording and no take or snooze actions.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('as-needed check has neutral copy and no take or snooze action', () async {
     final now = DateTime.now();
     final next = now.add(const Duration(days: 1));
@@ -94,6 +186,13 @@ void main() {
     expect(details['actions'], isEmpty);
   });
 
+  // Function Name: setUp
+  // Description:
+  // - Reset account, preferences, reservation logs, and process-local reminder state; install an Android channel fake with configurable exact-alarm rejection.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - void; subsequent plugin calls are recorded and answered without native notifications.
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     NotificationService.instance.setHistoryUser(null, persistSession: false);
@@ -140,6 +239,13 @@ void main() {
         });
   });
 
+  // 함수이름: tearDown
+  // 함수역할:
+  // - 환경설정 로더·시계·민감정보 표시를 기본값으로 복구하고 채널 대역과 Android 플랫폼 강제를 해제한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - void; 테스트별 전역 대역을 정리한다.
   tearDown(() {
     NotificationService.preferencesLoader = SharedPreferences.getInstance;
     NotificationService.clock = DateTime.now;
@@ -149,10 +255,13 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
-  // Function Name: chat preview truncation test
-  // Description: Verifies a long chat preview is cut by user-visible characters, so an emoji or
-  //   combined character at the limit is kept whole, and short previews are only whitespace-normalized.
-  // Parameters: None. Returns: Completion; a failed expectation fails the test.
+  // Function Name: chat preview truncation never splits an emoji
+  // Description:
+  // - Normalize preview whitespace and truncate by grapheme clusters, preserving complete emoji sequences at the length boundary.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - void; no return value.
   test('chat preview truncation never splits an emoji', () {
     expect(
       NotificationService.linkedChatMessagePreview('  hello \n  there '),
@@ -170,6 +279,13 @@ void main() {
     );
   });
 
+  // Function Name: completed widget dose cancels its dated snooze without losing other reminders
+  // Description:
+  // - Cancel only the completed patient/date/slot reminder and snooze, using persisted ownership when background memory has no account; preserve other reminders and chat alerts.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('completed widget dose cancels its dated snooze without losing other reminders', () async {
     final service = NotificationService.instance;
     service.setHistoryUser('patient-a', persistSession: false);
@@ -219,6 +335,13 @@ void main() {
     expect(preferences.getString(NotificationInboxStore.activeUserKey), 'patient-a');
   });
 
+  // 함수이름: widget cancellation stops after logout or account switch
+  // 함수역할:
+  // - 로그아웃했거나 저장된 계정이 바뀌었으면 이전 사용자의 위젯 취소 요청이 아무 알림도 취소하지 않는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   test('widget cancellation stops after logout or account switch', () async {
     final preferences = await SharedPreferences.getInstance();
     for (final owner in [null, 'patient-b']) {
@@ -234,13 +357,27 @@ void main() {
     }
   });
 
-  // 같은 예약·미루기는 보존하고 변경된 날짜와 시각만 기기에 반영한다.
+  // Function Name: unchanged reminders and snoozes survive differential refresh
+  // Description:
+  // - Keep unchanged reservations and snoozes, then cancel only the removed date and reschedule the changed time.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('unchanged reminders and snoozes survive differential refresh', () async {
     final service = NotificationService.instance;
     await service.initialize();
     final now = timezone.TZDateTime.now(timezone.local);
     final first = DateTime(now.year, now.month, now.day + 1);
     final second = DateTime(now.year, now.month, now.day + 2);
+    // Function Name: refresh
+    // Description:
+    // - Refresh the morning reminder for a selected date set and hour.
+    // Parameters:
+    // - dates (List<DateTime>): active dose dates.
+    // - hour (int): local reminder hour, defaulting to 8.
+    // Returns:
+    // - Future<void>; reminder reconciliation completion.
     Future<void> refresh(List<DateTime> dates, {int hour = 8}) => service.registerNotification(
       id: 101, slotKey: 'morning', slotTitle: '아침', hour: hour, minute: 0,
       activeDates: dates,
@@ -268,6 +405,13 @@ void main() {
     expect(scheduled.single['scheduledDateTime'].toString(), contains('09:00'));
   });
 
+  // Function Name: moving a reminder before now preserves today and replaces future history
+  // Description:
+  // - Moving a reminder earlier than the fixed current time keeps today's old alarm and inbox time while replacing tomorrow's planned time.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('moving a reminder before now preserves today and replaces future history', () async {
     final service = NotificationService.instance;
     service.setHistoryUser('patient-a', persistSession: false);
@@ -276,6 +420,13 @@ void main() {
     final today = timezone.TZDateTime(timezone.local, now.year, now.month, now.day + 2);
     NotificationService.clock = () => today.add(const Duration(hours: 12));
     final tomorrow = today.add(const Duration(days: 1));
+    // Function Name: refresh
+    // Description:
+    // - Register English morning reminders for today and tomorrow at the supplied hour.
+    // Parameters:
+    // - hour (int): local reminder hour used for the fixed two-day plan.
+    // Returns:
+    // - Future<void>; reconciliation completion.
     Future<void> refresh(int hour) => service.registerNotification(
       id: 101, slotKey: 'morning', slotTitle: 'Morning', hour: hour, minute: 0,
       activeDates: [today, tomorrow], language: 'en',
@@ -312,12 +463,26 @@ void main() {
     );
   });
 
+  // Function Name: a snooze survives refresh after the unchanged original time has passed
+  // Description:
+  // - Preserve an existing snooze when refresh occurs after the unchanged original reminder time.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('a snooze survives refresh after the unchanged original time has passed', () async {
     final service = NotificationService.instance;
     await service.initialize();
     final now = timezone.TZDateTime.now(timezone.local);
     final today = timezone.TZDateTime(timezone.local, now.year, now.month, now.day + 2);
     NotificationService.clock = () => today.add(const Duration(hours: 7));
+    // Function Name: refresh
+    // Description:
+    // - Reapply the fixed 08:00 reminder for the captured test day.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; reconciliation completion.
     Future<void> refresh() => service.registerNotification(
       id: 101, slotKey: 'morning', slotTitle: 'Morning', hour: 8, minute: 0,
       activeDates: [today], language: 'en',
@@ -337,8 +502,13 @@ void main() {
     expect(cancelled, isEmpty);
   });
 
-  // A reminder snoozed before midnight keeps its day. A refresh after midnight plans from today and
-  // must not cancel it as stale, or the snoozed reminder never comes.
+  // Function Name: a snooze across midnight survives a refresh of the new day
+  // Description:
+  // - Keep a pre-midnight snooze tied to its original dose day when the next-day plan is refreshed.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('a snooze across midnight survives a refresh of the new day', () async {
     final service = NotificationService.instance;
     await service.initialize();
@@ -368,9 +538,13 @@ void main() {
     expect(cancelled.map((call) => call['id']), isNot(contains(snoozedId)));
   });
 
-  // Android drops the alarms of a force-stopped app while the plugin keeps listing them, and the
-  // plugin re-arms every listed entry at the next reboot. An earlier-day entry that cannot be a
-  // live snooze is cancelled, or those old reminders would all fire at once after a reboot.
+  // Function Name: earlier-day reminders that cannot be a snooze are still cancelled
+  // Description:
+  // - Cancel entries too old to remain snoozed while preserving yesterday's possible snooze just after midnight, preventing obsolete alarms from being restored on reboot.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('earlier-day reminders that cannot be a snooze are still cancelled', () async {
     final service = NotificationService.instance;
     await service.initialize();
@@ -410,8 +584,13 @@ void main() {
     expect(cancelled.map((call) => call['id']), contains(nextDayId));
   });
 
-  // Steady state: a refresh that finds every reminder already reserved with the same time and text
-  // only reads the device reservations. It schedules, cancels, writes and announces nothing.
+  // Function Name: an unchanged refresh only reads the pending reservations
+  // Description:
+  // - In steady state, read pending reservations and reload preferences once per refresh without scheduling, cancellation, writes, or inbox events; still persist a newly added date.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('an unchanged refresh only reads the pending reservations', () async {
     final service = NotificationService.instance;
     service.setHistoryUser('patient-a', persistSession: false);
@@ -423,6 +602,13 @@ void main() {
     final dates = [
       for (var day = 1; day <= 3; day++) DateTime(now.year, now.month, now.day + day),
     ];
+    // Function Name: refresh
+    // Description:
+    // - Reconcile the captured three-day morning plan, including any date appended by the test.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; reminder reconciliation completion.
     Future<void> refresh() => service.registerNotification(
       id: 101, slotKey: 'morning', slotTitle: '아침', hour: 8, minute: 0,
       activeDates: dates,
@@ -438,6 +624,13 @@ void main() {
       await SharedPreferences.getInstance(),
     );
     NotificationService.preferencesLoader = () async => preferences;
+    // Function Name: stored
+    // Description:
+    // - Snapshot every stored preference without changing the counting wrapper.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Map<String, Object?>; current key/value pairs for equality checks.
     Map<String, Object?> stored() =>
         {for (final key in preferences.getKeys()) key: preferences.get(key)};
     final before = stored();
@@ -466,14 +659,36 @@ void main() {
         hasLength(1));
   });
 
-  // Skipping repeated work must never skip a reservation that is needed: each change below has to
-  // reach the device, and the refresh after it must be quiet again.
+  // Function Name: time, language, new-date and lost-reservation changes are always rescheduled
+  // Description:
+  // - Reschedule changed time, language, new dates, or missing device reservations, then become quiet again; remove only a withdrawn dose date.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('time, language, new-date and lost-reservation changes are always rescheduled', () async {
     final service = NotificationService.instance;
     service.setHistoryUser('patient-a', persistSession: false);
     await service.initialize();
     final now = timezone.TZDateTime.now(timezone.local);
+    // Function Name: day
+    // Description:
+    // - Construct a local midnight date relative to the captured calendar day.
+    // Parameters:
+    // - offset (int): number of calendar days after the captured day.
+    // Returns:
+    // - DateTime; normalized local date.
     DateTime day(int offset) => DateTime(now.year, now.month, now.day + offset);
+    // Function Name: refresh
+    // Description:
+    // - Reconcile a morning plan with selectable dates, time, title, and language.
+    // Parameters:
+    // - dates (List<DateTime>): active dose dates.
+    // - hour (int): local hour, default 8.
+    // - slotTitle (String): displayed slot label, default Korean morning.
+    // - language (String): notification language, default ko.
+    // Returns:
+    // - Future<void>; reconciliation completion.
     Future<void> refresh(
       List<DateTime> dates, {
       int hour = 8,
@@ -483,7 +698,13 @@ void main() {
       id: 101, slotKey: 'morning', slotTitle: slotTitle, hour: hour, minute: 0,
       activeDates: dates, language: language,
     );
-    // Mirrors Android: a scheduled id replaces the pending reservation with that id.
+    // Function Name: deliverToDevice
+    // Description:
+    // - Apply recorded schedules to the fake pending list by notification ID, then clear the outgoing schedule log.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - void; mirrors Android replacement of an existing reservation with the same ID.
     void deliverToDevice() {
       for (final item in scheduled) {
         pending.removeWhere((entry) => entry['id'] == item['id']);
@@ -535,8 +756,13 @@ void main() {
     expect(cancelled, hasLength(1));
   });
 
-  // A changed reminder time keeps the notification id, so the inbox entry planned for the old time
-  // has to be withdrawn explicitly or it would surface when the old time passes.
+  // Function Name: changing the reminder time withdraws the inbox entries planned for the old time
+  // Description:
+  // - Replace inbox entries for a changed reminder time, including its snooze, while preserving the other slot; stable notification IDs must not leave the old planned time visible.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('changing the reminder time withdraws the inbox entries planned for the old time', () async {
     final service = NotificationService.instance;
     service.setHistoryUser('patient-a', persistSession: false);
@@ -546,11 +772,27 @@ void main() {
       DateTime(now.year, now.month, now.day + 1),
       DateTime(now.year, now.month, now.day + 2),
     ];
+    // Function Name: refresh
+    // Description:
+    // - Refresh the captured dates for one slot and notification ID at a new hour.
+    // Parameters:
+    // - hour (int): replacement local hour.
+    // - slotKey (String): slot to refresh, default morning.
+    // - id (int): base notification identifier, default 101.
+    // Returns:
+    // - Future<void>; reconciliation completion.
     Future<void> refresh(int hour, {String slotKey = 'morning', int id = 101}) =>
         service.registerNotification(
           id: id, slotKey: slotKey, slotTitle: slotKey, hour: hour, minute: 0,
           activeDates: dates,
         );
+    // Function Name: plannedTimes
+    // Description:
+    // - Read future inbox entries using a five-day look-ahead clock and sort their slot/hour summaries.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<List<String>>; sorted local-time slot/hour labels.
     Future<List<String>> plannedTimes() async => [
       for (final entry in await NotificationInboxStore(
         userHash: 'patient-a', now: () => now.add(const Duration(days: 5)),
@@ -575,9 +817,13 @@ void main() {
     expect(planned.where((entry) => entry.startsWith('evening')), ['evening 20', 'evening 20']);
   });
 
-  // After a force-stop Android has dropped the app's alarms, but the plugin still lists them as
-  // pending. A new process must therefore re-arm every future date once instead of trusting the
-  // list, without touching the inbox, and be quiet again afterwards.
+  // Function Name: a new process re-arms reservations the plugin still lists
+  // Description:
+  // - After process memory is cleared, re-arm every future reservation once even when the plugin still lists it, without changing inbox data or emitting events.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('a new process re-arms reservations the plugin still lists', () async {
     final service = NotificationService.instance;
     service.setHistoryUser('patient-a', persistSession: false);
@@ -586,6 +832,13 @@ void main() {
     final dates = [
       for (var day = 1; day <= 3; day++) DateTime(now.year, now.month, now.day + day),
     ];
+    // Function Name: refresh
+    // Description:
+    // - Reapply the captured morning dates to exercise first-process rearming and later no-op refresh.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; reconciliation completion.
     Future<void> refresh() => service.registerNotification(
       id: 101, slotKey: 'morning', slotTitle: '아침', hour: 8, minute: 0,
       activeDates: dates,
@@ -598,6 +851,13 @@ void main() {
     final events = <String>[];
     final subscription = NotificationInboxStore.changes.stream.listen(events.add);
     addTearDown(subscription.cancel);
+    // Function Name: inboxSize
+    // Description:
+    // - Count this patient's inbox entries visible five days after the captured time.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<int>; inbox entry count including the planned test dates.
     Future<int> inboxSize() async => (await NotificationInboxStore(
       userHash: 'patient-a', now: () => now.add(const Duration(days: 5)),
     ).load()).length;
@@ -624,9 +884,13 @@ void main() {
     expect(pluginCalls, ['pendingNotificationRequests']);
   });
 
-  // Android 14 and later refuse exact alarms until the user allows them. The reminder is still
-  // scheduled (inexact), stays untouched while the permission is missing, and is replaced by an
-  // exact alarm by the first refresh after the permission was granted.
+  // Function Name: reminders scheduled without the exact-alarm permission become exact once it is granted
+  // Description:
+  // - Use inexact alarms while permission is denied, preserve them on unchanged refresh, and replace them once with exact alarms when permission is granted.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('reminders scheduled without the exact-alarm permission become exact once it is granted', () async {
     final service = NotificationService.instance;
     service.setHistoryUser('patient-a', persistSession: false);
@@ -636,10 +900,24 @@ void main() {
       DateTime(now.year, now.month, now.day + 1),
       DateTime(now.year, now.month, now.day + 2),
     ];
+    // Function Name: refresh
+    // Description:
+    // - Reconcile the captured two-day morning plan under the current exact-alarm permission state.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; reconciliation completion.
     Future<void> refresh() => service.registerNotification(
       id: 101, slotKey: 'morning', slotTitle: '아침', hour: 8, minute: 0,
       activeDates: dates,
     );
+    // Function Name: deliverToDevice
+    // Description:
+    // - Replace fake pending entries by ID with the scheduled alarms and empty the schedule log.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - void; updates the simulated device reservation state.
     void deliverToDevice() {
       for (final item in scheduled) {
         pending.removeWhere((entry) => entry['id'] == item['id']);
@@ -680,8 +958,13 @@ void main() {
     expect(pluginCalls, ['pendingNotificationRequests']);
   });
 
-  // Returning from the system settings screen must not need a schedule refresh from the server:
-  // the stored plan and the device's pending list are enough to replace the inexact alarms.
+  // Function Name: inexact reminders are replaced from the stored plan without a schedule refresh
+  // Description:
+  // - Upgrade inexact alarms from the stored plan alone after permission is granted, preserving IDs, text, payloads, and times without repeating the upgrade.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('inexact reminders are replaced from the stored plan without a schedule refresh', () async {
     final service = NotificationService.instance;
     service.setHistoryUser('patient-a', persistSession: false);
@@ -734,9 +1017,13 @@ void main() {
     expect(scheduled, isEmpty);
   });
 
-  // Decision pinned here: when the reminder time is moved to a time that has already passed today,
-  // today's alarm at the previous time is kept. Cancelling it would leave today's dose, not yet
-  // taken, without any reminder; from tomorrow the new time applies.
+  // Function Name: moving the reminder time to earlier than now keeps the alarm still due today
+  // Description:
+  // - Keep today's still-due alarm when its replacement time is already past and apply the new time tomorrow; skip near midnight when the five-minute comparison spans days.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('moving the reminder time to earlier than now keeps the alarm still due today', () async {
     final service = NotificationService.instance;
     service.setHistoryUser('patient-a', persistSession: false);
@@ -750,6 +1037,13 @@ void main() {
     }
     final today = DateTime(now.year, now.month, now.day);
     final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    // Function Name: refresh
+    // Description:
+    // - Refresh today and tomorrow using the hour and minute of the supplied zoned time.
+    // Parameters:
+    // - time (timezone.TZDateTime): reminder time before or after the captured current time.
+    // Returns:
+    // - Future<void>; reconciliation completion.
     Future<void> refresh(timezone.TZDateTime time) => service.registerNotification(
       id: 101, slotKey: 'morning', slotTitle: '아침', hour: time.hour, minute: time.minute,
       activeDates: [today, tomorrow],
@@ -771,11 +1065,25 @@ void main() {
     );
   });
 
+  // Function Name: account and missing platform reservations cannot reuse another plan
+  // Description:
+  // - Do not reuse another account's reminder plan, and restore missing device reservations even when the current account's plan is unchanged.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('account and missing platform reservations cannot reuse another plan', () async {
     final service = NotificationService.instance;
     await service.initialize();
     final now = timezone.TZDateTime.now(timezone.local);
     final date = DateTime(now.year, now.month, now.day + 1);
+    // Function Name: refresh
+    // Description:
+    // - Refresh the same captured morning date under whichever account is currently active.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; reconciliation completion.
     Future<void> refresh() => service.registerNotification(id: 101,
         slotKey: 'morning', slotTitle: '아침', hour: 8, minute: 0,
         activeDates: [date]);
@@ -793,6 +1101,13 @@ void main() {
     expect(scheduled, hasLength(1));
   });
 
+  // Function Name: disabling reminders removes delivered actions but preserves other alerts
+  // Description:
+  // - Remove pending medication reminders and delivered dose actions while retaining chat, caregiver, and unidentified notifications.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('disabling reminders removes delivered actions but preserves other alerts', () async {
     pending.addAll([
       {'id': 901, 'payload': 'schedule:morning:901:2026-09-11'},
@@ -815,6 +1130,13 @@ void main() {
     }
   });
 
+  // Function Name: disabling one slot removes its delivered actions only
+  // Description:
+  // - Cancel only the requested slot's base, dated, and delivered reminders; preserve other slots and similarly prefixed group keys.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('disabling one slot removes its delivered actions only', () async {
     pending.addAll([
       {'id': 911, 'payload': 'schedule:evening:911:2026-09-12'},
@@ -843,6 +1165,13 @@ void main() {
     }
   });
 
+  // Function Name: legacy Android reminders match date IDs only on their channel
+  // Description:
+  // - Recognize legacy date-derived IDs only on the medication reminder channel, leaving matching IDs on unrelated channels untouched.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('legacy Android reminders match date IDs only on their channel', () async {
     await NotificationService.instance.initialize();
     final now = timezone.TZDateTime.now(timezone.local);
@@ -866,6 +1195,13 @@ void main() {
     expect(cancelled, isNot(contains(containsPair('id', 923))));
   });
 
+  // Function Name: session cleanup recognizes Android channels without payloads
+  // Description:
+  // - Clear all MedBuddy notification channels during session cleanup even without payloads, preserving unrelated channels.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous checks.
   test('session cleanup recognizes Android channels without payloads', () async {
     active.addAll([
       {'id': 931, 'channelId': 'medbuddy_medication_reminders'},
@@ -882,6 +1218,13 @@ void main() {
 
   for (final language in ['ko', 'en']) {
     for (final sensitiveDetails in [true, false]) {
+      // Function Name: stale name snapshots are neutral: $language/$sensitiveDetails
+      // Description:
+      // - Use neutral slot text without medication names for either language and privacy mode, with the correct date payload and reminder group.
+      // Parameters:
+      // - None.
+      // Returns:
+      // - Future<void>; completes after the asynchronous checks.
       test('stale name snapshots are neutral: $language/$sensitiveDetails', () async {
         final service = NotificationService.instance;
         service.setShowSensitiveDetails(sensitiveDetails);
@@ -911,6 +1254,13 @@ void main() {
       });
     }
 
+    // Function Name: snooze fallback keeps neutral copy and original day: $language
+    // Description:
+    // - When exact snooze scheduling fails, keep neutral localized wording and the original dose day in both exact and fallback attempts.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes after the asynchronous checks.
     test('snooze fallback keeps neutral copy and original day: $language', () async {
       final service = NotificationService.instance;
       await service.initialize();
@@ -936,17 +1286,35 @@ void main() {
   }
 }
 
+// Function Name: _body
+// Description:
+// - Return the expected neutral reminder body for English or the Korean fallback.
+// Parameters:
+// - language (String): en selects English; every other value selects Korean.
+// Returns:
+// - String; localized schedule-and-completion review text.
 String _body(String language) => language == 'en'
     ? 'Check your medication schedule and recorded completion status.'
     : '복약 일정과 복용 완료 기록을 확인해 주세요.';
 
+// Function Name: _dateKey
+// Description:
+// - Format the supplied calendar fields as a zero-padded date without timezone conversion.
+// Parameters:
+// - date (DateTime): date whose year, month, and day are encoded.
+// Returns:
+// - String; YYYY-MM-DD key.
 String _dateKey(DateTime date) =>
     '${date.year.toString().padLeft(4, '0')}-'
     '${date.month.toString().padLeft(2, '0')}-'
     '${date.day.toString().padLeft(2, '0')}';
 
 // Function Name: _scheduleMode
-// Description: Reads the Android schedule mode of a recorded zonedSchedule call.
-// Parameters: call - arguments the plugin received. Returns: The mode name, such as exactAllowWhileIdle.
+// Description:
+// - Read the Android schedule-mode string from a recorded plugin call.
+// Parameters:
+// - call (Map<dynamic, dynamic>): zonedSchedule arguments containing platformSpecifics.scheduleMode.
+// Returns:
+// - String; schedule mode; malformed map shapes or types fail the casts.
 String _scheduleMode(Map<dynamic, dynamic> call) =>
     (call['platformSpecifics'] as Map)['scheduleMode'] as String;

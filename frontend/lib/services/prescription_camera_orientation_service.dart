@@ -3,12 +3,10 @@
 
 import 'package:flutter/services.dart';
 
-// Class Name: PrescriptionCameraOrientationService
-// Role: Bridges prescription-camera orientation policy to the native platform.
-// Responsibilities:
-// - Enable sensor rotation only during capture and restore portrait policy without propagating unsupported-plugin failures.
-// Attributes:
-// - _channel (MethodChannel): Native channel for capture-orientation policy requests.
+// 클래스명: PrescriptionCameraOrientationService
+// 역할: 처방전 촬영 중 네이티브 화면 방향 설정을 제어한다.
+// 주요 책임: 센서 방향 사용과 세로 방향 복원을 플랫폼 채널에 요청한다.
+// 속성: _channel (MethodChannel): 주입 가능한 네이티브 호출 경계; _defaultChannel: 앱의 처방전 카메라 채널.
 class PrescriptionCameraOrientationService {
   static const MethodChannel _defaultChannel = MethodChannel(
     'com.medbuddy.app/prescription-camera',

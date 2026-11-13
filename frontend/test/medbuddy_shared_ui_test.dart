@@ -1,3 +1,6 @@
+// 파일명: medbuddy_shared_ui_test.dart
+// 역할: 공통 헤더·테마·사진 출처 선택의 화면 배치와 반환 계약을 검증한다.
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
@@ -8,8 +11,22 @@ import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
 
 // 공통 제목·사진 선택의 접근성과 기존 처방전 출처 반환 계약을 검증한다.
+// 함수이름: main
+// 함수역할:
+// - 한영 공통 화면의 큰 글씨·안전 영역·뒤로가기와 사진 선택·취소 사례를 등록한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - 없음; 등록된 사례와 준비·정리 훅은 테스트 프레임워크에서 실행한다.
 void main() {
   // 좁은 화면에서도 큰 제목, 뒤로가기, 두 명령을 모두 배치할 수 있는지 확인한다.
+  // Function Name: testWidgets callback
+  // Description:
+  // - Checks the white, bold 21-point title at 320px and double text scale, then verifies one back callback without layout errors.
+  // Parameters:
+  // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   testWidgets('공통 제목은 큰 글씨에서도 잘리지 않고 뒤로가기를 실행한다', (tester) async {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;
@@ -53,8 +70,13 @@ void main() {
     expect(backs, 1);
   });
 
-  // 함수역할: 일정 화면의 그라데이션·하단 라운드와 상태 표시줄 여백을 함께 검증한다.
-  // 매개변수: tester는 화면 도구. 반환값: 검증 완료.
+  // Function Name: testWidgets callback
+  // Description:
+  // - Checks the shared top-bar color, rounded bottom corners, safe-area title placement and white action icon.
+  // Parameters:
+  // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   testWidgets('공통 헤더는 일정 화면의 색상과 안전 영역을 유지한다', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -106,6 +128,13 @@ void main() {
   });
 
   // 텍스트·주 동작 버튼에 앱의 동일한 기본 규칙이 적용되는지 검사한다.
+  // 함수이름: test callback
+  // 함수역할:
+  // - 제목 크기·자간·주 색상과 48px 버튼 최소 높이가 기본 테마에 적용되는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('기본 테마는 같은 제목과 명령 버튼 색상을 제공한다', () {
     final theme = MedBuddyTheme.light();
     expect(theme.colorScheme.primary, MedBuddyColors.primary);
@@ -122,6 +151,13 @@ void main() {
     for (final scale in [1.0, 1.3, 2.0]) {
       // 함수역할: 버튼 수·글자 종류·확대 배율이 달라도 제목 시작점과 기준선이 동일한지 검사한다.
       // 매개변수: tester는 위젯 도구. 반환값: 제목·부제의 비겹침과 동작 검증 완료.
+      // 함수이름: testWidgets callback
+      // 함수역할:
+      // - 화면 폭·글씨 배율·제목과 버튼 구성을 바꿔도 제목 기준선과 부제 간격을 유지하고 버튼이 부제와 겹치지 않는지 확인한다.
+      // 매개변수:
+      // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+      // 반환값:
+      // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
       testWidgets('주요 제목 높이는 버튼 유무와 무관하다 $width $scale', (tester) async {
         tester.view.physicalSize = Size(width, 900);
         tester.view.devicePixelRatio = 1;
@@ -233,6 +269,13 @@ void main() {
   for (final language in ['ko', 'en']) {
     for (final source in [ImageSource.camera, ImageSource.gallery, null]) {
       // 두 언어의 좁은 가로 화면에서 선택·취소가 정확한 출처를 반환하는지 검사한다.
+      // 함수이름: testWidgets callback
+      // 함수역할:
+      // - 두 언어의 작은 화면과 두 배 글씨에서 카메라·갤러리 선택 및 뒤로가기 취소가 대응하는 ImageSource 또는 null로 완료되는지 확인한다.
+      // 매개변수:
+      // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+      // 반환값:
+      // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
       testWidgets('사진 출처 선택과 취소 $language $source', (tester) async {
         tester.view.physicalSize = const Size(320, 360);
         tester.view.devicePixelRatio = 1;
@@ -286,6 +329,13 @@ void main() {
   }
 
   // 처방전 진입점이 공통 사진 메뉴의 결과를 기존 열거형으로 변환하는지 검증한다.
+  // 함수이름: testWidgets callback
+  // 함수역할:
+  // - 공통 사진 메뉴에서 갤러리를 선택하면 처방전 진입점의 기존 PrescriptionImageSource.gallery로 반환되는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('처방전 출처 선택의 반환 형식은 유지된다', (tester) async {
     PrescriptionImageSource? result;
     await tester.pumpWidget(

@@ -20,6 +20,13 @@ void main() {
     'link_status': true,
   };
   // 홈과 알림 감시가 겹쳐도 한 번만 읽고 다른 세션 객체는 재사용하지 않는다.
+  // 함수이름: test callback
+  // 함수역할:
+  // - 겹친 홈·감시 요청은 한 번만 조회하고 같은 세션의 감시 캐시를 재사용하되 새 제어기는 다시 조회하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('home and monitoring share only the current session snapshot', () async {
     var reads = 0;
     final gate = Completer<http.Response>();
@@ -46,6 +53,13 @@ void main() {
     expect(reads, 2);
     newSession.dispose();
   });
+  // 함수이름: test callback
+  // 함수역할:
+  // - 알림 설정이 없어도 일정이 유지되고 매번 통합 조회하며 연동 해제 후에는 빈 목록이 되는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'widget refresh retains schedules with alerts off and rereads links',
     () async {
@@ -103,6 +117,13 @@ void main() {
   for (final failure in ['links', 'detail', 'caregiver', 'patient']) {
     // Failed reads must reach the widget's existing failed-cache path, not
     // replace previously known schedules with a successful empty result.
+    // 함수이름: test callback
+    // 함수역할:
+    // - 조회 거부 또는 보호자 범위 불일치를 빈 성공 결과로 삼키지 않고 StateError로 전달하는지 확인한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     test('$failure failure is not an empty successful schedule', () async {
       final client = MockClient((request) async {
         return http.Response(

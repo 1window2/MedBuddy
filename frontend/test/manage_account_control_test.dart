@@ -20,6 +20,13 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   // 함수역할: 서버가 삭제를 승인한 뒤에만 복약 CSV 임시 파일을 정리한다.
+  // 함수이름: 계정 삭제 후 내보내기 정리
+  // 함수역할:
+  // - 삭제 서버 500에서는 내보내기 채널을 호출하지 않고 성공 후에만 clearExports를 한 번 호출하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('계정 삭제 성공 후에만 내보내기 캐시를 정리한다', () async {
     SharedPreferences.setMockInitialValues({});
     const channel = MethodChannel('com.medbuddy/data_export');
@@ -235,6 +242,8 @@ void main() {
     'medbuddy.favorite_hospital_ids.$owner': <String>['hospital-1'],
     'caregiver_delivery_${owner}_${'a' * 64}': true,
     'caregiver_linked_patients.$owner': <String>['patient-1'],
+    'medbuddy_as_needed_check_$owner': 1700000000000,
+    'medbuddy.chat_links_present.$owner': true,
     'caregiver_patient_label.$owner.patient-1': 'Family',
     'caregiver_alert.$owner.patient-1.morning.snapshot_data': '{}',
     for (final kind in const ['entry', 'read', 'hidden'])

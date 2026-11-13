@@ -1,9 +1,14 @@
+# 파일명: test_hospital_router.py
+# 역할: 병원 검색 경로의 인증·입력 검증, 오류 응답 및 달력 의존성 계약을 검증한다.
+
 """병원 경로의 인증, 요청 검증, 오류·응답 계약을 검증한다."""
 
 import asyncio
+from collections.abc import Callable
 from datetime import date, datetime
 from pathlib import Path
 import sys
+from typing import Any, NoReturn
 from unittest.mock import AsyncMock
 
 import httpx
@@ -28,14 +33,28 @@ from repositories.pharmacy_catalog_repository import PharmacyCatalogRepository
 from schemas.hospital import NearbyHospitalResponse
 
 
+# 함수이름: anyio_backend
+# 함수역할:
+# - 라우터를 asyncio에서 실행한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - str; asyncio.
 @pytest.fixture
-def anyio_backend():
+def anyio_backend() -> str:
     """라우터를 asyncio에서 실행한다."""
     return "asyncio"
 
 
+# 함수이름: app_control
+# 함수역할:
+# - DB·네트워크 없이 인증 의존성을 명시적으로 대체한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - tuple[FastAPI, AsyncMock]; 앱과 대체 검색 컨트롤.
 @pytest.fixture
-def app_control():
+def app_control() -> tuple[FastAPI, AsyncMock]:
     """DB·네트워크 없이 인증 의존성을 명시적으로 대체한다."""
     app = FastAPI()
     app.include_router(router, prefix="/api/v1/hospitals")
@@ -50,8 +69,15 @@ def app_control():
     return app, control
 
 
+# 함수이름: test_envelope_department_and_generic_route_contract
+# 함수역할:
+# - 화면이 사용하는 경로·필터·부분 결과 메타데이터를 보존한다.
+# 매개변수:
+# - app_control: tuple[FastAPI, AsyncMock]; 인증 대역과 검색 컨트롤을 갖춘 앱.
+# 반환값:
+# - None.
 @pytest.mark.anyio
-async def test_envelope_department_and_generic_route_contract(app_control):
+async def test_envelope_department_and_generic_route_contract(app_control: tuple[FastAPI, AsyncMock]) -> None:
     """화면이 사용하는 경로·필터·부분 결과 메타데이터를 보존한다."""
     app, control = app_control
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
@@ -61,8 +87,15 @@ async def test_envelope_department_and_generic_route_contract(app_control):
     assert resolve_rate_limit_rule("GET", "/api/v1/hospitals/nearby")[0].max_requests == 30
 
 
+# 함수이름: test_region_scope_metadata_is_independent_of_search_limit
+# 함수역할:
+# - 응답 직렬화에서도 지역 표본의 한계를 조회 제한으로 합치지 않는다.
+# 매개변수:
+# - app_control: tuple[FastAPI, AsyncMock]; 인증 대역과 검색 컨트롤을 갖춘 앱.
+# 반환값:
+# - None.
 @pytest.mark.anyio
-async def test_region_scope_metadata_is_independent_of_search_limit(app_control):
+async def test_region_scope_metadata_is_independent_of_search_limit(app_control: tuple[FastAPI, AsyncMock]) -> None:
     """응답 직렬화에서도 지역 표본의 한계를 조회 제한으로 합치지 않는다."""
     app, control = app_control
     result = control.requestNearbyHospitalSearch.return_value
@@ -75,13 +108,21 @@ async def test_region_scope_metadata_is_independent_of_search_limit(app_control)
     assert response.json()["region_scope_uncertain"] is True
 
 
+# 함수이름: test_invalid_query_never_reaches_provider
+# 함수역할:
+# - HTTP 경계에서 잘못된 입력을 차단한다.
+# 매개변수:
+# - app_control: tuple[FastAPI, AsyncMock]; 인증 대역과 검색 컨트롤을 갖춘 앱.
+# - params: dict; 정상 좌표 위에 덮어쓸 잘못된 쿼리.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("params", [
     {"latitude": "NaN"}, {"longitude": 181}, {"limit": 31}, {"limit": 0},
     {"max_distance_km": 51}, {"max_distance_km": 0}, {"department": "내과"},
     {"search_mode": "official_late_night"}, {"target_datetime": "bad"},
 ])
 @pytest.mark.anyio
-async def test_invalid_query_never_reaches_provider(app_control, params):
+async def test_invalid_query_never_reaches_provider(app_control: tuple[FastAPI, AsyncMock], params: dict[str, str | int]) -> None:
     """HTTP 경계에서 잘못된 입력을 차단한다."""
     app, control = app_control
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
@@ -89,13 +130,29 @@ async def test_invalid_query_never_reaches_provider(app_control, params):
     assert response.status_code == 422 and not control.requestNearbyHospitalSearch.called
 
 
+# 함수이름: test_admission_requires_appcheck_and_registered_principal
+# 함수역할:
+# - 앱 검증·등록 사용자 검증이 검색 실행보다 먼저 수행된다.
+# 매개변수:
+# - app_control: tuple[FastAPI, AsyncMock]; 인증 대역과 검색 컨트롤을 갖춘 앱.
+# - dependency: Callable; 실패시킬 앱 검증 또는 등록 사용자 의존성.
+# - status: int; 예상 HTTP 거부·오류 상태.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("dependency,status", [(verify_app_check_token, 403), (get_registered_principal, 401)])
 @pytest.mark.anyio
-async def test_admission_requires_appcheck_and_registered_principal(app_control, dependency, status):
+async def test_admission_requires_appcheck_and_registered_principal(app_control: tuple[FastAPI, AsyncMock], dependency: Callable[..., Any], status: int) -> None:
     """앱 검증·등록 사용자 검증이 검색 실행보다 먼저 수행된다."""
     app, control = app_control
 
-    def denied():
+    # 함수이름: denied
+    # 함수역할:
+    # - 선택된 인증 의존성에서 지정 HTTP 상태로 요청을 거부한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 반환하지 않음; HTTPException 발생.
+    def denied() -> NoReturn:
         raise HTTPException(status_code=status, detail="denied")
 
     app.dependency_overrides[dependency] = denied
@@ -105,9 +162,18 @@ async def test_admission_requires_appcheck_and_registered_principal(app_control,
     assert {item.dependency for item in router.dependencies} == {verify_app_check_token, get_registered_principal}
 
 
+# 함수이름: test_provider_errors_are_sanitized
+# 함수역할:
+# - 제공자 오류의 비밀 정보는 HTTP 응답으로 전달하지 않는다.
+# 매개변수:
+# - app_control: tuple[FastAPI, AsyncMock]; 인증 대역과 검색 컨트롤을 갖춘 앱.
+# - error: type[Exception]; 컨트롤에서 발생시킬 제공자 오류.
+# - status: int; 예상 HTTP 거부·오류 상태.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("error,status", [(HospitalApiUnavailableError, 503), (HospitalApiResponseError, 502)])
 @pytest.mark.anyio
-async def test_provider_errors_are_sanitized(app_control, error, status):
+async def test_provider_errors_are_sanitized(app_control: tuple[FastAPI, AsyncMock], error: type[HospitalApiUnavailableError] | type[HospitalApiResponseError], status: int) -> None:
     """제공자 오류의 비밀 정보는 HTTP 응답으로 전달하지 않는다."""
     app, control = app_control
     control.requestNearbyHospitalSearch.side_effect = error("secret-key-and-provider-url")
@@ -118,8 +184,16 @@ async def test_provider_errors_are_sanitized(app_control, error, status):
         assert response.headers["retry-after"] == "5"
 
 
+# Function Name: test_exhausted_daily_budget_says_so_and_waits_until_local_midnight
+# Description:
+# - Requires exhausted daily quota to return its dedicated 503 message and Retry-After for the next application midnight.
+# Parameters:
+# - app_control: tuple[FastAPI, AsyncMock]; app and isolated search control.
+# - monkeypatch: pytest.MonkeyPatch; restores temporary dependency replacements.
+# Returns:
+# - None.
 @pytest.mark.anyio
-async def test_exhausted_daily_budget_says_so_and_waits_until_local_midnight(app_control, monkeypatch):
+async def test_exhausted_daily_budget_says_so_and_waits_until_local_midnight(app_control: tuple[FastAPI, AsyncMock], monkeypatch: pytest.MonkeyPatch) -> None:
     """하루 조회 예산 소진은 일시 장애와 다른 안내와 서비스 시간대 자정까지의 대기 시간을 준다."""
     from api import hospital_router
     from boundaries.hospital_api_boundary import HospitalApiBudgetExhaustedError
@@ -133,7 +207,14 @@ async def test_exhausted_daily_budget_says_so_and_waits_until_local_midnight(app
     assert response.json()["detail"] == hospital_router.HOSPITAL_BUDGET_EXHAUSTED_DETAIL
 
 
-def test_seconds_until_next_application_day_counts_to_local_midnight(monkeypatch):
+# Function Name: test_seconds_until_next_application_day_counts_to_local_midnight
+# Description:
+# - Checks that 23:30 in the application timezone leaves 1,800 seconds until the next day.
+# Parameters:
+# - monkeypatch: pytest.MonkeyPatch; restores temporary dependency replacements.
+# Returns:
+# - None.
+def test_seconds_until_next_application_day_counts_to_local_midnight(monkeypatch: pytest.MonkeyPatch) -> None:
     """다음 자정까지의 초는 서비스 시간대 기준이다."""
     from datetime import datetime
     from zoneinfo import ZoneInfo
@@ -145,14 +226,29 @@ def test_seconds_until_next_application_day_counts_to_local_midnight(monkeypatch
     assert application_clock.seconds_until_next_application_day() == 1_800
 
 
+# 함수이름: test_whole_search_deadline_precedes_frontend_timeout
+# 함수역할:
+# - 전체 요청의 지연 한도가 UI의 25초 제한보다 짧다.
+# 매개변수:
+# - app_control: tuple[FastAPI, AsyncMock]; 인증 대역과 검색 컨트롤을 갖춘 앱.
+# - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
+# 반환값:
+# - None.
 @pytest.mark.anyio
-async def test_whole_search_deadline_precedes_frontend_timeout(app_control, monkeypatch):
+async def test_whole_search_deadline_precedes_frontend_timeout(app_control: tuple[FastAPI, AsyncMock], monkeypatch: pytest.MonkeyPatch) -> None:
     """전체 요청의 지연 한도가 UI의 25초 제한보다 짧다."""
     assert settings.HOSPITAL_SEARCH_TIMEOUT_SECONDS < 25
     monkeypatch.setattr(settings, "HOSPITAL_SEARCH_TIMEOUT_SECONDS", 0.01)
     app, control = app_control
 
-    async def wait(**_):
+    # 함수이름: wait
+    # 함수역할:
+    # - 검색을 완료하지 않아 라우터의 요청 시간 제한을 유도한다.
+    # 매개변수:
+    # - _: dict; 사용하지 않는 검색 인수.
+    # 반환값:
+    # - 정상 반환 없음; 호출자가 취소할 때까지 대기.
+    async def wait(**_: Any) -> None:
         await asyncio.Event().wait()
 
     control.requestNearbyHospitalSearch.side_effect = wait
@@ -161,7 +257,14 @@ async def test_whole_search_deadline_precedes_frontend_timeout(app_control, monk
     assert response.status_code == 503
 
 
-def test_settings_validate_hospital_bounds_and_https():
+# 함수이름: test_settings_validate_hospital_bounds_and_https
+# 함수역할:
+# - 병원 기본값은 24시간 상세 캐시와 유한한 요청·저장 상한을 사용한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - None.
+def test_settings_validate_hospital_bounds_and_https() -> None:
     """병원 기본값은 24시간 상세 캐시와 유한한 요청·저장 상한을 사용한다."""
     defaults = Settings(_env_file=None)
     assert defaults.HOSPITAL_DETAIL_CACHE_SECONDS == 86400
@@ -172,12 +275,22 @@ def test_settings_validate_hospital_bounds_and_https():
             Settings(_env_file=None, **invalid)
 
 
+# Function Name: test_hospital_dependency_reuses_only_verified_request_db_calendar
+# Description:
+# - Requires verified monthly calendar cache reuse; unverified or missing data stays unknown on provider failure without holding the request transaction.
+# Parameters:
+# - monkeypatch: pytest.MonkeyPatch; restores temporary dependency replacements.
+# - tmp_path: Path; isolated temporary directory.
+# - cache_state: str; verified holiday/empty month, unverified row or missing cache.
+# - expected: bool | None; known holiday state or unknown on failure.
+# Returns:
+# - None.
 @pytest.mark.parametrize("cache_state,expected", [
     ("verified_holiday", True), ("verified_empty", False),
     ("unverified_row", None), ("missing", None),
 ])
 @pytest.mark.anyio
-async def test_hospital_dependency_reuses_only_verified_request_db_calendar(monkeypatch, tmp_path, cache_state, expected):
+async def test_hospital_dependency_reuses_only_verified_request_db_calendar(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, cache_state: str, expected: bool | None) -> None:
     """기존 월별 조회 기록을 재사용하고 미검증·빈 캐시와 외부 장애는 미확인으로 유지한다."""
     engine = create_engine(f"sqlite:///{tmp_path / 'calendar.db'}")
     KoreanHolidayRecord.__table__.create(engine)

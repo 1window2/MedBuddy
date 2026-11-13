@@ -24,6 +24,7 @@ import 'package:medbuddy_frontend/services/dose_sync_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -33,6 +34,14 @@ import 'support/fake_as_needed_pending_store.dart';
 import 'support/fake_notification_service.dart';
 
 // 일정의 정기 약과 필요시 약 조회를 모두 격리해 실제 서버에 접근하지 않는다.
+// 함수이름: _historyControl
+// 함수역할:
+// - 실제 통신 없이 날짜 범위와 선택적 필요시 약을 제공하는 기록 조회기를 만들고 정리를 등록한다.
+// 매개변수:
+// - withPrn(bool): 고정 필요시 약을 포함할지 여부.
+// - beforeRead(Future<void>?): 응답 전 기다릴 작업; 오류는 조회 실패로 전달된다.
+// 반환값:
+// - MedicationHistoryControl: 고정 환자·세션과 메모리 대기 저장소를 사용하는 조회기.
 MedicationHistoryControl _historyControl({
   bool withPrn = false,
   Future<void>? beforeRead,
@@ -127,18 +136,15 @@ class _SuccessfulThenFailingCheckSchedule extends CheckSchedule {
   }
 }
 
-// 클래스명: _ActiveCheckSchedule
-// 역할: 활성 아침 복약 일정을 제공해 알림 동기화 실패와 일정 로딩을 분리하는 대역.
-// 주요 책임:
-// - 아침 시간대가 명시된 활성 약 일정을 제공한다.
+// Class Name: _ActiveCheckSchedule
+// Role: Provides a nonempty morning schedule independently of reminder failures.
+// Responsibilities: Supplies one explicitly scheduled morning medication without network access.
+// Attributes: No additional fixture state.
 class _ActiveCheckSchedule extends CheckSchedule {
-  // 함수이름: requestTodayMedicationSchedule
-  // 함수역할:
-  // - 아침 시간대가 명시된 활성 약 일정을 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 아침에 한 번 복용하는 일정 한 건.
+  // Function Name: requestTodayMedicationSchedule
+  // Description: Supplies one once-daily medication with an explicit morning slot.
+  // Parameters: None.
+  // Returns: Future<List<MedicationSchedule>> containing the fixed active-tablet fixture.
   @override
   Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
     return const [
@@ -153,7 +159,18 @@ class _ActiveCheckSchedule extends CheckSchedule {
 }
 
 // 네 시간대 모두 약이 많아 취침 전·필요시 카드가 처음 화면 밖에 놓이는 일정.
+// Class Name: _CrowdedCheckSchedule
+// Role: Creates enough regular rows to place later slots off screen.
+// Responsibilities: Supplies six medications in all four regular slots for initial-scroll regression tests.
+// Attributes: No mutable fixture state.
 class _CrowdedCheckSchedule extends CheckSchedule {
+  // Function Name: requestTodayMedicationSchedule
+  // Description:
+  // - Returns six five-day medications assigned to morning, lunch, evening and bedtime.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<List<MedicationSchedule>>: A newly generated crowded schedule.
   @override
   Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async => [
     for (var i = 0; i < 6; i++)
@@ -168,9 +185,20 @@ class _CrowdedCheckSchedule extends CheckSchedule {
 }
 
 // 정기 일정 응답을 보류해 필요시 약만 먼저 도착하는 상황을 재현한다.
+// 클래스명: _DelayedCheckSchedule
+// 역할: 정기 일정 응답을 필요시 약 조회보다 늦게 완료한다.
+// 주요 책임: 초기 로딩 중 부분 데이터 노출과 조회 실패를 재현한다.
+// 속성: gate는 완료 또는 오류를 주입하는 조회 대기 제어기.
 class _DelayedCheckSchedule extends _ActiveCheckSchedule {
   final gate = Completer<void>();
 
+  // 함수이름: requestTodayMedicationSchedule
+  // 함수역할:
+  // - gate를 기다린 뒤 상위 고정 아침 일정을 반환한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<List<MedicationSchedule>>: 활성 약 한 건; gate 오류는 전달된다.
   @override
   Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
     await gate.future;
@@ -178,12 +206,21 @@ class _DelayedCheckSchedule extends _ActiveCheckSchedule {
   }
 }
 
-// 클래스명: _RefreshGatedEmptySchedule
-// 역할: 필요시 약만 있는 환자처럼 정기 일정이 비어 있고, 두 번째 조회부터 대기하는 일정 응답.
+// Class Name: _RefreshGatedEmptySchedule
+// Role: Models an empty regular schedule whose refresh can remain in progress.
+// Responsibilities: Completes the first read immediately and delays subsequent reads.
+// Attributes: gate releases later reads; reads counts every request.
 class _RefreshGatedEmptySchedule extends EmptyCheckSchedule {
   final gate = Completer<void>();
   int reads = 0;
 
+  // Function Name: requestTodayMedicationSchedule
+  // Description:
+  // - Returns an empty initial schedule and holds every later refresh behind gate.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<List<MedicationSchedule>>: Empty rows after any required wait; propagates gate failure.
   @override
   Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
     if (++reads > 1) await gate.future;
@@ -255,6 +292,7 @@ class _MorningDoseCheckSchedule extends CheckSchedule {
   // Parameters:
   // - slotKey (String): Dose slot such as morning, lunch, evening, or bedtime. Not used.
   // - medicationStatus (bool): Requested taken/untaken completion state. Not used.
+  // - expectedScheduleDate (String?): Optional date guard; this fixture does not inspect it.
   // Returns:
   // - The unchanged schedule as a one-item list.
   @override
@@ -272,6 +310,7 @@ class _MorningDoseCheckSchedule extends CheckSchedule {
 // Role: Visual schedule fixture for explicit dosage units and medication-image rendering.
 // Responsibilities:
 // - Supply a half-tablet dose and trusted image URL for visual schedule assertions.
+// Attributes: No additional fixture state; returns fixed display data.
 class _VisualScheduleCheckSchedule extends CheckSchedule {
   // Function Name: requestTodayMedicationSchedule
   // Description:
@@ -295,18 +334,15 @@ class _VisualScheduleCheckSchedule extends CheckSchedule {
   }
 }
 
-// 클래스명: _EnabledSetNotification
-// 역할: 오전 8시 활성 알림을 제공하는 조회 대역.
-// 주요 책임:
-// - 아침 시간대의 오전 8시 활성 알림을 제공한다.
+// Class Name: _EnabledSetNotification
+// Role: Supplies an enabled morning reminder for schedule rendering.
+// Responsibilities: Returns a fixed 08:00 alarm without reading persistent settings.
+// Attributes: No additional fixture state.
 class _EnabledSetNotification extends SetNotification {
-  // 함수이름: requestMedicationAlarm
-  // 함수역할:
-  // - 아침 시간대의 오전 8시 활성 알림을 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 활성 아침 알림 한 건.
+  // Function Name: requestMedicationAlarm
+  // Description: Returns a single enabled morning alarm at 08:00.
+  // Parameters: None.
+  // Returns: Future<List<MedicationAlarm>> containing the fixed setting.
   @override
   Future<List<MedicationAlarm>> requestMedicationAlarm() async {
     return const [
@@ -319,6 +355,7 @@ class _EnabledSetNotification extends SetNotification {
 // 역할: 알림 상태와 저장·해제 요청 횟수를 추적한다.
 // 주요 책임: 플랫폼 알림 없이 설정창 취소·저장에 따른 변경을 검증한다.
 // 속성: _setting은 현재 알림, saveCount·disableCount는 영속화 요청 횟수, lastDisableTime은 마지막 해제 요청에 실린 시각.
+// - ignoreDisabledTime은 비활성화 요청의 시각 변경을 무시하는 구형 서버 동작을 선택한다.
 class _MutableSetNotification extends SetNotification {
   MedicationAlarm _setting;
   int saveCount = 0;
@@ -328,6 +365,7 @@ class _MutableSetNotification extends SetNotification {
 
   // 함수이름: _MutableSetNotification
   // 함수역할: enabled로 초기 활성 상태를 지정한다. 반환값: 변경 추적 가능한 알림 대역.
+  // 매개변수: enabled(bool)는 활성 여부, hour/minute(int)는 초기 시각, ignoreDisabledTime(bool)은 꺼짐 시각 변경 무시 여부다.
   _MutableSetNotification({
     bool enabled = false,
     int hour = 8,
@@ -377,7 +415,7 @@ class _MutableSetNotification extends SetNotification {
 
   // 함수이름: disableAlarmSetting
   // 함수역할:
-  // - 활성 상태를 해제하고, 시각이 함께 오면 그 시각으로 바꾼다.
+  // - 비활성화 호출과 요청 시각을 기록하고 알림을 끈다. ignoreDisabledTime이 false일 때만 새 시각을 적용한다.
   // 매개변수:
   // - slotKey (String): 아침·점심·저녁·취침 전 등을 구분하는 복약 시간대 키. 이 대역에서는 직접 사용하지 않는다.
   // - hour (int?): 꺼진 알림과 함께 저장할 새 시.
@@ -431,10 +469,23 @@ class _MutableSetNotification extends SetNotification {
   }) async {}
 }
 
+// 클래스명: _DelayedReminderSave
+// 역할: 알림 저장 응답을 지연해 편집창 재진입과 저장 경합을 재현한다.
+// 주요 책임: 쓰기 시작을 센 뒤 테스트 해제 시 상위 저장 동작을 완료한다.
+// 속성: gate는 응답 해제 제어기, startedWrites는 시작된 저장 수.
 class _DelayedReminderSave extends _MutableSetNotification {
   final gate = Completer<void>();
   int startedWrites = 0;
 
+  // 함수이름: saveNotificationSetting
+  // 함수역할:
+  // - 쓰기 시작 수를 늘리고 gate를 기다린 뒤 지정 시각을 활성 알림으로 저장한다.
+  // 매개변수:
+  // - slotKey(String): 저장 시간대.
+  // - hour(int): 알림 시.
+  // - minute(int): 알림 분.
+  // 반환값:
+  // - Future<MedicationAlarm>: 상위 구현이 저장한 알림; gate 오류는 전달된다.
   @override
   Future<MedicationAlarm> saveNotificationSetting({
     required String slotKey,
@@ -454,9 +505,11 @@ class _DelayedReminderSave extends _MutableSetNotification {
 // 클래스명: _ScheduleHealthRecommendation
 // 역할: 일정에서 건강 추천으로 이동할 때 서버 없이 정상 결과를 제공한다.
 // 주요 책임: 실제 추천 화면의 경로와 복귀를 검증할 데이터를 반환한다.
+// 속성: 추가 상태 없음; 고정 추천만 반환한다.
 class _ScheduleHealthRecommendation extends CheckHealthRecommendation {
   // 함수이름: requestHealthRecommendation
   // 함수역할: language와 무관한 고정 추천을 반환한다. 반환값: 정상 건강 추천 Future.
+  // 매개변수: language(String)는 요청 언어이며, 이 대역에서는 사용하지 않는다.
   @override
   Future<HealthRecommendation> requestHealthRecommendation({
     String language = 'ko',
@@ -473,6 +526,8 @@ class _ScheduleHealthRecommendation extends CheckHealthRecommendation {
 // 함수이름: _pumpReminderSchedule
 // 함수역할: tester에 알림 대역 notification과 textScale 글씨 배율을 적용한 일정을 표시한다. notificationService를 주면
 //   그 알림 서비스 대역을 쓴다. 반환값: 생성한 화면 모델.
+// 매개변수: tester(WidgetTester)는 화면 제어기, notification(_MutableSetNotification)은 알림 설정 대역,
+//   textScale(double)은 글씨 배율, notificationService(RecordingNotificationService?)는 선택적 알림 기록기다.
 Future<MedBuddyViewModel> _pumpReminderSchedule(
   WidgetTester tester,
   _MutableSetNotification notification, {
@@ -507,6 +562,7 @@ Future<MedBuddyViewModel> _pumpReminderSchedule(
 
 // 함수이름: _editReminderHour
 // 함수역할: tester로 설정창의 시간을 hour로 수정하고 시간창만 확정한다. 반환값: 조작 완료 Future.
+// 매개변수: tester(WidgetTester)는 화면 제어기, hour(String)는 직접 입력할 시간 문자열이다.
 Future<void> _editReminderHour(WidgetTester tester, String hour) async {
   await tester.tap(find.byKey(const Key('schedule-reminder-edit-time')));
   await tester.pumpAndSettle();
@@ -573,14 +629,23 @@ Future<void> _closeDoseSchedule(
   await harness.close();
 }
 
-// 함수이름: main
-// 함수역할: 일정·알림·화면 배치·접근성 회귀 사례를 등록한다. 매개변수·반환값: 없음.
+// Function Name: main
+// Description: Registers schedule loading, reminder drafts, navigation, accessibility and queued-dose regressions.
+// Parameters: None.
+// Returns: No value; registered callbacks are executed by the test framework.
 void main() {
   // 알림·기능 찾기로 연 시간대가 처음 화면 밖이면 목록이 아직 만들지 않아 이동하지 못했다.
   for (final (slot, title) in [
     ('bedtime', '취침 전'),
     ('as_needed', '필요시 복용'),
   ]) {
+    // Function Name: initial off-screen slot navigation
+    // Description:
+    // - Opens bedtime or as-needed in a crowded schedule and verifies the requested card title becomes hit-testable.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     testWidgets('opening at $slot reveals a card that starts off screen', (
       tester,
     ) async {
@@ -613,6 +678,13 @@ void main() {
     });
   }
 
+  // Function Name: unknown initial slot fallback
+  // Description:
+  // - Uses an unknown slot key and verifies the first regular medication remains visible at the top.
+  // Parameters:
+  // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   testWidgets('an unknown slot key leaves the schedule at the top', (
     tester,
   ) async {
@@ -645,6 +717,13 @@ void main() {
   });
 
   for (final failSchedule in [false, true]) {
+    // 함수이름: 정기 일정의 첫 응답 대기
+    // 함수역할:
+    // - 필요시 약이 먼저 도착해도 로딩 중 부분 카드·빈 일정 안내를 숨기고 정기 조회의 성공/실패 후 필요시 약과 올바른 상태를 표시하는지 확인한다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets('정기 일정 대기에는 필요시 카드 대신 로딩만 표시한다: $failSchedule', (tester) async {
       SharedPreferences.setMockInitialValues({});
       final schedule = _DelayedCheckSchedule();
@@ -698,6 +777,13 @@ void main() {
     });
   }
 
+  // Function Name: PRN-only refresh retains the card
+  // Description:
+  // - Refreshes a previously loaded empty regular schedule while PRN data exists and verifies the PRN card is not replaced by initial loading.
+  // Parameters:
+  // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   testWidgets('필요시 약만 있을 때 새로고침 중에도 카드를 가리지 않는다', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final schedule = _RefreshGatedEmptySchedule();
@@ -731,6 +817,13 @@ void main() {
   });
 
   for (final failHistory in [false, true]) {
+    // 함수이름: 필요시 약의 첫 응답 대기
+    // 함수역할:
+    // - 첫 필요시 조회 동안 빈 카드와 빈 일정 안내 대신 로딩을 표시하고 응답 후 성공 약 또는 오류 표시가 있는 카드로 전환하는지 확인한다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets('필요시 약 첫 조회에는 빈 카드나 빈 일정 안내를 노출하지 않는다: $failHistory', (
       tester,
     ) async {
@@ -779,6 +872,13 @@ void main() {
     });
   }
 
+  // 함수이름: 알림 저장의 중복 탭
+  // 함수역할:
+  // - 설정창 닫힘 전 저장 위치를 두 번 눌러도 저장은 한 번이고 아래 일정 화면은 닫히지 않는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('알림 저장 연타가 설정창 아래 일정까지 닫지 않는다', (tester) async {
     final notification = _MutableSetNotification();
     await _pumpReminderSchedule(tester, notification);
@@ -797,6 +897,13 @@ void main() {
     expect(notification.saveCount, 1);
   });
 
+  // 함수이름: 알림 창의 중복 진입
+  // 함수역할:
+  // - 설정·시각 편집 버튼을 연타해도 창은 하나씩만 열리며 취소 후 재진입할 수 있고 저장 요청은 없는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('알림 진입 연타와 시각 편집 연타는 창을 하나씩만 연다', (tester) async {
     final notification = _MutableSetNotification();
     await _pumpReminderSchedule(tester, notification);
@@ -835,6 +942,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: 저장 응답 대기 중 편집 차단
+  // 함수역할:
+  // - 지연 저장 중 설정창 재진입을 막고 완료 후 다시 열면 최신 활성 스위치 값을 보여 주는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('알림 저장 응답 대기 중에는 이전 값의 편집창을 다시 열지 않는다', (tester) async {
     final notification = _DelayedReminderSave();
     final model = await _pumpReminderSchedule(tester, notification);
@@ -871,6 +985,13 @@ void main() {
   // A configured reminder is not a prescribed dose time; disabled alarms must
   // not revert to a hard-coded 08:00 label. Viewing never saves a setting.
   for (final enabled in [true, false]) {
+    // 함수이름: 알림 활성 상태 헤더
+    // 함수역할:
+    // - 2배 글씨에서 활성 알림은 실제 02:38, 비활성 알림은 꺼짐으로 표시하고 조회만으로 저장하지 않는지 확인한다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets('patient header identifies reminder state $enabled', (
       tester,
     ) async {
@@ -886,7 +1007,7 @@ void main() {
       );
       expect(
         tester
-            .widget<Text>(
+            .widget<KeepWordsText>(
               find.byKey(const ValueKey('patient-alert-time-morning')),
             )
             .data,
@@ -973,6 +1094,13 @@ void main() {
   });
 
   for (final hasRegular in [false, true]) {
+    // 함수이름: 필요시 약과 정기 진행률 분리
+    // 함수역할:
+    // - 정기 약 유무와 관계없이 필요시 약을 표시하되 정기 일정 목록·계획 횟수에는 포함하지 않고 빈 일정 안내를 숨기는지 확인한다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets(
       'PRN is visible without adding planned progress regular=$hasRegular',
       (tester) async {
@@ -1185,6 +1313,7 @@ void main() {
   for (final enabled in [false, true]) {
     // 함수이름: 알림 종 접근성 테스트
     // 함수역할: tester로 활성 여부에 따른 종의 이름과 상태가 중복 없이 전달되는지 검증한다. 반환값: 검증 완료.
+    // 매개변수: tester(WidgetTester)는 화면 조작과 표시 상태 검증을 수행하는 도구다.
     testWidgets(
       'reminder accessibility includes name and value for enabled=$enabled',
       (tester) async {
@@ -1213,6 +1342,7 @@ void main() {
     for (final dismissal in ['cancel', 'back', 'barrier']) {
       // 함수이름: 알림 설정 닫기 테스트
       // 함수역할: enabled 상태에서 tester로 스위치를 바꾼 뒤 dismissal로 닫으면 저장·해제가 없는지 검증한다. 반환값: 검증 완료.
+      // 매개변수: tester(WidgetTester)는 화면 조작과 표시 상태 검증을 수행하는 도구다.
       testWidgets(
         'reminder $dismissal discards an unsaved switch change from enabled=$enabled',
         (tester) async {
@@ -1250,6 +1380,7 @@ void main() {
 
   // 함수이름: 알림 시각 초안 테스트
   // 함수역할: tester로 시각을 확정해도 바깥 창 저장 전에는 변경이 없으며 취소하면 초안이 사라지는지 검증한다. 반환값: 검증 완료.
+  // 매개변수: tester(WidgetTester)는 화면 조작과 표시 상태 검증을 수행하는 도구다.
   testWidgets('reminder time changes persist only after configuration save', (
     tester,
   ) async {
@@ -1277,6 +1408,13 @@ void main() {
   });
 
   for (final initiallyEnabled in [true, false]) {
+    // 함수이름: 비활성 알림의 수정 시각 보존
+    // 함수역할:
+    // - 초기 활성 여부와 무관하게 꺼짐 저장은 disable만 한 번 호출하고 19:55를 재조회·재진입 뒤에도 유지하는지 확인한다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets(
       'saving a disabled reminder keeps edited time from enabled=$initiallyEnabled',
       (tester) async {
@@ -1313,6 +1451,13 @@ void main() {
     );
   }
 
+  // 함수이름: 꺼짐 응답의 시각 불일치
+  // 함수역할:
+  // - 서버가 새 시각을 무시하면 알림은 끄되 기존 시각을 유지하고 실패 안내를 하며 권한 요청·기기 재예약 없이 취소하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'older server time mismatch stays off without reporting success',
     () async {
@@ -1347,6 +1492,13 @@ void main() {
     },
   );
 
+  // 함수이름: 약과 권한 없는 꺼짐 시각 저장
+  // 함수역할:
+  // - 일정이 없고 권한이 거부되어도 19:05 비활성 설정을 성공적으로 저장·캐시하며 권한 요청이나 기기 예약은 하지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'disabled time save needs no notification permission or medications',
     () async {
@@ -1387,6 +1539,7 @@ void main() {
 
   // 함수이름: 시간 선택 취소 테스트
   // 함수역할: tester로 중첩 시간창을 취소하고 설정을 그대로 저장하면 영속화 요청이 없는지 검증한다. 반환값: 검증 완료.
+  // 매개변수: tester(WidgetTester)는 화면 조작과 표시 상태 검증을 수행하는 도구다.
   testWidgets(
     'cancelled time picker and unchanged save leave the reminder intact',
     (tester) async {
@@ -1409,6 +1562,7 @@ void main() {
 
   // 함수이름: 꺼진 알림 설정 테스트
   // 함수역할: tester로 꺼진 알림의 동일 설정창에서 활성화·시간 초안을 취소하거나 저장하는 결과를 검증한다. 반환값: 검증 완료.
+  // 매개변수: tester(WidgetTester)는 화면 조작과 표시 상태 검증을 수행하는 도구다.
   testWidgets(
     'disabled reminder shares configuration and only saves confirmed drafts',
     (tester) async {
@@ -1471,6 +1625,13 @@ void main() {
 
   // 켜 둔 알림이 있는데 기기가 정확한 알람을 막고 있으면 일정 화면에서 허용 방법을 안내하고, 꺼 둔 경우에는 안내하지 않는다.
   for (final enabled in [true, false]) {
+    // Function Name: exact-alarm notice tracks enabled reminders
+    // Description:
+    // - Shows the exact-alarm notice only for enabled reminders; granting access reschedules once and removes the notice.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     testWidgets(
       'exact-alarm notice follows the reminder switch (enabled=$enabled)',
       (tester) async {
@@ -1499,6 +1660,7 @@ void main() {
 
   // 함수이름: 알림 설정 큰 글씨 테스트
   // 함수역할: tester의 작은 화면·2배 글씨에서 설정과 저장 명령이 스크롤로 접근 가능한지 검증한다. 반환값: 검증 완료.
+  // 매개변수: tester(WidgetTester)는 화면 조작과 표시 상태 검증을 수행하는 도구다.
   testWidgets(
     'reminder configuration supports a compact viewport and large text',
     (tester) async {
@@ -1540,6 +1702,7 @@ void main() {
   for (final showBackButton in [false, true]) {
     // 함수이름: 기존 헤더와 큰 글씨 테스트
     // 함수역할: tester의 작은 화면·2배 글씨에서 기존 초록 헤더와 진행률·뒤로가기가 유지되는지 검증한다. 반환값: 검증 완료.
+    // 매개변수: tester(WidgetTester)는 화면 조작과 표시 상태 검증을 수행하는 도구다.
     testWidgets(
       'original green schedule header supports large text with back=$showBackButton',
       (tester) async {
@@ -1607,6 +1770,7 @@ void main() {
 
   // 함수이름: 첨부 선택 모드 테스트
   // 함수역할: tester에 빈 선택 목록을 표시해 등록 CTA 없이 보조 헤더만 나오는지 검증한다. 반환값: 검증 완료.
+  // 매개변수: tester(WidgetTester)는 화면 조작과 표시 상태 검증을 수행하는 도구다.
   testWidgets(
     'empty attachment selection is not the registration empty state',
     (tester) async {
@@ -1633,6 +1797,7 @@ void main() {
 
   // 함수이름: 고정 건강 추천 테스트
   // 함수역할: tester로 하단에 고정된 추천 버튼의 위치와 화면 이동을 검증한다. 반환값: 검증 완료.
+  // 매개변수: tester(WidgetTester)는 화면 조작과 표시 상태 검증을 수행하는 도구다.
   testWidgets('health recommendation stays fixed below the schedule list', (
     tester,
   ) async {
@@ -1727,14 +1892,22 @@ void main() {
     await _closeDoseSchedule(tester, harness);
   });
 
-  // 함수이름: 복용 실행 취소 테스트
-  // 함수역할: tester로 완료 안내의 실행 취소를 누르면 취소 기록이 완료 기록 뒤에 저장되고 화면이
-  //   미복용으로 돌아가는지 검증한다. 반환값: 검증 완료.
+  // Function Name: dose-toggle semantics test
+  // Description: Checks the medication label, action hint and checked state before and after completion.
+  // Parameters: tester (WidgetTester) drives the screen and reads its semantics tree.
+  // Returns: Future<void>; completes after semantics checks and harness cleanup.
   // 화면 낭독기는 약 이름과 복용 여부를 읽고, 동작은 힌트로 안내해야 한다.
   testWidgets('복용 체크는 약 이름·복용 여부·동작을 화면 낭독기에 알린다', (tester) async {
     final semantics = tester.ensureSemantics();
     final checkSchedule = _MorningDoseCheckSchedule();
     final harness = await _pumpDoseSchedule(tester, checkSchedule);
+    // Function Name: toggle
+    // Description:
+    // - Reads the semantics node for the fixture medication's completion control.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - SemanticsNode: Current label, action hint and checked state exposed by the widget.
     SemanticsNode toggle() => tester.getSemantics(
       find.byKey(const ValueKey('scheduleMedicationStatusToggle_91')),
     );
@@ -1764,6 +1937,13 @@ void main() {
     semantics.dispose();
   });
 
+  // Function Name: undo appends a compensating dose record
+  // Description:
+  // - Completes a dose then taps Undo, verifying queued true/false operations retain the medication and slot, restore the UI and avoid direct server updates.
+  // Parameters:
+  // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   testWidgets('완료 안내의 실행 취소는 취소 기록을 이어서 저장한다', (tester) async {
     final checkSchedule = _MorningDoseCheckSchedule();
     final harness = await _pumpDoseSchedule(tester, checkSchedule);
@@ -1791,9 +1971,10 @@ void main() {
     await _closeDoseSchedule(tester, harness);
   });
 
-  // 함수이름: 기기 저장 실패 테스트
-  // 함수역할: tester로 기기 저장소에 기록하지 못한 복용 체크가 완료로 표시되지 않고 실패를 알리는지
-  //   검증한다. 반환값: 검증 완료.
+  // Function Name: failed local dose write test
+  // Description: Closes the store, checks the 48dp target, and verifies a failed write keeps the dose untaken with a visible error and no direct update.
+  // Parameters: tester (WidgetTester) drives the completion action and inspects feedback.
+  // Returns: Future<void>; completes after failure-state and cleanup checks.
   testWidgets('기기에 저장하지 못한 복용 체크는 완료로 표시하지 않는다', (tester) async {
     final checkSchedule = _MorningDoseCheckSchedule();
     final harness = await _pumpDoseSchedule(tester, checkSchedule);
@@ -1911,9 +2092,10 @@ void main() {
   });
 
   for (final showBackButton in [true, false]) {
-    // 함수이름: 전송 확인 필요 표시 테스트
-    // 함수역할: tester로 서버가 거부한 복용 기록이 있을 때, 뒤로가기가 있는 일정 화면에만 전송 확인
-    //   줄이 표시되는지(홈에서 연 화면은 홈이 표시) 검증한다. 반환값: 검증 완료.
+    // Function Name: rejected dose transmission notice
+    // Description: Keeps a server-rejected dose queued and checked, showing the transmission notice only when the schedule owns the back-button header.
+    // Parameters: tester (WidgetTester) drives completion and inspects the blocked state.
+    // Returns: Future<void>; completes after display, retained-operation and cleanup checks.
     testWidgets('거부된 복용 기록은 전송 확인 필요로 표시된다 back=$showBackButton', (
       tester,
     ) async {

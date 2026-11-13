@@ -1,6 +1,7 @@
 # File Name: config.py
 # Role: Loads and validates backend environment, database, authentication and external-service settings.
 
+import os
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -62,6 +63,9 @@ class Settings(BaseSettings):
     AUTH_MODE: Literal["disabled", "firebase"] = "disabled"
     FIREBASE_PROJECT_ID: str = ""
     FIREBASE_CHECK_REVOKED_TOKENS: bool = False
+    # Seconds an account's revocation state is reused between token checks; a revocation made in
+    # Firebase (password reset, console) applies within this time. 0 looks the account up every time.
+    FIREBASE_REVOCATION_CACHE_SECONDS: int = Field(default=30, ge=0, le=60)
     FIREBASE_REQUIRE_VERIFIED_EMAIL: bool = True
     FIREBASE_ALLOW_PHONE_AUTH: bool = False
     FIREBASE_ALLOW_ANONYMOUS_AUTH: bool = False
@@ -258,6 +262,15 @@ class Settings(BaseSettings):
             "shared daily request budget of the public hospital API."
         ),
     )
+    PHARMACY_SEARCH_DAILY_LIMIT: int = Field(
+        default=200,
+        ge=20,
+        le=100_000,
+        description=(
+            "Nearby pharmacy searches one account may run per day. Keeps one account from "
+            "spending the shared daily budget of the live pharmacy API."
+        ),
+    )
     CHAT_MESSAGE_RETENTION_DAYS: int = Field(
         default=90,
         ge=1,
@@ -424,6 +437,10 @@ class Settings(BaseSettings):
             raise ValueError("APPLICATION_TIME_ZONE must be a valid IANA time zone.") from exc
         return normalized_time_zone
 
+    # 함수이름: validate_rate_limit_redis_url
+    # 함수역할: 선택적 제한 저장소 URL의 공백을 정리하고 Redis 스킴·호스트·포트와 쿼리/fragment 부재를 검증한다.
+    # 매개변수: value (str)는 환경 설정 URL이며 빈 문자열은 허용한다.
+    # 반환값: 정리된 str. 잘못된 URL은 자격증명을 포함하지 않는 ValueError로 거절한다.
     @field_validator("RATE_LIMIT_REDIS_URL")
     @classmethod
     def validate_rate_limit_redis_url(cls, value: str) -> str:
@@ -445,6 +462,10 @@ class Settings(BaseSettings):
             raise ValueError("RATE_LIMIT_REDIS_URL must be a Redis URL without query or fragment.")
         return normalized
 
+    # 함수이름: rate_limit_redis_url
+    # 함수역할: 제한 전용 Redis 설정이 없으면 기존 공용 Redis 설정을 사용한다.
+    # 매개변수: 없음.
+    # 반환값: 선택된 URL str. 두 설정 모두 없으면 빈 문자열로 로컬 대체 경로를 유지한다.
     @property
     def rate_limit_redis_url(self) -> str:
         # 기존 로컬 실행은 별도 설정 없이 메모리 대체 동작을 그대로 사용한다.
@@ -459,8 +480,22 @@ class Settings(BaseSettings):
     # - This Settings instance when accepted; raises ValueError for an unsafe production configuration.
     @model_validator(mode="after")
     def validate_security_configuration(self) -> "Settings":
+        # Names are read case-insensitively, so two spellings of one setting would leave the
+        # value to environment order; a lowercase app_env could even skip the checks below.
+        spellings: dict[str, set[str]] = {}
+        for name in os.environ:
+            if name.upper() in type(self).model_fields:
+                spellings.setdefault(name.upper(), set()).add(name)
+        conflicting = sorted(field for field, names in spellings.items() if len(names) > 1)
+        if conflicting:
+            raise ValueError(
+                "Conflicting environment spellings for: " + ", ".join(conflicting) + "."
+            )
         if self.APP_ENV != "production":
             return self
+        # firebase-admin skips ID token signature checks when this variable is set.
+        if os.environ.get("FIREBASE_AUTH_EMULATOR_HOST", "").strip():
+            raise ValueError("Production must not set FIREBASE_AUTH_EMULATOR_HOST.")
         if self.RUNTIME_ROLE == "api":
             if not self.GEMINI_API_KEY.strip():
                 raise ValueError("Production API requires GEMINI_API_KEY.")
@@ -470,6 +505,10 @@ class Settings(BaseSettings):
                 raise ValueError("Production API requires AUTH_MODE=firebase.")
             if not self.FIREBASE_PROJECT_ID.strip():
                 raise ValueError("Production API requires FIREBASE_PROJECT_ID.")
+            if not self.FIREBASE_CHECK_REVOKED_TOKENS:
+                raise ValueError("Production API requires FIREBASE_CHECK_REVOKED_TOKENS=true.")
+            if not self.FIREBASE_REQUIRE_VERIFIED_EMAIL:
+                raise ValueError("Production API requires FIREBASE_REQUIRE_VERIFIED_EMAIL=true.")
             if (
                 not self.FIREBASE_APP_CHECK_REQUIRED
                 and not self.FIREBASE_OFF_PLAY_BETA_MODE

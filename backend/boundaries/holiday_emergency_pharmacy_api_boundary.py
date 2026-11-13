@@ -211,7 +211,7 @@ class HolidayEmergencyPharmacyAPI:
             )
             raise PharmacyApiUnavailableError(
                 "The NEMC holiday pharmacy roster is temporarily unavailable."
-            ) from exc
+            ) from None  # httpx errors carry the URL with serviceKey.
 
         result_code = (root.findtext(".//resultCode") or "").strip()
         # A gateway error envelope must not be stored as an empty holiday roster.

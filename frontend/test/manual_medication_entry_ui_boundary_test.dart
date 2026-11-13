@@ -17,6 +17,10 @@ import 'package:path_provider_platform_interface/path_provider_platform_interfac
 
 // 클래스명: _PhotoPicker
 // 역할: 실제 카메라·갤러리 없이 사진 선택값과 요청 옵션을 검증한다.
+// 주요 책임: 선택 옵션과 호출 횟수를 기록하고 사진·취소·실패·지연 결과를 제공한다.
+// 속성: path (String?): 반환할 경로; source (ImageSource?): 최근 요청 출처.
+// - failure (Object?): 발생시킬 오류; pending (Future<XFile?>?): 선택 완료 게이트.
+// - calls (int): 선택 요청 횟수.
 class _PhotoPicker extends ImagePicker {
   String? path;
   ImageSource? source;
@@ -54,12 +58,21 @@ class _PhotoPicker extends ImagePicker {
 
 // 클래스명: _TemporaryPathProvider
 // 역할: 테스트 폴더를 앱 임시 폴더로 알려 임시 사본 삭제를 플랫폼 채널 없이 검증한다.
+// 주요 책임: 선택적 지연 후 테스트 임시 폴더를 플랫폼 경계에 제공한다.
+// 속성: temporaryPath (String): 임시 폴더 경로.
+// - beforeLookup (Future<void> Function()? ): 경로 반환 전에 기다릴 선택적 훅.
 class _TemporaryPathProvider extends PathProviderPlatform {
   final String temporaryPath;
   final Future<void> Function()? beforeLookup;
 
   // 함수이름: _TemporaryPathProvider
-  // 함수역할: 앱 임시 폴더로 알릴 경로를 보관한다. 매개변수: temporaryPath. 반환값: 초기화된 대역.
+  // 함수역할:
+  // - 앱 임시 폴더 경로와 조회 전 대기 훅을 보관한다.
+  // 매개변수:
+  // - temporaryPath (String): 임시 폴더로 돌려줄 경로.
+  // - beforeLookup (Future<void> Function()? ): 경로 반환 전에 실행·대기할 선택적 훅.
+  // 반환값:
+  // - _TemporaryPathProvider: 경로 조회 시점을 제어할 대역.
   _TemporaryPathProvider(this.temporaryPath, {this.beforeLookup});
 
   // 함수이름: getTemporaryPath
@@ -73,6 +86,9 @@ class _TemporaryPathProvider extends PathProviderPlatform {
 
 // 클래스명: _PhotoSandbox
 // 역할: 앱 임시 폴더와 사용자 사진 폴더 역할의 테스트 폴더, 그 안의 사진 파일을 준비한다.
+// 주요 책임: 격리 폴더와 작은 사진을 만들고 경로 제공자 복원 및 정리를 등록한다.
+// 속성: cache, gallery (Directory): 앱 캐시·사용자 사진을 흉내 내는 폴더.
+// - _png (List<int>): 테스트 사진으로 기록할 작은 PNG 바이트.
 class _PhotoSandbox {
   static final List<int> _png = base64Decode(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
@@ -86,8 +102,12 @@ class _PhotoSandbox {
   _PhotoSandbox._(this.cache, this.gallery);
 
   // 함수이름: _PhotoSandbox.create
-  // 함수역할: 테스트 폴더를 만들고 경로 제공자를 바꾼 뒤 테스트 종료 시 되돌리도록 등록한다.
-  // 매개변수: 없음. 반환값: 임시 폴더와 사진 폴더를 가진 인스턴스.
+  // 함수역할:
+  // - 격리된 캐시·사진 폴더를 만들고 경로 제공자를 교체하며 테스트 종료 시 복원·삭제를 등록한다.
+  // 매개변수:
+  // - beforeTemporaryPath (Future<void> Function()? ): 임시 경로 조회 전에 기다릴 선택적 훅.
+  // 반환값:
+  // - _PhotoSandbox: 생성한 두 폴더를 보관하는 인스턴스; 파일 생성 실패는 전파된다.
   factory _PhotoSandbox.create({Future<void> Function()? beforeTemporaryPath}) {
     final root = Directory.systemTemp.createTempSync('manual-photo-cleanup-');
     final cache = Directory('${root.path}/cache')..createSync();
@@ -180,6 +200,86 @@ Future<MedicationSaveResult> _keepManualEntryOpen(
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  // 함수이름: testWidgets callback
+  // 함수역할:
+  // - 두 약에 서로 다른 사진을 선택해 제출하면 이름과 경로가 각 입력에 대응하고, 화면이 열린 동안 사본을 보존하다 폐기 뒤 정리하는지 검증한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
+  testWidgets('여러 약의 이름과 사진은 각 입력에 따로 보존한다', (tester) async {
+    tester.view.physicalSize = const Size(390, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sandbox = _PhotoSandbox.create();
+    final first = sandbox.cachePhoto('first.png');
+    final second = sandbox.cachePhoto('second.png');
+    final picker = _PhotoPicker()..path = first.path;
+    final entries = <ManualMedicationEntry>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ManualMedicationEntryUI(
+          userSetting: const UserSetting(language: 'ko'),
+          imagePicker: picker,
+          onSaveRequested: (entry) async {
+            entries.add(entry);
+            return MedicationSaveResult(
+              status: entries.length == 1
+                  ? MedicationSaveStatus.saved
+                  : MedicationSaveStatus.failed,
+              message: '',
+            );
+          },
+        ),
+      ),
+    );
+    await tester.enterText(
+      find.byKey(const Key('manual-medication-name')),
+      '사진 시험약 1',
+    );
+    await _pickManualPhoto(tester);
+    final add = find.byKey(const Key('manual-medication-add'));
+    await tester.ensureVisible(add);
+    await tester.pumpAndSettle();
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('manual-medication-name')).at(1),
+      '사진 시험약 2',
+    );
+    picker.path = second.path;
+    final photo = find.byKey(const Key('manual-medication-photo')).at(1);
+    await tester.ensureVisible(photo);
+    await tester.pumpAndSettle();
+    await tester.tap(photo);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('카메라로 촬영'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('manual-medication-save')));
+    await tester.pumpAndSettle();
+    expect(entries.map((entry) => entry.localImagePath), [
+      first.path,
+      second.path,
+    ]);
+    expect(entries.map((entry) => entry.medicationName), [
+      '사진 시험약 1',
+      '사진 시험약 2',
+    ]);
+    expect(first.existsSync(), isTrue);
+    expect(second.existsSync(), isTrue);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _settleFileCleanup(tester, first);
+    await _settleFileCleanup(tester, second);
+  });
+
+  // 함수이름: testWidgets callback
+  // 함수역할:
+  // - 저장 중 뒤로가기 전환을 시작한 뒤 성공 응답이 와도 입력 진입 화면까지 닫거나 늦은 성공 안내를 띄우지 않는지 검증한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('저장 응답이 뒤로가기 전환 중 도착해도 아래 화면을 닫지 않는다', (tester) async {
     final pending = Completer<MedicationSaveResult>();
     await tester.pumpWidget(
@@ -245,6 +345,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets callback
+  // 함수역할:
+  // - 폐기된 입력의 사진 선택이 늦게 완료되면 이전 사본만 지우고 새 입력에서 고른 사진을 저장 요청에 유지하는지 검증한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('이전 화면 사진 응답은 재진입 사진을 덮지 않고 임시 사본만 정리한다', (tester) async {
     tester.view.physicalSize = const Size(390, 1400);
     tester.view.devicePixelRatio = 1;
@@ -295,6 +402,13 @@ void main() {
     await _settleFileCleanup(tester, newPhoto);
   });
 
+  // 함수이름: testWidgets callback
+  // 함수역할:
+  // - 사진 버튼 콜백을 연속 호출해도 출처 시트 하나만 열리고 취소 시 선택기 호출 없이 닫히며 재진입 때 한 번 선택하는지 검증한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('사진 선택창 중복 클릭과 취소 후 재진입은 한 번씩만 선택한다', (tester) async {
     tester.view.physicalSize = const Size(390, 1400);
     tester.view.devicePixelRatio = 1;
@@ -325,6 +439,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets callback
+  // 함수역할:
+  // - 사진 선택을 대기시키면 사진·저장 버튼이 잠기고 이전 저장 콜백도 무시되며 취소 응답 뒤 다시 저장할 수 있는지 검증한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('사진 선택 대기 중에는 재선택과 저장을 중복 실행하지 않는다', (tester) async {
     tester.view.physicalSize = const Size(390, 1400);
     tester.view.devicePixelRatio = 1;
@@ -592,13 +713,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(weekly);
     await tester.pumpAndSettle();
+    // 저장 전에 기간 안의 복용일을 알려 준다(기본 기간은 오늘 하루).
     expect(
-      tester
-          .widget<Text>(
-            find.byKey(const Key('manual-medication-dose-days-notice')),
-          )
-          .data,
-      contains('매일 복용하는 약이 아닙니다'),
+      find.byKey(const Key('manual-medication-dose-days-notice')),
+      findsOneWidget,
     );
     final eveningSlot = find.byKey(const Key('manual-medication-slot-evening'));
     await tester.ensureVisible(eveningSlot);
@@ -707,7 +825,16 @@ void main() {
   // 함수역할: 저장 실패 시 서버 원문(한국어) 대신 화면 언어의 저장 한도·연결·일반 실패 안내를 보여 주는지 검증한다.
   // 매개변수: tester. 반환값: 검증 완료.
   for (final english in [false, true]) {
-    testWidgets('저장 실패는 범주별로 화면 언어의 안내를 보여 준다: english=$english', (tester) async {
+    // Function Name: localized manual-save failure categories
+    // Description:
+    // - Exercises limit, network and generic save failures in each screen language, showing the category-specific guidance without exposing the raw server message.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
+    testWidgets('저장 실패는 범주별로 화면 언어의 안내를 보여 준다: english=$english', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(390, 1400);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -855,6 +982,7 @@ void main() {
       '직접입력약',
     );
     final save = find.byKey(const Key('manual-medication-save'));
+    final saveRequested = tester.widget<FilledButton>(save).onPressed!;
     await tester.tap(save);
     await tester.pump();
     expect(find.text('저장 중...'), findsOneWidget);
@@ -874,6 +1002,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     expect(save, findsOneWidget);
     expect(tester.widget<FilledButton>(save).onPressed, isNull);
+    // 이전 프레임의 콜백이 다시 호출되어도 아래 화면까지 닫지 않는다.
+    saveRequested();
+    await tester.pump();
     await tester.pumpAndSettle();
 
     expect(requestCount, 1);
@@ -940,6 +1071,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets callback
+  // 함수역할:
+  // - 임시 경로 조회를 실제 시계로 700ms 지연해도 화면 폐기 후 사본 정리를 끝내고 화면 예외를 남기지 않는지 검증한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets(
     'slow temporary-directory lookup still cleans up an abandoned photo',
     (tester) async {

@@ -1,17 +1,27 @@
+// 파일명: medication_photo_source_sheet.dart
+// 역할: 약 사진용 카메라·갤러리 출처를 선택하는 공통 하단 메뉴.
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/keep_words_text.dart';
 
-// context와 language로 공통 사진 출처 메뉴를 열어 선택한 출처를 반환한다. 취소하면 null이다.
+// 함수이름: showMedicationPhotoSourceOptions
+// 함수역할: 카메라와 갤러리를 스크롤 가능한 메뉴로 표시하고 출처를 하나 선택받는다.
+// 매개변수: context (BuildContext): 메뉴 위치; language (String): 표시 언어 코드.
+// 반환값: 선택한 ImageSource; 취소하면 null인 Future.
 Future<ImageSource?> showMedicationPhotoSourceOptions({
   required BuildContext context,
   required String language,
 }) {
   final isEnglish = isEnglishLanguage(language);
   var responded = false;
-  // 닫히는 중인 선택창의 연속 입력이 아래 등록 화면까지 닫지 않게 한다.
+  // 함수이름: select
+  // 함수역할: 살아 있는 현재 선택창에서 최초 응답만 처리하여 아래 등록 경로의 중복 종료를 막는다.
+  // 매개변수: sheetContext (BuildContext): 선택창 위치; source (ImageSource): 선택 출처.
+  // 반환값: 없음. 경로 결과로 source를 반환한다.
   void select(BuildContext sheetContext, ImageSource source) {
     if (responded ||
         !sheetContext.mounted ||
@@ -53,9 +63,15 @@ Future<ImageSource?> showMedicationPhotoSourceOptions({
   );
 }
 
-// 사진 출처를 선택하는 공통 행으로, 설명 대신 아이콘과 명확한 명령을 표시한다.
+// Class Name: _PhotoSourceRow
+// Role: A shared camera/gallery choice row with a scalable label.
+// Responsibilities: Provides a minimum tap area without constraining large-text height.
+// Attributes: icon (IconData): source symbol; label (String): action label; onTap (VoidCallback): selection callback.
 class _PhotoSourceRow extends StatelessWidget {
-  // icon과 label로 표시하고, 선택 시 onTap을 실행하는 행을 만든다.
+  // 함수이름: _PhotoSourceRow
+  // 함수역할: 아이콘과 명령 문구를 표시하고 선택 콜백을 연결한다.
+  // 매개변수: icon (IconData): 출처 아이콘; label (String): 문구; onTap (VoidCallback): 선택 처리.
+  // 반환값: 새 _PhotoSourceRow.
   const _PhotoSourceRow({
     required this.icon,
     required this.label,
@@ -66,7 +82,10 @@ class _PhotoSourceRow extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  // context의 글씨 배율을 반영하고 최소 56 높이의 선택 행을 반환한다.
+  // Function Name: build
+  // Description: Builds a padded source choice with a minimum height and wrapping label.
+  // Parameters: context (BuildContext): Text scaling and theme location.
+  // Returns: InkWell invoking onTap when selected.
   @override
   Widget build(BuildContext context) {
     return InkWell(
@@ -81,7 +100,7 @@ class _PhotoSourceRow extends StatelessWidget {
               Icon(icon, color: MedBuddyColors.primaryDark),
               const SizedBox(width: 16),
               Expanded(
-                child: Text(
+                child: KeepWordsText(
                   label,
                   style: const TextStyle(
                     color: MedBuddyColors.textStrong,

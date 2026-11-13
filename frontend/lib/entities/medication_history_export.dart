@@ -3,12 +3,18 @@
 import 'medication_history_entity.dart';
 import 'medication_schedule_entity.dart';
 
-// 함수역할: 기록 화면 안내와 공유 본문이 함께 쓰는 자가 기록 한계 문구를 고른다.
+// Function Name: medicationHistoryRecordNotice
+// Description: Selects the shared notice distinguishing self-reported records from proof of ingestion.
+// Parameters: isEnglish (bool): English versus Korean.
+// Returns: Localized notice that unrecorded does not mean not taken.
 String medicationHistoryRecordNotice(bool isEnglish) => isEnglish
     ? 'Self-reported records are not proof of ingestion. Unrecorded does not mean not taken.'
     : '사용자가 입력한 기록이며 실제 복용을 증명하지 않습니다. 미기록은 미복용을 뜻하지 않습니다.';
 
-// 함수역할: 기록 시각이 한국 시간 기준임을 알리는 문구를 고른다.
+// Function Name: medicationHistoryTimeZoneNotice
+// Description: Selects the export's fixed Korea timezone notice.
+// Parameters: isEnglish (bool): Display language.
+// Returns: Localized UTC+09:00 label; this text does not inspect a custom configured dose offset.
 String medicationHistoryTimeZoneNotice(bool isEnglish) => isEnglish
     ? 'Time zone: Korea (UTC+09:00)'
     : '시각 기준: 한국 시간(UTC+09:00)';
@@ -19,16 +25,31 @@ const medicationHistoryShareTextLimit = 100000;
 // 기록 공유 창을 열고 계정 삭제 때 남은 내보내기 파일을 지우는 Android 채널 이름이다.
 const medicationHistoryExportChannel = 'com.medbuddy/data_export';
 
-// 함수역할: 내부 식별자 없이 날짜별 복약 기록을 다른 앱에서 읽을 수 있는 문장으로 만든다.
+// Function Name: medicationHistoryShareText
+// Description: Builds a chronological shareable report with status totals and sanitized single-line names/reasons, excluding internal identifiers.
+// Parameters: snapshot (MedicationHistorySnapshot): Validated records and range; isEnglish (bool): Language.
+// Returns: Plain text with date groups, optional taken times/skip reasons, empty-state text, and reporting/timezone notices.
 String medicationHistoryShareText(
   MedicationHistorySnapshot snapshot, {
   required bool isEnglish,
 }) {
+  // 함수이름: tr
+  // 함수역할: 공유 본문의 언어에 맞는 문구를 고른다.
+  // 매개변수: ko/en (String): 한국어·영어 문구.
+  // 반환값: isEnglish에 대응하는 문자열.
   String tr(String ko, String en) => isEnglish ? en : ko;
+  // 함수이름: singleLine
+  // 함수역할: 공유 내용의 제어 문자·줄 구분자를 공백으로 바꾸고 앞뒤 공백을 제거한다.
+  // 매개변수: value (String): 약 이름 또는 사유.
+  // 반환값: 한 줄로 정리한 문자열.
   String singleLine(String value) =>
       value.replaceAll(RegExp(r'[\x00-\x1f\x7f\u2028\u2029]+'), ' ').trim();
   final entries = [...snapshot.items];
   const slots = medicationScheduleSlotKeys;
+  // 함수이름: slotOrder
+  // 함수역할: 정기 시간대 다음에 필요시 기록이 오도록 정렬 순서를 정한다.
+  // 매개변수: entry (MedicationHistoryEntry): 정렬할 기록.
+  // 반환값: 정기 시간대 인덱스 또는 필요시는 마지막 순번; 알 수 없는 정기 슬롯은 -1.
   int slotOrder(MedicationHistoryEntry entry) =>
       entry.isAsNeeded ? slots.length : slots.indexOf(entry.slotKey);
   entries.sort((a, b) {

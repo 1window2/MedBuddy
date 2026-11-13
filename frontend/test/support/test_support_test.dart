@@ -115,6 +115,13 @@ Future<void> _recordMorningDose(
 void main() {
   group('RecordingNotificationService', () {
     // The fake must be usable wherever the production type is expected and keep every argument.
+    // Function Name: test callback
+    // Description:
+    // - Checks initialization and permission counters plus all reminder registration, cancellation and default snooze arguments.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('records reminder registrations, cancellations and snoozes', () async {
       final fake = RecordingNotificationService();
       final NotificationService service = fake;
@@ -172,6 +179,13 @@ void main() {
     });
 
     // A failing platform must still leave the attempt visible to the test.
+    // Function Name: test callback
+    // Description:
+    // - Verifies denied permission and failure switches record attempts before throwing, and that disabling the switch permits a later registration.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('failure switches throw after recording the attempt', () async {
       final fake = RecordingNotificationService(
         failRegistration: true,
@@ -211,6 +225,13 @@ void main() {
     });
 
     // Session clean-up and shown alerts are distinguishable by kind.
+    // Function Name: test callback
+    // Description:
+    // - Distinguishes scheduled-only and all-session cancellations and preserves recorded account, privacy and caregiver/chat alert arguments.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('records session cancellations, alerts and session settings', () async {
       final fake = RecordingNotificationService();
       expect(fake.canceledAllMedicationReminders, isFalse);
@@ -258,6 +279,13 @@ void main() {
 
   group('fake controls', () {
     // The empty controls answer their entry read locally; a request would fail the test.
+    // Function Name: test callback
+    // Description:
+    // - Checks empty schedule/reminder controls retain the owner and return empty lists without any HTTP request.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('empty controls return no rows without a request', () async {
       var requests = 0;
       final client = MockClient((_) async {
@@ -276,6 +304,13 @@ void main() {
     });
 
     // One fake covers the fixed, failing and pending variants kept in the nearby-care tests.
+    // Function Name: test callback
+    // Description:
+    // - Exercises default and replaced coordinates, denied-location errors, settings counters and a pending request completed by its gate.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('device location answers, fails or stays pending', () async {
       final location = FakeDeviceLocation();
       final DeviceLocationBoundary boundary = location;
@@ -322,6 +357,13 @@ void main() {
   });
 
   // Korean fixture text must survive the response encoding.
+  // Function Name: test callback
+  // Description:
+  // - Checks UTF-8 Korean JSON content, the explicit 404 status and default 200 status of the response helper.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('jsonResponse encodes UTF-8 JSON with the backend content type', () {
     final response = jsonResponse({'name': '타이레놀'}, status: 404);
     expect(response.statusCode, 404);
@@ -333,6 +375,13 @@ void main() {
 
   group('setTestViewport', () {
     // The size is logical (pixel ratio 1) and the text scale reaches MediaQuery.
+    // Function Name: testWidgets callback
+    // Description:
+    // - Verifies the viewport helper applies a logical 320-by-640 surface and a doubled MediaQuery text scale.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     testWidgets('applies the logical size and text scale', (tester) async {
       setTestViewport(tester, const Size(320, 640), textScale: 2);
 
@@ -353,12 +402,26 @@ void main() {
     });
 
     // In file order this proves the resets registered above ran; in any other order it still holds.
+    // Function Name: testWidgets callback
+    // Description:
+    // - Checks that test cleanup restored the default physical surface and pixel ratio.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     testWidgets('the next test starts from the default surface', (tester) async {
       expect(tester.view.physicalSize, const Size(2400, 1800));
       expect(tester.view.devicePixelRatio, 3);
     });
 
     // Without textScale the helper must not touch a scale set elsewhere, such as the global hook.
+    // Function Name: testWidgets callback
+    // Description:
+    // - Changes logical size while preserving the existing text scale when no scale override is supplied.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     testWidgets('leaves the text scale alone when none is given', (tester) async {
       final textScale = tester.platformDispatcher.textScaleFactor;
       setTestViewport(tester, const Size(430, 900));
@@ -370,6 +433,13 @@ void main() {
 
   group('attachTestDoseSync', () {
     // The harness must put a view-model dose on the production outbox path and expose it.
+    // Function Name: test callback
+    // Description:
+    // - Queues a view-model dose, accepts one server receipt, clears pending work and tolerates closing the harness twice.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('queues a view-model dose and uploads it once the server answers', () async {
       final client = _scheduleClient();
       final viewModel = _viewModel(client);
@@ -399,6 +469,13 @@ void main() {
     });
 
     // Widget tests run on a fake clock; the harness must work there without runAsync.
+    // Function Name: testWidgets callback
+    // Description:
+    // - Uses the harness on the widget-test clock, verifies a retry occurs after three minutes and closes it without leaving timers.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     testWidgets('works inside a widget test and leaves no timer behind', (tester) async {
       final viewModel = _viewModel(_scheduleClient());
       final harness = await attachTestDoseSync(viewModel, clock: () => _now);
@@ -414,6 +491,13 @@ void main() {
     });
 
     // A seeded cache is enough for callers that read the service directly, as the chat screen does.
+    // Function Name: test callback
+    // Description:
+    // - Seeds only the first harness, records a linked dose and confirms the second harness remains uncached with no queued work.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('seeded schedules back direct records, one database per harness', () async {
       final first = await attachTestDoseSync(
         _viewModel(_scheduleClient()),

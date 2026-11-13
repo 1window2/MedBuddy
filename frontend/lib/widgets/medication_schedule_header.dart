@@ -4,24 +4,13 @@
 import 'package:flutter/material.dart';
 
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 import 'medbuddy_page_header.dart';
 
-// 클래스명: MedicationScheduleHeader
-// 역할: 일정 화면 상단의 제목, 복용 기록 버튼과 오늘 복약 완료 진행률을 담당한다.
-// 주요 책임:
-// - 뒤로가기 버튼(선택), 제목과 부제목(선택), 복용 기록 버튼을 한 줄에 배치한다.
-// - 완료 수/전체 수와 진행 막대를 머리글 아래쪽 패널에 표시한다.
-// 속성 :
-//   - title : 머리글 제목 (String)
-//   - subtitle : 제목 아래 한 줄 부제목; null이면 제목만 표시한다 (String?)
-//   - onBack : 뒤로가기 콜백; null이면 버튼 대신 12px 여백을 둔다 (VoidCallback?)
-//   - backTooltip : 뒤로가기 버튼 안내 문구 (String?)
-//   - actionKey : 복용 기록 버튼의 위젯 키 (Key)
-//   - actionTooltip : 복용 기록 버튼 안내 문구 (String)
-//   - onAction : 복용 기록 화면을 여는 콜백 (VoidCallback)
-//   - progressLabel : 진행률 패널 제목 (String)
-//   - completedCount : 완료한 복약 횟수 (int)
-//   - totalCount : 예정된 전체 복약 횟수 (int)
+// Class Name: MedicationScheduleHeader
+// Role: Show schedule navigation and dose-completion progress.
+// Responsibilities: Combine a title, optional back action, primary action and completed/total indicator.
+// Attributes: title/subtitle/backTooltip/actionTooltip/progressLabel: labels; onBack/onAction: callbacks; actionKey/actionIcon: action identity; completedCount/totalCount (int): progress.
 class MedicationScheduleHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
@@ -35,21 +24,10 @@ class MedicationScheduleHeader extends StatelessWidget {
   final int completedCount;
   final int totalCount;
 
-  // 함수이름: MedicationScheduleHeader
-  // 함수역할: 일정 머리글에 표시할 문구, 버튼 동작과 진행률 값을 받는다.
-  // 매개변수:
-  // - key (Key?): 위젯 식별 키.
-  // - title (String): 머리글 제목.
-  // - subtitle (String?): 제목 아래 한 줄 부제목; null이면 표시하지 않는다.
-  // - onBack (VoidCallback?): 뒤로가기 콜백; null이면 뒤로가기 버튼을 표시하지 않는다.
-  // - backTooltip (String?): 뒤로가기 버튼 안내 문구.
-  // - actionKey (Key): 복용 기록 버튼의 위젯 키.
-  // - actionTooltip (String): 복용 기록 버튼 안내 문구.
-  // - onAction (VoidCallback): 복용 기록 화면을 여는 콜백.
-  // - progressLabel (String): 진행률 패널 제목.
-  // - completedCount (int): 완료한 복약 횟수.
-  // - totalCount (int): 예정된 전체 복약 횟수.
-  // 반환값: 입력 설정이 반영된 MedicationScheduleHeader 인스턴스.
+  // Function Name: MedicationScheduleHeader
+  // Description: Configure schedule navigation and progress without owning dose state.
+  // Parameters: key (Key?): widget identity; title (String)/subtitle (String?): heading; onBack (VoidCallback?)/backTooltip (String?): back action; actionKey (Key)/actionTooltip (String)/onAction (VoidCallback)/actionIcon (IconData): primary action; progressLabel (String): progress caption; completedCount/totalCount (int): counts.
+  // Returns: MedicationScheduleHeader: configured header.
   const MedicationScheduleHeader({
     super.key,
     required this.title,
@@ -65,15 +43,14 @@ class MedicationScheduleHeader extends StatelessWidget {
     required this.totalCount,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값을 반영해 제목 줄과 복약 완료 진행률 패널을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 상단 안전 영역과 테마를 참조할 위젯 트리 위치.
-  // 반환값: 일정 머리글 위젯 트리.
+  // Function Name: build
+  // Description: Build a safe-area schedule header with a zero progress value for an empty schedule.
+  // Parameters: context (BuildContext): safe-area information.
+  // Returns: Widget: heading, navigation and completion bar.
   @override
   Widget build(BuildContext context) {
     final progress = totalCount == 0 ? 0.0 : completedCount / totalCount;
-    final titleText = Text(
+    final titleText = KeepWordsText(
       title,
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
@@ -155,7 +132,7 @@ class MedicationScheduleHeader extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
+                      child: KeepWordsText(
                         progressLabel,
                         style: const TextStyle(
                           color: MedBuddyColors.onPrimaryMuted,
@@ -193,17 +170,10 @@ class MedicationScheduleHeader extends StatelessWidget {
   }
 }
 
-// 클래스명: MedicationSlotHeaderStrip
-// 역할: 시간대 카드 맨 위의 색 띠, 시간대 아이콘, 제목과 상태 문구, 뒤쪽 버튼을 담당한다.
-// 주요 책임:
-// - 시간대 색으로 왼쪽 강조선과 아이콘 배경을 칠하고 제목 아래에 상태 문구(선택)를 표시한다.
-// - 호출한 화면이 넘긴 알림·완료 버튼을 오른쪽 끝에 그대로 배치한다.
-// 속성 :
-//   - style : 시간대 색·배경·아이콘 (MedBuddySlotStyle)
-//   - title : 시간대 제목 (String)
-//   - status : 제목 아래 상태 문구; null이면 표시하지 않는다 (String?)
-//   - statusKey : 상태 문구의 위젯 키 (Key?)
-//   - trailing : 오른쪽 끝에 배치할 버튼 목록 (List<Widget>)
+// Class Name: MedicationSlotHeaderStrip
+// Role: Label a medication slot using its color, icon and optional status.
+// Responsibilities: Place trailing controls beside the slot identity.
+// Attributes: style (MedBuddySlotStyle): slot visuals; title/status (String/String?): labels; statusKey (Key?): status identity; trailing (List<Widget>): actions.
 class MedicationSlotHeaderStrip extends StatelessWidget {
   final MedBuddySlotStyle style;
   final String title;
@@ -211,16 +181,10 @@ class MedicationSlotHeaderStrip extends StatelessWidget {
   final Key? statusKey;
   final List<Widget> trailing;
 
-  // 함수이름: MedicationSlotHeaderStrip
-  // 함수역할: 시간대 머리줄에 표시할 색, 제목, 상태 문구와 뒤쪽 버튼을 받는다.
-  // 매개변수:
-  // - key (Key?): 위젯 식별 키.
-  // - style (MedBuddySlotStyle): 시간대 색·배경·아이콘.
-  // - title (String): 시간대 제목.
-  // - status (String?): 제목 아래 상태 문구; null이면 표시하지 않는다.
-  // - statusKey (Key?): 상태 문구의 위젯 키.
-  // - trailing (List<Widget>): 오른쪽 끝에 배치할 버튼 목록.
-  // 반환값: 입력 설정이 반영된 MedicationSlotHeaderStrip 인스턴스.
+  // Function Name: MedicationSlotHeaderStrip
+  // Description: Configure one slot heading and its optional status/actions.
+  // Parameters: key (Key?): widget identity; style (MedBuddySlotStyle): visuals; title (String): heading; status (String?)/statusKey (Key?): status label; trailing (List<Widget>): controls.
+  // Returns: MedicationSlotHeaderStrip: configured heading.
   const MedicationSlotHeaderStrip({
     super.key,
     required this.style,
@@ -230,11 +194,10 @@ class MedicationSlotHeaderStrip extends StatelessWidget {
     this.trailing = const [],
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값을 반영해 시간대 카드의 머리줄을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정을 참조할 위젯 트리 위치.
-  // 반환값: 시간대 머리줄 위젯 트리.
+  // Function Name: build
+  // Description: Build the colored slot stripe, icon, title, optional status and trailing controls.
+  // Parameters: context (BuildContext): widget build context.
+  // Returns: Widget: slot heading row.
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -259,7 +222,7 @@ class MedicationSlotHeaderStrip extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                KeepWordsText(
                   title,
                   style: const TextStyle(
                     color: MedBuddyColors.textStrong,
@@ -268,7 +231,7 @@ class MedicationSlotHeaderStrip extends StatelessWidget {
                   ),
                 ),
                 if (status != null)
-                  Text(
+                  KeepWordsText(
                     status!,
                     key: statusKey,
                     style: TextStyle(

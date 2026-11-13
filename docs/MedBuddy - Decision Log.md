@@ -263,6 +263,196 @@ a dose through the exported launcher activity.
 - **To undo:** raise `PHARMACY_API_DAILY_REQUEST_BUDGET`, `_PILL_UPLOADS_IN_FLIGHT_LIMIT`
   or `MAX_PILL_JPEG_SCANS`.
 
+## 2026-11-06: the 1.0.0 release candidate line
+
+- **Chosen:** branch `beta/v1.0.0` from `main` after `v0.2.5-beta`, app version
+  `1.0.0+27`, server version `1.0.0-rc`. The off-Play exception of the signed
+  workflow moves to this branch so that candidate builds can be installed over the
+  betas.
+- **Alternatives:** a `release/1.0.0` branch (CI and the deploy workflow match only
+  `main` and `beta/**`); keeping 0.2.x numbers for the candidates.
+- **To undo:** rename the branch and the references in `release-android.yml`,
+  `scripts/check_android_release_configuration.py` and their tests.
+
+## 2026-11-07: owner decisions for 1.0.0
+
+- **Distribution:** 1.0.0 goes to Google Play and stays available as a GitHub APK.
+  App Check with Play Integrity therefore blocks 1.0.0, and the GitHub APK needs its
+  own way through App Check before the server requires it.
+- **Crisis wording in department search:** no special handling.
+- **Chat notification default:** the message preview stays the default; recipients
+  can switch to type only.
+- **A tap on yesterday's list after midnight:** refused. Nothing is recorded, today's
+  list is loaded and the user is asked to tap again. Reminder actions pass their own
+  day and are unaffected. To undo: remove `_refuseTapOnEarlierDayList` in
+  `medbuddy_schedule_view_model.dart`.
+
+## 2026-11-07: data-only database role
+
+- **Chosen:** an opt-in role (`MEDBUDDY_APP_DB_USER`, `MEDBUDDY_APP_DB_PASSWORD`)
+  that the migration provisions with data rights only; the API and catalog jobs use
+  it once both settings exist, and the owner role until then.
+- **Alternatives:** switching at once (needs a new secret on the host before the
+  next deploy); row-level security (no tenant column common to all tables).
+- **To undo:** remove both settings and redeploy.
+
+## 2026-11-07: English developer text in the Korean UI
+
+- **Chosen:** a `StateError` whose text is not Korean gives the Korean UI the generic
+  message; the English UI still shows the text.
+- **Alternative:** translating every developer message (many are never shown).
+- **To undo:** remove the `_isKoreanSentence` check in `UserFacingErrorMessage.resolve`.
+
+## 2026-11-07: per-IP daily quota after sign-in
+
+- **Chosen:** the per-IP daily quota (20 times the account quota) is counted in the
+  authentication dependency, after the account is verified, instead of in the
+  middleware. Unauthenticated requests leave only the per-minute address counter.
+- **Why:** the second security audit showed that day-long counters written before
+  sign-in let unauthenticated addresses fill the 128 MB noeviction counter store, and
+  a full store makes the limiter answer 503 to everyone. The daily quota exists to
+  bound spending by signed-in accounts, which an unauthenticated request cannot do.
+- **Alternatives:** eviction in the counter store (a full store would then reset
+  quotas instead of refusing requests); a larger store (raises the bar only).
+- **To undo:** move the `enforce_address_quota` call in `get_registered_principal`
+  back into `RequestRateLimitMiddleware`.
+
+## 2026-11-07: findings of the second audit left to the owner
+
+- **Hospital budget:** one free account can spend the shared hospital API budget
+  inside its own daily search quota. The provider's operating-account quota is the
+  real fix; a per-call share per account would also limit ordinary users, so no code
+  change was made.
+- **Database pool:** same-account requests waiting for the account lock hold pooled
+  connections for up to 5 s. The audit rejected it as a finding (any client with
+  several requests in flight fills the pool too), so the PostgreSQL lock path was not
+  changed without a PostgreSQL concurrency test.
+- **Anonymous-era accounts:** a link or push token created before a uid proves an
+  email carries over to whoever proves it later. The fix (an identity epoch per
+  account) changes sign-up behaviour and waits for the owner's decision.
+
+## 2026-11-07: searched medications in chat are rebuilt on the server
+
+The owner chose server verification of searched-medication cards. The server keeps
+only public product fields per item number for 24 hours, as the shared-pharmacy cache
+does, rather than a per-account record of what each user searched: that would be new
+health-related personal data, and per-item public data is enough to stop a sender from
+choosing the name, manufacturer or picture. A card whose item no search returned in
+the last day is refused; results from the live public API work because the search
+stores whatever it returned, not only catalogue items.
+
+## 2026-11-07: launch work moved off the start-up path
+
+The collaborator suggested replacing the native Naver map SDK with the web map in a
+WebView to shrink the APK. Both are billed as the same Dynamic Map item (6,000,000
+free calls a month for the representative account), and a smaller APK does not make
+the app start faster: native libraries are stored uncompressed and mapped on demand.
+The WebView map would make each map screen slower to open (WebView start-up and the
+map script) and would need the map screens rewritten, so the native SDK stays.
+
+Measuring the launch showed two costs that had nothing to do with APK size. `main()`
+awaited the map SDK initialization, which loads its native library, before the first
+frame; it now starts after the first frame and the map screens await the same attempt.
+The `flutter_tts` plugin created `TextToSpeech` when attached to any Flutter engine,
+including the WorkManager and home-widget engines, and on connection read every voice
+of the engine on the main thread. It is replaced by a small app channel that binds the
+engine on the first read-aloud request and keeps the same rates, ranges and audio focus.
+The `SystemChrome` portrait call repeated the manifest's `screenOrientation`.
+On a Galaxy Note10 the median cold launch went from 378 ms to 336 ms (24 runs each,
+release builds under a separate test package). Emulator launches looked far slower
+because of shader compilation in emulated GL, which a phone does not show.
+
+## 2026-11-08: revocation state reused for 30 seconds
+
+The owner accepted that a session revoked in Firebase (password reset, console
+disablement) may keep working for up to 30 seconds, in exchange for removing the
+Firebase account lookup from every authenticated request. Signature and expiry are still
+checked on every request, the revocation rule is unchanged (disabled account, or token
+issued before the account's sessions-valid-after time), and an account deleted by this
+server is dropped from the cache at once; a lookup that started before the deletion is
+not stored. The compose file pins the value so a typo cannot lengthen it, and the code
+caps it at 60 seconds.
+
+For link polling only the low-risk part was taken: the home screen's 15-second link
+read pauses while another screen covers home. Slowing the poll for users without links
+was left out, because the patient-code dialog has no refresh of its own and a new link
+would show on the patient's home up to a minute later.
+
+## 2026-11-08: the 15-minute dose-sync job only while network work remains
+
+The owner chose to keep the periodic dose-sync job only while records wait or the
+widget needs today's data, provided two risks are designed out and tested: a queued
+record left without background delivery, and a widget left on a past day. Records:
+every path that queues one registers the one-off upload (retrying a rejected record
+now does too), the app start, pause and resume reconcile the jobs, and removal is
+followed by a second read so a record queued meanwhile gets its jobs back. Widget: a
+widget-started refresh that still lacks today's data registers the retry, which
+fixes the widget once a connection returns. The periodic job stays while the
+condition holds, so the 15-minute cadence remains as a backstop to the one-off job's
+growing back-off. One gap remains by design: a periodic run that removes itself is
+stopped by WorkManager at once, so it cannot read again afterwards; a record queued in
+that instant still has its own one-off upload, and the next app start restores the
+periodic job.
+
+## 2026-11-09: requests queue outside the worker threads
+
+The second audit left the PostgreSQL account lock path unchanged until a concurrency test
+existed. The test on a local PostgreSQL 16 with the production pool (5, no overflow)
+found that the lock itself costs little: one phone's burst of 12 requests added about
+10 ms at p95 for other users, and the chat hospital and pharmacy shares already release
+the lock before calling the provider. The real limit was the 40 AnyIO worker threads.
+Requests waited for a pooled connection or for their account's lock inside a thread,
+so once about 40 were in flight the requests holding connections found no thread to run
+their endpoint, and everything stalled until a timeout answered 503. A larger pool only
+moved the threshold (20 + 20 still stalled at 96 requests, or at 48 when several came
+from the same accounts), so the owner chose to move the waiting onto the event loop.
+
+A PostgreSQL request now takes its account's turn first and a database slot second, so
+queued requests of one account hold no slot. Both are given back after a unit of
+database work that leaves no transaction open: the registration of an external lookup, a
+`run_request_database_work` step of an asynchronous route that commits or rolls back, or
+a synchronous endpoint as a whole. Releasing at the first commit instead was tried and
+rejected after an independent review: a synchronous endpoint or a step that reads again
+after its commit keeps using a connection, so it would either use connections the gate
+does not count or wait for a slot while holding one. Holding them for the whole request
+was rejected too, because the hospital share would then block an account's other
+requests for up to 22 seconds; that share and the AI lookups roll back first and wait for
+the provider holding nothing. Work that still holds a connection never waits for a slot,
+and later steps queue again, turn first. The advisory locks stay behind the gate for
+other processes and services. A synchronous endpoint now keeps its account's turn until
+it returns, for example during the Firebase call of an account deletion, where before
+only the worker thread waited.
+
+One connection is kept outside the gate for what does not pass through it: the background
+loops and the alert sent after a response, the chat stream check, the catalogue and cache
+worker sessions of external lookups, and the database use of an external lookup's
+endpoint after its registration. These are bounded by their own limits (route quotas,
+the pill upload cap) rather than by the gate. No setting changed; the slot count follows
+`DATABASE_POOL_SIZE` and `DATABASE_MAX_OVERFLOW`.
+
+## 2026-11-11: the privacy filter also masks the cell right of a personal label
+
+On-device OCR can return a prescription table's value column before its label column, so
+the filter, which masks the values that follow a personal label in recognition order,
+let a patient name printed in the cell right of "환자 성명" reach the server and Gemini.
+The filter now also uses the line positions: for each line that holds only personal (and
+age or sex) labels, it masks as many of the nearest lines to its right on the same
+printed row as the line has labels. Medication rows and other label lines are never
+taken. A wider rule (everything right of the label on that row) was not chosen because a
+four-column header ("성명 | 홍길동 | 교부일자 | 2026-…") would then lose the dispensing
+date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again in
+`PrescriptionLocalOcrService.recognizeAndMask`.
+
+## 2026-11-13: 1.0.0 numbering for the release build
+
+- **Chosen:** the server reports `1.0.0` instead of `1.0.0-rc`, and the documents call
+  the line the 1.0.0 release (owner, for the graduation exhibition demo). The app keeps
+  `1.0.0+27`: the candidate builds with that number went only to test devices, and an
+  update with the same version code installs over them.
+- **Alternatives:** `1.0.0+28`, which would tell the release build apart from the
+  candidates in Android settings.
+- **To undo:** set `version` in `backend/main.py` back to `1.0.0-rc`.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the

@@ -19,54 +19,39 @@ import 'medbuddy_saved_medication_view_model.dart';
 // 파일명: medbuddy_prescription_view_model.dart
 // 역할: 처방전 선택, OCR 검토, 약품 분석, 저장 요청 준비 상태를 관리한다.
 
-// 클래스명: MedBuddyPrescriptionViewModel
-// 역할: 처방전 선택부터 OCR 검토·상세 분석·저장까지의 화면 상태를 확장한다.
-// 주요 책임:
-// - 사용자 수정과 원본 OCR을 보존하고 작업 세대로 늦은 응답을 차단하며 미확인 항목 재검토 및 부분 저장을 조정한다.
+// Class Name: MedBuddyPrescriptionViewModel
+// Role: Owns prescription recognition, review, analysis and save progress.
+// Responsibilities: Preserve OCR/user edits, reject obsolete operation results and coordinate candidate review and partial saves.
+// Attributes: Flow/progress fields select screens; source rows/regions retain OCR; index maps retain lookup results; injected controls and callbacks perform persistence and refreshes.
 class MedBuddyPrescriptionViewModel {
   PrescriptionFlowState _prescriptionFlowState = PrescriptionFlowState.idle;
-  // 함수이름: prescriptionFlowState
-  // 함수역할: 입력·인식·미리보기·분석·결과·실패를 구분하는 현재 처방 흐름 상태를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - PrescriptionFlowState: 입력·인식·미리보기·분석·결과·실패를 구분하는 현재 처방 흐름 상태를 제공한다.
+  // Function Name: prescriptionFlowState
+  // Description: Exposes the current input, recognition, review, analysis or result screen state.
+  // Parameters: None.
+  // Returns: The current PrescriptionFlowState.
   PrescriptionFlowState get prescriptionFlowState => _prescriptionFlowState;
   int _prescriptionOperationId = 0;
   // 갤러리 선택 창이 열려 있어 아직 이미지를 고르지 않은 요청이 있는지 여부.
   bool _isPrescriptionImagePickPending = false;
   AnalysisProgressStep _analysisProgressStep =
       AnalysisProgressStep.prescriptionRecognition;
-  // 함수이름: analysisProgressStep
-  // 함수역할: 현재 처방 인식 또는 약품 분석 진행 단계 값을 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - AnalysisProgressStep: 현재 처방 인식 또는 약품 분석 진행 단계 값을 제공한다.
+  // Function Name: analysisProgressStep
+  // Description: Exposes the high-level recognition or medication-analysis progress step.
+  // Parameters: None.
+  // Returns: The current AnalysisProgressStep.
   AnalysisProgressStep get analysisProgressStep => _analysisProgressStep;
   int _completedMedicationAnalysisCount = 0;
   int _totalMedicationAnalysisCount = 0;
+  // 함수이름: completedMedicationAnalysisCount
+  // 함수역할: 현재 약품 분석 작업에서 완료 처리한 항목 수를 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 완료된 대상 건수; 성공 여부와는 별개의 진행 수치.
   int get completedMedicationAnalysisCount => _completedMedicationAnalysisCount;
+  // 함수이름: totalMedicationAnalysisCount
+  // 함수역할: 현재 약품 분석 진행 표시의 전체 대상 수를 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 이번 분석의 대상 건수.
   int get totalMedicationAnalysisCount => _totalMedicationAnalysisCount;
-  // 함수이름: isPrescriptionAnalyzing
-  // 함수역할: 처방전 인식이나 약품 상세 분석이 진행 중인 상태인지 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - bool: 처방전 인식이나 약품 상세 분석이 진행 중인 상태인지 확인한다.
-  bool get isPrescriptionAnalyzing {
-    return _prescriptionFlowState ==
-            PrescriptionFlowState.recognizingPrescription ||
-        _prescriptionFlowState == PrescriptionFlowState.analyzingMedication;
-  }
-
-  // 함수이름: isLoading
-  // 함수역할: 기존 호출부가 처방 인식·분석 진행 여부를 공통 로딩 값으로 읽도록 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - bool: 기존 호출부가 처방 인식·분석 진행 여부를 공통 로딩 값으로 읽도록 제공한다.
-  bool get isLoading => isPrescriptionAnalyzing;
   int? _savingMedicationIndex;
   // Function Name: savingMedicationIndex
   // Description: Exposes the analysis-list index currently being saved, or null when no individual save is running.
@@ -83,36 +68,28 @@ class MedBuddyPrescriptionViewModel {
   // - bool: Whether an individual medication save has an active list index.
   bool get isMedicationSaving => _savingMedicationIndex != null;
   final Set<int> _completedMedicationSaveIndexes = {};
-  // 함수이름: completedMedicationSaveIndexes
-  // 함수역할: 이미 저장 또는 중복 확인된 분석 목록 인덱스를 변경할 수 없는 집합으로 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Set<int>: 이미 저장 또는 중복 확인된 분석 목록 인덱스를 변경할 수 없는 집합으로 제공한다.
+  // Function Name: completedMedicationSaveIndexes
+  // Description: Exposes analyzed-list indexes already saved or confirmed as duplicates.
+  // Parameters: None.
+  // Returns: An unmodifiable copy of completed-save indexes.
   Set<int> get completedMedicationSaveIndexes =>
       Set.unmodifiable(_completedMedicationSaveIndexes);
   bool _isAllMedicationSaving = false;
-  // 함수이름: isAllMedicationSaving
-  // 함수역할: 분석 약 전체 저장 작업의 진행 여부를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - bool: 분석 약 전체 저장 작업의 진행 여부를 제공한다.
+  // Function Name: isAllMedicationSaving
+  // Description: Reports whether the batch save of analyzed medications is in progress.
+  // Parameters: None.
+  // Returns: The batch-save flag.
   bool get isAllMedicationSaving => _isAllMedicationSaving;
   String _analysisErrorMessage = '';
-  // 함수이름: analysisErrorMessage
-  // 함수역할: 처방 인식·상세 분석에서 기록한 최근 실패 안내를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - String: 처방 인식·상세 분석에서 기록한 최근 실패 안내를 제공한다.
+  // Function Name: analysisErrorMessage
+  // Description: Exposes the most recent recognition or analysis failure guidance.
+  // Parameters: None.
+  // Returns: The retained analysis error text, possibly empty.
   String get analysisErrorMessage => _analysisErrorMessage;
-  // 함수이름: canRetryPrescriptionAnalysis
-  // 함수역할: 인식 결과가 남아 있는 상세 분석 실패 또는 미확인 재검토 상태에서만 재분석을 허용한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - bool: 인식 결과가 남아 있는 상세 분석 실패 또는 미확인 재검토 상태에서만 재분석을 허용한다.
+  // Function Name: canRetryPrescriptionAnalysis
+  // Description: Allows retry only when recognized rows remain after medication-analysis failure or review.
+  // Parameters: None.
+  // Returns: False during recognition-stage failure or without recognized rows; otherwise true for eligible retry states.
   bool get canRetryPrescriptionAnalysis =>
       (_prescriptionFlowState == PrescriptionFlowState.analysisFailed ||
           _prescriptionFlowState ==
@@ -202,46 +179,30 @@ class MedBuddyPrescriptionViewModel {
   }
 
   List<MedicationSchedule> _recognizedMedicationScheduleList = [];
-  // 함수이름: recognizedMedicationScheduleList
-  // 함수역할: 사용자가 검토·수정 중인 OCR 복약 일정 목록을 읽기 전용으로 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - List<MedicationSchedule>: 사용자가 검토·수정 중인 OCR 복약 일정 목록을 읽기 전용으로 제공한다.
+  // Function Name: recognizedMedicationScheduleList
+  // Description: Exposes the OCR medication rows currently under user review.
+  // Parameters: None.
+  // Returns: An unmodifiable list of recognized schedules.
   List<MedicationSchedule> get recognizedMedicationScheduleList =>
       List.unmodifiable(_recognizedMedicationScheduleList);
   List<RecognizedTextRegion> _recognizedTextRegionList = [];
-  // 함수이름: recognizedTextRegionList
-  // 함수역할: 현재 처방전 미리보기의 약품·개인정보 영역 목록을 읽기 전용으로 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - List<RecognizedTextRegion>: 현재 처방전 미리보기의 약품·개인정보 영역 목록을 읽기 전용으로 제공한다.
+  // Function Name: recognizedTextRegionList
+  // Description: Exposes text and sensitive-information regions used by the current preview.
+  // Parameters: None.
+  // Returns: An unmodifiable region list.
   List<RecognizedTextRegion> get recognizedTextRegionList =>
       List.unmodifiable(_recognizedTextRegionList);
   String _prescriptionPreviewImagePath = '';
-  // 함수이름: prescriptionPreviewImagePath
-  // 함수역할: 현재 처방 검토 화면에 표시할 로컬 이미지 경로를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - String: 현재 처방 검토 화면에 표시할 로컬 이미지 경로를 제공한다.
+  // Function Name: prescriptionPreviewImagePath
+  // Description: Provides the local image path for prescription review.
+  // Parameters: None.
+  // Returns: The current preview path, or an empty string without a selected preview.
   String get prescriptionPreviewImagePath => _prescriptionPreviewImagePath;
-  // 함수이름: medicationScheduleList
-  // 함수역할: 기존 호출부가 인식된 처방 일정 목록을 읽을 수 있도록 호환 접근자를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - List<MedicationSchedule>: 기존 호출부가 인식된 처방 일정 목록을 읽을 수 있도록 호환 접근자를 제공한다.
-  List<MedicationSchedule> get medicationScheduleList =>
-      recognizedMedicationScheduleList;
   List<AnalyzedMedication> _analyzedMedicationList = [];
-  // 함수이름: analyzedMedicationList
-  // 함수역할: 원래 처방 순서로 정리된 상세 분석 성공 목록을 읽기 전용으로 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - List<AnalyzedMedication>: 원래 처방 순서로 정리된 상세 분석 성공 목록을 읽기 전용으로 제공한다.
+  // Function Name: analyzedMedicationList
+  // Description: Exposes successful detail analyses in their retained prescription order.
+  // Parameters: None.
+  // Returns: An unmodifiable analysis-result list.
   List<AnalyzedMedication> get analyzedMedicationList =>
       List.unmodifiable(_analyzedMedicationList);
   // 상세조회가 끝난 약은 원래 OCR 행 인덱스와 함께 보존해 재조회 시 중복 호출을 막는다.
@@ -251,43 +212,47 @@ class MedBuddyPrescriptionViewModel {
   final Map<int, MedicationLookupStatus> _medicationLookupStatuses = {};
   PrescriptionRecognitionStage _recognitionStage =
       PrescriptionRecognitionStage.recognizingText;
+  // 함수이름: recognitionStage
+  // 함수역할: 문자 인식과 약품 구조화를 구분하는 실제 처리 단계를 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 현재 PrescriptionRecognitionStage.
   PrescriptionRecognitionStage get recognitionStage => _recognitionStage;
+  // 함수이름: medicationLookupStatuses
+  // 함수역할: 원래 처방전 행 인덱스별 약품 조회 상태를 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 수정 불가 조회 상태 맵.
   Map<int, MedicationLookupStatus> get medicationLookupStatuses =>
       Map.unmodifiable(_medicationLookupStatuses);
+  // 함수이름: medicationMatchReviews
+  // 함수역할: 사용자 후보 확인이 필요한 처방전 행의 검토 정보를 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 원래 행 인덱스별 수정 불가 검토 맵.
   Map<int, MedicationMatchReview> get medicationMatchReviews =>
       Map.unmodifiable(_medicationMatchReviews);
-  // 함수이름: verifiedMedicationScheduleIndexes
-  // 함수역할: 공공데이터 상세 조회가 성공한 원래 OCR 행 인덱스를 읽기 전용 집합으로 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Set<int>: 공공데이터 상세 조회가 성공한 원래 OCR 행 인덱스를 읽기 전용 집합으로 제공한다.
+  // Function Name: verifiedMedicationScheduleIndexes
+  // Description: Exposes original OCR-row indexes with confirmed detail-analysis results.
+  // Parameters: None.
+  // Returns: An unmodifiable set of keys from the analysis-result map.
   Set<int> get verifiedMedicationScheduleIndexes =>
       Set.unmodifiable(_analyzedMedicationByScheduleIndex.keys.toSet());
-  // 함수이름: unverifiedMedicationScheduleIndexes
-  // 함수역할: 재검토 또는 재조회가 필요한 OCR 행 인덱스를 읽기 전용 집합으로 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Set<int>: 재검토 또는 재조회가 필요한 OCR 행 인덱스를 읽기 전용 집합으로 제공한다.
+  // Function Name: unverifiedMedicationScheduleIndexes
+  // Description: Exposes OCR-row indexes still requiring review or another lookup.
+  // Parameters: None.
+  // Returns: An unmodifiable set of unverified row indexes.
   Set<int> get unverifiedMedicationScheduleIndexes =>
       Set.unmodifiable(_unverifiedMedicationScheduleIndexes);
   PrescriptionChangeRadar? _prescriptionChangeRadar;
-  // 함수이름: prescriptionChangeRadar
-  // 함수역할: 현재 처방과 이전 처방의 비교 결과를 제공하고 조회 전·실패 시 null 상태를 유지한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - PrescriptionChangeRadar?: 현재 처방과 이전 처방의 비교 결과를 제공하고 조회 전·실패 시 null 상태를 유지한다.
+  // Function Name: prescriptionChangeRadar
+  // Description: Exposes the comparison between the current and previous prescription.
+  // Parameters: None.
+  // Returns: The latest radar, or null when unavailable.
   PrescriptionChangeRadar? get prescriptionChangeRadar =>
       _prescriptionChangeRadar;
   bool _isPrescriptionChangeLoading = false;
-  // 함수이름: isPrescriptionChangeLoading
-  // 함수역할: 결과 화면 뒤에서 진행하는 이전 처방 비교 요청의 로딩 상태를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - bool: 결과 화면 뒤에서 진행하는 이전 처방 비교 요청의 로딩 상태를 제공한다.
+  // Function Name: isPrescriptionChangeLoading
+  // Description: Reports a prescription-comparison request running behind the result view.
+  // Parameters: None.
+  // Returns: The comparison-loading flag.
   bool get isPrescriptionChangeLoading => _isPrescriptionChangeLoading;
   final InputPrescription inputPrescription;
   final CheckMedicationDetail checkMedicationDetail;
@@ -301,8 +266,9 @@ class MedBuddyPrescriptionViewModel {
   bool _disposed = false;
   String _statusMessage = '';
   // Function Name: MedBuddyPrescriptionViewModel
-  // Description: Binds borrowed prescription controls and explicit save/refresh dependencies.
-  // Parameters: Controls, saving feature and callbacks. Returns: Prescription state owner.
+  // Description: Bind borrowed prescription controls and save/refresh dependencies without starting analysis.
+  // Parameters: inputPrescription (InputPrescription): image/OCR input; checkMedicationDetail (CheckMedicationDetail): catalog lookup; checkPrescriptionChange (CheckPrescriptionChange): prior-prescription comparison; savedMedications (MedBuddySavedMedicationViewModel): save owner; fetchTodayMedicationSchedule (Future<void> Function()): schedule refresh; synchronizeReminders (Future<void> Function()): reminder refresh; readEnglish (bool Function()): locale; onChanged (void Function(String)): feature update callback.
+  // Returns: MedBuddyPrescriptionViewModel: independent prescription state owner.
   MedBuddyPrescriptionViewModel({
     required this.inputPrescription,
     required this.checkMedicationDetail,
@@ -322,13 +288,10 @@ class MedBuddyPrescriptionViewModel {
   // Function Name: statusMessage
   // Description: Exposes prescription-only feedback. Parameters: None. Returns: Feedback.
   String get statusMessage => _statusMessage;
-  // 함수이름: idlePrompt
-  // 함수역할:
-  // - 처방전 입력을 기다리는 동안 보여 줄 현재 언어의 촬영·선택 안내 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - String: 영어 설정이면 영어 안내, 아니면 한국어 안내.
+  // Function Name: idlePrompt
+  // Description: Provides the localized prompt while waiting for a prescription image.
+  // Parameters: None.
+  // Returns: English or Korean capture/gallery guidance.
   String get idlePrompt => _isEnglishSetting
       ? 'Take a prescription photo or choose an image.'
       : '처방전을 촬영하거나 이미지를 선택해주세요.';
@@ -346,12 +309,10 @@ class MedBuddyPrescriptionViewModel {
     _cancelPrescriptionOperation();
   }
 
-  // 함수이름: clearAnalysisResult
-  // 함수역할: 진행 중 처방 응답을 무효화하고 선택 파일·OCR·분석·저장 진행 상태를 초기화해 입력 대기 화면으로 돌아간다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음.
+  // Function Name: clearAnalysisResult
+  // Description: Invalidates current work, clears recognition/save state and returns to image input.
+  // Parameters: None.
+  // Returns: None; request cancellation is immediate and selected-image cleanup is asynchronous.
   void clearAnalysisResult() {
     _cancelPrescriptionOperation();
     inputPrescription.cancelPendingRequests();
@@ -389,12 +350,10 @@ class MedBuddyPrescriptionViewModel {
     );
   }
 
-  // 함수이름: requestPrescriptionImageFromGallery
-  // 함수역할: 갤러리 이미지 선택 기반 처방전 OCR 흐름을 시작한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: requestPrescriptionImageFromGallery
+  // Description: Starts gallery-based recognition, preserving the prior preview until an image is actually selected.
+  // Parameters: None.
+  // Returns: Completion of the recognition workflow including its cancellation feedback.
   Future<void> requestPrescriptionImageFromGallery() async {
     await _requestPrescriptionRecognition(
       imageRequest: inputPrescription.requestPrescriptionImageFromGallery,
@@ -405,13 +364,10 @@ class MedBuddyPrescriptionViewModel {
     );
   }
 
-  // 함수이름: updateRecognizedMedicationSchedule
-  // 함수역할: 사용자가 수정한 OCR 인식 결과를 분석 대기 목록에 반영한다. 약명이 변경되면 최초 OCR 원문을 보존하고 사용자 수정 정보로 표시한다.
-  // 매개변수:
-  // - scheduleIndex (int): 전체 OCR 인식 결과 목록에서 수정할 항목의 인덱스
-  // - medicationSchedule (MedicationSchedule): 사용자가 입력한 변경값이 포함된 복약 일정
-  // 반환값:
-  // - 없음.
+  // Function Name: updateRecognizedMedicationSchedule
+  // Description: Applies a user-edited OCR row, preserving original-name provenance and invalidating affected analysis/save state.
+  // Parameters: scheduleIndex: Original row index; medicationSchedule: Replacement values.
+  // Returns: None; invalid state/index or blank names are ignored, and edited review rows return to pending verification.
   void updateRecognizedMedicationSchedule(
     int scheduleIndex,
     MedicationSchedule medicationSchedule,
@@ -490,12 +446,10 @@ class MedBuddyPrescriptionViewModel {
     _notifyViewModelListeners();
   }
 
-  // 함수이름: addRecognizedMedicationSchedule
-  // 함수역할: OCR이 누락한 약을 사용자가 직접 입력해 현재 처방 검토 목록에 추가한다. 상세조회 재검토 중 추가한 약은 미확인 항목으로 등록해 다음 조회에 포함한다.
-  // 매개변수:
-  // - medicationSchedule (MedicationSchedule): 사용자가 입력한 약명과 복약 정보
-  // 반환값:
-  // - 없음.
+  // Function Name: addRecognizedMedicationSchedule
+  // Description: Adds a manually entered row during preview/review and includes it in subsequent verification.
+  // Parameters: medicationSchedule: User-entered name and regimen.
+  // Returns: None; invalid workflow states or blank names are ignored, and accepted rows update parse counts and clear obsolete comparison/save state.
   void addRecognizedMedicationSchedule(MedicationSchedule medicationSchedule) {
     final isReviewState =
         _prescriptionFlowState ==
@@ -706,13 +660,10 @@ class MedBuddyPrescriptionViewModel {
     }
   }
 
-  // 함수이름: _analyzeMedicationSchedules
-  // 함수역할: 처방 약 상세조회를 여섯 건씩 나누어 서버 공공 API 동시 호출 제한을 활용한다. 성공, 미일치, 일시적 오류를 원래 OCR 행 인덱스와 함께 구분한다.
-  // 매개변수:
-  // - schedules (List<MedicationSchedule>): OCR 결과에서 사용자가 확인한 전체 복약 일정 목록
-  // - scheduleIndexes (List<int>): 이번 요청에서 조회할 OCR 행 인덱스 목록
-  // 반환값:
-  // - 분석된 약 목록과 일정 인덱스별 성공·미일치·실패 결과를 담은 _MedicationAnalysisBatch의 Future.
+  // Function Name: _analyzeMedicationSchedules
+  // Description: Looks up rows in batches of six and retries account-busy results once, sequentially, after their delay.
+  // Parameters: schedules: Full row list; scheduleIndexes: Rows to query; operationId: Cancellation generation.
+  // Returns: Indexed successful, unmatched, failed and candidate-review results; obsolete operations stop later batches and progress publication.
   Future<_MedicationAnalysisBatch> _analyzeMedicationSchedules(
     List<MedicationSchedule> schedules,
     List<int> scheduleIndexes,
@@ -724,7 +675,10 @@ class MedBuddyPrescriptionViewModel {
     final errorMessagesByScheduleIndex = <int, String>{};
     final reviews = <int, MedicationMatchReview>{};
 
-    // 각 약은 마지막 조회 시도에서 한 번만 집계하고 취소된 요청의 늦은 응답은 무시한다.
+    // Function Name: markCompleted
+    // Description: Counts a row's terminal lookup attempt only while this analysis operation remains current.
+    // Parameters: None.
+    // Returns: None; increments progress and notifies listeners, ignoring late cancelled responses.
     void markCompleted() {
       if (!_isCurrentPrescriptionOperation(operationId)) {
         return;
@@ -733,6 +687,10 @@ class MedBuddyPrescriptionViewModel {
       _notifyViewModelListeners();
     }
 
+    // 함수이름: request
+    // 함수역할: 한 처방전 행의 상세를 조회하고 미일치·후보·혼잡·오류를 구분한다.
+    // 매개변수: index: schedules의 원래 행 인덱스.
+    // 반환값: 인덱스와 결과를 담은 Future; 조회 예외는 후보·혼잡 상태나 현지화된 실패 결과로 변환한다.
     Future<_MedicationLookupResult> request(int index) async {
       final schedule = schedules[index];
       try {
@@ -767,7 +725,10 @@ class MedBuddyPrescriptionViewModel {
       }
     }
 
-    // 잠금 충돌 응답은 재시도가 남아 있으므로 첫 시도에서는 집계하지 않는다.
+    // Function Name: lookup
+    // Description: Performs one lookup and advances progress unless an initial busy result still has a retry pending.
+    // Parameters: index: Original row index; isRetry: Whether this is the terminal retry.
+    // Returns: The lookup result; progress is counted once at its final attempt.
     Future<_MedicationLookupResult> lookup(
       int index, {
       bool isRetry = false,
@@ -813,12 +774,10 @@ class MedBuddyPrescriptionViewModel {
     );
   }
 
-  // Function Name: confirmMedicationCandidate
-  // Description: Confirms only a current review candidate without hiding failures on other unverified rows.
-  // Parameters:
-  // - index (int): Original OCR row associated with the current candidate review.
-  // - detail (MedicationDetail): Candidate object from that row's current review.
-  // Returns: None; a valid selection updates that row but never saves medication automatically.
+  // 함수이름: confirmMedicationCandidate
+  // 함수역할: 현재 검토 목록에 실제로 속한 후보만 확정하고 다른 미확인 행의 실패 상태는 유지한다.
+  // 매개변수: index: 원래 OCR 행; detail: 해당 행의 현재 후보 객체.
+  // 반환값: 없음; 유효한 선택은 그 행의 약명·분석 결과를 바꾸지만 자동 저장하지 않는다.
   void confirmMedicationCandidate(int index, MedicationDetail detail) {
     final review = _medicationMatchReviews[index];
     if (_prescriptionFlowState !=
@@ -854,12 +813,10 @@ class MedBuddyPrescriptionViewModel {
     _notifyViewModelListeners();
   }
 
-  // 함수이름: continueWithVerifiedMedicationAnalysis
-  // 함수역할: 사용자가 미확인 약 제외를 명시적으로 확인한 경우에만 확인된 약으로 결과 화면을 진행한다. 자동으로 누락시키지 않고 재검토 화면의 선택을 거쳐 데이터 손실을 알 수 있게 한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 확인된 약이 한 개 이상이면 true, 아니면 false
+  // Function Name: continueWithVerifiedMedicationAnalysis
+  // Description: Continues from candidate review using verified rows only and reports how many rows were excluded.
+  // Parameters: None.
+  // Returns: True when in review with at least one confirmed result; otherwise false without a state transition.
   bool continueWithVerifiedMedicationAnalysis() {
     if (_prescriptionFlowState !=
             PrescriptionFlowState.medicationReviewRequired ||
@@ -877,12 +834,10 @@ class MedBuddyPrescriptionViewModel {
     return true;
   }
 
-  // 함수이름: _orderedAnalyzedMedications
-  // 함수역할: 성공한 분석 결과를 원래 OCR 행 인덱스 순으로 정렬해 화면 목록으로 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - List<AnalyzedMedication>: 성공한 분석 결과를 원래 OCR 행 인덱스 순으로 정렬해 화면 목록으로 제공한다.
+  // Function Name: _orderedAnalyzedMedications
+  // Description: Orders successful medication analyses by their original OCR-row indexes.
+  // Parameters: None.
+  // Returns: A fixed-length result list independent of lookup completion order.
   List<AnalyzedMedication> _orderedAnalyzedMedications() {
     final entries = _analyzedMedicationByScheduleIndex.entries.toList()
       ..sort(
@@ -910,13 +865,10 @@ class MedBuddyPrescriptionViewModel {
         .toList(growable: false);
   }
 
-  // 함수이름: _refreshPrescriptionChangeRadar
-  // 함수역할: 결과 화면을 막지 않고 현재 처방과 이전 처방의 비교 결과를 요청한다. 사용자가 화면을 벗어난 뒤 도착한 응답은 현재 상태에 반영하지 않는다.
-  // 매개변수:
-  // - operationId (int): 요청 시작 시점의 처방 작업 식별자
-  // - medications (List<AnalyzedMedication>): 공공데이터 상세조회가 끝난 현재 처방 목록
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: _refreshPrescriptionChangeRadar
+  // Description: Loads prescription comparison without blocking results and discards responses after the operation or screen changes.
+  // Parameters: operationId: Owning generation; medications: Complete analyzed prescription.
+  // Returns: Completion; comparison failure becomes null and only the current result screen receives the outcome.
   Future<void> _refreshPrescriptionChangeRadar(
     int operationId,
     List<AnalyzedMedication> medications,
@@ -938,12 +890,10 @@ class MedBuddyPrescriptionViewModel {
     _notifyViewModelListeners();
   }
 
-  // 함수이름: showMedicationAnalysisResult
-  // 함수역할: 분석 성공 화면에서 실제 결과 목록 화면으로 이동할 수 있도록 상태를 변경한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음.
+  // Function Name: showMedicationAnalysisResult
+  // Description: Shows available analysis results and requests comparison only when every recognized row is represented.
+  // Parameters: None.
+  // Returns: None; an empty analysis becomes failure, while partial results suppress comparison.
   void showMedicationAnalysisResult() {
     if (_analyzedMedicationList.isEmpty) {
       _showAnalysisFailure(
@@ -972,13 +922,10 @@ class MedBuddyPrescriptionViewModel {
     );
   }
 
-  // 함수이름: requestMedicationSave
-  // 함수역할: 이미 분석된 약 상세 정보를 저장 목록에 저장한다.
-  // 매개변수:
-  // - analyzedMedication (AnalyzedMedication): OCR 스케줄과 상세 정보가 결합된 분석 결과
-  // - medicationIndex (int): 저장 버튼 로딩 표시를 위한 화면상 인덱스
-  // 반환값:
-  // - 저장 성공 여부
+  // Function Name: requestMedicationSave
+  // Description: Saves one analyzed medication while preventing overlapping individual or batch saves.
+  // Parameters: analyzedMedication: Detail and schedule pair; medicationIndex: Display/result index.
+  // Returns: True for saved or duplicate outcomes, false when busy/disposed; errors propagate and only the current operation clears its loading marker.
   Future<bool> requestMedicationSave(
     AnalyzedMedication analyzedMedication,
     int medicationIndex,
@@ -1026,12 +973,10 @@ class MedBuddyPrescriptionViewModel {
     }
   }
 
-  // 함수이름: requestAllAnalyzedMedicationSave
-  // 함수역할: 완료 항목은 재저장하지 않고 나머지 분석 약을 순차 저장한 뒤 목록·일정·알림을 한 번 갱신하며 저장·중복·실패 개수를 안내한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<bool>: 완료 항목은 재저장하지 않고 나머지 분석 약을 순차 저장한 뒤 목록·일정·알림을 한 번 갱신하며 저장·중복·실패 개수를 안내한다.
+  // Function Name: requestAllAnalyzedMedicationSave
+  // Description: Saves unfinished analysis rows sequentially and refreshes dependent state once after the batch.
+  // Parameters: None.
+  // Returns: True when no result failed; false for empty/busy/disposed or invalidated work. Exceptions propagate, with current-operation progress cleared in finally.
   Future<bool> requestAllAnalyzedMedicationSave() async {
     if (_disposed) return false;
     final operationId = _prescriptionOperationId;
@@ -1135,9 +1080,10 @@ class MedBuddyPrescriptionViewModel {
     final requestGeneration = _prescriptionOperationId;
     int? operationId;
     var ownsImagePicker = resetAfterImageSelection;
-    // 함수이름: beginRecognition
-    // 함수역할: 이 요청의 인식 작업을 한 번만 시작한다. 선택 창이 열려 있는 동안 흐름이 초기화됐으면(세대 변경·해제) 시작하지 않는다.
-    // 매개변수: 없음. 반환값: 이 요청이 현재 처방 작업이면 true.
+    // Function Name: beginRecognition
+    // Description: Starts recognition once only if the image-selection request still belongs to the current generation.
+    // Parameters: None.
+    // Returns: Whether this request owns the active prescription operation after any initial reset.
     bool beginRecognition() {
       if (operationId == null) {
         if (_disposed || _prescriptionOperationId != requestGeneration) {
@@ -1230,12 +1176,10 @@ class MedBuddyPrescriptionViewModel {
     }
   }
 
-  // 함수이름: _resetPrescriptionRecognitionState
-  // 함수역할: 새 처방전 인식을 시작하거나 처방 흐름을 닫을 때 이전 인식·분석 결과와 진행·저장 표시를 지운다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음.
+  // Function Name: _resetPrescriptionRecognitionState
+  // Description: Clears prior recognition, analysis, comparison and save-progress state for a new or closed workflow.
+  // Parameters: None.
+  // Returns: None; this reset does not independently cancel network work or notify listeners.
   void _resetPrescriptionRecognitionState() {
     _recognitionStage = PrescriptionRecognitionStage.recognizingText;
     _medicationLookupStatuses.clear();
@@ -1280,22 +1224,18 @@ class MedBuddyPrescriptionViewModel {
     _prescriptionOperationId += 1;
   }
 
-  // 함수이름: _isCurrentPrescriptionOperation
-  // 함수역할: 응답이 시작된 처방 작업과 현재 작업의 세대 번호가 같은지 확인한다.
-  // 매개변수:
-  // - operationId (int): 이전 비동기 응답을 차단할 현재 작업 세대
-  // 반환값:
-  // - bool: 응답이 시작된 처방 작업과 현재 작업의 세대 번호가 같은지 확인한다.
+  // Function Name: _isCurrentPrescriptionOperation
+  // Description: Checks operation ownership before applying asynchronous prescription results.
+  // Parameters: operationId: Generation captured when the work began.
+  // Returns: True only while undisposed and still on that generation.
   bool _isCurrentPrescriptionOperation(int operationId) {
     return !_disposed && _prescriptionOperationId == operationId;
   }
 
-  // 함수이름: _showPrescriptionRecognitionProgress
-  // 함수역할: 실제 이미지 선택 뒤 인식 단계·로딩 상태와 언어별 안내를 설정하고 처방전 화면에 알린다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음.
+  // Function Name: _showPrescriptionRecognitionProgress
+  // Description: Publishes recognition-stage loading after an image has actually been selected.
+  // Parameters: None.
+  // Returns: None; updates flow state, localized feedback and subscribers.
   void _showPrescriptionRecognitionProgress() {
     _analysisProgressStep = AnalysisProgressStep.prescriptionRecognition;
     _prescriptionFlowState = PrescriptionFlowState.recognizingPrescription;
@@ -1343,12 +1283,10 @@ class MedBuddyPrescriptionViewModel {
         : skippedCount;
   }
 
-  // 함수이름: _showAnalysisFailure
-  // 함수역할: 분석 오류와 상태 안내를 같은 메시지로 기록하고 실패 화면 상태로 전환한다.
-  // 매개변수:
-  // - message (String): 사용자에게 표시하거나 오류로 보존할 안내 문구
-  // 반환값:
-  // - 없음.
+  // Function Name: _showAnalysisFailure
+  // Description: Stores shared error guidance and transitions the prescription flow to failure.
+  // Parameters: message: User-facing failure text.
+  // Returns: None; updates both analysis error and status before notifying.
   void _showAnalysisFailure(String message) {
     _analysisErrorMessage = message;
     _statusMessage = message;
@@ -1356,12 +1294,10 @@ class MedBuddyPrescriptionViewModel {
     _notifyViewModelListeners();
   }
 
-  // 함수이름: _setSavingMedicationIndex
-  // 함수역할: 저장 중인 분석 목록 인덱스를 설정하거나 해제하고 처방전 화면의 저장 버튼 상태를 갱신한다.
-  // 매개변수:
-  // - value (int?): 현재 저장 중인 약의 원래 인덱스; null은 저장 진행 표시 해제
-  // 반환값:
-  // - 없음.
+  // Function Name: _setSavingMedicationIndex
+  // Description: Sets or clears the individual medication-save loading marker.
+  // Parameters: value: Displayed result index, or null to clear.
+  // Returns: None; notifies prescription subscribers.
   void _setSavingMedicationIndex(int? value) {
     _savingMedicationIndex = value;
     _notifyViewModelListeners();
@@ -1424,6 +1360,7 @@ class _MedicationLookupResult {
   // - scheduleIndex (int): 원래 OCR 목록의 대상 행 인덱스
   // - analyzedMedication (AnalyzedMedication?): OCR 일정과 상세정보가 결합된 분석 결과
   // - errorMessage (String): 실패 상태에 사용할 사용자 안내문
+  // - busy (MedicationLookupBusy?): 서버 조회 혼잡 및 재시도 정보; review (MedicationMatchReview?): 사용자 확인이 필요한 후보·매칭 검토 결과.
   // 반환값:
   // - _MedicationLookupResult: 초기화된 인스턴스.
   const _MedicationLookupResult._({
@@ -1499,6 +1436,7 @@ class _MedicationAnalysisBatch {
   // - analyzedMedicationByScheduleIndex (Map<int, AnalyzedMedication>): 원래 OCR 행 인덱스별 분석 성공 결과
   // - unmatchedScheduleIndexes (Set<int>): 상세 조회에서 일치 약을 찾지 못한 OCR 행
   // - errorMessagesByScheduleIndex (Map<int, String>): 원래 OCR 행별 기술 오류 안내
+  // - reviews (Map<int, MedicationMatchReview>): 원래 OCR 행 인덱스별 사용자 검토 결과.
   // 반환값:
   // - _MedicationAnalysisBatch: 초기화된 인스턴스.
   const _MedicationAnalysisBatch({

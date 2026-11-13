@@ -40,6 +40,13 @@ final _doseTestNow = DateTime.utc(2026, 10, 25, 3);
 // - No value; the test framework executes the registered cases.
 void main() {
   // 탭 재방문은 최근 조회를 재사용하지만 직접 새로고침·상태 변경은 다시 읽는다.
+  // 함수이름: test callback
+  // 함수역할:
+  // - 최근 조회는 재사용하되 직접 갱신·확정 일정 적용 뒤에는 다시 읽고 동시에 시작한 갱신은 같은 요청을 공유하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('recent tab refreshes share reads without hiding explicit updates', () async {
     SharedPreferences.setMockInitialValues({});
     var reads = 0;
@@ -73,8 +80,13 @@ void main() {
     gate.complete(_jsonResponse({'success': true, 'data': []}));
     await Future.wait([first, second]);
   });
-  // 일정 화면을 열지 않아도 앱 단위 알림 동기화가 저장된 필요시 확인 알림을 다시 예약한다
-  // (전체 알림 취소 뒤 계정 데이터 삭제 실패, 강제 종료 뒤 시작).
+  // Function Name: test callback
+  // Description:
+  // - Registers a stored future as-needed check reminder through app-level schedule refresh without opening the schedule screen.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   test('reminder sync restores a stored as-needed check reminder', () async {
     final at = DateTime.now().toUtc().add(const Duration(hours: 3));
     SharedPreferences.setMockInitialValues({
@@ -98,6 +110,13 @@ void main() {
 
   // Default-time saves refresh read-only alarm state without rescheduling
   // explicit alarms, enabling notifications, or clearing a pending snooze.
+  // Function Name: test callback
+  // Description:
+  // - Refreshes alarm settings once after a successful default-time save, preserves explicit times/enabled flags and performs no registration or cancellation; a failed save does not reread stale defaults.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   test(
     'saving defaults refreshes unsaved slots and preserves custom alarms',
     () async {
@@ -190,6 +209,13 @@ void main() {
     },
   );
 
+  // Function Name: test callback
+  // Description:
+  // - Leaves alarms untouched when settings are offline and recovers through GET requests only once settings become reachable.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   test('partial offline settings never cancel alarms; recovery performs reads only', () async {
     SharedPreferences.setMockInitialValues({});
     var offline = true;
@@ -224,6 +250,13 @@ void main() {
   // 기기 대기열에 먼저 저장하는 운영 경로를 검증한다. 전송 실패는 기록을 지우지 않고 같은 요청으로
   // 다시 보내며, 서버가 거부한 기록은 사용자가 지울 때까지 남아 뒤의 기록을 보류한다.
   for (final failure in ['transport', 'service']) {
+    // 함수이름: test callback
+    // 함수역할:
+    // - 전송 또는 503 실패에도 한 시간대의 두 약을 하나의 로컬 작업으로 유지하고 재시도는 동일한 operation_id로 보내 완료 상태를 보존하는지 확인한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     test(
       'whole-slot dose survives a $failure failure and is uploaded once on retry',
       () async {
@@ -297,6 +330,13 @@ void main() {
     );
   }
 
+  // 함수이름: test callback
+  // 함수역할:
+  // - 서버가 거부한 지난 날짜 기록은 차단 상태로 남기되 오늘 완료 상태를 바꾸지 않고 오늘의 새 기록 전송을 막지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'a dose the server rejects stays queued without holding other days',
     () async {
@@ -1463,6 +1503,102 @@ void main() {
     },
   );
 
+  // Function Name: dose-change reminder test
+  // Description: A slot recorded on this device moves today's reminder at once: Taken drops it and undoing
+  //   brings it back, without waiting for the next schedule refresh. With the course read failing, nothing
+  //   is rescheduled from today's schedule alone.
+  // Parameters: None.
+  // Returns: Future<void>: Checks the dates registered after each change.
+  test("a dose change on this device moves today's reminder", () async {
+    SharedPreferences.setMockInitialValues({});
+    final notificationService = RecordingNotificationService();
+    var morningTaken = false;
+    var windowAvailable = true;
+    Map<String, dynamic> course() => {
+      'medication_id': '11',
+      'drug_name': 'test-tablet',
+      'daily_frequency': '1 time',
+      'slot_statuses': {'morning': morningTaken},
+      'patient_hash': PatientHash.defaultPatientHash,
+    };
+    final client = MockClient((http.Request request) async {
+      final path = request.url.path;
+      if (path.endsWith('/notification/settings')) {
+        return _jsonResponse({
+          'success': true,
+          'data': [
+            {
+              'patient_hash': PatientHash.defaultPatientHash,
+              'slot_key': 'morning',
+              'hour': 23,
+              'minute': 59,
+              'is_enabled': true,
+            },
+          ],
+        });
+      }
+      if (path.endsWith('/schedule/today/info')) {
+        return _jsonResponse({
+          'success': true,
+          'data': {
+            'patient_hash': PatientHash.defaultPatientHash,
+            'schedules': [course()],
+          },
+        });
+      }
+      if (path.endsWith('/schedule/window')) {
+        return windowAvailable
+            ? _jsonResponse({
+                'success': true,
+                'data': [course()],
+              })
+            : http.Response('unavailable', 503);
+      }
+      if (request.method == 'PATCH' &&
+          path.endsWith('/schedule/slot/morning/status')) {
+        morningTaken = jsonDecode(request.body)['medication_status'] as bool;
+        return _jsonResponse({
+          'success': true,
+          'data': [course()],
+        });
+      }
+      return http.Response('Not found', 404);
+    });
+    final viewModel = MedBuddyViewModel(
+      apiClient: client,
+      notificationService: notificationService,
+    );
+    addTearDown(viewModel.dispose);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    await viewModel.refreshMedicationOverview();
+    expect(notificationService.registeredActiveDates.last.first, today);
+
+    expect(
+      await viewModel.requestMedicationSlotStatusUpdate('morning', true),
+      isTrue,
+    );
+    await pumpEventQueue();
+    expect(notificationService.registeredActiveDates.last.first, isNot(today));
+
+    expect(
+      await viewModel.requestMedicationSlotStatusUpdate('morning', false),
+      isTrue,
+    );
+    await pumpEventQueue();
+    expect(notificationService.registeredActiveDates.last.first, today);
+
+    windowAvailable = false;
+    final registered = notificationService.registrations.length;
+    expect(
+      await viewModel.requestMedicationSlotStatusUpdate('morning', true),
+      isTrue,
+    );
+    await pumpEventQueue();
+    expect(notificationService.registrations, hasLength(registered));
+  });
+
   // Dose days in the foreground: the server lists only medications due today, so on a rest day a
   // slot that holds only a weekly medication looks empty. The 14-day course read decides whether
   // the slot is really empty and on which dates it is reminded.
@@ -1567,6 +1703,8 @@ void main() {
     // Function Name: rest-day test
     // Description: On a rest day the reminder setting stays enabled and the slot is reserved on
     //   the dose days of the window only.
+    // Parameters: None.
+    // Returns: Future<void>: Checks enabled state and the next two weekly reminder dates.
     test('a weekly-only slot keeps its reminder on a rest day', () async {
       final viewModel = buildViewModel(today: const [], window: [weeklyCourse(3)]);
 
@@ -1586,6 +1724,8 @@ void main() {
     // Function Name: unreadable-window test
     // Description: When the course read fails, an empty today schedule is not taken as proof that
     //   the slot is empty: the setting is not switched off and nothing is cancelled.
+    // Parameters: None.
+    // Returns: Future<void>: Checks that a failed window read neither disables nor cancels the slot.
     test('an empty slot is not switched off when the course read fails', () async {
       final viewModel = buildViewModel(today: const [], window: null);
 
@@ -1600,6 +1740,8 @@ void main() {
     // Function Name: empty-slot test
     // Description: A slot that has no medication today and none in the next 14 days is still
     //   switched off and its reminders cancelled, as before.
+    // Parameters: None.
+    // Returns: Future<void>: Checks one disabling PATCH and cancellation without registration.
     test('a slot without any course is switched off', () async {
       final viewModel = buildViewModel(today: const [], window: const []);
 
@@ -1692,6 +1834,13 @@ void main() {
     final today = DateTime(now.year, now.month, now.day);
     // 서머타임 전환일을 지나도 날짜가 어긋나지 않게 달력 날짜로 계산한다.
     final start = addCalendarDays(today, -3);
+    // Function Name: isoDate
+    // Description:
+    // - Extracts the calendar-date portion of an ISO timestamp for the schedule fixture.
+    // Parameters:
+    // - date (DateTime): Date to serialize.
+    // Returns:
+    // - String before the ISO T separator.
     String isoDate(DateTime date) => date.toIso8601String().split('T').first;
     final requests = <String>[];
     // 함수이름: MockClient 콜백
@@ -2014,6 +2163,13 @@ void main() {
   });
 
   // 저장소가 막혀도 서버 일정을 보여 주고, 빈 일정으로 오해하지 않게 한다.
+  // Function Name: testWidgets callback
+  // Description:
+  // - Settles the online schedule without a load error after six seconds even while the device-store open future never completes.
+  // Parameters:
+  // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   testWidgets('a blocked device store cannot hold back the online schedule', (
     tester,
   ) async {
@@ -2059,6 +2215,13 @@ void main() {
   });
 
   // 저장소가 일정 저장 단계에서 막혀도 받은 일정의 표시는 끝나야 한다.
+  // Function Name: testWidgets callback
+  // Description:
+  // - Attempts one cache write but still settles and displays the online schedule when that write never completes.
+  // Parameters:
+  // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+  // Returns:
+  // - Future<void>: Completes the checks; an unexpected result fails the test.
   testWidgets('a stalled schedule cache write still settles the load', (
     tester,
   ) async {
@@ -2098,13 +2261,18 @@ void main() {
   });
 }
 
-// 클래스명: _StalledCacheSyncService
-// 역할: 저장소 조회는 끝나지만 일정 저장이 끝나지 않는 상태를 재현한다.
-// 속성: cacheWrites - 일정 저장 시도 횟수.
+// Class Name: _StalledCacheSyncService
+// Role: Simulates responsive cache reads followed by a cache write that never completes.
+// Responsibilities: Count writes while leaving their futures unresolved to exercise load timeouts.
+// Attributes: cacheWrites (int): Number of cache write attempts.
 class _StalledCacheSyncService extends DoseSyncService {
-  // 함수이름: _StalledCacheSyncService
-  // 함수역할: 저장소를 열지 않는 서비스 대역을 만든다.
-  // 매개변수: client - 통신 대역. 반환값: 서비스 대역.
+  // Function Name: _StalledCacheSyncService
+  // Description:
+  // - Creates a service whose overridden cache operations do not open a store.
+  // Parameters:
+  // - client (http.Client): HTTP collaborator.
+  // Returns:
+  // - _StalledCacheSyncService scoped to patient-a.
   _StalledCacheSyncService(http.Client client)
     : super(
         owner: 'patient-a',
@@ -2114,18 +2282,36 @@ class _StalledCacheSyncService extends DoseSyncService {
 
   int cacheWrites = 0;
 
-  // 함수이름: cacheRevision
-  // 함수역할: 응답하는 저장소의 개정 번호를 돌려준다. 반환값: 개정 번호.
+  // Function Name: cacheRevision
+  // Description:
+  // - Provides a stable cache revision without storage access.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<int>: The constant revision 1.
   @override
   Future<int> cacheRevision() async => 1;
 
-  // 함수이름: reload
-  // 함수역할: 응답하는 저장소의 다시 읽기를 재현한다. 반환값: 완료 Future.
+  // Function Name: reload
+  // Description:
+  // - Completes a cache reload immediately without changing state.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: Immediate completion.
   @override
   Future<void> reload() async {}
 
-  // 함수이름: cacheSchedules
-  // 함수역할: 끝나지 않는 저장을 재현한다. 매개변수: 운영 코드와 같다. 반환값: 끝나지 않는 Future.
+  // Function Name: cacheSchedules
+  // Description:
+  // - Counts the attempted cache write and returns a future that never completes.
+  // Parameters:
+  // - schedules (List<MedicationSchedule>): Accepted schedule rows, not stored.
+  // - scheduleDate (String): Accepted dose date, not used.
+  // - expectedRevision (int?): Accepted revision guard, not checked.
+  // - awaitScheduleWindow (bool): Accepted window-wait flag, not used.
+  // Returns:
+  // - Future<void>: Intentionally remains pending.
   @override
   Future<void> cacheSchedules(
     List<MedicationSchedule> schedules, {
@@ -2142,6 +2328,7 @@ class _StalledCacheSyncService extends DoseSyncService {
 // 역할: ViewModel 폐기 이후 완료되는 일정 조회를 재현한다.
 // 주요 책임:
 // - 새 요청을 만들지 않고 주입한 지연 응답을 그대로 제공한다.
+// 속성: responseFuture (Future<List<MedicationSchedule>>): 조회마다 그대로 반환할 지연 응답.
 class _DelayedCheckSchedule extends CheckSchedule {
   final Future<List<MedicationSchedule>> responseFuture;
 

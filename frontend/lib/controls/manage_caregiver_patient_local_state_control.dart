@@ -6,10 +6,10 @@ import '../services/caregiver_patient_local_state_service.dart';
 // 파일명: manage_caregiver_patient_local_state_control.dart
 // 역할: 보호자 화면의 환자 별칭과 연결 해제 후 로컬 정리를 조정한다.
 
-// 클래스명: ManageCaregiverPatientLocalState
-// 역할: 보호자 화면의 환자 별칭과 연동 해제 후 로컬 정리를 제공한다.
-// 주요 책임:
-// - 저장소 접근을 서비스에 위임하고 서버 별칭을 환자별 로컬 표시 이름에 반영한다.
+// Class Name: ManageCaregiverPatientLocalState
+// Role: Coordinate caregiver-scoped patient labels and local unlink cleanup.
+// Responsibilities: Delegate storage normalization and synchronize server aliases into local display labels.
+// Attributes: maximumLabelLength (int): service label limit; no per-instance state.
 class ManageCaregiverPatientLocalState {
   // 함수이름: ManageCaregiverPatientLocalState
   // 함수역할: 보호자별 환자 별칭 조회·저장·연동 해제 정리를 위임하는 무상태 Control을 만든다.
@@ -22,13 +22,10 @@ class ManageCaregiverPatientLocalState {
   static const int maximumLabelLength =
       CaregiverPatientLocalStateService.maximumLabelLength;
 
-  // 함수이름: fallbackLabel
-  // 함수역할: 저장된 별칭이 없을 때 사용할 환자 해시 기반의 기본 표시 이름을 구한다.
-  // 매개변수:
-  // - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
-  // - isEnglish (bool): 기본 표시 이름을 영어로 만들지 여부; false이면 한국어
-  // 반환값:
-  // - String: 저장된 별칭이 없을 때 사용할 환자 해시 기반의 기본 표시 이름을 구한다.
+  // Function Name: fallbackLabel
+  // Description: Build a localized patient-hash label when no alias is available.
+  // Parameters: patientHash (String): patient identity; isEnglish (bool): English instead of Korean fallback.
+  // Returns: String: default patient label.
   String fallbackLabel(String patientHash, {bool isEnglish = false}) {
     return CaregiverPatientLocalStateService.fallbackLabel(
       patientHash,
@@ -36,14 +33,10 @@ class ManageCaregiverPatientLocalState {
     );
   }
 
-  // 함수이름: loadLabel
-  // 함수역할: 현재 보호자·환자 쌍의 로컬 별칭을 읽고 없으면 기본 표시 이름을 사용한다.
-  // 매개변수:
-  // - caregiverHash (String): 조회·저장 범위를 제한할 보호자 해시
-  // - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
-  // - isEnglish (bool): 별칭이 없을 때 기본 표시 이름을 영어로 만들지 여부
-  // 반환값:
-  // - Future<String>: 현재 보호자·환자 쌍의 로컬 별칭을 읽고 없으면 기본 표시 이름을 사용한다.
+  // Function Name: loadLabel
+  // Description: Read the local alias for one caregiver-patient pair, falling back to a localized hash label.
+  // Parameters: caregiverHash/patientHash (String): storage scope; isEnglish (bool): fallback language.
+  // Returns: Future<String>: resolved display label; preference access failures propagate.
   Future<String> loadLabel({
     required String caregiverHash,
     required String patientHash,
@@ -58,14 +51,10 @@ class ManageCaregiverPatientLocalState {
     );
   }
 
-  // 함수이름: loadLabels
-  // 함수역할: 현재 보호자의 연동만 처리하고 서버 별칭을 로컬 저장소에 반영한 뒤 환자 해시별 표시 이름을 모은다.
-  // 매개변수:
-  // - caregiverHash (String): 조회·저장 범위를 제한할 보호자 해시
-  // - links (List<PatientCaregiverLink>): 참여자·활성 상태를 확인할 환자·보호자 연동 목록
-  // - isEnglish (bool): 별칭이 없는 환자의 기본 표시 이름을 영어로 만들지 여부
-  // 반환값:
-  // - Future<Map<String, String>>: 현재 보호자의 연동만 처리하고 서버 별칭을 로컬 저장소에 반영한 뒤 환자 해시별 표시 이름을 모은다.
+  // Function Name: loadLabels
+  // Description: Synchronize aliases for this caregiver's links; preserve legacy null aliases and clear locally cached aliases when the server sends an empty string.
+  // Parameters: caregiverHash (String): current caregiver; links (List<PatientCaregiverLink>): server links; isEnglish (bool): fallback language.
+  // Returns: Future<Map<String, String>>: labels keyed by patient hash.
   Future<Map<String, String>> loadLabels({
     required String caregiverHash,
     required List<PatientCaregiverLink> links,
@@ -99,15 +88,10 @@ class ManageCaregiverPatientLocalState {
     return labels;
   }
 
-  // 함수이름: saveLabel
-  // 함수역할: 보호자·환자 쌍의 표시 이름을 정규화하여 기기에 저장하고 실제 표시할 이름을 구한다.
-  // 매개변수:
-  // - caregiverHash (String): 조회·저장 범위를 제한할 보호자 해시
-  // - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
-  // - label (String): 보호자가 지정한 환자 표시 이름
-  // - isEnglish (bool): 별칭을 지웠을 때 돌려줄 기본 표시 이름을 영어로 만들지 여부
-  // 반환값:
-  // - Future<String>: 보호자·환자 쌍의 표시 이름을 정규화하여 기기에 저장하고 실제 표시할 이름을 구한다.
+  // Function Name: saveLabel
+  // Description: Normalize and persist an alias, or remove it when blank, through the local-state service.
+  // Parameters: caregiverHash/patientHash (String): storage scope; label (String): requested alias; isEnglish (bool): reset-label language.
+  // Returns: Future<String>: resulting display label.
   Future<String> saveLabel({
     required String caregiverHash,
     required String patientHash,

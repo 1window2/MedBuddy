@@ -19,12 +19,10 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-# 함수이름: upgrade
-# 함수역할: 기존 아웃박스에 보호자, 이벤트 유형, 복약 날짜 열과 조회 인덱스를 추가한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 없음.
+# Function Name: upgrade
+# Description: Extend caregiver outbox rows with optional recipient/date scope and an event type defaulting existing rows to dose_completed; index recipient and date.
+# Parameters: None; uses the active Alembic connection.
+# Returns: None; DDL failures propagate.
 def upgrade() -> None:
     op.add_column(
         "caregiver_alert_outbox",
@@ -57,12 +55,10 @@ def upgrade() -> None:
     )
 
 
-# 함수이름: downgrade
-# 함수역할: 미복약 이벤트용 인덱스와 열을 역순으로 제거한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 없음.
+# Function Name: downgrade
+# Description: Remove recipient/date indexes and the generalized outbox scope/type columns, losing those distinctions while retaining original event rows.
+# Parameters: None; uses the active Alembic connection.
+# Returns: None; DDL failures propagate.
 def downgrade() -> None:
     op.drop_index(
         "ix_caregiver_alert_outbox_schedule_date",

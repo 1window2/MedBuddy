@@ -3,19 +3,20 @@ part of 'check_saved_medication_ui_boundary.dart';
 // 파일명: check_saved_medication_empty_widgets.dart
 // 역할: 빈 목록의 등록 진입, 조회 실패 안내, 전체 선택과 삭제 버튼 및 날짜 묶음을 제공한다.
 
-// 클래스명: _SavedMedicationStateShell
-// 역할: 복약함의 빈 목록·조회 실패·빈 조회 결과가 함께 쓰는 가운데 정렬 안내 틀을 그린다.
-// 주요 책임: 아이콘, 안내 문구, 동작 버튼을 세로로 배치하고 큰 글씨에서도 버튼까지 스크롤되게 한다.
-// 속성: icon은 상태 아이콘, message는 안내 문구, gap은 문구와 버튼 사이 간격, actions는 동작 버튼 목록이다.
+// Class Name: _SavedMedicationStateShell
+// Role: Shared empty/error-state layout for the medication cabinet.
+// Responsibilities: Centers an icon, message and actions while preserving scrolling at large text sizes.
+// Attributes: icon: state symbol; message: explanation; gap: message/action spacing; actions: recovery or registration widgets.
 class _SavedMedicationStateShell extends StatelessWidget {
   final IconData icon;
   final Widget message;
   final double gap;
   final List<Widget> actions;
 
-  // 함수이름: _SavedMedicationStateShell
-  // 함수역할: 상태 안내의 아이콘·문구·간격·버튼을 받는다.
-  // 매개변수: icon, message, gap, actions. 반환값: 안내 틀 위젯.
+  // Function Name: _SavedMedicationStateShell
+  // Description: Stores the content and spacing for a cabinet state message.
+  // Parameters: icon (IconData): state symbol; message (String): explanation; gap (double): action spacing; actions (List<Widget>): available commands.
+  // Returns: A _SavedMedicationStateShell.
   const _SavedMedicationStateShell({
     required this.icon,
     required this.message,
@@ -23,9 +24,10 @@ class _SavedMedicationStateShell extends StatelessWidget {
     required this.actions,
   });
 
-  // 함수이름: build
-  // 함수역할: 남은 화면을 채우는 스크롤 영역 가운데에 아이콘, 문구, 버튼을 차례로 놓는다.
-  // 매개변수: context는 화면 위치. 반환값: 스크롤 가능한 상태 안내.
+  // Function Name: build
+  // Description: Centers the state icon, message and actions in the remaining scrollable space.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) => SliverFillRemaining(
     hasScrollBody: false,
@@ -69,7 +71,7 @@ class _SavedMedicationEmptyState extends StatelessWidget {
   Widget build(BuildContext context) => _SavedMedicationStateShell(
     icon: Icons.medication_outlined,
     gap: 24,
-    message: Text(
+    message: KeepWordsText(
       text.emptyMessage,
       textAlign: TextAlign.center,
       style: TextStyle(
@@ -92,36 +94,41 @@ class _SavedMedicationEmptyState extends StatelessWidget {
           ),
         ),
         icon: const Icon(Icons.add),
-        label: Text(text.registerMedication, textAlign: TextAlign.center),
+        label: KeepWordsText(
+          text.registerMedication,
+          textAlign: TextAlign.center,
+        ),
       ),
     ],
   );
 }
 
-// 클래스명: _SavedMedicationLoadErrorState
-// 역할: 저장 목록 조회에 실패했음을 알리고 다시 시도 버튼을 배치한다.
-// 주요 책임: 조회 실패를 저장된 약이 없는 상태와 구분하고 큰 글씨에서도 버튼까지 스크롤되게 한다.
-// 속성: text는 문구, onRetryRequested는 다시 조회 콜백이다.
+// Class Name: _SavedMedicationLoadErrorState
+// Role: Saved-medication load failure.
+// Responsibilities: Distinguishes a failed query from an empty cabinet and keeps retry reachable.
+// Attributes: text: localized copy; onRetryRequested: reload action.
 class _SavedMedicationLoadErrorState extends StatelessWidget {
   final _SavedMedicationText text;
   final VoidCallback? onRetryRequested;
 
-  // 함수이름: _SavedMedicationLoadErrorState
-  // 함수역할: 조회 실패 상태의 표시와 동작을 받는다.
-  // 매개변수: text, onRetryRequested. 반환값: 조회 실패 상태 위젯.
+  // Function Name: _SavedMedicationLoadErrorState
+  // Description: Binds the query-failure copy and retry command.
+  // Parameters: text (_SavedMedicationText): labels; onRetryRequested: reload callback.
+  // Returns: A _SavedMedicationLoadErrorState.
   const _SavedMedicationLoadErrorState({
     required this.text,
     required this.onRetryRequested,
   });
 
-  // 함수이름: build
-  // 함수역할: 조회 실패 안내와 전체 너비 다시 시도 버튼을 구성한다.
-  // 매개변수: context는 화면 위치. 반환값: 스크롤 가능한 조회 실패 상태.
+  // Function Name: build
+  // Description: Shows a load-error message and full-width retry button in the scrollable state shell.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) => _SavedMedicationStateShell(
     icon: Icons.cloud_off_outlined,
     gap: 24,
-    message: Text(
+    message: KeepWordsText(
       text.loadFailedMessage,
       textAlign: TextAlign.center,
       style: const TextStyle(
@@ -144,7 +151,7 @@ class _SavedMedicationLoadErrorState extends StatelessWidget {
           ),
         ),
         icon: const Icon(Icons.refresh),
-        label: Text(text.retry, textAlign: TextAlign.center),
+        label: KeepWordsText(text.retry, textAlign: TextAlign.center),
       ),
     ],
   );
@@ -195,7 +202,7 @@ class _SavedMedicationSelectionControl extends StatelessWidget {
       spacing: 16,
       runSpacing: 4,
       children: [
-        Text(
+        KeepWordsText(
           text.selectAll,
           style: const TextStyle(
             fontSize: 16,
@@ -204,7 +211,7 @@ class _SavedMedicationSelectionControl extends StatelessWidget {
             letterSpacing: 0,
           ),
         ),
-        Text(
+        KeepWordsText(
           text.selectedCount(selectedCount),
           key: const Key('saved-medication-selection-count'),
           style: const TextStyle(
@@ -265,7 +272,7 @@ class _SelectionDeleteBar extends StatelessWidget {
         ),
       ),
       icon: const Icon(Icons.delete_outline),
-      label: Text(
+      label: KeepWordsText(
         isDeleting ? text.deleting : text.deleteSelected,
         textAlign: TextAlign.center,
       ),
@@ -311,6 +318,10 @@ class _SavedMedicationDateCard extends StatelessWidget {
   // - onGuideRequested (void Function(MedicationDetail medication)): 대상 약품의 상세 정보 또는 복용 가이드를 여는 콜백.
   // - onImageRequested (void Function(MedicationDetail medication)): 약품 사진을 확대해 표시할 콜백.
   // - onDeleteRequested (Future<void> Function()): 선택한 약품 또는 날짜 그룹 삭제를 요청할 콜백.
+  // - isExpanded (bool): 날짜 그룹의 약품 목록을 펼쳐 표시할지 여부.
+  // - onToggleExpanded (VoidCallback): 조작이 허용될 때 그룹 펼침 상태 변경을 요청할 콜백.
+  // - showRegisteredDate (bool): 각 약품에 등록 날짜를 추가로 표시할지 여부.
+  // - onRegimenRequested (void Function(MedicationDetail, MedicationRegimenAction)): 선택한 약품과 복약 변경·중단 작업을 상위 화면에 전달할 콜백.
   // 반환값: 입력 설정이 반영된 _SavedMedicationDateCard 인스턴스.
   const _SavedMedicationDateCard({
     required this.isExpanded,
@@ -352,7 +363,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
             letterSpacing: 0,
           ),
         ),
-        Text(
+        KeepWordsText(
           text.medicationCount(group.medications.length),
           style: const TextStyle(
             color: MedBuddyColors.textSubtle,
@@ -362,7 +373,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
           ),
         ),
         if (isSelectionMode && !isExpanded && selectedCount > 0)
-          Text(
+          KeepWordsText(
             text.isEnglish ? '$selectedCount selected' : '$selectedCount개 선택',
             key: ValueKey('saved-date-selected-${group.displayDate}'),
             style: const TextStyle(

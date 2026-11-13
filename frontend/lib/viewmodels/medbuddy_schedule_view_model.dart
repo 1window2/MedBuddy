@@ -11,9 +11,9 @@ import 'medbuddy_schedule_slot_policy.dart';
 // 역할: 오늘 복약 일정 조회와 시간대별 복용 완료 상태를 관리한다.
 
 // Class Name: MedBuddyScheduleViewModel
-// Role: Extends today's schedule loading and individual or whole-slot completion updates.
-// Responsibilities:
-// - Reject stale load generations, merge server-updated schedules, and publish loading and failure state to schedule listeners.
+// Role: Owns today's schedule projection and individual or whole-slot dose updates.
+// Responsibilities: Reject stale loads and prior-day taps, merge durable pending changes and publish loading/failure state.
+// Attributes: Borrowed query controls and runtime providers perform work; schedule list/day, request epochs and loading/error/status fields retain state.
 class MedBuddyScheduleViewModel {
   // 기기 저장소가 응답하지 않아도 서버 일정 표시까지 함께 멈추지 않게 하는 대기 한도.
   static const _localStoreTimeout = Duration(seconds: 5);
@@ -26,8 +26,10 @@ class MedBuddyScheduleViewModel {
   // - bool: Whether the tracked current schedule load is still pending.
   bool get isTodayScheduleLoading => _isTodayScheduleLoading;
   bool _hasSettledTodaySchedule = false;
-  // 함수역할: 이 계정의 오늘 일정이 성공·실패와 관계없이 한 번이라도 확정됐는지 반환한다.
-  //   첫 조회 대기와 이후 새로고침을 구분해 화면이 첫 조회 때만 카드를 가리게 한다.
+  // Function Name: hasSettledTodaySchedule
+  // Description: Distinguishes the initial unresolved schedule from a load that has settled successfully or unsuccessfully.
+  // Parameters: None.
+  // Returns: Whether today's schedule state has settled at least once.
   bool get hasSettledTodaySchedule => _hasSettledTodaySchedule;
   bool _hasTodayScheduleLoadError = false;
   // Function Name: hasTodayScheduleLoadError
@@ -38,6 +40,8 @@ class MedBuddyScheduleViewModel {
   // - bool: Failure of the latest applicable schedule load for retry-state rendering.
   bool get hasTodayScheduleLoadError => _hasTodayScheduleLoadError;
   bool _lastTodayScheduleLoadSucceeded = false;
+  // Application day of the list on screen; a tap on an earlier day's list is refused.
+  String? _listedScheduleDay;
   int _todayScheduleEpoch = 0;
   // 가장 최근 일정 조회만 화면의 로딩 상태를 종료할 수 있도록 요청 번호를 보관한다.
   int? _activeTodayScheduleLoadEpoch;
@@ -58,8 +62,9 @@ class MedBuddyScheduleViewModel {
   bool _disposed = false;
   String _statusMessage = '';
   // Function Name: MedBuddyScheduleViewModel
-  // Description: Binds borrowed controls and read-only runtime providers.
-  // Parameters: Controls, dose queue, language and update callback. Returns: State owner.
+  // Description: Bind borrowed schedule controls and current runtime providers.
+  // Parameters: checkSchedule (CheckSchedule): schedule reads and writes; checkTodayMedicationInfo (CheckTodayMedicationInfo): daily summary; readDoseSync (DoseSyncService? Function()): current durable queue; readEnglish (bool Function()): locale; onChanged (void Function(String)): feature updates.
+  // Returns: MedBuddyScheduleViewModel: schedule state owner.
   MedBuddyScheduleViewModel({
     required this.checkSchedule,
     required this.checkTodayMedicationInfo,
@@ -78,9 +83,6 @@ class MedBuddyScheduleViewModel {
   // Function Name: lastLoadSucceeded
   // Description: Reports freshness for reminder reconciliation. Parameters: None. Returns: Freshness.
   bool get lastLoadSucceeded => _lastTodayScheduleLoadSucceeded;
-  // Function Name: statusMessage
-  // Description: Exposes schedule-local feedback. Parameters: None. Returns: Feedback.
-  String get statusMessage => _statusMessage;
   // Function Name: _notifyViewModelListeners
   // Description: Publishes feature changes while alive. Parameters: None. Returns: None.
   void _notifyViewModelListeners() {
@@ -107,6 +109,9 @@ class MedBuddyScheduleViewModel {
     _isTodayScheduleLoading = false;
     _hasSettledTodaySchedule = true;
     _todayMedicationScheduleList = schedules;
+    if (hasCurrentDayCache) {
+      _listedScheduleDay = doseScheduleDay(doseSync?.clock() ?? DateTime.now());
+    }
     if (!hasCurrentDayCache) {
       // A projection without today's snapshot (first open of a new day) is
       // unknown, not empty: it must not pass as a successful read, or reminder
@@ -127,6 +132,7 @@ class MedBuddyScheduleViewModel {
     _lastTodayScheduleLoadSucceeded = false;
     _hasTodayScheduleLoadError = false;
     _todayMedicationScheduleList = [];
+    _listedScheduleDay = null;
   }
 
   // Function Name: dispose
@@ -136,8 +142,10 @@ class MedBuddyScheduleViewModel {
     clear();
   }
 
-  // 함수역할: 채팅의 복용 기록 응답을 홈·일정에 즉시 반영하고 이전 조회를 무효화한다.
-  // 매개변수: schedules: 서버가 확인한 오늘 전체 일정. 반환값: 없음.
+  // Function Name: applyConfirmedTodaySchedules
+  // Description: Applies a complete server-confirmed schedule, invalidating older in-flight reads.
+  // Parameters: schedules: Confirmed current-day schedule list, such as a chat dose-record response.
+  // Returns: None; publishes an unmodifiable list and successful settled state unless disposed.
   void applyConfirmedTodaySchedules(List<MedicationSchedule> schedules) {
     if (_disposed) return;
     _todayScheduleEpoch += 1;
@@ -174,12 +182,10 @@ class MedBuddyScheduleViewModel {
     );
   }
 
-  // 함수이름: _loadTodayMedicationSchedule
-  // 함수역할: 조회 세대를 기록해 최신 응답만 오늘 일정에 반영하고 실패 시 목록·성공 플래그·오류 안내를 갱신하며 해당 로딩 상태만 종료한다.
-  // 매개변수:
-  // - loader (Future<List<MedicationSchedule>> Function()): 대상 환자의 복약 일정 조회 경계
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: _loadTodayMedicationSchedule
+  // Description: Loads today's schedules with request-generation and midnight guards, preserving online reads when local storage fails.
+  // Parameters: loader: Patient-scoped schedule request.
+  // Returns: Completion after state publication; applicable failures expose cached projection plus an error, and only the owning load clears its progress state.
   Future<void> _loadTodayMedicationSchedule(
     Future<List<MedicationSchedule>> Function() loader,
   ) async {
@@ -189,9 +195,13 @@ class MedBuddyScheduleViewModel {
     if (doseSync != null) {
       try {
         await () async {
+          // The first load joins initialization, which has just re-read the store, so a second reload would repeat it.
+          final wasInitialized = doseSync!.isInitialized;
           cacheRevision = await doseSync!.cacheRevision();
-          await doseSync!.reload();
-          cacheRevision = await doseSync!.cacheRevision();
+          if (wasInitialized) {
+            await doseSync!.reload();
+            cacheRevision = await doseSync!.cacheRevision();
+          }
         }().timeout(_localStoreTimeout);
       } on TimeoutException {
         // 막힌 저장소에 일정 저장까지 기다리면 표시만 더 늦어진다.
@@ -241,6 +251,7 @@ class MedBuddyScheduleViewModel {
       }
       _todayMedicationScheduleList =
           doseSync?.project(scheduleList) ?? scheduleList;
+      _listedScheduleDay = requestDay;
       _hasTodayScheduleLoadError = false;
       _lastTodayScheduleLoadSucceeded = true;
     } on StateError catch (error) {
@@ -284,12 +295,10 @@ class MedBuddyScheduleViewModel {
     return schedule.isSlotCompleted(slotKey);
   }
 
-  // 함수이름: slotKeysForSchedule
-  // 함수역할: 명시 시간대·하루 횟수·완료 상태에서 정한 공통 복약 시간대 목록을 화면에 제공한다.
-  // 매개변수:
-  // - schedule (MedicationSchedule): 처리할 약 이름·복용량·기간·시간대 일정
-  // 반환값:
-  // - List<String>: 명시 시간대·하루 횟수·완료 상태에서 정한 공통 복약 시간대 목록을 화면에 제공한다.
+  // Function Name: slotKeysForSchedule
+  // Description: Resolves the shared ordered dose-slot representation for a schedule.
+  // Parameters: schedule: Medication with explicit slots, frequency and completion metadata.
+  // Returns: The slot keys returned by resolveScheduleSlotKeys.
   List<String> slotKeysForSchedule(MedicationSchedule schedule) {
     return resolveScheduleSlotKeys(schedule);
   }
@@ -327,6 +336,9 @@ class MedBuddyScheduleViewModel {
     bool medicationStatus, {
     String? expectedScheduleDate,
   }) async {
+    if (expectedScheduleDate == null && await _refuseTapOnEarlierDayList()) {
+      return false;
+    }
     if (doseSync != null) {
       if (!(await _ensureCurrentDayCache()).ready) return false;
       return _queueDoseStatus(
@@ -379,14 +391,10 @@ class MedBuddyScheduleViewModel {
     }
   }
 
-  // 함수이름: requestMedicationStatusUpdate
-  // 함수역할: 저장 ID가 있는 일정의 완료 상태를 서버에 반영하고 해당 약만 교체하며 이전 조회 응답을 무효화하고 실패는 안내와 false로 전달한다.
-  // 매개변수:
-  // - medicationSchedule (MedicationSchedule): 처리할 약 이름·복용량·기간·시간대 일정
-  // - medicationStatus (bool): 적용하거나 보존할 복용 완료 여부
-  // - slotKey (String?): morning·lunch·evening·bedtime 복약 시간대 키
-  // 반환값:
-  // - Future<bool>: 저장 ID가 있는 일정의 완료 상태를 서버에 반영하고 해당 약만 교체하며 이전 조회 응답을 무효화하고 실패는 안내와 false로 전달한다.
+  // Function Name: requestMedicationStatusUpdate
+  // Description: Updates a medication's dose state through the durable queue when attached, otherwise through the server.
+  // Parameters: medicationSchedule: Target course; medicationStatus: Desired completion; slotKey: Optional single-slot override.
+  // Returns: Whether accepted; stale-day taps are refused and applicable failures update feedback. Queue acceptance does not mean server acknowledgment.
   Future<bool> requestMedicationStatusUpdate(
     MedicationSchedule medicationSchedule,
     bool medicationStatus, {
@@ -395,6 +403,7 @@ class MedBuddyScheduleViewModel {
     if (medicationSchedule.medicationID.trim().isEmpty) {
       return false;
     }
+    if (await _refuseTapOnEarlierDayList()) return false;
     if (doseSync != null) {
       var target = medicationSchedule;
       if ((await _ensureCurrentDayCache()).refetched) {
@@ -460,8 +469,9 @@ class MedBuddyScheduleViewModel {
 
   // Function Name: _ensureCurrentDayCache
   // Description: Makes sure the queue holds today's schedule before a dose is recorded. A
-  //   notification can arrive before the home screen restores its cache, and the first tap after
-  //   midnight still shows yesterday's list; both refetch once instead of rejecting the tap.
+  //   notification can arrive before the home screen restores its cache; it refetches once
+  //   instead of rejecting the action. A tap on an earlier day's list never gets here
+  //   (`_refuseTapOnEarlierDayList`).
   // Parameters: None.
   // Returns: ready - whether today's schedule is cached; refetched - whether the visible list
   //   was replaced by a new server read. A storage or network failure gives ready == false.
@@ -479,6 +489,27 @@ class MedBuddyScheduleViewModel {
     }
   }
 
+  // Function Name: _refuseTapOnEarlierDayList
+  // Description: A tap on a list drawn for an earlier application day (the app left open
+  //   across midnight) records nothing. Today's list is read instead and the user is asked to
+  //   check it and tap again, so yesterday's row is never recorded as today's dose and
+  //   tonight's reminder of that slot stays. Reminder actions carry their own day and skip this.
+  // Parameters: None.
+  // Returns: True when the tap was refused.
+  Future<bool> _refuseTapOnEarlierDayList() async {
+    final listed = _listedScheduleDay;
+    final today = doseScheduleDay(doseSync?.clock() ?? DateTime.now());
+    if (listed == null || listed == today) return false;
+    await fetchTodayMedicationSchedule();
+    if (_lastTodayScheduleLoadSucceeded) {
+      _statusMessage = _isEnglishSetting
+          ? 'The date has changed and today\'s schedule was loaded. Check it and tap again.'
+          : '날짜가 바뀌어 오늘 일정을 다시 불러왔습니다. 확인한 뒤 다시 눌러주세요.';
+    }
+    _notifyViewModelListeners();
+    return true;
+  }
+
   // Function Name: _reloadBeforeRecordingMessage
   // Description: Feedback for a dose that cannot be matched to today's schedule.
   // Parameters: None. Returns: Localized guidance.
@@ -486,6 +517,10 @@ class MedBuddyScheduleViewModel {
       ? 'Please reload today\'s schedule before recording a dose.'
       : '오늘의 복약 일정을 다시 불러온 뒤 기록해주세요.';
 
+  // Function Name: _queueDoseStatus
+  // Description: Persists one slot update through dose synchronization and reports local acceptance separately from server sync.
+  // Parameters: schedules: Target medications with parseable IDs; slotKey: Dose slot; completed: Desired state; scheduleDate: Optional date guard.
+  // Returns: True only after local acceptance; invalid IDs, refused writes and exceptions return false, with write failures reported to listeners.
   Future<bool> _queueDoseStatus(
     List<MedicationSchedule> schedules,
     String slotKey,

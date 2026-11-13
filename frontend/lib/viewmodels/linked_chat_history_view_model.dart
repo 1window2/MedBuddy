@@ -10,17 +10,10 @@ import '../entities/chat_message_entity.dart';
 import '../services/api_response_parser.dart';
 import '../services/linked_chat_realtime_service.dart';
 
-// Class Name: LinkedChatHistoryViewModel
-// Role: Maintains independently scoped conversation state outside the widget library.
-// Responsibilities:
-// - Coalesce history reads and recover missed pages without losing receipt/deletion evidence.
-// - Poll only during transport/history failure and acknowledge only a visible latest position.
-// - Stop polling and reconnecting once the server answers that the link is gone or forbidden.
-// - Ignore disposed completions and events for another conversation.
-// Attributes:
-// - linkId/userHash: Immutable conversation and account scope.
-// - control/realtime: Borrowed authenticated adapters; their owner disposes them.
-// - Visibility/scroll callbacks: Presentation ports, never mutable sibling state.
+// 클래스명: LinkedChatHistoryViewModel
+// 역할: 연동 채팅의 조회·실시간 이벤트·읽음 상태를 화면과 조정한다.
+// 주요 책임: 메시지를 중복 없이 병합하고 삭제·재연결 복구·읽음 처리를 화면 가시성에 맞춰 적용한다.
+// 속성: linkId/userHash: 대화 범위; control/realtime: 조회·전송 경계; 가시성·스크롤·변경 콜백: 화면 연결; 메시지·삭제 ID·읽음 경계·구독·타이머: 동기화 상태.
 class LinkedChatHistoryViewModel extends ChangeNotifier {
   final int linkId;
   final String userHash;
@@ -51,10 +44,10 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
   int? _peerReadThrough;
   DateTime? _peerReadAt;
 
-  // Function Name: LinkedChatHistoryViewModel
-  // Description: Subscribes to borrowed realtime adapters for one immutable conversation scope.
-  // Parameters: Scope, control/realtime adapters, visibility predicates and presentation callbacks.
-  // Returns: A history owner with no navigation, composer or platform-widget dependencies.
+  // 함수이름: LinkedChatHistoryViewModel
+  // 함수역할: 조회 경계와 화면 콜백을 보관하고 실시간 이벤트·연결 상태를 즉시 구독한다.
+  // 매개변수: linkId (int)/userHash (String): 대화 범위; control (ManageLinkedChat): 조회·변경; realtime (LinkedChatSessionTransport): 실시간 전송; isVisible/isAtLatest (bool Function()): 화면 상태; onScrollRequested (void Function(bool)): 스크롤 요청; onScheduleChanged (void Function()): 일정 갱신; onDeleted (void Function(List<int>)): 삭제 반영; onRead (Future<void> Function(int)?): 읽음 경계 후처리.
+  // 반환값: LinkedChatHistoryViewModel: 구독을 시작한 화면 상태.
   LinkedChatHistoryViewModel({
     required this.linkId,
     required this.userHash,
@@ -239,13 +232,14 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
       final newestKnownId = _recoveryBoundary;
       var page = await control.requestHistory(linkId: linkId);
       // A skipped unparseable row still counts as a server row for paging.
-      final initialPageIsFull = ChatHistoryPage.rowCountOf(page) == 50;
+      final initialPageIsFull =
+          ChatHistoryPage.rowCountOf(page) == ChatHistoryPage.defaultPageSize;
       final incoming = [...page];
       final unread = await unreadFuture;
       int? previousBoundary;
       while (newestKnownId != null &&
           page.isNotEmpty &&
-          ChatHistoryPage.rowCountOf(page) == 50) {
+          ChatHistoryPage.rowCountOf(page) == ChatHistoryPage.defaultPageSize) {
         final oldest = page
             .map((m) => m.messageId)
             .reduce((a, b) => a < b ? a : b);
@@ -334,7 +328,8 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
       if (_disposed) return;
       _merge(older);
       _hasOlderMessages =
-          ChatHistoryPage.rowCountOf(older) == 50 &&
+          ChatHistoryPage.rowCountOf(older) ==
+              ChatHistoryPage.defaultPageSize &&
           older.any((m) => m.messageId < beforeId);
     } catch (_) {
       if (!_disposed) _olderMessagesFailed = true;
@@ -346,10 +341,10 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
     }
   }
 
-  // Function Name: _merge
-  // Description: Retains monotonic read/delete evidence and excludes another conversation's messages.
-  // Parameters: incoming: HTTP, send-result, or realtime messages.
-  // Returns: None; updates the private history snapshot without publishing partial merges.
+  // 함수이름: _merge
+  // 함수역할: 같은 연동의 메시지를 ID별로 병합하고 더 최신 읽음 상태와 삭제·숨김 표식을 보존한다.
+  // 매개변수: incoming (List<ChatMessage>): 수신하거나 조회한 메시지.
+  // 반환값: void; 숨긴 메시지를 제외하고 ID순 불변 목록으로 교체한다.
   void _merge(List<ChatMessage> incoming) {
     final byId = {for (final message in _messages) message.messageId: message};
     for (final message in incoming) {
@@ -406,10 +401,10 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
     onDeleted(ids);
   }
 
-  // Function Name: handleEvent
-  // Description: Validates transport events and applies only this immutable conversation's evidence.
-  // Parameters: event: Realtime message/deletion/read event; legacy events may omit link_id.
-  // Returns: None; malformed or mismatched events are ignored.
+  // 함수이름: handleEvent
+  // 함수역할: 현재 연동의 메시지·삭제·상대 읽음 이벤트를 반영하고 필요한 스크롤·일정·읽음 작업을 요청한다.
+  // 매개변수: event (Map<String, dynamic>): 서버 실시간 이벤트.
+  // 반환값: void; 해제 후·다른 연동·잘못된 지원 이벤트 값은 무시한다.
   void handleEvent(Map<String, dynamic> event) {
     if (_disposed ||
         (event.containsKey('link_id') &&
@@ -474,9 +469,10 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
     }
   }
 
-  // Function Name: markLatestIncomingRead
-  // Description: Coalesces acknowledgements and retries failures only while the latest position remains visible.
-  // Parameters: None. Returns: Completion; disposal invalidates late receipts and recursive follow-ups.
+  // 함수이름: markLatestIncomingRead
+  // 함수역할: 화면이 보이고 최신 위치일 때 수신 메시지를 읽음 처리한다. 실패 시 읽음 경계를 올리지 않아 후속 갱신에서 재시도한다.
+  // 매개변수: 없음.
+  // 반환값: Future<void>: 읽음 시도 완료; 처리 중 새 수신이 생기면 후속 처리를 시작하고 onRead 실패는 흡수한다.
   Future<void> markLatestIncomingRead() async {
     if (_disposed ||
         !isVisible() ||

@@ -20,6 +20,13 @@ void main() {
   const channel = MethodChannel('dexterous.com/flutter/local_notifications');
   final cancelled = <int>[];
 
+  // Function Name: setUp callback
+  // Description:
+  // - Resets preferences, owner and cancellation records and installs a recording Android notification channel.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; the isolated plugin mock is ready.
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     NotificationService.instance.setHistoryUser(null, persistSession: false);
@@ -43,6 +50,13 @@ void main() {
         });
   });
 
+  // Function Name: tearDown callback
+  // Description:
+  // - Removes the notification channel mock and restores the platform override.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; global test hooks are restored.
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
@@ -52,9 +66,18 @@ void main() {
   // Function Name: flag timing test
   // Description: The flag stays unset while any of the four legacy IDs is still uncancelled, and a
   //   cancellation of another ID never counts.
+  // Parameters: None.
+  // Returns: Future<void>: Checks the cancellation log and persisted migration flag.
   test('the flag is written only after all four legacy ids were cancelled', () async {
     final service = NotificationService.instance;
     final preferences = await SharedPreferences.getInstance();
+    // Function Name: flag
+    // Description:
+    // - Reads whether migration has recorded cancellation of all legacy reminder identifiers.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - bool?: Persisted cleanup flag, or null before it is written.
     bool? flag() =>
         preferences.getBool(NotificationService.legacyReminderIdsCancelledKey);
     final legacyIds = [
@@ -78,6 +101,8 @@ void main() {
   // Function Name: cancel-all test
   // Description: Turning reminders off cancels the four legacy IDs itself, so it records the cleanup
   //   on an install whose flag is not yet set.
+  // Parameters: None.
+  // Returns: Future<void>: Checks all legacy IDs and the completed migration flag.
   test('turning all reminders off also records the cleanup', () async {
     final preferences = await SharedPreferences.getInstance();
     expect(

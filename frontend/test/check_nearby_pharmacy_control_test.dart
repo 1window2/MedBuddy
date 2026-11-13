@@ -18,6 +18,7 @@ import 'package:medbuddy_frontend/services/pharmacy_external_action_service.dart
 // - 실제 위치 권한이나 GPS 조회 없이 서울 중심부 좌표를 제공한다.
 // - 앱 권한 설정 화면을 실제로 열지 않고 이동 성공을 재현한다.
 // - 기기 위치 설정 화면을 실제로 열지 않고 이동 성공을 재현한다.
+// 속성: 없음; 좌표와 설정 이동 결과를 고정해 제공한다.
 class _FakeLocationBoundary implements DeviceLocationBoundary {
   // 함수이름: requestCurrentCoordinate
   // 함수역할:
@@ -248,6 +249,13 @@ void main() {
     (name: '  ', address: '서울 마포구 홍익로 1', expected: '서울 마포구 홍익로 1'),
     (name: '  ', address: ' ', expected: '37.5,126.9'),
   ]) {
+    // 함수이름: 길찾기 대상과 웹 대체 경로
+    // 함수역할:
+    // - 외부 앱 실행 실패 후 HTTPS Google 길찾기로 대체하고 이름·주소·좌표의 우선순위에 맞는 목적지 쿼리를 보내는지 확인한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     test('Google 목적지와 웹 대체 경로: ${input.expected}', () async {
       final launched = <Uri>[];
       final service = PharmacyExternalActionService(

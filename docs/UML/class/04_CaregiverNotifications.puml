@@ -36,6 +36,12 @@ package "Flutter Frontend" #E8F4FF {
   class LinkedChatComposerViewModel <<Control>>
   class LinkedChatDoseRecorder <<Control>>
   class DoseSyncService <<Service>>
+  class DoseOutboxStore <<Service>>
+  class SlotCheckNotificationService <<Service>>
+  class SlotCheckNotificationContext <<Entity>>
+  note "SlotCheckNotificationStore\nDoseOutboxStore의 트랜잭션 확장" as SlotCheckStore
+  class MedicationSearchUI <<UI>>
+  class ChatMedicationReference <<Entity>>
   class ChatMessageDraft <<Entity>>
   interface LinkedChatSessionTransport
   class LinkedChatRealtimeService <<Service>>
@@ -85,6 +91,8 @@ package "FastAPI Backend" #EAF8F0 {
   class ProcessChatNotifications <<Control>>
   class ChatNotificationWorker <<Service>>
   class DispatchChatMessageAlert <<Control>>
+  class PushRecipientResolver <<Service>>
+  class ManagePushToken <<Control>>
   note "chat_notification_summary.py\nbuild_chat_notification_summary()" as ChatSummaryModule
   class ChatConnectionManager <<Service>>
   database "chat_messages" as DBChatMessage <<Database>>
@@ -123,7 +131,8 @@ NotificationService --> ChatNotificationSummary : showLinkedChatAlert(): 대화�
 LinkedChatUI --> NotificationService : 읽음 후 clearReadChatAlert()
 PushNotificationService --> ChatNotificationSummary : FCM chat_summary 해석
 note bottom of ChatNotificationSummary
-  대화 하나당 알림 하나: 미확인 수·최근 최대 세 건·보낸 사람·group_tag.
+  일반 채팅은 대화 하나당 알림 하나: 미확인 수·최근 최대 세 건·보낸 사람·group_tag.
+  실행 가능한 확인 요청은 별도의 메시지별 태그를 쓴다.
   요약이 없거나 조회에 실패하면 이번 메시지만으로 표시한다.
   읽은 범위까지의 그룹 알림은 정리하고 더 최신 메시지 알림은 유지한다.
 end note
@@ -133,8 +142,20 @@ ShareMedicationHistory --> ManageChatList : 같은 환자의 현재 활성 대�
 ShareMedicationHistory --> ManageLinkedChat : 동일 기간·상대 재시도 ID
 LinkedChatUI --> ChatMedicationHistoryContext : 공유 당시 상태별 건수
 LinkedChatUI --> MedicationHistoryUI : 최신 기록 재조회; 항상 읽기 전용
+LinkedChatUI --> MedicationSearchUI : 저장 약이 없어도 검색 참조 선택
+ChatMessageDraft --> ChatMedicationReference : 저장 약 ID와 분리된 표시 스냅샷
+LinkedChatUI --> ChatMedicationReference : 일반 채팅 첨부; 복용 동작 없음
+note bottom of ChatMedicationReference
+  품목 코드·제품명·제조사·안전한 이미지 URL만 허용한다.
+  저장 약과 합쳐 최대 10개. 서버는 최근 24시간 약 검색 결과로
+  카드를 다시 만들고, 검색되지 않은 품목은 거절한다(앱은 다시 검색 안내).
+  본문·유형·참조가 바뀐 같은 요청 ID는 거절한다.
+end note
 note bottom of ShareMedicationHistory
   환자 범위와 로그인 세션을 매 단계 확인한다.
+  채팅 + 진입은 대화의 환자·연동을 고정한다(보호자 포함).
+  읽기 전용 최초 조회 성공 후 기간·현재 수신자 확인창을 연다.
+  전송 성공은 대화 복귀·메시지 갱신으로 연결한다.
   대기 ID는 Control 생존 범위에만 보존하며 영속 전송 큐가 아니다.
 end note
 LinkedChatUI *-- LinkedChatHistoryViewModel : account/link/patient session
@@ -162,7 +183,8 @@ note bottom of LinkedChatRealtimeService
 end note
 note bottom of LinkedChatComposerViewModel
   Serializes outgoing sends and retains failed payload/request identity.
-  Attachment comparison is order-independent; primary wire order is preserved.
+  Saved-medication ID comparison is order-independent; primary wire order is preserved.
+  검색 참조는 전체 표시 스냅샷과 순서를 재시도 비교에 포함한다.
   UI keeps text fields, attachments, navigation and care retry display metadata.
   Dose recording keeps its separate operation identities.
   Disposed completions cannot clear or publish another session's draft.
@@ -263,7 +285,30 @@ ProcessChatNotifications --> ChatConnectionManager : 현재 수신자 접속 여
 ProcessChatNotifications --> DispatchChatMessageAlert
 DispatchChatMessageAlert --> DBChatMessage : 현재 읽음·삭제 상태 재검증
 DispatchChatMessageAlert --> DBDevicePushToken
+DispatchChatMessageAlert --> PushRecipientResolver : capability별 토큰 분리
+ManagePushToken --> DBDevicePushToken : Android의 명시적 지원만 등록
+PushRecipientResolver --> DBDevicePushToken
 DispatchChatMessageAlert --> FCM
+FCM --> PushNotificationService : 지원 Android의 당일 확인 요청은 data-only
+PushNotificationService --> SlotCheckNotificationService : 전경·백그라운드 표시
+SlotCheckNotificationService --> SlotCheckNotificationContext : 수신자·환자·날짜·시간대 검증
+SlotCheckNotificationService --> NotificationService : 메시지별 알림 + 복용 완료 버튼
+NotificationService --> SlotCheckNotificationService : 화면 없는 버튼 처리
+SlotCheckNotificationService --> DoseOutboxStore : 실제 당일 일정·소비 표식·완료 의도
+SlotCheckStore ..> DoseOutboxStore : 표식과 요청을 원자적으로 암호화 저장
+SlotCheckNotificationService --> DoseSyncService : 저장 후 기존 영속 동기화
+note bottom of SlotCheckNotificationService
+  현재 기기 계정만 처리하며 자정 뒤 과거 버튼을 거절한다.
+  캐시가 없으면 검증된 기간 창을 복원·조회한다.
+  같은 이벤트를 다시 눌러도 이후 취소한 복용을 복원하지 않는다.
+  저장 뒤 예약·인증·통신 실패는 기존 대기 요청을 버리지 않는다.
+  서버는 소유권·원래 날짜·revision 검증; 연동 소멸은 채팅만 생략한다.
+end note
+note bottom of ManagePushToken
+  f7a2c9e4b610: supports_slot_check_actions 기본 false.
+  구버전 재등록·비Android는 false; 기존 보호자 capability와 별개다.
+  미지원 기기는 기존 OS 알림을 유지한다.
+end note
 DispatchChatMessageAlert --> ChatSummaryModule : 미확인 요약 + chat_summary 데이터
 BManageLinkedChat --> ChatSummaryModule : unread-count 요약 (include_notification_preview)
 note bottom of DispatchChatMessageAlert

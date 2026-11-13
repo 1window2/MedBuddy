@@ -12,16 +12,19 @@ import '../entities/medication_schedule_entity.dart';
 import '../entities/offline_schedule_window.dart';
 import 'api_config.dart';
 import 'dose_outbox_store.dart';
+import 'dose_store_change_signal.dart';
 
-// 함수이름: doseScheduleDay
-// 함수역할: 표시 시간대와 별개로 서버와 같은 기준 날짜를 계산한다.
-// 매개변수: now - 현재 시각. 반환값: 기본 UTC+09:00의 YYYY-MM-DD 날짜.
+// Function Name: doseScheduleDay
+// Description: Uses the shared widget/server clock instead of the display timezone.
+// Parameters: now (DateTime) - instant to assign to a dose day.
+// Returns: YYYY-MM-DD in the configured dose timezone, UTC+09:00 by default.
 String doseScheduleDay(DateTime now) => doseWidgetDay(now);
 
-// 함수이름: projectDoseOperations
-// 함수역할: 서버가 확인한 일정 위에 아직 전송하지 못한 그날의 복용 기록을 순서대로 덮어, 기기에서 본 복용 상태를 만든다.
-// 매개변수: schedules - 서버 일정, operations - 전송 대기 기록(오래된 순), scheduleDay - 기준 날짜(YYYY-MM-DD).
-// 반환값: 대기 기록이 반영된 일정 목록. 다른 날짜나 다른 약의 기록은 반영하지 않는다.
+// Function Name: projectDoseOperations
+// Description: Overlays pending dose changes in queue order onto matching server schedules without mutating them.
+// Parameters: schedules (List<MedicationSchedule>) - confirmed courses; operations (List<Map<String, dynamic>>) - oldest first;
+// - scheduleDay (String): YYYY-MM-DD to project. Operations must have the validated outbox payload shape.
+// Returns: Copied schedules with matching medication/slot statuses and aggregate completion recalculated; other days are ignored.
 List<MedicationSchedule> projectDoseOperations(
   List<MedicationSchedule> schedules,
   List<Map<String, dynamic>> operations,
@@ -48,34 +51,46 @@ List<MedicationSchedule> projectDoseOperations(
   }).toList();
 }
 
-// 함수이름: withoutChatReceipt
-// 함수역할: 채팅 복용 요청을 채팅 메시지 없는 일반 복용 요청으로 바꾼다. 서버가 원래 요청 ID를 이미 받았을 수도 있으므로
-//   다른 본문으로 같은 ID를 다시 쓰지 않게 파생한 새 ID를 붙인다. 같은 복용 상태를 다시 적용해도 결과는 같다.
-// 매개변수: operation - 전송 대기 요청 본문.
-// 반환값: link_id를 뺀 새 요청 본문.
+// Function Name: withoutChatReceipt
+// Description: Removes the chat side effect while retaining the dose change, using a derived ID to avoid reusing an accepted ID with another body.
+// Parameters: operation (Map<String, dynamic>) - queued payload with a string operation_id.
+// Returns: A copy without link_id whose operation_id ends in _nochat; the input is unchanged.
 Map<String, dynamic> withoutChatReceipt(Map<String, dynamic> operation) {
   final id = operation['operation_id'] as String;
   return {...operation, 'operation_id': '${id}_nochat'}..remove('link_id');
 }
 
-// 클래스명: DoseSyncService
-// 역할: 계정별 전송 큐, 일정 캐시, 앱 수명주기에 따른 재시도를 관리한다.
-// 속성: owner/client - 인증 범위와 통신, openStore - 암호화 저장소,
-//       scheduleWork - 백그라운드 예약, onStateChanged - 위젯 등 표시 갱신.
+// Class Name: DoseSyncService
+// Role: Coordinates one account's durable dose queue, schedule cache, and foreground retries.
+// Responsibilities:
+// - Persist dose changes before upload, preserve per-dose ordering, and publish confirmed and pending state separately.
+// - Reject obsolete cache windows and stop session-owned work after disposal.
+// Attributes:
+// - owner (String), client (http.Client): Account scope and caller-owned transport.
+// - openStore, scheduleWork, clock: Injected storage, background scheduling, and time providers.
+// - reconcileWork: Keeps background work only while network work remains (session start and app state changes).
+// - onStateChanged, loadScheduleWindow: Optional display publisher and offline-course loader.
+// - changeSignal: Cross-engine notice; the foreground service reloads when a background engine changed the store.
+// - _operations, _confirmed, _cacheDate: Pending changes and the dated authoritative snapshot.
+// - _disposed, _foreground, _timer: Session lifetime and retry scheduling state.
 class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   final String owner;
   final http.Client client;
   final Future<DoseOutboxStore> Function() openStore;
   final Future<void> Function() scheduleWork;
+  final Future<void> Function() reconcileWork;
   final DateTime Function() clock;
   final Future<void> Function()? onStateChanged;
   final Future<List<MedicationSchedule>> Function()? loadScheduleWindow;
+  final DoseStoreChangeSignal changeSignal;
   Future<void>? _refreshingWindow;
   bool _windowRefreshAgain = false;
   DoseOutboxStore? _store;
   Future<void>? _initializing;
+  bool _initialized = false;
   bool _activationRequested = false;
   Future<void>? _draining;
+  bool _drainAgain = false;
   bool _publishing = false;
   bool _publishAgain = false;
   Timer? _timer;
@@ -85,41 +100,94 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   int _retry = 0;
   List<Map<String, dynamic>> _operations = const [];
   // 외부에서는 읽기만 하고 값은 이 객체만 바꾼다.
+  // Function Name: operations
+  // Description: Exposes the latest queue snapshot for pending/rejected dose presentation.
+  // Parameters: None.
+  // Returns: The current list, not a defensive copy; callers must not mutate it.
   List<Map<String, dynamic>> get operations => _operations;
   // 기기 키가 사라져 전송하지 못하고 버려진 기록 수. 사용자가 확인할 때까지 유지한다.
   int _lostRecordCount = 0;
+  // Function Name: lostRecordCount
+  // Description: Exposes unreadable records lost after encryption-key recovery until acknowledged.
+  // Parameters: None.
+  // Returns: The account's last loaded loss count.
   int get lostRecordCount => _lostRecordCount;
   // 서버가 받은 기록 수. 서버 기록을 보여 주는 화면이 다시 읽을 때를 알려 준다.
   int _acceptedRevision = 0;
+  // Function Name: acceptedRevision
+  // Description: Provides an in-memory receipt counter so history views can detect accepted uploads.
+  // Parameters: None.
+  // Returns: Successful acknowledgements observed by this service, not the store cache revision.
   int get acceptedRevision => _acceptedRevision;
   List<MedicationSchedule> _confirmed = const [];
   String _cacheDate = '';
   String _fingerprint = '';
 
+  // 함수이름: DoseSyncService
+  // 함수역할: 계정별 동기화 의존성을 보관한다. 생성만으로 저장소를 열거나 전송하지 않는다.
+  // 매개변수:
+  // - owner (String), client (http.Client): 계정 키와 호출자가 수명을 관리하는 HTTP 연결
+  // - openStore, scheduleWork: 저장소 열기와 백그라운드 작업 예약 함수. 미지정 예약은 아무 작업도 하지 않는다.
+  // - reconcileWork: 보낼 기록·위젯 갱신이 남았을 때만 백그라운드 작업을 두는 함수. 미지정이면 아무 작업도 하지 않는다.
+  // - clock (DateTime Function()?): 날짜·재시도 기준 시계. 기본값은 DateTime.now
+  // - onStateChanged, loadScheduleWindow: 선택적 표시 갱신 함수와 오프라인 기간 일정 로더
+  // - changeSignal (DoseStoreChangeSignal?): 다른 엔진과 주고받는 저장소 변경 알림. 기본값은 프로세스 공용 이름 등록
+  // 반환값: 아직 시작되지 않은 DoseSyncService.
   DoseSyncService({
     required this.owner,
     required this.client,
     Future<DoseOutboxStore> Function()? openStore,
     Future<void> Function()? scheduleWork,
+    Future<void> Function()? reconcileWork,
     DateTime Function()? clock,
     this.onStateChanged,
     this.loadScheduleWindow,
-  }) : openStore = openStore ?? DoseOutboxStore.open,
+    DoseStoreChangeSignal? changeSignal,
+  }) : changeSignal = changeSignal ?? DoseStoreChangeSignal(),
+       openStore = openStore ?? DoseOutboxStore.open,
        scheduleWork = scheduleWork ?? (() async {}),
+       reconcileWork = reconcileWork ?? (() async {}),
        clock = clock ?? DateTime.now;
 
-  // 함수이름: hasScheduledRetry
-  // 함수역할: 다음 자동 재전송이 예약되어 있는지 알려 준다. 보낼 기록이 없을 때 재시도가 남지 않는지 확인하는 데 쓴다.
-  // 매개변수: 없음. 반환값: 예약된 재시도 타이머가 살아 있으면 true.
+  // Function Name: hasScheduledRetry
+  // Description: Makes foreground retry scheduling observable in tests.
+  // Parameters: None.
+  // Returns: True only while the next retry timer remains active.
   @visibleForTesting
   bool get hasScheduledRetry => _timer?.isActive ?? false;
 
+  // Function Name: pendingCount
+  // Description: Counts the loaded queue, including server-rejected records awaiting a decision.
+  // Parameters: None.
+  // Returns: Number of pending-list entries, not only uploadable entries.
   int get pendingCount => _operations.length;
+  // Function Name: hasBlocked
+  // Description: Detects whether any loaded record needs explicit retry or dismissal after rejection.
+  // Parameters: None.
+  // Returns: True when at least one operation has state blocked.
   bool get hasBlocked => _operations.any((op) => op['state'] == 'blocked');
+  // 함수이름: hasCache
+  // 함수역할: 마지막 캐시가 현재 복약 기준일의 것인지 확인한다.
+  // 매개변수: 없음.
+  // 반환값: 캐시 날짜가 오늘과 같으면 true. 목록이 비어 있어도 날짜가 맞으면 유효하다.
   bool get hasCache => _cacheDate == doseScheduleDay(clock());
+  // 함수이름: schedules
+  // 함수역할: 오늘 유효한 서버 일정에 대기 중 복용 변경을 반영한다.
+  // 매개변수: 없음.
+  // 반환값: 표시할 일정 목록. 오늘 캐시가 없으면 빈 목록.
   List<MedicationSchedule> get schedules =>
       project(hasCache ? _confirmed : const []);
 
+  // 함수이름: isInitialized
+  // 함수역할: 저장소 열기와 첫 재조회가 끝났는지 알려 준다.
+  // 매개변수: 없음.
+  // 반환값: 초기화가 끝났으면 true. 아직이면 다음 initialize가 메모리 상태를 막 다시 읽는다.
+  bool get isInitialized => _initialized;
+
+  // 함수이름: initialize
+  // 함수역할: 저장소 초기화를 공유하고 실패한 호출은 다음 요청에서 재시도할 수 있게 한다.
+  // 매개변수: activate (bool) - 초기화 시 이 계정을 활성화할지 여부. 재시도에도 요청을 유지한다.
+  // 반환값: 초기화·재조회 완료 Future. 저장소 오류는 전파하며 완료된 초기화를 다시 실행하지 않는다.
   Future<void> initialize({bool activate = false}) {
     // 첫 열기가 실패한 뒤의 재시도도 처음 요청한 계정 활성화를 수행해야 한다.
     _activationRequested = _activationRequested || activate;
@@ -133,22 +201,45 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     });
   }
 
+  // 함수이름: _initialize
+  // 함수역할: 저장소를 연 뒤 살아 있는 세션만 활성 계정을 바꾸고 캐시를 읽는다.
+  // 매개변수: activate (bool) - 이 계정의 활성화 필요 여부
+  // 반환값: 초기화 완료 Future. 열기·활성화 도중 dispose되면 후속 작업을 중단하고 저장소 오류는 전파한다.
   Future<void> _initialize(bool activate) async {
     _store = await openStore();
-    if (activate) await _store!.activate(owner);
+    if (_disposed) return;
+    if (activate) {
+      await _store!.activate(owner, isCurrent: () => !_disposed);
+    }
+    if (_disposed) return;
     await reload();
+    _initialized = true;
   }
 
+  // 함수이름: start
+  // 함수역할: 계정을 초기화하고 앱 상태 감시·백그라운드 예약·첫 전송을 시작한다.
+  // 매개변수: 없음. 같은 인스턴스의 시작은 소유자가 한 번 요청한다.
+  // 반환값: 초기화와 예약 요청 완료 Future. 실제 전송 완료는 기다리지 않으며 초기화 오류는 전파한다.
   Future<void> start() async {
     await initialize(activate: true);
     if (_disposed) return;
     _observing = true;
     WidgetsBinding.instance.addObserver(this);
-    unawaited(scheduleWork().catchError((_) {}));
+    // 백그라운드 엔진(전송 작업, 알림 갱신)이 같은 저장소를 바꾸면 이 엔진은 모른다. 알림을 받으면 다시 읽어
+    // 화면이 옛 일정이나 이미 보낸 기록을 붙들지 않게 한다.
+    changeSignal.listen(() {
+      if (!_disposed) unawaited(reload().catchError((Object _) {}));
+    });
+    // Records left from an earlier run get their upload job back; with nothing to send, no job is kept.
+    unawaited(reconcileWork().catchError((_) {}));
     unawaited(drain());
     _scheduleRetry();
   }
 
+  // 함수이름: reload
+  // 함수역할: 오프라인 오늘 일정을 준비하고 캐시·전송 대기·유실 건수를 다시 읽어 달라진 상태만 알린다.
+  // 매개변수: 없음. initialize로 저장소가 열린 상태여야 한다.
+  // 반환값: 읽기와 표시 갱신 요청 완료 Future. 저장소 오류는 전파한다.
   Future<void> reload() async {
     await prepareOfflineCache(_store!, owner: owner, now: clock());
     final cache = await _store!.readCache(owner);
@@ -166,9 +257,10 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  // 함수이름: _stateFingerprint
-  // 함수역할: 화면·위젯에 보이는 상태가 실제로 바뀌었는지 비교할 값을 만든다.
-  // 매개변수: cache - 저장소에 있는 일정 캐시. 반환값: 기준일·캐시·대기 기록을 합친 문자열.
+  // Function Name: _stateFingerprint
+  // Description: Detects presentation changes across the dose day, cache, queue, and loss count.
+  // Parameters: cache (Map<String, dynamic>?) - last stored authoritative snapshot.
+  // Returns: JSON comparison key; values must remain JSON-encodable.
   String _stateFingerprint(Map<String, dynamic>? cache) => jsonEncode([
     doseScheduleDay(clock()),
     cache,
@@ -176,12 +268,20 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     _lostRecordCount,
   ]);
 
+  // 함수이름: cacheRevision
+  // 함수역할: 비동기 조회 시작 시 오래된 응답 저장을 막을 현재 계정 캐시 버전을 읽는다.
+  // 매개변수: 없음.
+  // 반환값: 저장된 버전 번호 Future. 초기화·저장소 오류는 전파한다.
   Future<int> cacheRevision() async {
     await initialize();
     return _store!.cacheRevision(owner);
   }
 
   // 앱과 위젯이 같은 기간·복용 주기 규칙으로 오늘 일정을 만든다.
+  // 함수이름: prepareOfflineCache
+  // 함수역할: 검증된 기간 일정에서 해당 복약 날짜의 일정을 투영하도록 저장소에 요청한다.
+  // 매개변수: store (DoseOutboxStore) - 열린 저장소; owner (String?) - 계정, null이면 활성 계정; now (DateTime) - 기준 시각.
+  // 반환값: 저장소 갱신 완료 Future. 유효 기간 밖의 일정은 투영하지 않으며 저장소 오류는 전파한다.
   static Future<void> prepareOfflineCache(
     DoseOutboxStore store, {
     String? owner,
@@ -195,6 +295,10 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     )?.map((course) => course.toJson()).toList(),
   );
 
+  // 함수이름: refreshScheduleWindow
+  // 함수역할: 동시에 들어온 기간 갱신을 공유하고 진행 중 추가 요청은 완료 뒤 한 번 더 실행한다.
+  // 매개변수: 없음.
+  // 반환값: 현재 갱신 완료 Future. 뒤에 예약한 재갱신까지 기다리는 것은 아니다.
   Future<void> refreshScheduleWindow() {
     final pending = _refreshingWindow;
     if (pending != null) {
@@ -210,6 +314,10 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     });
   }
 
+  // 함수이름: invalidateSchedule
+  // 함수역할: 처방 변경 후 오늘·기간 캐시를 무효화하고 표시 상태를 다시 읽는다.
+  // 매개변수: 없음.
+  // 반환값: 무효화·재조회 완료 Future. 저장소 오류는 전파한다.
   Future<void> invalidateSchedule() async {
     await initialize();
     await _store!.invalidateDoseSchedules(owner);
@@ -217,6 +325,10 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   // 처방 변경 요청 전에 일정을 비우되 되돌릴 수 있게 보관한다.
+  // Function Name: suspendSchedule
+  // Description: Temporarily removes dose schedules before a regimen write and publishes the cleared state.
+  // Parameters: None.
+  // Returns: A revision-guarded backup, or null when the store cannot suspend this account; storage errors propagate.
   Future<DoseScheduleBackup?> suspendSchedule() async {
     await initialize();
     final backup = await _store!.suspendDoseSchedules(owner);
@@ -227,6 +339,10 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   // 변경이 서버에 적용되지 않았을 때 보관한 일정을 되돌린다. 그사이 다른 기록이 있었으면
   // 이전처럼 비운 상태로 둔다. 서버는 처방이 바뀐 뒤의 오프라인 기록을 거부하므로,
   // 응답만 잃은 변경이 실제로 적용됐어도 잘못된 기록은 남지 않는다.
+  // Function Name: restoreSchedule
+  // Description: Restores a suspended snapshot only if still safe; otherwise leaves schedules invalidated and reloads state.
+  // Parameters: backup (DoseScheduleBackup?) - snapshot from suspendSchedule, possibly absent.
+  // Returns: Completion after restoration/invalidation and reload; storage failures propagate.
   Future<void> restoreSchedule(DoseScheduleBackup? backup) async {
     await initialize();
     if (backup == null || !await _store!.restoreDoseSchedules(owner, backup)) {
@@ -235,6 +351,10 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     await reload();
   }
 
+  // Function Name: _refreshScheduleWindow
+  // Description: Fetches courses with day/revision guards and requests another read after a revision collision.
+  // Parameters: None; uses the injected loader and account store.
+  // Returns: Completion without throwing on retrieval/storage failure; absent loaders and disposed sessions do nothing.
   Future<void> _refreshScheduleWindow() async {
     final loader = loadScheduleWindow;
     if (loader == null || _disposed) return;
@@ -261,6 +381,11 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  // Function Name: cacheScheduleWindow
+  // Description: Saves a bounded offline window only for today's live session and the expected store revision.
+  // Parameters: courses (List<MedicationSchedule>) - server courses; startDay (String) - valid YYYY-MM-DD;
+  // - expectedRevision (int): Cache version captured before loading.
+  // Returns: False for stale day/session/revision; otherwise the store result. Invalid dates and storage errors propagate.
   Future<bool> cacheScheduleWindow(
     List<MedicationSchedule> courses, {
     required String startDay,
@@ -280,6 +405,10 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     }, expectedRevision: expectedRevision);
   }
 
+  // 함수이름: offlineWindow
+  // 함수역할: 저장된 기간 일정이 오늘까지 유효하게 투영되는지 확인한다.
+  // 매개변수: 없음.
+  // 반환값: 유효한 원본 기간 데이터 또는 null. 초기화·읽기 오류는 전파한다.
   Future<Map<String, dynamic>?> offlineWindow() async {
     await initialize();
     final window = await _store!.readOfflineScheduleWindow(owner);
@@ -290,6 +419,10 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
         : null;
   }
 
+  // 함수이름: resumeAfterAbortedSignOut
+  // 함수역할: 취소된 로그아웃의 원래 세션임을 확인하며 저장소 세션과 재전송을 복구한다.
+  // 매개변수: isCurrent (bool Function()) - 호출자의 세션이 아직 같은지 확인하는 함수
+  // 반환값: 복구와 재조회 후에도 현재 세션이면 true. 계정 변경·종료·복구 거부는 false, 저장소 오류는 전파한다.
   Future<bool> resumeAfterAbortedSignOut(bool Function() isCurrent) async {
     await initialize();
     if (_disposed || !isCurrent()) return false;
@@ -309,10 +442,10 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   // Description: Cache a same-day read without relabeling it across async work.
   // Parameters: schedules - server snapshot; scheduleDate - day at request start;
   //   expectedRevision - optional guard against intervening sync receipts.
-  // Returns: Completion, or StateError if the snapshot has already expired.
-  //   awaitScheduleWindow - wait for the 14-day offline window that the store
+  // - awaitScheduleWindow (bool): Wait for the 14-day offline window that the store
   //   replaces with every same-day snapshot; a background worker must, because
   //   its process may end before an unawaited refresh finishes.
+  // Returns: Completion, or StateError for an expired day; rejected revisions reload current state without replacing it.
   Future<void> cacheSchedules(
     List<MedicationSchedule> schedules, {
     required String scheduleDate,
@@ -341,6 +474,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     _operations = await _store!.pending(owner);
     // The next reload must not report this same snapshot as a new change.
     _fingerprint = _stateFingerprint(cache);
+    changeSignal.notify();
     await _publishState();
     final window = refreshScheduleWindow();
     if (awaitScheduleWindow) {
@@ -350,6 +484,10 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  // 함수이름: _publishState
+  // 함수역할: 표시 갱신 요청을 하나의 비동기 실행으로 합치며 종료된 세션에서는 무시한다.
+  // 매개변수: 없음.
+  // 반환값: 갱신 요청 접수 완료 Future. onStateChanged의 실제 완료는 기다리지 않는다.
   Future<void> _publishState() async {
     if (_disposed || onStateChanged == null) return;
     _publishAgain = true;
@@ -359,6 +497,10 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   // 기기 저장 이후 표시 작업은 전송을 막지 않고 최신 변경을 합쳐 반영한다.
+  // 함수이름: _publishLoop
+  // 함수역할: 추가 요청이 있는 동안 표시 콜백을 순차 실행하고 실패해도 전송 기록은 유지한다.
+  // 매개변수: 없음.
+  // 반환값: 요청이 소진되거나 세션이 종료되면 완료. 콜백 예외는 삼키고 실행 중 표시를 해제한다.
   Future<void> _publishLoop() async {
     try {
       do {
@@ -374,6 +516,10 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  // Function Name: project
+  // Description: Applies this service's queued changes for the current dose day to a supplied snapshot.
+  // Parameters: schedules (List<MedicationSchedule>) - confirmed schedules to project.
+  // Returns: New schedule copies with pending status overrides; source schedules are unchanged.
   List<MedicationSchedule> project(List<MedicationSchedule> schedules) =>
       projectDoseOperations(schedules, _operations, doseScheduleDay(clock()));
 
@@ -419,6 +565,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     });
     _operations = await _store!.pending(owner);
     if (!_disposed) notifyListeners();
+    changeSignal.notify();
     await _publishState();
     // OS 작업 예약이 실패해도 기록은 남아 다음 앱 실행이나 주기 작업에서 재전송한다.
     unawaited(scheduleWork().catchError((_) {}));
@@ -427,12 +574,41 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     return true;
   }
 
-  Future<void> drain() =>
-      _draining ??= _drain().whenComplete(() => _draining = null);
+  // 함수이름: drain
+  // 함수역할: 동시 호출이 같은 전송 작업을 기다리도록 한다. 진행 중인 전송은 이미 큐를 읽었거나 마지막 재시도
+  //          판단을 하는 중일 수 있으므로, 그동안 들어온 요청은 한 번 더 전송하게 한다.
+  // 매개변수: 없음.
+  // 반환값: 현재 큐 처리(추가 요청분 포함) 완료 Future. 한 번에 전체 큐가 전송된다는 보장은 없다.
+  Future<void> drain() {
+    if (_draining != null) {
+      _drainAgain = true;
+      return _draining!;
+    }
+    return _draining = _drainUntilSettled().whenComplete(
+      () => _draining = null,
+    );
+  }
 
+  // Function Name: _drainUntilSettled
+  // Description: Runs upload passes until no drain request arrived during the last one.
+  // Parameters: None.
+  // Returns: Completion of the last pass; a disposed service stops repeating.
+  Future<void> _drainUntilSettled() async {
+    do {
+      _drainAgain = false;
+      await _drain();
+    } while (_drainAgain && !_disposed);
+  }
+
+  // Function Name: _drain
+  // Description: Leases at most 100 ordered operations, uploads and acknowledges them, and preserves retryable failures.
+  // - Permanent HTTP failures block that dose chain; a daily chat limit removes only the chat side effect.
+  // Parameters: None; uses the active owner, transport, clock, and store.
+  // Returns: Completion after state reload and retry scheduling; caught upload failures leave records queued.
   Future<void> _drain() async {
     final acceptedBefore = _acceptedRevision;
     var reloaded = false;
+    var storeChanged = false;
     try {
       await initialize();
       for (var count = 0; count < 100 && !_disposed; count++) {
@@ -445,6 +621,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
           clock().millisecondsSinceEpoch,
         );
         if (op == null) break;
+        storeChanged = true;
         final id = op['operation_id'] as String;
         try {
           if (!await _store!.isActive(owner) || _disposed) {
@@ -520,14 +697,15 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
       if (!reloaded && _acceptedRevision != acceptedBefore && !_disposed) {
         notifyListeners();
       }
+      if (storeChanged) changeSignal.notify();
       await _scheduleRetryIfUploadable();
     }
   }
 
-  // 함수이름: _scheduleRetryIfUploadable
-  // 함수역할: 전송을 다시 시도할 기록이 남아 있을 때만 재시도를 예약한다. 모두 보냈거나 서버 거부로 보류된
-  //   기록만 남았으면 예약을 지우고 대기 간격을 처음으로 되돌린다. 저장소를 확인하지 못하면 재시도를 예약한다.
-  // 매개변수: 없음. 반환값: 예약 결정 완료 Future.
+  // Function Name: _scheduleRetryIfUploadable
+  // Description: Clears retries/backoff when nothing is uploadable; storage inspection failures conservatively retain retries.
+  // Parameters: None.
+  // Returns: Completion after the retry decision; disposed sessions do nothing.
   Future<void> _scheduleRetryIfUploadable() async {
     if (_disposed) return;
     var uploadable = true;
@@ -547,11 +725,10 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     _scheduleRetry();
   }
 
-  // 함수이름: flushPending
-  // 함수역할: 세션을 끝내기 전에 전송 대기 기록을 정해진 시간 안에서 한 번 더 올려 본다. 올리지 못한 기록은
-  //   대기열에 그대로 남아 같은 계정이 이 기기에 다시 로그인하면 전송된다.
-  // 매개변수: limit - 기다릴 최대 시간.
-  // 반환값: 전송을 마쳤거나 시간이 지나면 완료. 저장소·네트워크 오류로도 실패하지 않는다.
+  // Function Name: flushPending
+  // Description: Makes one best-effort upload attempt before session teardown without deleting unaccepted records.
+  // Parameters: limit (Duration) - timeout applied separately to initialization, eligibility lookup, and draining.
+  // Returns: Completion on success, timeout, or failure; timing out does not cancel an already-running upload.
   Future<void> flushPending({
     Duration limit = const Duration(seconds: 4),
   }) async {
@@ -566,12 +743,22 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  // 함수이름: retryNow
+  // 함수역할: 서버 거부로 보류된 기록을 다시 대기 상태로 바꾼 뒤 전송을 시도한다.
+  // 매개변수: 없음.
+  // 반환값: 재시도 처리 완료 Future. 초기화·보류 해제 오류는 전파한다.
   Future<void> retryNow() async {
     await initialize();
     await _store!.retryBlocked(owner);
+    // The released records are uploadable again; if this drain fails, the background job sends them.
+    unawaited(scheduleWork().catchError((_) {}));
     await drain();
   }
 
+  // 함수이름: discardRejected
+  // 함수역할: 지정한 보류 기록만 삭제하고 화면을 갱신한 뒤 나머지 기록을 전송한다.
+  // 매개변수: id (String) - 사용자가 버리기로 선택한 operation_id
+  // 반환값: 삭제·재조회·전송 시도 완료 Future. 저장소 오류는 전파한다.
   Future<void> discardRejected(String id) async {
     await initialize();
     await _store!.discardRejected(owner, id);
@@ -579,15 +766,20 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     await drain();
   }
 
-  // 함수이름: acknowledgeLostRecords
-  // 함수역할: 사용자가 유실 안내를 확인하면 건수 표시를 지우고 화면을 갱신한다.
-  // 매개변수: 없음. 반환값: 반영 완료 Future.
+  // Function Name: acknowledgeLostRecords
+  // Description: Clears the account's loss notice after acknowledgement and reloads the presentation state.
+  // Parameters: None.
+  // Returns: Completion after persistence and reload; storage failures propagate.
   Future<void> acknowledgeLostRecords() async {
     await initialize();
     await _store!.clearLostOperations(owner);
     await reload();
   }
 
+  // Function Name: deleteAccountData
+  // Description: Deactivates the store, deletes this account's persisted data, and clears its in-memory dose state.
+  // Parameters: None; callers coordinate session teardown before invoking this destructive account cleanup.
+  // Returns: Completion after deletion; storage failures propagate and no listener notification is emitted here.
   Future<void> deleteAccountData() async {
     await initialize();
     await _store!.activate(null);
@@ -598,6 +790,10 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     _cacheDate = '';
   }
 
+  // 함수이름: _scheduleRetry
+  // 함수역할: 기존 타이머를 취소하고 활성 화면에서만 5·15·30·60·120초 간격으로 전송을 예약한다.
+  // 매개변수: 없음.
+  // 반환값: 없음. 최대 간격은 120초이며 종료·백그라운드 상태에서는 새 타이머를 만들지 않는다.
   void _scheduleRetry() {
     _timer?.cancel();
     if (_disposed || !_foreground) return;
@@ -606,28 +802,39 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     _timer = Timer(Duration(seconds: seconds), () => unawaited(drain()));
   }
 
+  // 함수이름: didChangeAppLifecycleState
+  // 함수역할: 앱 상태가 바뀌면 대기 타이머를 취소하고 화면 복귀 시 즉시 전송을 요청한다. 복귀·백그라운드 전환 때 백그라운드 작업 예약도 맞춘다.
+  // 매개변수: state (AppLifecycleState) - Flutter가 전달한 새 상태
+  // 반환값: 없음. 전송 완료를 기다리지 않는다.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
     _timer?.cancel();
     if (_foreground) unawaited(drain());
+    if (_foreground || state == AppLifecycleState.paused) {
+      // Leaving or returning to the app re-checks that queued records keep a background job.
+      unawaited(reconcileWork().catchError((_) {}));
+    }
   }
 
+  // 함수이름: dispose
+  // 함수역할: 후속 세션 작업을 막고 재시도 타이머·앱 상태 감시를 정리한다.
+  // 매개변수: 없음.
+  // 반환값: 없음. 호출자가 제공한 HTTP 연결과 공유 저장소는 닫지 않는다.
   @override
   void dispose() {
     _disposed = true;
     _timer?.cancel();
+    changeSignal.close();
     if (_observing) WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 }
 
-// 함수이름: _isChatDailyLimit
-// 함수역할: 429 응답이 하루 채팅 한도 초과인지 서버 문구로 판정한다. 분당 요청 한도나 주소별 한도의 429와 구분한다.
-// 매개변수:
-// - response (http.Response): 복용 기록 전송의 429 응답
-// 반환값:
-// - bool: 하루 채팅 한도 초과이면 true.
+// Function Name: _isChatDailyLimit
+// Description: Distinguishes the server's daily chat quota message from other HTTP 429 rate limits.
+// Parameters: response (http.Response) - rejected dose-upload response, expected to be 429 by the caller.
+// Returns: True for the recognized detail text; malformed UTF-8/JSON or another response body returns false.
 bool _isChatDailyLimit(http.Response response) {
   try {
     final decoded = jsonDecode(utf8.decode(response.bodyBytes));

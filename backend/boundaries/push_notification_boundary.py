@@ -47,6 +47,7 @@ class PushDeliveryResult:
 # - Control 계층에서 사용할 기기 푸시 전송 계약을 정의한다.
 # 주요 책임:
 # - 기기 토큰, 표시 문구와 화면 이동 데이터를 받아 성공 및 실패 분류 결과를 제공한다.
+# 속성: 계약 자체에 저장 상태는 없으며 실제 연결·저장소는 구현체가 관리한다.
 class PushNotificationBoundary(Protocol):
     # 함수이름: send_notification
     # 함수역할:
@@ -73,6 +74,7 @@ class PushNotificationBoundary(Protocol):
 # - Firebase가 비활성화된 로컬 데모에서 푸시 요청을 안전하게 무시한다.
 # 주요 책임:
 # - 외부 SDK를 호출하지 않고 성공 수 0인 결과로 로컬 데모 흐름을 유지한다.
+# 속성: 없음. 외부 연결이나 토큰을 저장하지 않는 무상태 구현이다.
 class DisabledPushNotificationBoundary:
     # 함수이름: send_notification
     # 함수역할:
@@ -95,16 +97,10 @@ class DisabledPushNotificationBoundary:
         return PushDeliveryResult(success_count=0)
 
 
-# Class Name: FirebasePushNotificationBoundary
-# Role:
-# - Sends caregiver FCM notifications through Firebase Admin.
-# Responsibilities:
-# - Reuse the application-specific Admin app.
-# - Deduplicate and batch at most 500 tokens per multicast.
-# - Return invalid tokens for control-layer cleanup and count retryable failures.
-# Attributes:
-# - _app (App): Shared Firebase Admin app.
-# - _MAX_MULTICAST_TOKENS (int): Provider batch-size limit.
+# 클래스명: FirebasePushNotificationBoundary
+# 역할: 보호자·연동 채팅 알림을 Firebase Admin으로 전달한다.
+# 주요 책임: 토큰 중복을 제거해 최대 500개씩 전송하고 행동 버튼 지원·이벤트 그룹을 반영하며 영구 무효 토큰과 재시도 실패를 분리한다.
+# 속성: _app은 공유 Firebase App, _MAX_MULTICAST_TOKENS (int)는 배치 상한이다.
 class FirebasePushNotificationBoundary:
     _MAX_MULTICAST_TOKENS = 500
 
@@ -118,16 +114,10 @@ class FirebasePushNotificationBoundary:
     def __init__(self, project_id: str) -> None:
         self._app = get_firebase_admin_app(project_id)
 
-    # Function Name: send_notification
-    # Description:
-    # - Deduplicate nonblank tokens, send high-priority FCM batches and classify permanent versus retryable per-device failures.
-    # Parameters:
-    # - tokens (list[str]): Device registration tokens targeted by this notification.
-    # - title (str): Notification title displayed on the receiving device.
-    # - body (str): Notification text displayed on the receiving device.
-    # - data (dict[str, str]): String-valued routing data attached to the push notification.
-    # Returns:
-    # - Success count, permanently invalid tokens and retryable failure count; an empty target set yields zero counts.
+    # 함수이름: send_notification
+    # 함수역할: 빈 토큰·중복을 제거하고 배치 전송하며 이벤트별 그룹과 지원 기기의 데이터 전용 행동 알림을 구성한다.
+    # 매개변수: tokens (list[str])는 기기, title·body (str)는 표시 문구, data (dict[str, str])는 신뢰된 유형·그룹·행동 문맥이다.
+    # 반환값: 성공 수·영구 무효 토큰·재시도 실패를 담은 PushDeliveryResult. 대상이 없으면 0이며 SDK 호출 자체의 오류는 전달한다.
     def send_notification(
         self,
         *,
@@ -162,6 +152,11 @@ class FirebasePushNotificationBoundary:
             else None
         )
         is_chat = data.get("type") == "linked_chat_message"
+        # Android 버튼은 앱의 백그라운드 수신기가 직접 그려야 하므로 OS 자동 표시를 끈다.
+        data_only = data.get("action_version") == "1" and (
+            data.get("type") == "caregiver_slot_missed"
+            or (is_chat and data.get("message_kind") == "slot_check_request")
+        )
         chat_group = data.get("chat_group", "")
         chat_count = None
         if is_chat and re.fullmatch(r"medbuddy-chat-[0-9a-f]{32}", chat_group):
@@ -180,14 +175,12 @@ class FirebasePushNotificationBoundary:
             response = messaging.send_each_for_multicast(
                 messaging.MulticastMessage(
                     tokens=token_batch,
-                    notification=(None if data.get("type") == "caregiver_slot_missed"
-                                  and data.get("action_version") == "1"
+                    notification=(None if data_only
                                   else messaging.Notification(title=title, body=body)),
                     data=data,
                     android=messaging.AndroidConfig(
                         priority="high",
-                        notification=(None if data.get("type") == "caregiver_slot_missed"
-                                      and data.get("action_version") == "1" else messaging.AndroidNotification(
+                        notification=(None if data_only else messaging.AndroidNotification(
                             channel_id="medbuddy_linked_chat" if is_chat else "medbuddy_caregiver_updates",
                             tag=notification_key,
                             notification_count=chat_count,

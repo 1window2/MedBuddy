@@ -1,6 +1,12 @@
+// 파일명: find_hospital_department_control.dart
+// 역할: 일상 표현을 기기 내 진료과 검색어에 연결하고 긴급 안내 표현을 구분한다.
 // 진단 대신 일상 표현과 진료과 이름을 연결하는 기기 내 검색. 검색어는 저장·전송하지 않는다.
 // 진료 분야 참고: https://www.seoulmc.or.kr/site/board/medicalguide/medicalInfo/dictionary/healthSearchList.do
 // https://www.amc.seoul.kr/asan/departments/deptListTypeA.do
+// Class Name: FindHospitalDepartment
+// Role: Matches everyday search phrases to local hospital department identifiers without diagnosing symptoms.
+// Responsibilities: Rank supplied department names and related terms, and route recognized urgent phrases to an emergency-department result when available.
+// Attributes: _terms/_wordStartTerms hold local phrase rules; _patterns caches matchers; no query is persisted or transmitted.
 class FindHospitalDepartment {
   static const _terms = <String, List<String>>{
     'D001': [
@@ -219,9 +225,17 @@ class FindHospitalDepartment {
   // 입력할 때마다 호출되므로 한 번 만든 패턴은 다시 컴파일하지 않는다.
   static final _patterns = <String, RegExp>{};
 
+  // Function Name: _normalize
+  // Description: Normalizes a search phrase for punctuation-insensitive local matching.
+  // Parameters: value: Raw query or department label.
+  // Returns: Lowercase text with the configured ignored characters removed.
   static String _normalize(String value) =>
       value.toLowerCase().replaceAll(_ignoredCharacters, '');
 
+  // Function Name: _containsTerm
+  // Description: Matches ASCII terms at word boundaries and other terms against normalized text.
+  // Parameters: query: Original text; normalized: Normalized query; term: Rule or department label.
+  // Returns: Whether the term matches; ASCII multiword rules accept varying whitespace.
   static bool _containsTerm(String query, String normalized, String term) =>
       _asciiTerm.hasMatch(term)
       ? (_patterns[term] ??= RegExp(
@@ -230,11 +244,18 @@ class FindHospitalDepartment {
         )).hasMatch(query)
       : normalized.contains(term);
 
+  // Function Name: _startsWord
+  // Description: Matches a rule at the start of a whitespace-delimited word, allowing spaces between its characters.
+  // Parameters: query: Original text; term: Predefined word-start rule.
+  // Returns: Whether the cached regular expression finds a match.
   static bool _startsWord(String query, String term) => (_patterns[term] ??=
           RegExp('(?:^|\\s)${term.split('').join(r'\s*')}'))
       .hasMatch(query);
 
-  // 한 증상을 한 진료과로 확정하지 않고 명칭 일치·연관 표현 순으로 여러 결과를 반환한다.
+  // Function Name: search
+  // Description: Ranks matching departments by exact name, partial name and related phrases rather than assigning a diagnosis.
+  // Parameters: query: User search text; departments: ID-to-Korean/English label map.
+  // Returns: Matching IDs by descending score then ID; empty for no match, or only D024 for recognized urgency when supplied.
   static List<String> search(
     String query,
     Map<String, (String, String)> departments,
@@ -271,7 +292,10 @@ class FindHospitalDepartment {
     });
   }
 
-  // 명시적인 응급 표현은 일반 외래 검색으로만 유도하지 않는다.
+  // Function Name: needsUrgentHelp
+  // Description: Recognizes a fixed set of explicit urgent phrases for emergency guidance.
+  // Parameters: query: User search text.
+  // Returns: Whether normalized text contains an urgency rule; this is not a clinical assessment.
   static bool needsUrgentHelp(String query) {
     final text = _normalize(query);
     return [

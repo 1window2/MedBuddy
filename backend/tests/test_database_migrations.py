@@ -18,6 +18,13 @@ from entities.chat_message_entity import _ChatMessage
 from entities.pharmacy_catalog_entity import PharmacyCatalogRecord
 
 
+# 함수이름: test_empty_database_bootstrap_uses_alembic_and_is_repeatable
+# 함수역할:
+# - 빈 데이터베이스를 Alembic으로 반복 준비해도 ID 보호·카탈로그·토큰 기능 스키마가 정상 유지되는지 확인한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# 반환값:
+# - None.
 def test_empty_database_bootstrap_uses_alembic_and_is_repeatable(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite:///{(tmp_path / 'bootstrap.db').as_posix()}")
     try:
@@ -31,13 +38,21 @@ def test_empty_database_bootstrap_uses_alembic_and_is_repeatable(tmp_path: Path)
                 ).scalar_one()
                 assert "AUTOINCREMENT" in definition.upper()
         assert inspect(engine).has_table("catalog_refresh_state")
-        assert {"supports_caregiver_actions", "registration_version"} <= {
+        assert {"supports_caregiver_actions", "supports_slot_check_actions", "registration_version"} <= {
             column["name"] for column in inspect(engine).get_columns("device_push_tokens")
         }
     finally:
         engine.dispose()
 
 
+# 함수이름: test_unversioned_database_is_rejected_without_changing_data_or_schema
+# 함수역할:
+# - 개정 기록 없는 기존 DB는 자동 생성 설정과 무관하게 거부하고 데이터·테이블을 보존하는지 확인한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# - auto_create: bool; 빈 DB 자동 생성 허용 여부.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("auto_create", [False, True])
 def test_unversioned_database_is_rejected_without_changing_data_or_schema(
     tmp_path: Path, auto_create: bool,
@@ -56,6 +71,13 @@ def test_unversioned_database_is_rejected_without_changing_data_or_schema(
         engine.dispose()
 
 
+# 함수이름: test_old_revision_requires_explicit_upgrade_and_never_create_all
+# 함수역할:
+# - 오래된 개정은 명시적 업그레이드를 요구하며 create_all로 누락 열을 임의 보충하지 않는지 확인한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# 반환값:
+# - None.
 def test_old_revision_requires_explicit_upgrade_and_never_create_all(tmp_path: Path) -> None:
     url = f"sqlite:///{(tmp_path / 'old-revision.db').as_posix()}"
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
@@ -74,6 +96,13 @@ def test_old_revision_requires_explicit_upgrade_and_never_create_all(tmp_path: P
         engine.dispose()
 
 
+# 함수이름: test_matching_revision_does_not_hide_missing_orm_column
+# 함수역할:
+# - 개정 번호가 최신이어도 ORM 필수 열이 빠졌다면 준비 단계에서 해당 열 오류를 내는지 확인한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# 반환값:
+# - None.
 def test_matching_revision_does_not_hide_missing_orm_column(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite:///{(tmp_path / 'drift.db').as_posix()}")
     try:
@@ -86,6 +115,13 @@ def test_matching_revision_does_not_hide_missing_orm_column(tmp_path: Path) -> N
         engine.dispose()
 
 
+# 함수이름: test_empty_database_is_not_created_when_automatic_setup_is_disabled
+# 함수역할:
+# - 자동 설정이 비활성화되면 빈 DB도 오류로 거부하고 테이블을 생성하지 않는지 확인한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# 반환값:
+# - None.
 def test_empty_database_is_not_created_when_automatic_setup_is_disabled(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite:///{(tmp_path / 'manual.db').as_posix()}")
     try:
@@ -96,6 +132,14 @@ def test_empty_database_is_not_created_when_automatic_setup_is_disabled(tmp_path
         engine.dispose()
 
 
+# Function Name: test_revision_check_is_quiet_and_reads_the_scripts_once
+# Description:
+# - Requires repeated readiness revision checks to reuse loaded migration scripts without Alembic INFO logging.
+# Parameters:
+# - tmp_path: Path; isolated temporary directory.
+# - caplog: LogCaptureFixture; captures emitted log records.
+# Returns:
+# - None.
 def test_revision_check_is_quiet_and_reads_the_scripts_once(
     tmp_path: Path, caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -117,11 +161,18 @@ def test_revision_check_is_quiet_and_reads_the_scripts_once(
         engine.dispose()
 
 
+# Function Name: test_merge_preserves_both_independently_applied_heads
+# Description:
+# - Checks that the migration graph retains both branches and round-trips older heads while restoring dose-sync and token capability tables.
+# Parameters:
+# - tmp_path: Path; isolated temporary directory.
+# Returns:
+# - None.
 def test_merge_preserves_both_independently_applied_heads(tmp_path: Path) -> None:
     from alembic.script import ScriptDirectory
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["e6b4d2a9f031"]
+    assert scripts.get_heads() == ["a9d3c5e71f24"]
     assert set(scripts.get_revision("f2c8a6d4e901").down_revision) == {
         "c5e1a7f3b902", "d19e7c4b2a60",
     }
@@ -144,6 +195,13 @@ def test_merge_preserves_both_independently_applied_heads(tmp_path: Path) -> Non
             engine.dispose()
 
 
+# 함수이름: test_caregiver_action_capability_preserves_existing_device_tokens
+# 함수역할:
+# - 토큰 기능 이전이 기존 토큰·활성 상태를 보존하고 새 보호자 동작 지원은 기본 비활성으로 두는지 확인한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# 반환값:
+# - None.
 def test_caregiver_action_capability_preserves_existing_device_tokens(tmp_path: Path) -> None:
     url = f"sqlite:///{(tmp_path / 'caregiver-actions.db').as_posix()}"
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
@@ -169,6 +227,47 @@ def test_caregiver_action_capability_preserves_existing_device_tokens(tmp_path: 
         command.upgrade(config, "head")
         with engine.connect() as connection:
             assert connection.execute(select(tokens.c.token)).scalar_one() == "preserve-existing-token"
+    finally:
+        engine.dispose()
+
+
+# 함수이름: test_slot_check_capability_defaults_off_for_existing_action_clients_and_round_trips
+# 함수역할:
+# - 기존 보호자 동작 토큰은 이전 왕복 후에도 새 슬롯 확인 기능이 비활성이며 토큰·등록 버전은 보존되는지 확인한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# 반환값:
+# - None.
+def test_slot_check_capability_defaults_off_for_existing_action_clients_and_round_trips(tmp_path: Path) -> None:
+    """기존 보호자 버튼 지원 토큰은 업그레이드해도 새 data-only 알림의 대상이 되지 않는다."""
+    url = f"sqlite:///{(tmp_path / 'slot-check-actions.db').as_posix()}"
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    config.attributes["database_url"] = url
+    command.upgrade(config, "e6b4d2a9f031")
+    engine = create_engine(url)
+    now = datetime(2026, 11, 7)
+    try:
+        users = Table("user_accounts", MetaData(), autoload_with=engine)
+        tokens = Table("device_push_tokens", MetaData(), autoload_with=engine)
+        with engine.begin() as connection:
+            connection.execute(users.insert().values(user_hash="patient", created_at=now, updated_at=now))
+            connection.execute(tokens.insert().values(user_hash="patient", token="legacy-actions-token",
+                platform="android", enabled=True, supports_caregiver_actions=True,
+                created_at=now, updated_at=now, registration_version="preserved-version"))
+        for _ in range(2):
+            command.upgrade(config, "head")
+            current = Table("device_push_tokens", MetaData(), autoload_with=engine)
+            with engine.connect() as connection:
+                row = connection.execute(select(current)).mappings().one()
+                assert row["supports_caregiver_actions"] is True
+                assert row["supports_slot_check_actions"] is False
+                assert row["enabled"] is True
+                assert row["token"] == "legacy-actions-token"
+                assert row["registration_version"] == "preserved-version"
+            command.downgrade(config, "e6b4d2a9f031")
+            assert "supports_slot_check_actions" not in {
+                column["name"] for column in inspect(engine).get_columns("device_push_tokens")
+            }
     finally:
         engine.dispose()
 
@@ -249,13 +348,12 @@ def test_caregiver_alias_migration_preserves_existing_link(tmp_path: Path) -> No
         engine.dispose()
 
 
-# Function Name: test_current_schema_migrates_into_an_empty_database
-# Description:
-# - Migrates an empty database to the complete schema, including medication safety metadata,
-#   deletion tombstones, caregiver aliases, and completion foreign keys.
-# Parameters:
-# - tmp_path (Path): Pytest temporary directory for the isolated migration database.
-# Returns:
+# 함수이름: test_current_schema_migrates_into_an_empty_database
+# 함수역할:
+# - 빈 DB에 약물 안전 메타데이터, 삭제 표식, 보호자 별칭과 완료 외래 키를 포함한 현행 스키마가 생성되는지 검증한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# 반환값:
 # - None.
 def test_current_schema_migrates_into_an_empty_database(tmp_path: Path) -> None:
     database_path = tmp_path / "migration.db"
@@ -460,6 +558,13 @@ def test_data_lifecycle_migration_supports_round_trip(tmp_path: Path) -> None:
 
 
 # 함수역할: 홈 일정 선택 열 추가·롤백·재적용이 기존 설정을 보존하는지 확인한다.
+# 함수이름: test_home_schedule_source_migration_preserves_settings
+# 함수역할:
+# - 홈 일정 표시 출처를 self로 추가하면서 기존 글자 크기를 개정 왕복 후에도 보존하는지 확인한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# 반환값:
+# - None.
 def test_home_schedule_source_migration_preserves_settings(tmp_path: Path) -> None:
     url = f"sqlite:///{(tmp_path / 'home-setting.db').as_posix()}"
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
@@ -489,6 +594,13 @@ def test_home_schedule_source_migration_preserves_settings(tmp_path: Path) -> No
 
 
 # 함수역할: 기존 설정을 유지하면서 버전 열을 추가하고 되돌렸다 다시 적용한다.
+# 함수이름: test_user_setting_revision_migration_preserves_existing_values
+# 함수역할:
+# - 설정 개정 번호를 1로 추가하면서 기존 글자 크기와 알림 비활성 값을 반복 이전 후에도 보존하는지 확인한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# 반환값:
+# - None.
 def test_user_setting_revision_migration_preserves_existing_values(tmp_path: Path) -> None:
     url = f"sqlite:///{(tmp_path / 'setting-revision.db').as_posix()}"
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))

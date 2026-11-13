@@ -357,13 +357,10 @@ class PublicDrugSmallAPI:
     ) -> None:
         self._transport = transport or _PublicDrugTransport(timeout_seconds)
 
-    # Function Name: searchMedication
-    # Description:
-    # - Search up to three consumer medication rows by name and propagate provider failures.
-    # Parameters:
-    # - medication_name (str): Product name sent as the eDrug itemName query.
-    # Returns:
-    # - Matching item dictionaries; an empty list only when the provider reports no matches.
+    # 함수이름: searchMedication
+    # 함수역할: 약명으로 기본 공공 약품 API의 최대 3건을 요청하고 실패 종류만 기록한 뒤 오류를 다시 전달한다.
+    # 매개변수: medication_name (str)은 제공자에 보낼 검색 약명이다.
+    # 반환값: 원본 약품 dict 목록. 조회 실패를 빈 결과로 바꾸지 않고 호출자에게 전달한다.
     async def searchMedication(self, medication_name: str) -> list[dict[str, Any]]:
         params = {
             "serviceKey": settings.PUBLIC_DATA_API_KEY,

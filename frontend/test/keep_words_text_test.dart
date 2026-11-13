@@ -9,6 +9,13 @@ const _joiner = '⁠';
 // 함수이름: main
 // 함수역할: 단어 단위 줄바꿈 테스트를 등록한다. 매개변수: 없음. 반환값: 없음.
 void main() {
+  // Function Name: test callback
+  // Description:
+  // - Check exact joiner placement inside Hangul words and mixed numeric units while preserving spaces and explicit line breaks.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('Hangul words are joined and spaces stay breakable', () {
     expect(
       keepKoreanWords('관리해요 확인'),
@@ -22,6 +29,13 @@ void main() {
     expect(keepKoreanWords('line one\n두 줄'), 'line one\n두 줄');
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Keep ordinary Latin text and empty input unchanged, but replace range-boundary spaces with nonbreaking spaces.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('text without Hangul is unchanged except ranges', () {
     expect(keepKoreanWords('Morning 08:00'), 'Morning 08:00');
     expect(keepKoreanWords(''), '');
@@ -48,5 +62,29 @@ void main() {
       keepKoreanWords('약을 관리해요'),
     );
     semantics.dispose();
+  });
+
+  // 함수이름: 줄 높이 전달 테스트
+  // 함수역할: 화면 제목이 쓰는 strutStyle과 다른 배치 설정이 그대로 Text에 전달되는지 확인한다. 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('passes strut style and layout options to the text', (
+    tester,
+  ) async {
+    const strut = StrutStyle(fontSize: 24, height: 1.2, forceStrutHeight: true);
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: KeepWordsText(
+            '오늘의 복약 일정',
+            strutStyle: strut,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
+    );
+    final rich = tester.widget<Text>(find.byType(Text));
+    expect(rich.strutStyle, strut);
+    expect(rich.maxLines, 2);
+    expect(rich.overflow, TextOverflow.ellipsis);
   });
 }

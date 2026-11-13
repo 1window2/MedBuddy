@@ -72,9 +72,15 @@ class _RecordingDoseOutboxStore extends DoseOutboxStore {
 // - respond (function): Answer of the built-in client; offline (503) until a test replaces it.
 class DoseSyncHarness {
   // Function Name: DoseSyncHarness._
-  // Description: Bundles the attached collaborators; created only by attachTestDoseSync.
-  // Parameters: viewModel, service, store, uploads - see the class attributes.
-  // Returns: The harness.
+  // Description:
+  // - Bundles the collaborators attached by attachTestDoseSync.
+  // Parameters:
+  // - viewModel (MedBuddyViewModel): Model owning the attached service.
+  // - service (DoseSyncService): Production synchronization service.
+  // - _store (_RecordingDoseOutboxStore): Backing store that records queued operations.
+  // - uploads (List<http.Request>): Requests recorded by the built-in client.
+  // Returns:
+  // - DoseSyncHarness with the default offline responder.
   DoseSyncHarness._(this.viewModel, this.service, this._store, this.uploads);
 
   final MedBuddyViewModel viewModel;

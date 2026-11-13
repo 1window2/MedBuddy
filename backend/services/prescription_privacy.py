@@ -1,3 +1,5 @@
+# 파일명: prescription_privacy.py
+# 역할: 외부 분석에 보낼 처방전 텍스트에서 식별자 구역을 제거하고 모호한 입력을 차단한다.
 """외부 처방전 분석 전 개인정보 구역과 직접 식별자를 검사한다."""
 
 import re
@@ -64,10 +66,23 @@ _REJECT_MESSAGE = (
 )
 
 
+# 한 줄의 최대 길이. 식별자 정규식은 한 줄 안에서 길이의 제곱에 비례해 돌 수 있으므로(같은 글자가 이어진
+# 긴 줄), 실제 처방·약봉투 줄보다 훨씬 긴 줄은 검사 전에 거절해 요청 하나의 비용을 묶는다.
+MAX_PRESCRIPTION_LINE_LENGTH = 500
+
+
+# 클래스명: PrescriptionPrivacyError
+# 역할: 처방 정보와 개인정보를 안전하게 분리할 수 없음을 알린다.
+# 주요 책임: 외부 분석 전에 재촬영·영역 재선택이 필요한 입력을 거절한다.
+# 속성: ValueError의 안내 메시지 외 추가 상태 없음.
 class PrescriptionPrivacyError(ValueError):
     """개인정보를 안전하게 분리할 수 없어 외부 전송을 중단한다."""
 
 
+# Function Name: deidentify_prescription_text
+# Description: Normalizes OCR text, removes labeled private sections, redacts direct identifiers and unlabeled dates, then checks the remaining text again.
+# Parameters: text (str) is the full OCR result; prescription-date labels and clearly separated medication rows may be retained.
+# Returns: Nonempty filtered text; raises PrescriptionPrivacyError for ambiguous mixed rows, unsupported controls, length limits or remaining identifiers.
 def deidentify_prescription_text(text: str) -> str:
     """식별자 라벨 구역을 제외하고 안전하게 분리된 처방 정보만 반환한다."""
     normalized = unicodedata.normalize("NFKC", text).replace("\r\n", "\n").replace("\r", "\n")
@@ -85,6 +100,8 @@ def deidentify_prescription_text(text: str) -> str:
         line = re.sub(r"[ \t]+", " ", source_line).strip()
         if not line:
             continue
+        if len(line) > MAX_PRESCRIPTION_LINE_LENGTH:
+            raise PrescriptionPrivacyError(_REJECT_MESSAGE)
         # 기기에서 이미 가린 정확한 대체 문구는 개인정보 라벨로 다시 해석하지 않는다.
         for placeholder in ("[주민번호 제거]", "[연락처 제거]", "[이메일 제거]"):
             line = line.replace(placeholder, "[REDACTED]")

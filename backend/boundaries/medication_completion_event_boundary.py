@@ -9,6 +9,7 @@ from typing import Protocol
 # - 복약 완료 이벤트를 소비하는 후속 처리기의 인터페이스를 정의한다.
 # 주요 책임:
 # - 복약 저장 구현이 후속 알림 구현에 직접 의존하지 않도록 환자와 완료 시간대를 전달한다.
+# 속성: 계약 자체에 저장 상태는 없으며 실제 연결·저장소는 구현체가 관리한다.
 class MedicationCompletionEventBoundary(Protocol):
     # 함수이름: notifySlotCompleted
     # 함수역할:

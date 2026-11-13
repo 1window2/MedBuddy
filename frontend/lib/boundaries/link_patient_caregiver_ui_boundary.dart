@@ -18,6 +18,7 @@ import '../theme/medbuddy_theme.dart';
 import '../services/user_facing_error_message.dart';
 import 'check_caregiver_medication_ui_boundary.dart';
 import 'linked_chat_ui_boundary.dart';
+import '../widgets/keep_words_text.dart';
 
 // 함수이름: LinkPatientCaregiverFactory
 // 함수역할: 사용자 해시 범위에 맞춘 연동 컨트롤러를 생성하는 콜백 계약이다.
@@ -168,11 +169,10 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     super.dispose();
   }
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 환자 코드 발급·등록과 연동 목록 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 환자 코드 발급·등록과 연동 목록에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays patient-code generation/registration and the current linked participants with operation state.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
@@ -260,21 +260,18 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   _LinkPatientCaregiverText get _text =>
       _LinkPatientCaregiverText(widget.userSetting.language);
 
-  // 함수이름: _refreshLinks
-  // 함수역할: 연동 목록·환자 별칭·채팅 약품을 조회하고 여전히 유효한 요청의 결과만 반영한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _refreshLinks
+  // Description: Refreshes links, aliases and chat medication contexts while applying only still-current request results.
+  // Parameters: None.
+  // Returns: Future completing after the refresh attempt.
   Future<void> _refreshLinks() async {
     await _runLinkAction(_reloadLinks);
   }
 
-  // 함수이름: _reloadLinks
-  // 함수역할: 연동 목록·환자 별칭·채팅 약품을 차례로 조회해 화면 유지·요청 세대·사용자 해시·컨트롤러가 그대로일 때만 반영한다. 화면 열기, 코드 창 닫기, 등록·해제 뒤 재조회가 함께 쓴다.
-  // 매개변수:
-  // - request (_LinkRequest): 작업 세대·사용자·컨트롤러를 묶은 요청 맥락.
-  // - keepStatusMessage (bool): 직전 작업의 결과 문구를 연동 개수 문구로 바꾸지 않고 유지할지 여부.
-  // 반환값: 조회와 반영이 끝나면 완료되는 Future<void>. 조회 실패는 호출자에게 전달한다.
+  // Function Name: _reloadLinks
+  // Description: Reloads links, aliases and medication contexts in sequence, accepting results only while mounted with the same request generation, account and controller.
+  // Parameters: request (_LinkRequest): generation/account/controller snapshot; keepStatusMessage (bool): preserve the preceding operation outcome.
+  // Returns: Future completing after eligible updates; lookup failures propagate to the caller.
   Future<void> _reloadLinks(
     _LinkRequest request, {
     bool keepStatusMessage = false,
@@ -308,11 +305,10 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     });
   }
 
-  // 함수이름: _generatePatientHash
-  // 함수역할: 임시 환자 코드를 발급해 대화상자로 보여주고 닫힌 뒤 연동 목록을 갱신한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _generatePatientHash
+  // Description: Generates a temporary patient code, displays it and refreshes links after the dialog closes.
+  // Parameters: None.
+  // Returns: Future completing after code presentation and refresh.
   Future<void> _generatePatientHash() async {
     PatientLinkCode? patientCode;
     // 함수이름: _generatePatientHash._runLinkAction callback
@@ -354,11 +350,10 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     }
   }
 
-  // 함수이름: _requestPatientCaregiverLink
-  // 함수역할: 빈 코드를 거절하고 연동 등록 결과를 먼저 화면에 반영한 뒤 목록·별칭·채팅 맥락을 다시 조회한다. 코드는 한 번만 쓸 수 있으므로 재조회 실패를 등록 실패로 알리지 않는다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 성공하면 true, 실패하거나 요청을 수행하지 못하면 false로 완료되는 Future.
+  // Function Name: _requestPatientCaregiverLink
+  // Description: Rejects an empty code, applies successful registration before reloading context and does not misreport reload failure as registration failure for the single-use code.
+  // Parameters: None.
+  // Returns: Future<bool> indicating registration success.
   Future<bool> _requestPatientCaregiverLink() async {
     if (_isLoading || !mounted) {
       return false;
@@ -408,11 +403,10 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     return registered;
   }
 
-  // 함수이름: _linksWith
-  // 함수역할: 방금 등록된 활성 연동을 현재 목록에 더하거나 같은 ID의 항목을 바꾼 새 목록을 만든다.
-  // 매개변수:
-  // - link (PatientCaregiverLink): 환자·보호자 연결과 권한 상태.
-  // 반환값: List<PatientCaregiverLink>: 등록 결과가 반영된 연동 목록; 비활성 연동이면 현재 목록.
+  // Function Name: _linksWith
+  // Description: Adds or replaces the newly registered active link by ID without mutating the current list.
+  // Parameters: link (PatientCaregiverLink): registration result.
+  // Returns: Updated links, or the existing list for an inactive link.
   List<PatientCaregiverLink> _linksWith(PatientCaregiverLink link) {
     if (!link.linkStatus) {
       return _links;
@@ -472,7 +466,10 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) {
-          // 닫히는 프레임에서도 연속 입력으로 아래 화면까지 pop하지 않는다.
+          // 함수이름: respond
+          // 함수역할: 현재 확인창에서 첫 응답만 처리해 연속 탭으로 아래 화면까지 닫히지 않게 한다.
+          // 매개변수: value (bool): 연동 해제 확정 또는 취소.
+          // 반환값: 없음. 살아 있는 현재 확인창에만 value를 반환한다.
           void respond(bool value) {
             if (responded ||
                 !dialogContext.mounted ||
@@ -487,8 +484,8 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
           return AlertDialog(
             key: const Key('unlink-confirmation-dialog'),
             scrollable: true,
-            title: Text(text.unlinkTitle),
-            content: Text(text.unlinkWarning(peerName)),
+            title: KeepWordsText(text.unlinkTitle),
+            content: KeepWordsText(text.unlinkWarning(peerName)),
             actions: [
               TextButton(
                 key: const Key('unlink-cancel'),
@@ -504,7 +501,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
                 ),
                 onPressed: () => respond(true),
                 icon: const Icon(Icons.link_off),
-                label: Text(text.delete),
+                label: KeepWordsText(text.delete),
               ),
             ],
           );
@@ -557,11 +554,10 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     );
   }
 
-  // 함수이름: _loadPatientLabels
-  // 함수역할: 현재 보호자가 연결한 환자별 표시 이름을 로컬 저장소에서 읽는다.
-  // 매개변수:
-  // - links (List<PatientCaregiverLink>): 표시하거나 관련 정보를 조회할 연동 목록.
-  // 반환값: Future<Map<String, String>>: 환자 해시별 표시 별칭.
+  // Function Name: _loadPatientLabels
+  // Description: Loads locally stored display aliases for patients linked to the current caregiver.
+  // Parameters: links (List<PatientCaregiverLink>): participants to label.
+  // Returns: Future<Map<String, String>> mapping patient hashes to aliases.
   Future<Map<String, String>> _loadPatientLabels(
     List<PatientCaregiverLink> links,
   ) async {
@@ -572,11 +568,10 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     );
   }
 
-  // 함수이름: _loadChatMedicationContexts
-  // 함수역할: 각 연동 환자의 활성 복약 목록을 병렬로 불러온다. 한 연동의 조회 실패가 다른 환자의 연동 목록까지 막지 않게 격리하고, 실패한 연동은 "복용 중인 약 없음"과 구분되도록 결과에서 뺀다.
-  // 매개변수:
-  // - links (List<PatientCaregiverLink>): 표시하거나 관련 정보를 조회할 연동 목록.
-  // 반환값: Future<Map<int, List<ChatMedicationContext>>>: 유효 연동별 약품 맥락; 조회에 실패한 연동은 항목이 없다.
+  // Function Name: _loadChatMedicationContexts
+  // Description: Loads active medication contexts in parallel and isolates per-link failures so they do not block other participants or masquerade as empty medication lists.
+  // Parameters: links (List<PatientCaregiverLink>): links to query.
+  // Returns: Future<Map<int, List<ChatMedicationContext>>>; failed link queries have no entry.
   Future<Map<int, List<ChatMedicationContext>>> _loadChatMedicationContexts(
     List<PatientCaregiverLink> links,
   ) async {
@@ -752,11 +747,10 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
         identical(request.control, _control);
   }
 
-  // 함수이름: _showPeerLabelDialog
-  // 함수역할: 참여자가 자기 화면에서 사용할 상대 별칭을 입력받아 역할별로 저장한다.
-  // 매개변수:
-  // - link (PatientCaregiverLink): 환자·보호자 연결과 권한 상태.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _showPeerLabelDialog
+  // Description: Collects a peer alias for this participant's own display and saves it in the appropriate role-specific scope.
+  // Parameters: link (PatientCaregiverLink): participant relationship.
+  // Returns: Future completing after alias editing and any save.
   Future<void> _showPeerLabelDialog(PatientCaregiverLink link) async {
     final isCaregiver = link.caregiverHash == _committedUserHash;
     if (!mounted ||
@@ -790,7 +784,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
       builder: (dialogContext) {
         return AlertDialog(
-          title: Text(
+          title: KeepWordsText(
             isCaregiver ? _text.patientLabelTitle : _text.caregiverLabelTitle,
           ),
           content: TextFormField(
@@ -925,7 +919,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(
+          content: KeepWordsText(
             labelCleared
                 ? _text.labelCleared
                 : _text.patientLabelSaved(confirmedLabel),
@@ -977,11 +971,10 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     );
   }
 
-  // 함수이름: _openLinkedChat
-  // 함수역할: 현재 사용자가 참여한 연동의 실시간 가족 채팅 화면을 연다.
-  // 매개변수:
-  // - link (PatientCaregiverLink): 환자·보호자 연결과 권한 상태.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // Function Name: _openLinkedChat
+  // Description: Opens live chat for a link in which the current account participates.
+  // Parameters: link (PatientCaregiverLink): selected relationship.
+  // Returns: None; starts conversation navigation.
   void _openLinkedChat(PatientCaregiverLink link) {
     final linkId = link.linkId;
     if (_isLoading || linkId == null || !link.linkStatus) {
@@ -995,7 +988,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
-            content: Text(_text.chatUnavailable),
+            content: KeepWordsText(_text.chatUnavailable),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -1032,11 +1025,10 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     );
   }
 
-  // 함수이름: _showPatientCodeDialog
-  // 함수역할: 발급된 환자 코드와 만료 안내 대화상자를 연다.
-  // 매개변수:
-  // - patientCode (PatientLinkCode): 발급된 임시 연결 코드와 만료 정보.
-  // 반환값: 만료 후 새 코드 만들기를 고르면 true, 그 밖에 닫으면 null로 완료되는 Future.
+  // Function Name: _showPatientCodeDialog
+  // Description: Displays a generated patient code with expiry and regeneration actions.
+  // Parameters: patientCode (PatientLinkCode): code and expiry.
+  // Returns: Future resolving to true for regeneration after expiry, otherwise null when closed.
   Future<bool?> _showPatientCodeDialog(PatientLinkCode patientCode) {
     return showDialog<bool>(
       context: context,
@@ -1223,7 +1215,7 @@ class _LinkActionButton extends StatelessWidget {
           children: [
             Icon(icon, color: MedBuddyColors.primaryDark, size: 24),
             const SizedBox(height: 5),
-            Text(
+            KeepWordsText(
               title,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -1236,7 +1228,7 @@ class _LinkActionButton extends StatelessWidget {
             ),
             const SizedBox(height: 3),
             // 역할 안내는 중요한 정보이므로 13pt 이상으로 두고 잘리지 않게 3줄까지 허용한다.
-            Text(
+            KeepWordsText(
               subtitle,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
@@ -1255,13 +1247,10 @@ class _LinkActionButton extends StatelessWidget {
   }
 }
 
-// 클래스명: _StatusCard
-// 역할: 환자·보호자 연결 작업 결과 안내를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 환자·보호자 연결 작업 결과 안내 위젯을 구성한다.
-// 속성:
-// - statusMessage (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-// - isLoading (bool): 진행 중 표시를 보여줄지 여부.
+// Class Name: _StatusCard
+// Role: Link-operation result presentation.
+// Responsibilities: Shows progress and the latest patient/caregiver linking outcome.
+// Attributes: statusMessage (String): result explanation; isLoading (bool): operation in progress.
 class _StatusCard extends StatelessWidget {
   final String statusMessage;
   final bool isLoading;
@@ -1306,7 +1295,7 @@ class _StatusCard extends StatelessWidget {
             const SizedBox(width: 12),
           ],
           Flexible(
-            child: Text(
+            child: KeepWordsText(
               statusMessage,
               textAlign: TextAlign.center,
               style: const TextStyle(
@@ -1361,19 +1350,18 @@ class _RegisterPatientDialog extends StatefulWidget {
   State<_RegisterPatientDialog> createState() => _RegisterPatientDialogState();
 }
 
-// 클래스명: _RegisterPatientDialogState
-// 역할: 환자 코드 입력과 연결 등록의 화면 상태를 관리한다.
-// 주요 책임:
-// - 환자 코드 입력과 연결 등록에 필요한 상태 변경과 사용자 동작을 연결한다.
+// Class Name: _RegisterPatientDialogState
+// Role: Patient-code validation and link-registration state.
+// Responsibilities: Validates the form, prevents duplicate registration and reports the result in the dialog.
+// Attributes: _formKey (GlobalKey<FormState>): input validation; _isRegistering (bool): request lock.
 class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   bool _isRegistering = false;
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 환자 코드 입력과 연결 등록 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 환자 코드 입력과 연결 등록에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays patient-code input, validation and the registration action.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -1416,7 +1404,7 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
                       ),
                     ),
                     Expanded(
-                      child: Text(
+                      child: KeepWordsText(
                         widget.text.registerPatient,
                         textAlign: TextAlign.center,
                         style: const TextStyle(
@@ -1503,11 +1491,10 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
     return null;
   }
 
-  // 함수이름: _handleRegisterRequested
-  // 함수역할: 입력값을 검증하고 같은 연동 요청이 연속으로 전송되지 않게 보호한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _handleRegisterRequested
+  // Description: Validates the code and prevents duplicate registration submissions while awaiting the callback.
+  // Parameters: None.
+  // Returns: Future completing after validation and any registration request.
   Future<void> _handleRegisterRequested() async {
     if (_isRegistering || !(_formKey.currentState?.validate() ?? false)) {
       return;
@@ -1544,14 +1531,14 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
     setState(() => _isRegistering = false);
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text(widget.statusMessageProvider())));
+    ).showSnackBar(SnackBar(content: KeepWordsText(widget.statusMessageProvider())));
   }
 }
 
 // 클래스명: _UpperCaseTextFormatter
-// 역할: 선택 영역을 유지하는 환자 코드 대문자 변환을 담당한다.
-// 주요 책임:
-// - 새 입력의 선택·조합 정보를 보존한 채 텍스트만 대문자로 바꾼다.
+// 역할: 환자 코드의 대문자 입력 변환기.
+// 주요 책임: 선택·조합 영역을 유지한 채 새 입력 텍스트만 대문자로 변환한다.
+// 속성: 인스턴스 필드 없음.
 class _UpperCaseTextFormatter extends TextInputFormatter {
   // 함수이름: _UpperCaseTextFormatter
   // 함수역할: 선택 영역을 유지하는 환자 코드 대문자 변환 관련 값을 _UpperCaseTextFormatter 인스턴스에 담는다.
@@ -1602,10 +1589,10 @@ class _PatientCodeDialog extends StatefulWidget {
   State<_PatientCodeDialog> createState() => _PatientCodeDialogState();
 }
 
-// 클래스명: _PatientCodeDialogState
-// 역할: 환자 코드와 만료 시간·재발급·복사 명령의 화면 상태를 관리한다.
-// 주요 책임:
-// - 환자 코드와 만료 시간·재발급·복사 명령에 필요한 상태 변경과 사용자 동작을 연결한다.
+// Class Name: _PatientCodeDialogState
+// Role: Expiry-aware patient linking-code dialog state.
+// Responsibilities: Updates validity while displayed and supports regeneration/copy actions.
+// Attributes: _countdownTimer (Timer?): one-second expiry refresh.
 class _PatientCodeDialogState extends State<_PatientCodeDialog> {
   Timer? _countdownTimer;
 
@@ -1649,11 +1636,10 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
     super.dispose();
   }
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 환자 코드와 만료 시간·재발급·복사 명령 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 환자 코드와 만료 시간·재발급·복사 명령에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Shows the patient code, time to expiry and copy/regeneration actions according to expiration state.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final expired = widget.patientCode.isExpired();
@@ -1698,7 +1684,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                       ),
                     ),
                     Expanded(
-                      child: Text(
+                      child: KeepWordsText(
                         widget.text.patientCodeDialogTitle,
                         textAlign: TextAlign.center,
                         style: const TextStyle(
@@ -1731,7 +1717,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                               ClipboardData(text: widget.patientCode.code),
                             );
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(widget.text.codeCopied)),
+                              SnackBar(content: KeepWordsText(widget.text.codeCopied)),
                             );
                           },
                     child: Container(
@@ -1777,7 +1763,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                   ),
                 ),
                 const SizedBox(height: 7),
-                Text(
+                KeepWordsText(
                   expired ? widget.text.codeExpired : widget.text.copyHint,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
@@ -1814,7 +1800,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                       // 반환값: 없음. 화면 종료 결과로 true를 전달한다.
                       onPressed: () => Navigator.pop(context, true),
                       icon: const Icon(Icons.refresh),
-                      label: Text(widget.text.createNewCode),
+                      label: KeepWordsText(widget.text.createNewCode),
                     ),
                   )
                 else
@@ -1909,7 +1895,7 @@ class _PatientCodeNotice extends StatelessWidget {
       ),
       child: FittedBox(
         fit: BoxFit.scaleDown,
-        child: Text(
+        child: KeepWordsText(
           text,
           maxLines: 2,
           textAlign: TextAlign.center,
@@ -1926,15 +1912,10 @@ class _PatientCodeNotice extends StatelessWidget {
   }
 }
 
-// 클래스명: _LinkListCard
-// 역할: 연동된 환자 또는 보호자 목록을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 연동된 환자 또는 보호자 목록 위젯을 구성한다.
-// 속성:
-// - links (List<PatientCaregiverLink>): 표시하거나 관련 정보를 조회할 연동 목록.
-// - currentUserHash (String): 현재 작업의 계정 범위를 정하는 사용자 해시.
-// - isEnabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
-// - shrinkWrap (bool): 상위 스크롤 레이아웃에 맞춰 콘텐츠 크기를 제한할지 여부.
+// Class Name: _LinkListCard
+// Role: Linked patient/caregiver list.
+// Responsibilities: Builds role-appropriate participant rows and commands using the current account.
+// Attributes: links: participants; currentUserHash: account scope; isEnabled: interaction state; shrinkWrap: parent-scroll sizing; callbacks: participant commands.
 class _LinkListCard extends StatelessWidget {
   final List<PatientCaregiverLink> links;
   final String currentUserHash;
@@ -1980,11 +1961,10 @@ class _LinkListCard extends StatelessWidget {
     required this.text,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 연동된 환자 또는 보호자 목록 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 연동된 환자 또는 보호자 목록에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Builds the linked-user list with role-aware identity and available actions.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     if (links.isEmpty) {
@@ -2063,15 +2043,10 @@ class _LinkListCard extends StatelessWidget {
   }
 }
 
-// 클래스명: _LinkedUserTile
-// 역할: 연동 사용자 별칭·새 메시지·복약·연결 해제 명령을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 연동 사용자 별칭·새 메시지·복약·연결 해제 명령 위젯을 구성한다.
-// 속성:
-// - link (PatientCaregiverLink): 환자·보호자 연결과 권한 상태.
-// - currentUserHash (String): 현재 작업의 계정 범위를 정하는 사용자 해시.
-// - patientLabel (String?): 환자 식별에 사용할 별칭.
-// - showChatAction (bool): 근처 약국 또는 연동 복약 채팅 기능의 노출·사용 상태.
+// Class Name: _LinkedUserTile
+// Role: Linked participant row.
+// Responsibilities: Displays alias and unread state with medication, chat and unlink actions appropriate to the participant role.
+// Attributes: link: relationship; currentUserHash: account scope; patientLabel: optional alias; showChatAction: chat visibility; callbacks: participant commands.
 class _LinkedUserTile extends StatelessWidget {
   final PatientCaregiverLink link;
   final String currentUserHash;
@@ -2111,11 +2086,10 @@ class _LinkedUserTile extends StatelessWidget {
     required this.text,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 연동 사용자 별칭·새 메시지·복약·연결 해제 명령 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 연동 사용자 별칭·새 메시지·복약·연결 해제 명령에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays participant identity, alias and available chat, medication and unlink actions for the current role.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -2130,7 +2104,7 @@ class _LinkedUserTile extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
+                child: KeepWordsText(
                   _peerLabel,
                   style: const TextStyle(
                     color: MedBuddyColors.textStrong,
@@ -2199,7 +2173,7 @@ class _LinkedUserTile extends StatelessWidget {
             childrenPadding: const EdgeInsets.only(bottom: 4),
             shape: const Border(),
             collapsedShape: const Border(),
-            title: Text(
+            title: KeepWordsText(
               text.linkManagement,
               style: const TextStyle(
                 color: MedBuddyColors.textMuted,
@@ -2230,7 +2204,7 @@ class _LinkedUserTile extends StatelessWidget {
                     letterSpacing: 0,
                   ),
                 ),
-                child: Text(text.delete),
+                child: KeepWordsText(text.delete),
               ),
             ],
           ),
@@ -2250,8 +2224,10 @@ class _LinkedUserTile extends StatelessWidget {
         link.patientHash.trim().isNotEmpty;
   }
 
-  // 별칭이 있으면 우선 표시하고, 없으면 관계와 짧은 식별자로 상대를 구분한다.
-  // 매개변수: 없음. 반환값: 상세 식별자를 펼치지 않아도 구분 가능한 상대 표시명.
+  // 함수이름: _peerLabel
+  // 함수역할: 별칭을 우선 표시하고 없으면 상대 역할과 해시 끝 네 글자로 구분한다.
+  // 매개변수: 없음.
+  // 반환값: 펼치지 않은 연결 카드에 사용할 상대 이름.
   String get _peerLabel {
     final isCaregiver = link.caregiverHash == currentUserHash;
     if (isCaregiver && patientLabel?.trim().isNotEmpty == true) {
@@ -2267,30 +2243,24 @@ class _LinkedUserTile extends StatelessWidget {
   }
 }
 
-// 클래스명: _LinkedIdentityField
-// 역할: 연동 사용자 식별 표시와 별칭 편집을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 연동 사용자 식별 표시와 별칭 편집 위젯을 구성한다.
-// 속성:
-// - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-// - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
+// Class Name: _LinkedIdentityField
+// Role: Labeled linked-user identity.
+// Responsibilities: Displays an identity label above its value; editing actions belong to the surrounding participant row.
+// Attributes: label (String): identity field name; value (String): displayed identity.
 class _LinkedIdentityField extends StatelessWidget {
   final String label;
   final String value;
 
   // 함수이름: _LinkedIdentityField
-  // 함수역할: 연동 사용자 식별 표시와 별칭 편집에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-  // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-  // 반환값: 입력 설정이 반영된 _LinkedIdentityField 인스턴스.
+  // 함수역할: 연동 사용자 식별 항목의 제목과 표시 값을 받는다.
+  // 매개변수: label (String): 항목 제목; value (String): 표시할 식별 값.
+  // 반환값: 새 _LinkedIdentityField.
   const _LinkedIdentityField({required this.label, required this.value});
 
   // Function Name: build
-  // Description: Renders a linked-user identity display with alias editing from the current configuration and state.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for a linked-user identity display with alias editing.
+  // Description: Displays the linked-user identity label above its value without an edit action.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -2363,20 +2333,17 @@ String _displayHash(String value, String fallback) {
   return displayValue;
 }
 
-// 클래스명: _LinkPatientCaregiverText
-// 역할: 환자 코드 발급·등록과 환자·보호자 연결 관리에 쓰는 한국어·영어 문구를 담당한다.
-// 주요 책임:
-// - 환자 코드 발급·등록과 환자·보호자 연결 관리에 쓰는 한국어·영어 문구의 언어를 선택하고 안내에 필요한 값을 문구에 반영한다.
-// 속성:
-// - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
+// Class Name: _LinkPatientCaregiverText
+// Role: Localized patient-code and link-management copy.
+// Responsibilities: Formats registration, expiration, participant and failure messages.
+// Attributes: isEnglish (bool): normalized language selection.
 class _LinkPatientCaregiverText {
   final bool isEnglish;
 
-  // 함수이름: _LinkPatientCaregiverText
-  // 함수역할: 환자 코드 발급·등록과 환자·보호자 연결 관리에 쓰는 한국어·영어 문구 선택에 사용할 언어를 앱 공통 기준으로 판정해 보관한다.
-  // 매개변수:
-  // - language (String): 화면 문구를 선택할 언어 코드.
-  // 반환값: 입력 설정이 반영된 _LinkPatientCaregiverText 인스턴스.
+  // Function Name: _LinkPatientCaregiverText
+  // Description: Selects link-management language using the shared language-code rule.
+  // Parameters: language (String): current language code.
+  // Returns: A localized _LinkPatientCaregiverText.
   _LinkPatientCaregiverText(String language)
     : isEnglish = isEnglishLanguage(language);
 
@@ -2623,26 +2590,23 @@ class _LinkPatientCaregiverText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get codeCopied => isEnglish ? 'Code copied.' : '코드를 복사했습니다.';
-  // 함수이름: copyHint
-  // 함수역할: 현재 언어와 입력값에 맞춰 "(코드를 누르면 복사됩니다)" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: copyHint
+  // Description: Explains that tapping the patient code copies it.
+  // Parameters: None.
+  // Returns: The localized copy hint.
   String get copyHint =>
       isEnglish ? '(Tap the code to copy)' : '(코드를 누르면 복사됩니다)';
-  // 함수이름: codeExpired
-  // 함수역할: 현재 언어로 "코드가 만료되었어요. 새 코드를 만들어 주세요." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: codeExpired
+  // Description: Explains that the code expired and a new one is required.
+  // Parameters: None.
+  // Returns: The localized expiry recovery message.
   String get codeExpired => isEnglish
       ? 'This code has expired. Create a new code.'
       : '코드가 만료되었어요. 새 코드를 만들어 주세요.';
-  // 함수이름: createNewCode
-  // 함수역할: 현재 언어로 "새 코드 만들기" 버튼 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: createNewCode
+  // Description: Labels regeneration of an expired patient code.
+  // Parameters: None.
+  // Returns: The localized new-code action.
   String get createNewCode => isEnglish ? 'Create new code' : '새 코드 만들기';
   // 함수이름: codeInstruction
   // 함수역할: 현재 언어와 입력값에 맞춰 "해당 코드를 보호자 휴대폰에\n등록해주세요" 문구를 제공한다.
@@ -2713,8 +2677,16 @@ class _LinkPatientCaregiverText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get delete => isEnglish ? 'Remove link' : '연동 해제';
 
+  // 함수이름: unlinkTitle
+  // 함수역할: 연동 해제 확인창의 제목을 현재 언어로 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 확인 제목.
   String get unlinkTitle => isEnglish ? 'Remove this link?' : '연동을 해제할까요?';
 
+  // Function Name: unlinkWarning
+  // Description: Explains the consequences of unlinking the named peer, including loss of shared access without deleting the patient records.
+  // Parameters: peerName (String): visible peer name.
+  // Returns: Localized unlink confirmation warning.
   String unlinkWarning(String peerName) => isEnglish
       ? 'Medication schedule sharing with $peerName will stop.\n\n'
             'The Caregiver alerts setting for this link and your shared chat '
@@ -2724,7 +2696,10 @@ class _LinkPatientCaregiverText {
             '이 연동의 보호자 알림 설정과 두 사람의 대화 기록이 삭제됩니다. '
             '삭제된 대화 기록은 복구할 수 없습니다. 환자의 약과 복약 기록은 삭제되지 않습니다.';
 
-  // 추가 입력 없이 현재 언어의 상세 연동 관리 제목을 반환한다.
+  // 함수이름: linkManagement
+  // 함수역할: 연동 목록 관리 영역의 제목을 현재 언어로 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 관리 제목.
   String get linkManagement => isEnglish ? 'Manage link' : '연동 관리';
   // 함수이름: noInformation
   // 함수역할: 현재 언어와 입력값에 맞춰 "정보 없음" 문구를 제공한다.

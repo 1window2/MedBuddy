@@ -11,17 +11,30 @@ import '../services/medication_notification_payload_codec.dart';
 import '../services/notification_inbox_store.dart';
 import 'manage_chat_list_control.dart';
 
-// 클래스명: ManageNotificationInbox
-// 역할: 로그인 계정의 로컬 알림함 상태와 명령을 제공한다.
+// Class Name: ManageNotificationInbox
+// Role: Maintains a signed-in account's local notification inbox.
+// Responsibilities: Refresh stored entries, expose read state and localize titles using active peer names without rewriting stored notifications.
+// Attributes: store: Account-scoped persistence; _chatList: Optional caller-owned names; entry/loading/error fields: Visible state; timer/subscription: Refresh sources.
 class ManageNotificationInbox extends ChangeNotifier {
   final NotificationInboxStore store;
   final ManageChatList? _chatList;
   List<NotificationInboxEntry> _entries = const [];
-  // 외부에서는 읽기만 하고 값은 이 객체만 바꾼다.
+  // Function Name: entries
+  // Description: Exposes the currently loaded notification entries.
+  // Parameters: None.
+  // Returns: The retained list; this accessor does not create a defensive copy.
   List<NotificationInboxEntry> get entries => _entries;
   bool _isLoading = false;
+  // Function Name: isLoading
+  // Description: Reports loading that needs to be displayed before the first successful read.
+  // Parameters: None.
+  // Returns: The announced initial-loading flag, not every background refresh.
   bool get isLoading => _isLoading;
   bool _hasError = false;
+  // Function Name: hasError
+  // Description: Exposes failure of the latest applicable inbox read.
+  // Parameters: None.
+  // Returns: Whether refresh failed while retaining the previous entries.
   bool get hasError => _hasError;
   bool _disposed = false;
   // 조회 진행 여부. isLoading은 화면에 불러오는 중 표시가 필요한 첫 조회 동안에만 참이다.
@@ -33,9 +46,10 @@ class ManageNotificationInbox extends ChangeNotifier {
   Timer? _timer;
   late final StreamSubscription<String> _subscription;
 
-  // 함수이름: ManageNotificationInbox
-  // 함수역할: 같은 계정의 수신 이벤트와 상대 이름 변경을 구독한다. 주입된 채팅 제어기는 소유하지 않는다.
-  // 매개변수: store, 선택적 chatList. 반환값: 제어기. 서로 다른 계정이면 인수 오류.
+  // Function Name: ManageNotificationInbox
+  // Description: Subscribes to account-specific inbox changes and optional peer-name updates.
+  // Parameters: store: Owning account's persistence; chatList: Optional caller-owned chat controller for the same account.
+  // Returns: An inbox controller; mismatched account hashes throw ArgumentError.
   ManageNotificationInbox({required this.store, ManageChatList? chatList})
     : _chatList = chatList {
     if (chatList != null && chatList.userHash != store.userHash) {
@@ -48,13 +62,16 @@ class ManageNotificationInbox extends ChangeNotifier {
     });
   }
 
-  // 함수이름: unreadCount
-  // 함수역할: 보이는 알림의 미확인 수를 반환한다. 매개변수: 없음. 반환값: 개수.
+  // Function Name: unreadCount
+  // Description: Counts unread entries in the currently displayed inbox.
+  // Parameters: None.
+  // Returns: The number of loaded entries whose isRead flag is false.
   int get unreadCount => _entries.where((entry) => !entry.isRead).length;
 
-  // 함수이름: titleFor
-  // 함수역할: 채팅·보호자 알림에 현재 활성 연동의 별칭을 표시하며 저장 원본은 변경하지 않는다.
-  // 매개변수: entry, isEnglish, showSensitiveDetails. 반환값: 상대 별칭 또는 기존 알림 제목.
+  // Function Name: titleFor
+  // Description: Selects a localized reminder title or current authorized peer alias without changing stored data.
+  // Parameters: entry: Stored notification; isEnglish: Display language; showSensitiveDetails: Whether caregiver/chat identifying details may be shown.
+  // Returns: A generic caregiver title when hidden, a current linked name when eligible, otherwise the stored title.
   String titleFor(
     NotificationInboxEntry entry, {
     required bool isEnglish,
@@ -100,10 +117,10 @@ class ManageNotificationInbox extends ChangeNotifier {
     return entry.title;
   }
 
-  // 함수이름: bodyFor
-  // 함수역할: 실제 수신 내용을 표시하되 내용 숨김으로 바꾸면 이전 보호자 알림도 가린다.
-  // 매개변수: entry는 저장 알림, isEnglish는 언어, showSensitiveDetails는 공개 설정.
-  // 반환값: 수신 시점의 설명 또는 일반 상태 안내. 과거 상태를 현재 일정으로 추측하지 않는다.
+  // Function Name: bodyFor
+  // Description: Localizes recognized reminder text and hides caregiver details when requested.
+  // Parameters: entry: Stored notification; isEnglish: Display language; showSensitiveDetails: Privacy preference.
+  // Returns: Localized reminder text, generic caregiver guidance, or the original received body; never a reconstruction of current dose status.
   String bodyFor(
     NotificationInboxEntry entry, {
     required bool isEnglish,
@@ -119,9 +136,10 @@ class ManageNotificationInbox extends ChangeNotifier {
     return entry.body;
   }
 
-  // 함수이름: _reminderSlot
-  // 함수역할: 앱이 예약한 복약 알림의 시간대 키를 알림 경로에서 읽는다.
-  // 매개변수: entry. 반환값: 시간대 키, 복약 알림이 아니면 null.
+  // Function Name: _reminderSlot
+  // Description: Extracts a slot only from a medication notification targeting the schedule screen.
+  // Parameters: entry: Stored notification to decode.
+  // Returns: The decoded slot key, or null for another category/destination or invalid payload.
   String? _reminderSlot(NotificationInboxEntry entry) {
     if (entry.category != NotificationInboxCategory.medication) return null;
     final selection = MedicationNotificationPayloadCodec.decode(entry.payload);
@@ -131,20 +149,29 @@ class ManageNotificationInbox extends ChangeNotifier {
     return selection!.slotKey;
   }
 
-  // 함수이름: _localizedReminder
-  // 함수역할: 정형 복약 알림의 제목과 본문을 현재 언어로 바꾸고, 알 수 없는 이전 문구는 원문을 보존한다.
-  // 매개변수: entry, isEnglish. 반환값: 현재 언어 문구, 정형 문구가 아닌 쪽은 null.
+  // Function Name: _localizedReminder
+  // Description: Relocalizes known reminder strings while preserving unrecognized historical wording.
+  // Parameters: entry: Stored notification; isEnglish: Current language.
+  // Returns: Nullable title/body replacements; each unmatched component remains null.
   ({String? title, String? body}) _localizedReminder(
     NotificationInboxEntry entry,
     bool isEnglish,
   ) {
     final slot = _reminderSlot(entry);
     if (slot == null) return (title: null, body: null);
+    // Function Name: title
+    // Description: Builds the standard title for the decoded slot in either supported language.
+    // Parameters: english: Whether to use English.
+    // Returns: A localized reminder title used for comparison and replacement.
     String title(bool english) => medicationReminderTitle(
       slot,
       slotTitle: medicationSlotLabel(slot, isEnglish: english),
       isEnglish: english,
     );
+    // Function Name: body
+    // Description: Builds the standard body for the decoded slot in either supported language.
+    // Parameters: english: Whether to use English.
+    // Returns: A localized reminder body used for comparison and replacement.
     String body(bool english) =>
         medicationReminderBody(slot, isEnglish: english);
     return (
@@ -157,22 +184,23 @@ class ManageNotificationInbox extends ChangeNotifier {
     );
   }
 
-  // 함수이름: _isCaregiverEntry
-  // 함수역할: 분류와 이동 경로가 모두 보호자 알림인지 확인한다.
-  // 매개변수: entry는 검사할 알림. 반환값: 보호자 복약 알림 여부.
+  // Function Name: _isCaregiverEntry
+  // Description: Checks both medication category and a recognized caregiver payload prefix.
+  // Parameters: entry: Notification to classify.
+  // Returns: Whether the entry uses either supported caregiver payload family.
   bool _isCaregiverEntry(NotificationInboxEntry entry) =>
       entry.category == NotificationInboxCategory.medication &&
       (entry.payload.startsWith(
             MedicationNotificationPayloadCodec.caregiverPayloadPrefix,
           ) ||
-          entry.payload.startsWith('caregiver-v1:'));
+          entry.payload.startsWith(CaregiverAlertContext.payloadPrefix));
 
-  // 함수이름: _caregiverEntryPatientHash
-  // 함수역할: 보호자 알림의 이동 경로에서 환자 해시를 읽는다. 완료 알림(caregiver:)과 동작 버튼이 있는
-  //   미복용 알림(caregiver-v1:)은 형식이 다르므로 각각 해석한다.
-  // 매개변수: entry는 보호자 알림. 반환값: 환자 해시 또는 해석할 수 없으면 null.
+  // Function Name: _caregiverEntryPatientHash
+  // Description: Reads a patient hash from the appropriate caregiver payload format.
+  // Parameters: entry: Caregiver notification whose payload is decoded.
+  // Returns: The action-context or URI-decoded patient hash, or null for a caught decoding error.
   String? _caregiverEntryPatientHash(NotificationInboxEntry entry) {
-    if (entry.payload.startsWith('caregiver-v1:')) {
+    if (entry.payload.startsWith(CaregiverAlertContext.payloadPrefix)) {
       return CaregiverAlertContext.fromPayload(entry.payload)?.patientHash;
     }
     try {
@@ -186,9 +214,10 @@ class ManageNotificationInbox extends ChangeNotifier {
     }
   }
 
-  // 함수이름: _currentPeerNameSignature
-  // 함수역할: 알림 제목에 쓰이는 활성 연동과 상대 이름을 한 문자열로 만들어 이전 상태와 비교할 수 있게 한다.
-  // 매개변수: 없음. 반환값: 채팅 목록이 없으면 빈 문자열.
+  // Function Name: _currentPeerNameSignature
+  // Description: Encodes active relationships and both localized peer names for change detection.
+  // Parameters: None.
+  // Returns: A stable ordered signature, or an empty string without a chat controller.
   String _currentPeerNameSignature() {
     final chatList = _chatList;
     if (chatList == null) return '';
@@ -205,9 +234,10 @@ class ManageNotificationInbox extends ChangeNotifier {
     ].join('\u0002');
   }
 
-  // 함수이름: _onPeerNamesChanged
-  // 함수역할: 별칭 변경·연동 해제를 기존 알림 제목에도 반영한다. 채팅 목록의 다른 변경은 알리지 않는다.
-  // 매개변수: 없음. 반환값: 없음.
+  // Function Name: _onPeerNamesChanged
+  // Description: Notifies inbox listeners only when active peer-name information changes.
+  // Parameters: None.
+  // Returns: None; ignores disposal and unrelated chat-list changes.
   void _onPeerNamesChanged() {
     if (_disposed) return;
     final signature = _currentPeerNameSignature();
@@ -231,10 +261,10 @@ class ManageNotificationInbox extends ChangeNotifier {
   // 함수역할: 앱 비활성 상태의 폴링을 중지한다. 매개변수: 없음. 반환값: 없음.
   void stop() => _timer?.cancel();
 
-  // 함수이름: refresh
-  // 함수역할: 동시 조회를 합치고 실패하면 기존 목록을 유지한다. 아직 한 번도 불러오지 못해 불러오는 중 표시가
-  //   필요할 때와, 조회 뒤 목록·읽음 상태·오류 상태가 실제로 바뀌었을 때만 화면에 알린다.
-  // 매개변수: 없음. 반환값: 조회 완료.
+  // Function Name: refresh
+  // Description: Loads entries while coalescing overlapping refreshes and preserving prior data on failure.
+  // Parameters: None.
+  // Returns: Completion of this read; an overlapping call queues another pass and returns immediately.
   Future<void> refresh() async {
     if (_disposed) return;
     if (_refreshing) {
@@ -276,9 +306,10 @@ class ManageNotificationInbox extends ChangeNotifier {
     }
   }
 
-  // 함수이름: _sameVisibleEntries
-  // 함수역할: 두 목록의 순서·항목·읽음 상태가 같은지 비교한다. 저장된 알림의 내용은 바뀌지 않으므로 ID와 읽음 여부만 본다.
-  // 매개변수: before, after: 비교할 목록. 반환값: 화면에 보이는 내용이 같으면 true.
+  // Function Name: _sameVisibleEntries
+  // Description: Compares displayed entry identity, order and read flags without comparing immutable stored text.
+  // Parameters: before/after: Notification entry lists.
+  // Returns: True when the list reference or each ordered ID/read pair matches.
   bool _sameVisibleEntries(
     List<NotificationInboxEntry> before,
     List<NotificationInboxEntry> after,
@@ -303,8 +334,10 @@ class ManageNotificationInbox extends ChangeNotifier {
     await refresh();
   }
 
-  // 함수이름: remove
-  // 함수역할: 알림 내역만 삭제하며 채팅·복약 기록에는 영향이 없다. 매개변수: 선택적 entry. 반환값: 갱신 완료.
+  // Function Name: remove
+  // Description: Removes notification history without deleting chat or medication records.
+  // Parameters: entry: One entry to remove, or null for the currently loaded entries.
+  // Returns: Completion of delegated removal and refresh; persistence failures propagate.
   Future<void> remove([NotificationInboxEntry? entry]) async {
     await removeEntries(entry == null ? _entries : [entry]);
   }

@@ -26,6 +26,8 @@ class CaregiverMonitoringSnapshot {
   // - link (PatientCaregiverLink): 해당 환자·보호자 연동 관계
   // - notificationSettings (Map<String, CaregiverNotification>): 시간대 키로 조회할 보호자 알림 설정
   // - schedules (List<MedicationSchedule>): 조회·비교·예약에 사용할 복약 일정 목록
+  // - asNeededScheduleDate (String?): 필요시 복용 이벤트의 기준 날짜.
+  // - asNeededTakenEventKeys (List<String>?): 같은 날짜의 필요시 복용 완료 이벤트 식별 키; null은 해당 집계가 제공되지 않음을 뜻한다.
   // 반환값:
   // - CaregiverMonitoringSnapshot: 초기화된 인스턴스.
   const CaregiverMonitoringSnapshot({

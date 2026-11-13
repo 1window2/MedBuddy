@@ -203,9 +203,16 @@ def test_prn_detection(direction: str) -> None:
     assert resolve_dosing_mode("scheduled", "1일 3회") == "scheduled"
 
 
-# 함수이름: test_scheduled_dose_with_extra_prn_dose_stays_scheduled
-# 함수역할: 정기 복용약의 1회량에 붙은 추가 복용 안내 때문에 일정이 사라지지 않는지 확인한다.
-# 매개변수: frequency, dosage, slots: 처방 지시와 선택 시간대, expected: 기대 모드. 반환값: 없음.
+# Function Name: test_scheduled_dose_with_extra_prn_dose_stays_scheduled
+# Description:
+# - Keep regular doses scheduled when per-dose text also permits an extra as-needed dose.
+# Parameters:
+# - frequency: str; prescribed regular dose frequency.
+# - dosage: str; dose text including optional extra-dose guidance.
+# - slots: list[str]; selected regular slots.
+# - expected: str; expected scheduled or as-needed mode.
+# Returns:
+# - None.
 @pytest.mark.parametrize(("frequency", "dosage", "slots", "expected"), [
     ("1일 3회", "1정 (통증 시 2정)", [], "scheduled"),
     ("1일 2회 아침 저녁", "1정, 필요시 1정 추가", [], "scheduled"),
@@ -246,7 +253,11 @@ def test_prn_save_and_legacy_never_schedule_or_missed(fk_db: Session) -> None:
 
 # 함수이름: test_history_prn_recording_eligibility_at_range_end
 # 함수역할: 조회 종료일의 시작·만료·중단 경계를 적용하고 기록 불가 약도 조회 목록에 보존한다.
-# 매개변수: fk_db: 격리 세션, end_offset: 오늘 기준 조회 종료일, 나머지 값: 종료일 기준 약 경계. 반환값: 없음.
+# 매개변수: fk_db (Session): 격리 세션; end_offset (int): 오늘 기준 조회 종료일 차이;
+# start_offset (int): 종료일 기준 처방 시작일 차이; total_days (str): 복용 기간;
+# effective_offset/stop_offset (int | None): 종료일 기준 적용·중단일 차이 또는 미지정;
+# expected (bool): 종료일에 필요시 복용을 기록할 수 있는지의 기대값.
+# 반환값: 없음. 기록 가능 여부나 조회 목록이 다르면 assertion이 실패한다.
 @pytest.mark.parametrize("end_offset", [-7, 0], ids=["historical", "today"])
 @pytest.mark.parametrize("start_offset,total_days,effective_offset,stop_offset,expected", [
     pytest.param(-10, "90", None, None, True, id="active"),
@@ -421,9 +432,14 @@ def test_history_bounds_and_future_actual_time(fk_db: Session) -> None:
     assert error.value.status_code == 422
 
 
-# 함수이름: test_history_rejects_calendar_edge_actual_time
-# 함수역할: 앱 시간대로 옮길 수 없는 달력 끝의 복용 시각을 500 대신 범위 오류로 거부한다.
-# 매개변수: fk_db: 격리 세션, value: 보낸 복용 시각. 반환값: 없음.
+# Function Name: test_history_rejects_calendar_edge_actual_time
+# Description:
+# - Reject dose timestamps that overflow when converted to the application calendar as validation errors rather than server errors.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# - value: str; timestamp at an unsupported calendar boundary.
+# Returns:
+# - None.
 @pytest.mark.parametrize("value", ["0001-01-01T00:00:00+14:00", "9999-12-31T23:59:59-12:00"])
 def test_history_rejects_calendar_edge_actual_time(fk_db: Session, value: str) -> None:
     med = medication(fk_db)
@@ -435,20 +451,39 @@ def test_history_rejects_calendar_edge_actual_time(fk_db: Session, value: str) -
     assert fk_db.query(_MedicationCompletion).count() == 0
 
 
-# 함수이름: test_course_length_must_be_positive
-# 함수역할: 0일 이하의 기간은 끝나지 않는 복용이 되므로 저장·변경 요청에서 거부하고, 모르는 기간은 그대로 받는다.
-# 매개변수: value: 보낸 총 복용 기간, accepted: 받아야 하는지. 반환값: 없음.
+# Function Name: test_course_length_must_be_positive
+# Description:
+# - Reject nonpositive course lengths in save and change requests while accepting unspecified durations.
+# Parameters:
+# - value: str | None; valid, unknown, or deliberately nonpositive duration input.
+# - accepted: bool; expected schema acceptance.
+# Returns:
+# - None.
 @pytest.mark.parametrize(
     ("value", "accepted"),
     [("0", False), ("0일", False), ("-7일", False), ("-3", False), ("7일", True), ("2주", True), ("", True), (None, True), ("미정", True)],
 )
 def test_course_length_must_be_positive(value: str | None, accepted: bool) -> None:
+    # Function Name: build_save
+    # Description:
+    # - Builds a save request with the captured course duration to exercise schema validation.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - SavedMedicationCreate; invalid duration raises ValidationError.
     def build_save() -> object:
         return SavedMedicationCreate(
             patient_hash="patient-a", item_name="tablet", efficacy="", use_method="",
             warning_message="", total_days=value,
         )
 
+    # Function Name: build_change
+    # Description:
+    # - Builds a regimen-change request using the captured course duration.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Medication change request; invalid duration raises validation errors.
     def build_change() -> object:
         return change(changes={"total_days": value})
 
@@ -461,9 +496,13 @@ def test_course_length_must_be_positive(value: str | None, accepted: bool) -> No
                 build()
 
 
-# 함수이름: test_history_accepts_device_clock_slightly_ahead
-# 함수역할: 기기 시계가 서버보다 몇 초 빠른 '지금 복용'을 받아들이고 서버 시각으로 저장한다.
-# 매개변수: fk_db: 격리 세션. 반환값: 없음.
+# Function Name: test_history_accepts_device_clock_slightly_ahead
+# Description:
+# - Accept a slightly fast device clock for a just-taken dose and store the server time.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# Returns:
+# - None.
 def test_history_accepts_device_clock_slightly_ahead(fk_db: Session) -> None:
     med = medication(fk_db)
     care = ManageMedicationCare(fk_db)
@@ -555,9 +594,13 @@ def test_repeated_completion_keeps_reported_actual_time_until_undo(fk_db: Sessio
     assert care.history(principal(), today, today)["items"][0]["actual_taken_at"] is None
 
 
-# 함수이름: test_repeated_legacy_completion_keeps_revision_and_audit
-# 함수역할: 이전 앱의 같은 완료 재전송이 버전과 감사 이력을 늘려 이력 정정을 거짓 충돌시키지 않는지 확인한다.
-# 매개변수: fk_db: 격리 세션. 반환값: 없음.
+# Function Name: test_repeated_legacy_completion_keeps_revision_and_audit
+# Description:
+# - Keep revision and audit history unchanged on duplicate legacy completion so retries do not create false edit conflicts.
+# Parameters:
+# - fk_db: Session; isolated database with foreign keys enabled.
+# Returns:
+# - None.
 def test_repeated_legacy_completion_keeps_revision_and_audit(fk_db: Session) -> None:
     med = medication(fk_db)
     care = ManageMedicationCare(fk_db)

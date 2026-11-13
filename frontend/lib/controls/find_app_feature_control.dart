@@ -2,10 +2,32 @@
 // 역할: 검색어를 외부로 보내거나 저장하지 않고 일상 표현을 앱의 기존 기능에 연결한다.
 import '../entities/feature_search_entity.dart';
 
-// 클래스명: FindAppFeature
-// 역할: 띄어쓰기·대소문자·동의어와 단어 조합을 사용해 관련 기능을 정렬한다.
+// Class Name: FindAppFeature
+// Role: Rank application destinations using normalized phrases and concept groups.
+// Responsibilities: Match Korean/English search terms to the static feature catalog.
+// Attributes: entries (List<FeatureSearchEntry>): searchable destinations; _ignored (RegExp): characters removed for comparisons.
 class FindAppFeature {
   static const entries = <FeatureSearchEntry>[
+    FeatureSearchEntry(
+      AppFeature.medicationSearch,
+      '약 검색',
+      'Find medication',
+      '홈 > 약 등록·관리 > 약 검색',
+      'Home > Add or manage > Find medication',
+      phrases: [
+        '약 검색',
+        '약 이름 찾기',
+        '약품 조회',
+        '약 정보 검색',
+        'medicine search',
+        'drug lookup',
+        'find medication',
+      ],
+      concepts: [
+        ['약', '약품', 'medicine', 'drug', 'medication'],
+        ['검색', '조회', '찾', 'search', 'find', 'lookup'],
+      ],
+    ),
     FeatureSearchEntry(
       AppFeature.manualMedication,
       '약 직접 등록',
@@ -721,8 +743,10 @@ class FindAppFeature {
   // 검색어 한 글자마다 모든 표현을 다시 정규화하므로 패턴은 한 번만 만든다.
   static final _ignored = RegExp(r'[^a-z0-9가-힣ㄱ-ㅎㅏ-ㅣ]');
 
-  // 함수이름: _normalize
-  // 함수역할: 비교할 때만 공백·문장부호를 제거하고 영문 대소문자를 통일한다.
+  // Function Name: _normalize
+  // Description: Remove ignored punctuation and whitespace and lowercase text for feature comparisons.
+  // Parameters: value (String): query or catalog term.
+  // Returns: String: normalized comparison key.
   static String _normalize(String value) =>
       value.toLowerCase().replaceAll(_ignored, '');
 }

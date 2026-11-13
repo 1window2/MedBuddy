@@ -83,6 +83,7 @@ def firebase_payload() -> dict[str, object]:
     "https://user:private-key@api.example.com/api/v1/medication",
     "https://api.example.com/api/v1/medication?key=private-key",
     "https://api.example.com/api/v1/medication#fragment", "https://[broken/api/v1/medication",
+    "https://api.example.com/api/v1/\nmedication", "https://api.exa\tmple.com/api/v1/medication",
 ])
 def test_backend_origin_rejects_non_standalone_release_targets(url: str) -> None:
     with pytest.raises(ValueError) as rejected:
@@ -276,3 +277,18 @@ def test_workflow_wires_configuration_checks_to_the_original_gates() -> None:
     assert "${GITHUB_ENV}" not in endpoint_step
     later_steps = workflow.split("      - name: Restore Firebase Android configuration\n", 1)[1]
     assert "BACKEND_ORIGIN" not in later_steps
+
+
+# Function Name: test_signing_job_restores_no_cache_written_by_other_runs
+# Description: The signed build must come from the approved commit and pinned upstream downloads
+#   only, so neither the Flutter SDK and pub cache nor a Gradle cache is restored from a push run.
+# Parameters: None.
+# Returns: None.
+def test_signing_job_restores_no_cache_written_by_other_runs() -> None:
+    workflow = (ROOT / ".github/workflows/release-android.yml").read_text()
+    flutter_setup = workflow.split("      - name: Flutter Setup\n", 1)[1].split("      - name:", 1)[0]
+    assert "cache: false" in flutter_setup
+    assert "cache: true" not in workflow
+    assert "actions/cache" not in workflow
+    java_setup = workflow.split("      - name: Java Setup\n", 1)[1].split("      - name:", 1)[0]
+    assert "cache:" not in java_setup

@@ -9,6 +9,47 @@ participant "Android WorkManager" as Worker
 participant "Completion API" as API
 database "Server DB" as DB
 participant "CheckSchedule / OfflineScheduleWindow" as Window
+participant "SlotCheckNotificationService /\nNotificationService" as Action
+
+== Android 보호자 확인 요청의 복용 완료 ==
+note over Patient,Action
+  저장된 오늘의 보호자→환자 slot_check_request만 실행 문맥을 갖는다.
+  명시적 capability를 등록한 Android는 data-only 푸시로 직접 표시한다.
+  미지원 기기는 기존 OS 알림을 유지한다(ChatReadState.puml).
+end note
+Patient -> Action: 메시지별 알림의 복용 완료 (화면 열지 않음)
+Action -> Action: 환자=수신자·이벤트 ID·정기 시간대·오늘 날짜·활성 기기 계정 확인
+Action -> Local: 현재 계정 확인; prepareOfflineCache()
+opt 당일 캐시 없음
+  Action -> API: 인증된 GET /schedule/window?days=14
+  API --> Action: 과정 목록 + window_start / window_end
+  Action -> Sync: 원래 요청 날짜와 기간·캐시 revision 확인 후 cacheScheduleWindow()
+  Action -> Local: prepareOfflineCache(); 당일 일정 복원
+end
+Action -> Local: recordSlotCheck(request) 트랜잭션
+Local -> Local: 계정·오늘 날짜 재검사; 소비 표식 확인
+alt 이미 소비한 같은 요청
+  Local --> Action: 새 완료 작업 없이 기존 처리 유지
+else 빈 일정·잘못된 ID·겹친 BLOCKED 요청·날짜/계정 변경
+  Local --> Action: 거절; 소비 표식과 완료 작업을 남기지 않음
+else 유효한 당일 시간대
+  Local -> Local: 캐시 + 대기 작업으로 대상 약·revision 확정
+  opt 아직 미완료인 약이 있음
+    Local -> Local: 안정된 operation ID + 원래 날짜·link_id·completed=true 암호화 저장
+  end
+  Local -> Local: 버튼 소비 표식도 같은 트랜잭션으로 commit
+  Local --> Action: 기기 저장 완료 (서버 ACK 아님)
+end
+opt 기기 저장 또는 이미 소비한 요청 확인 성공
+  Action -> Worker: 기존 동기화 예약
+  Action -> Action: 요청 알림·해당 날짜 재알림 취소
+  Action -> Sync: drain() 시도
+  note over Action,Local
+    저장 후 예약·인증·통신 실패는 대기 요청을 버리지 않는다.
+    이후 실행은 아래의 같은 영속 큐·서버 검증을 사용한다.
+    다시 누른 버튼은 나중에 취소한 복용을 되살리지 않는다.
+  end note
+end
 
 == 서버 확인 기간과 오프라인 날짜 전환 ==
 UI -> Sync: cacheSchedules(당일 서버 일정)
@@ -50,6 +91,7 @@ note over Sync,Local: Display callbacks are coalesced after durable save.\nWidge
 Sync -> Worker: Schedule connected work
 note over Local, Worker: Queue survives process death. Foreground and background share SQLite claims.\nOnly one unexpired upload lease per owner, even for distinct doses:\nevery ACK contains a whole schedule snapshot.
 Worker -> Sync: Restore authenticated session and drain
+note over Worker, Sync: The 15-minute retry stays only while records wait or the widget lacks today's data;\neach run, app start, pause and resume keep or remove it, and a removal is read again.
 Sync -> Local: Transaction: check active account and claim earliest eligible operation
 alt Same owner already has an unexpired lease
   Local --> Sync: No claim; keep pending and retry later

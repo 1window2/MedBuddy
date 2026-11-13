@@ -1,6 +1,11 @@
+# 파일명: test_medication_lookup_completeness.py
+# 역할: 약품 후보 요약 실패 시 불완전성 유지, 재시도 복구와 캐시 안전성을 검증한다.
+
 import json
 from collections.abc import Generator
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -19,6 +24,14 @@ PRODUCT_NAME = "테스트정10mg"
 PRODUCT_IDS = ["111", "222"]
 
 
+# 함수이름: _detail
+# 함수역할:
+# - 지정 ID·이름과 고정된 비민감 설명을 갖는 약품 상세를 만든다.
+# 매개변수:
+# - item_seq: str; 합성 약품의 공공 제품 ID.
+# - name: str; 합성 제품명.
+# 반환값:
+# - MedicationDetail; 합성 요약 결과.
 def _detail(item_seq: str = "111", *, name: str = PRODUCT_NAME) -> MedicationDetail:
     return MedicationDetail(
         item_seq=item_seq,
@@ -30,8 +43,16 @@ def _detail(item_seq: str = "111", *, name: str = PRODUCT_NAME) -> MedicationDet
 
 
 # 실제 조회·요약 취합·캐시는 유지하고 외부 서비스만 합성 응답으로 대체한다.
+# 함수이름: lookup_case
+# 함수역할:
+# - 로컬 또는 공공 조회 경로의 동일 제품 자료와 선택적 요약 실패를 준비하고 종료 후 DB 자원을 정리한다.
+# 매개변수:
+# - request: pytest.FixtureRequest; local 또는 public 조회 경로.
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# 반환값:
+# - Generator[SimpleNamespace]; 컨트롤·캐시·대체 제공자와 실패 ID 집합.
 @pytest.fixture(params=["public", "local"])
-def lookup_case(request, tmp_path) -> Generator[SimpleNamespace, None, None]:
+def lookup_case(request: pytest.FixtureRequest, tmp_path: Path) -> Generator[SimpleNamespace, None, None]:
     rows = [
         {
             "ITEM_SEQ": item_seq,
@@ -44,7 +65,15 @@ def lookup_case(request, tmp_path) -> Generator[SimpleNamespace, None, None]:
     ]
     failed_ids: set[str] = set()
 
-    async def summarize(drug_name, item):
+    # 함수이름: summarize
+    # 함수역할:
+    # - 실패 ID 집합에 속한 제품은 오류를 내고 나머지는 해당 제품의 합성 상세를 반환한다.
+    # 매개변수:
+    # - drug_name: str; 요청 약품명(대체 요약에서 사용하지 않음).
+    # - item: dict; 공공 허가 제품 행.
+    # 반환값:
+    # - MedicationDetail; 실패 대상이면 RuntimeError.
+    async def summarize(drug_name: str, item: dict[str, Any]) -> MedicationDetail:
         if item["ITEM_SEQ"] in failed_ids:
             raise RuntimeError("synthetic summary failure")
         return _detail(item["ITEM_SEQ"], name=item["ITEM_NAME"])
@@ -101,11 +130,19 @@ def lookup_case(request, tmp_path) -> Generator[SimpleNamespace, None, None]:
 
 
 # 같은 이름이라도 품목 코드가 다른 후보의 실패는 자동 확정의 근거가 될 수 없다.
+# 함수이름: test_partial_summary_keeps_confirmation_and_recovers_missing_product
+# 함수역할:
+# - 일부 요약 실패는 성공 후보를 확인 대상으로 유지하며 전체 결과 캐시를 쓰지 않고 이후 복구 시 누락 제품도 반환하는지 확인한다.
+# 매개변수:
+# - lookup_case: SimpleNamespace; 실제 조회 컨트롤과 대체 캐시·요약기·자료.
+# - failed_id: str; 요약 실패를 주입할 제품 ID.
+# 반환값:
+# - None.
 @pytest.mark.anyio
 @pytest.mark.parametrize("failed_id", PRODUCT_IDS)
 async def test_partial_summary_keeps_confirmation_and_recovers_missing_product(
-    lookup_case, failed_id,
-):
+    lookup_case: SimpleNamespace, failed_id: str,
+) -> None:
     case = lookup_case
     case.failed_ids.add(failed_id)
 
@@ -140,8 +177,15 @@ async def test_partial_summary_keeps_confirmation_and_recovers_missing_product(
         case.advanced_api.searchMedication.assert_not_awaited()
 
 
+# 함수이름: test_all_candidate_summary_failures_remain_errors_and_retry
+# 함수역할:
+# - 모든 후보 요약 실패는 오류로 전파되고 캐시하지 않으며 후속 요청에서 복구 가능한지 확인한다.
+# 매개변수:
+# - lookup_case: SimpleNamespace; 실제 조회 컨트롤과 대체 캐시·요약기·자료.
+# 반환값:
+# - None.
 @pytest.mark.anyio
-async def test_all_candidate_summary_failures_remain_errors_and_retry(lookup_case):
+async def test_all_candidate_summary_failures_remain_errors_and_retry(lookup_case: SimpleNamespace) -> None:
     case = lookup_case
     case.failed_ids.update(PRODUCT_IDS)
 
@@ -159,8 +203,15 @@ async def test_all_candidate_summary_failures_remain_errors_and_retry(lookup_cas
     assert case.generator.summarize_advanced_item.await_count == 4
 
 
+# 함수이름: test_complete_single_product_still_auto_matches_and_reuses_summary
+# 함수역할:
+# - 완전한 단일 일치 제품은 자동 확정하면서 반복 요청의 요약을 재사용하는지 확인한다.
+# 매개변수:
+# - lookup_case: SimpleNamespace; 실제 조회 컨트롤과 대체 캐시·요약기·자료.
+# 반환값:
+# - None.
 @pytest.mark.anyio
-async def test_complete_single_product_still_auto_matches_and_reuses_summary(lookup_case):
+async def test_complete_single_product_still_auto_matches_and_reuses_summary(lookup_case: SimpleNamespace) -> None:
     case = lookup_case
     if case.source == "local":
         with Session(case.engine) as writer:
@@ -176,8 +227,15 @@ async def test_complete_single_product_still_auto_matches_and_reuses_summary(loo
     case.generator.summarize_advanced_item.assert_awaited_once()
 
 
+# 함수이름: test_partial_results_cannot_be_written_to_full_result_cache
+# 함수역할:
+# - 불완전한 조회 결과는 전체 결과 캐시에 저장하지 않는지 확인한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - None.
 @pytest.mark.anyio
-async def test_partial_results_cannot_be_written_to_full_result_cache():
+async def test_partial_results_cannot_be_written_to_full_result_cache() -> None:
     redis = FakeRedis()
     cache = MedicationDetailCache(redis_client=redis)
 
@@ -189,8 +247,15 @@ async def test_partial_results_cannot_be_written_to_full_result_cache():
 
 
 # 구버전 캐시에는 누락 여부가 없어 정상처럼 보여도 새 조회에서 사용하지 않는다.
+# 함수이름: test_legacy_cache_cannot_hide_a_product
+# 함수역할:
+# - 이전 캐시 키의 불완전 제품 목록은 새 조회를 가리지 않고 모든 제품 후보가 반환되는지 확인한다.
+# 매개변수:
+# - lookup_case: SimpleNamespace; 실제 조회 컨트롤과 대체 캐시·요약기·자료.
+# 반환값:
+# - None.
 @pytest.mark.anyio
-async def test_legacy_cache_cannot_hide_a_product(lookup_case):
+async def test_legacy_cache_cannot_hide_a_product(lookup_case: SimpleNamespace) -> None:
     case = lookup_case
     old_key = f"drug_info:{PRODUCT_NAME}"
     case.redis.values[old_key] = json.dumps([_detail().getMedicationDetail()])
@@ -205,8 +270,15 @@ async def test_legacy_cache_cannot_hide_a_product(lookup_case):
         assert case.redis.ttl_seconds[f"drug_info:v2:{PRODUCT_NAME}"] == 604800
 
 
+# 함수이름: test_malformed_cached_candidate_is_not_silently_dropped
+# 함수역할:
+# - 캐시 후보 하나가 잘못되면 조용히 제외하지 않고 캐시 전체를 누락으로 취급하는지 확인한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - None.
 @pytest.mark.anyio
-async def test_malformed_cached_candidate_is_not_silently_dropped():
+async def test_malformed_cached_candidate_is_not_silently_dropped() -> None:
     redis = FakeRedis()
     cache = MedicationDetailCache(redis_client=redis)
     redis.values[f"drug_info:v2:{PRODUCT_NAME}"] = json.dumps([
@@ -217,9 +289,17 @@ async def test_malformed_cached_candidate_is_not_silently_dropped():
 
 
 # 재정렬·필터링 후 다음 공급자로 넘어가더라도 앞에서 실패한 후보가 사라진 사실을 유지한다.
+# 함수이름: test_local_partial_result_stays_partial_through_fallback
+# 함수역할:
+# - 로컬 결과가 불완전하면 후속 캐시·공공 결과가 있어도 확인 요구를 유지하고 완전 결과로 캐시하지 않는지 확인한다.
+# 매개변수:
+# - lookup_case: SimpleNamespace; 실제 조회 컨트롤과 대체 캐시·요약기·자료.
+# - fallback_source: str; 후속 결과를 공급할 cache 또는 public 경로.
+# 반환값:
+# - None.
 @pytest.mark.anyio
 @pytest.mark.parametrize("fallback_source", ["public", "cache"])
-async def test_local_partial_result_stays_partial_through_fallback(lookup_case, fallback_source):
+async def test_local_partial_result_stays_partial_through_fallback(lookup_case: SimpleNamespace, fallback_source: str) -> None:
     case = lookup_case
     case.control.local_medication_catalog = SimpleNamespace(
         fetch_drug_info=AsyncMock(return_value=MedicationLookupResult(
@@ -241,8 +321,15 @@ async def test_local_partial_result_stays_partial_through_fallback(lookup_case, 
         assert case.redis.calls["setex"] == 0
 
 
+# Function Name: test_later_search_keyword_does_not_erase_earlier_summary_failure
+# Description:
+# - Requires a complete later keyword result to retain the earlier incomplete lookup warning and manual confirmation.
+# Parameters:
+# - lookup_case: SimpleNamespace; isolated lookup control and provider/cache doubles.
+# Returns:
+# - None.
 @pytest.mark.anyio
-async def test_later_search_keyword_does_not_erase_earlier_summary_failure(lookup_case):
+async def test_later_search_keyword_does_not_erase_earlier_summary_failure(lookup_case: SimpleNamespace) -> None:
     case = lookup_case
     case.control.text_normalizer = SimpleNamespace(
         normalize_raw_text=lambda value: value,

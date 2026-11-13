@@ -34,11 +34,9 @@ part 'check_saved_medication_support.dart';
 // 역할: 사용자가 저장한 복약 정보를 날짜별 목록으로 보여주는 화면을 구성한다.
 
 // Class Name: CheckSavedMedicationUI
-// Role: Represents date-grouped saved medications, filtering, and selection deletion.
-// Responsibilities:
-// - Loads saved medication on entry.
-// - Groups medication rows by saved date.
-// - Provides guidance, photo, and deletion dialogs.
+// Role: Date-grouped saved medications with filtering and selection deletion.
+// Responsibilities: Creates state that loads the current account list and coordinates registration/deletion actions.
+// Attributes: No additional fields; the state reads MedBuddyViewModel from the widget tree.
 class CheckSavedMedicationUI extends StatefulWidget {
   // Function Name: CheckSavedMedicationUI
   // Description: Initializes date-grouped saved medications, filtering, and selection deletion with the supplied configuration.
@@ -57,21 +55,21 @@ class CheckSavedMedicationUI extends StatefulWidget {
 }
 
 // 클래스명: _SavedMedicationSortMode
-// 역할: 약품 목록의 날짜 정렬 기준을 담당한다.
-// 주요 책임:
-// - 약품 목록의 날짜 정렬 기준에서 지원하는 선택지를 열거하고 구분한다: registeredDate, medicationDate.
+// 역할: 저장 약품 목록의 조회 조건.
+// 주요 책임: 등록일 또는 복용일 기준 정렬을 구분한다.
+// 속성: registeredDate/medicationDate: 날짜 기준.
 enum _SavedMedicationSortMode { registeredDate, medicationDate }
 
 // 클래스명: _SavedMedicationSortDirection
-// 역할: 날짜 정렬의 오름차순·내림차순을 담당한다.
-// 주요 책임:
-// - 날짜 정렬의 오름차순·내림차순에서 지원하는 선택지를 열거하고 구분한다: ascending, descending.
+// 역할: 저장 약품 목록의 조회 조건.
+// 주요 책임: 날짜가 빠른 순서 또는 최근 순서를 구분한다.
+// 속성: ascending/descending: 정렬 방향.
 enum _SavedMedicationSortDirection { ascending, descending }
 
 // 클래스명: _SavedMedicationFilterMode
-// 역할: 복용 중·복용 종료·전체 표시 범위를 담당한다.
-// 주요 책임:
-// - 복용 중·복용 종료·전체 표시 범위에서 지원하는 선택지를 열거하고 구분한다: active, ended, all.
+// 역할: 저장 약품 목록의 조회 조건.
+// 주요 책임: 복용 중·종료·전체 목록 범위를 구분한다.
+// 속성: active/ended/all: 표시 범위.
 enum _SavedMedicationFilterMode { active, ended, all }
 
 // 클래스명: _CheckSavedMedicationUIState
@@ -114,19 +112,28 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     });
   }
 
-  // 함수역할: 검색 입력 자원을 정리한다. 매개변수·반환값: 없음.
+  // 함수이름: dispose
+  // 함수역할: 약품 검색 입력 제어기를 해제한다.
+  // 매개변수: 없음.
+  // 반환값: 없음.
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
 
-  // 검색어가 있으면 검색 중에 접은 묶음만, 없으면 사용자가 접어 둔 묶음을 적용한다.
+  // Function Name: _activeCollapsedDateGroups
+  // Description: Uses a separate collapsed-group set during search so searching does not overwrite ordinary list expansion choices.
+  // Parameters: None.
+  // Returns: Active Set<String> of collapsed date groups.
   Set<String> get _activeCollapsedDateGroups => _searchQuery.isEmpty
       ? _collapsedDateGroups
       : _searchCollapsedDateGroups;
 
-  // 함수역할: 검색어를 반영하고 숨겨질 수 있는 선택을 비운다. 매개변수: 입력 문자열.
+  // Function Name: _changeSearch
+  // Description: Normalizes the search query and clears hidden selections; changing the query resets only search-specific collapsed groups.
+  // Parameters: value (String): raw search input.
+  // Returns: No return value; deletion in progress blocks changes.
   void _changeSearch(String value) {
     if (_isDeleting) return;
     setState(() {
@@ -137,11 +144,10 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     });
   }
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 저장 약품의 날짜별 조회·필터·선택 삭제 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 저장 약품의 날짜별 조회·필터·선택 삭제에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Binds cabinet query state to the date-grouped, filterable saved-medication screen and selection deletion controls.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final viewModel = context.read<MedBuddyViewModel>();
@@ -160,9 +166,10 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     );
   }
 
-  // 함수이름: _buildScreen
-  // 함수역할: 일정 화면과 같은 헤더 아래 조회 도구·본문을 스크롤하고 선택 삭제 버튼은 하단에 고정한다.
-  // 매개변수: context는 화면 위치, viewModel은 조회 상태. 반환값: 뒤로가기를 제어하는 화면.
+  // Function Name: _buildScreen
+  // Description: Keeps query tools and content scrollable below the shared header while anchoring the selection-delete action and handling back navigation.
+  // Parameters: context (BuildContext): screen scope; viewModel (MedBuddyViewModel): cabinet state and commands.
+  // Returns: The cabinet screen with controlled back behavior.
   Widget _buildScreen(BuildContext context, MedBuddyViewModel viewModel) {
     final text = _SavedMedicationText(viewModel.userSetting.language);
     final medications = viewModel.savedMedicationInfoList;
@@ -362,8 +369,10 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     if (!_isDeleting) Navigator.maybePop(context);
   }
 
-  // 함수이름: _showAll
-  // 함수역할: 빈 결과에서 전체 목록으로 전환한다. 매개변수: 없음. 반환값: 없음.
+  // Function Name: _showAll
+  // Description: Clears the restrictive view from an empty result to show all saved medications.
+  // Parameters: None.
+  // Returns: None.
   void _showAll() {
     if (_isDeleting) return;
     _searchController.clear();
@@ -419,10 +428,10 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     });
   }
 
-  // 함수이름: _buildContent
-  // 함수역할: 로딩·조회 실패·빈 결과·날짜별 목록을 나누고 기존 등록 및 상세 흐름을 연결한다.
-  // 매개변수: viewModel은 상태, savedMedicationInfoList는 전체 목록, text는 문구.
-  // 반환값: 스크롤 가능한 목록 또는 빈 상태.
+  // Function Name: _buildContent
+  // Description: Separates loading, query failure, no matches and date-grouped results, preserving registration and detail entry actions.
+  // Parameters: viewModel: query state; savedMedicationInfoList: complete saved list; text: localized labels.
+  // Returns: Scrollable results or the matching state presentation.
   Widget _buildContent(
     MedBuddyViewModel viewModel,
     List<MedicationDetail> savedMedicationInfoList,
@@ -518,6 +527,10 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     );
   }
 
+  // 함수이름: _editRegimen
+  // 함수역할: 저장된 약의 처방 변경 화면을 열고 반환된 결과를 안내한다. 중단 결과는 전체 목록으로 전환해 삭제로 오해하지 않게 한다.
+  // 매개변수: medication (MedicationDetail): 저장 약; action (MedicationRegimenAction): 작업; viewModel (MedBuddyViewModel): 현재 계정 저장 명령.
+  // 반환값: Future<void>; ID 없음·삭제 중·취소·화면 종료는 결과 처리를 생략한다.
   Future<void> _editRegimen(
     MedicationDetail medication,
     MedicationRegimenAction action,
@@ -545,7 +558,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
+        content: KeepWordsText(
           result.message(isEnglishLanguage(viewModel.userSetting.language)),
         ),
       ),
@@ -664,7 +677,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
       });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(text.deleteResult(result))));
+      ).showSnackBar(SnackBar(content: KeepWordsText(text.deleteResult(result))));
     } finally {
       if (mounted) {
         setState(() {
@@ -703,12 +716,10 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     );
   }
 
-  // Function Name: _showMedicationImage
-  // Description: Checks for a safe image URL before opening the medication photo dialog or showing an unavailable notice.
-  // Parameters:
-  // - medication (MedicationDetail): Medication data to display, transform, save, or compare.
-  // - text (_SavedMedicationText): Localized labels used by this section.
-  // Returns: None; updates state or performs the documented action.
+  // 함수이름: _showMedicationImage
+  // 함수역할: 유효한 로컬 이미지 파일 또는 안전한 원격 주소가 있으면 사진 대화상자를 열고, 둘 다 없으면 사진 없음 안내를 표시한다.
+  // 매개변수: medication (MedicationDetail): 로컬 경로·원격 주소; text (_SavedMedicationText): 표시 문구.
+  // 반환값: 없음.
   void _showMedicationImage({
     required MedicationDetail medication,
     required _SavedMedicationText text,
@@ -719,7 +730,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     if (!hasLocalImage && safeMedicationImageUrl(medication.imageUrl).isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(text.noImage)));
+      ).showSnackBar(SnackBar(content: KeepWordsText(text.noImage)));
       return;
     }
 

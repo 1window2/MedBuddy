@@ -109,9 +109,9 @@ class MedicationThumbnail extends StatelessWidget {
 }
 
 // Class Name: _MedicationPlaceholder
-// Role: Draws the pill icon shown when no medication photo is available.
-// Attributes:
-// - size (double): Thumbnail edge length used to scale the icon.
+// Role: Draw the medication icon when no photo can be displayed.
+// Responsibilities: Center a half-size icon in the thumbnail fallback area.
+// Attributes: size (double): thumbnail edge length used to scale the icon.
 class _MedicationPlaceholder extends StatelessWidget {
   final double size;
 

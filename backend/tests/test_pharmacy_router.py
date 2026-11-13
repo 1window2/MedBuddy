@@ -31,6 +31,8 @@ from entities.nearby_pharmacy_entity import (  # noqa: E402
 # Responsibilities:
 # - Supplies an official-late-night search result carrying catalog freshness and holiday-roster
 #   provenance.
+# Attributes:
+# - None.
 class _FakeControl:
     # Function Name: requestNearbyPharmacySearch
     # Description:

@@ -28,7 +28,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.websockets import WebSocketDisconnect
@@ -48,6 +49,8 @@ _CAREGIVER = "caregiver-a"
 
 # Class Name: _ChatStream
 # Role: What the `chat_stream` fixture hands to a test.
+# Responsibilities:
+# - Group isolated handshake dependencies and construct stream paths for selected users and links.
 # Attributes:
 # - client (TestClient): Client of the application; the lifespan is not started.
 # - app (FastAPI): Application built by main.create_app() for this test.
@@ -738,3 +741,50 @@ def test_failed_revalidation_keeps_the_stream_and_is_retried(
         assert _is_connected(chat_stream)
 
     assert len(checks) == 2
+
+
+# Function Name: test_revoked_credential_closes_an_open_stream
+# Description:
+# - Once the stream's ID token is refused (revoked session or disabled account), the next
+#   revalidated ping closes the stream with 4401; a verifier outage keeps it and checks again.
+# Parameters:
+# - chat_stream (_ChatStream): Application and client under test.
+# - monkeypatch (pytest.MonkeyPatch): Makes every ping due for revalidation and swaps the verdict.
+# Returns:
+# - None.
+def test_revoked_credential_closes_an_open_stream(
+    chat_stream: _ChatStream,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "CHAT_WEBSOCKET_REVALIDATION_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(settings, "CHAT_WEBSOCKET_MIN_PING_INTERVAL_SECONDS", 0)
+    verdicts: list[int] = []
+    real_principal = chat_router.get_authenticated_principal
+
+    # Function Name: verdict
+    # Description:
+    # - Returns the real principal at the handshake, then the next queued refusal.
+    # Parameters:
+    # - credentials: Bearer credentials of the stream.
+    # Returns:
+    # - The verified principal while no refusal is queued.
+    def verdict(credentials: HTTPAuthorizationCredentials | None) -> AuthenticatedPrincipal:
+        if verdicts:
+            raise HTTPException(status_code=verdicts.pop(0), detail="refused")
+        return real_principal(credentials)
+
+    monkeypatch.setattr(chat_router, "get_authenticated_principal", verdict)
+    with chat_stream.client.websocket_connect(
+        chat_stream.path(), headers=chat_stream.headers
+    ) as socket:
+        assert socket.receive_json()["type"] == "chat_ready"
+        verdicts.append(503)
+        socket.send_text("ping")
+        assert socket.receive_json() == {"type": "pong"}
+        verdicts.append(401)
+        socket.send_text("ping")
+        with pytest.raises(WebSocketDisconnect) as closed:
+            socket.receive_json()
+
+    assert closed.value.code == 4401
+    assert not _is_connected(chat_stream)

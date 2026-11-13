@@ -3,13 +3,10 @@
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-// 클래스명: PharmacyFavoriteService
-// 역할: 약국 화면과 채팅 선택 화면이 공유하는 사용자별 즐겨찾기 저장소이다.
-// 주요 책임:
-// - 빈 식별자를 제외하고 중복 제거·정렬된 약국 ID 목록을 기기에 저장한다.
-// 속성:
-// - _preferencesLoader (Future<SharedPreferences> Function()): 기기 설정 저장소 제공 경계
-// - userHash (String): 현재 사용자 소유권·표시·저장 범위의 해시
+// Class Name: PharmacyFavoriteService
+// Role: Store favorite care-provider IDs separately by user and provider kind.
+// Responsibilities: Load and persist pharmacy or hospital favorites using a replaceable preference loader.
+// Attributes: userHash (String): owner; hospitals (bool): provider kind; _preferencesLoader: storage boundary; _storageKeyPrefix: pharmacy namespace.
 class PharmacyFavoriteService {
   static const String _storageKeyPrefix = 'medbuddy.favorite_pharmacy_ids';
 
@@ -22,6 +19,7 @@ class PharmacyFavoriteService {
   // 매개변수:
   // - preferencesLoader (Future<SharedPreferences> Function()?): 기기 설정 저장소 제공 경계
   // - userHash (String): 현재 사용자 소유권·표시·저장 범위의 해시
+  // - hospitals (bool): true이면 병원, false이면 약국 즐겨찾기 저장 공간을 사용한다.
   // 반환값:
   // - PharmacyFavoriteService: 초기화된 인스턴스.
   PharmacyFavoriteService({
@@ -30,13 +28,10 @@ class PharmacyFavoriteService {
     this.hospitals = false,
   }) : _preferencesLoader = preferencesLoader ?? SharedPreferences.getInstance;
 
-  // 함수이름: storageKeyFor
-  // 함수역할: 사용자 해시의 앞뒤 공백을 지운 뒤 해시가 있으면 전용 접미사를 붙이고 없으면 구형 공통 즐겨찾기 키를 사용한다. 계정 삭제도 이 키로 지운다.
-  // 매개변수:
-  // - userHash (String): 현재 사용자 소유권·표시·저장 범위의 해시
-  // - hospitals (bool): 약국 대신 병원 즐겨찾기 키를 만들지 여부
-  // 반환값:
-  // - String: 사용자 해시가 있으면 전용 접미사를 붙이고 없으면 구형 공통 즐겨찾기 키를 사용한다.
+  // Function Name: storageKeyFor
+  // Description: Choose a hospital/pharmacy namespace and append the trimmed user hash; blank owners retain the legacy unscoped key.
+  // Parameters: userHash (String): owner; hospitals (bool): hospital instead of pharmacy namespace.
+  // Returns: String: favorite-ID storage key.
   static String storageKeyFor(String userHash, {required bool hospitals}) {
     final prefix = hospitals
         ? 'medbuddy.favorite_hospital_ids'
@@ -48,12 +43,10 @@ class PharmacyFavoriteService {
     return '$prefix.$normalizedUserHash';
   }
 
-  // 함수이름: _storageKey
-  // 함수역할: 이 서비스의 사용자 해시와 약국·병원 구분으로 storageKeyFor의 저장 키를 고른다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - String: 현재 사용자 범위의 즐겨찾기 저장 키.
+  // Function Name: _storageKey
+  // Description: Resolve this instance's owner- and provider-specific favorite key.
+  // Parameters: None.
+  // Returns: String: preference key.
   String get _storageKey => storageKeyFor(userHash, hospitals: hospitals);
 
   // 함수이름: loadFavoriteIds

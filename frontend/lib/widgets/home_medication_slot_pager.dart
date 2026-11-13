@@ -8,7 +8,12 @@ import '../entities/medication_slot_label.dart';
 import '../theme/medbuddy_theme.dart';
 import 'home_medication_preview.dart';
 import 'medbuddy_confirm_dialog.dart';
+import 'keep_words_text.dart';
 
+// Class Name: HomeMedicationSlotPager
+// Role: Shows one scheduled medication slot at a time on the home screen.
+// Responsibilities: Preserve user slot selection, present loading/error progress and offer optional completion or details actions.
+// Attributes: schedules/reminderSettings: Display data; language/layout flags: Presentation; callbacks and loading flags: Parent-owned actions; timeFormatter: Optional clock format.
 class HomeMedicationSlotPager extends StatefulWidget {
   final List<MedicationSchedule> schedules;
   final bool isEnglish;
@@ -26,6 +31,10 @@ class HomeMedicationSlotPager extends StatefulWidget {
   // 사용자가 고른 오전/오후·24시간 방식으로 알림 시각을 표시한다. 없으면 저장값(HH:mm)을 그대로 쓴다.
   final String Function(int hour, int minute)? timeFormatter;
 
+  // Function Name: HomeMedicationSlotPager
+  // Description: Configures slot navigation and optional parent-owned dose actions.
+  // Parameters: key: Identity; schedules/isEnglish: Data and language; compact/isLoading/hasError: Presentation; initialSlotKey: Preferred first slot; reminderSettings/timeFormatter: Optional alarm display; onStatusUpdateRequested/isCompletionLoading: Recording; showDetailsButton/onDetailsRequested: Navigation.
+  // Returns: A pager that does not infer caregiver alarm times when reminderSettings is absent.
   const HomeMedicationSlotPager({
     super.key,
     required this.schedules,
@@ -42,11 +51,19 @@ class HomeMedicationSlotPager extends StatefulWidget {
     this.timeFormatter,
   });
 
+  // 함수이름: createState
+  // 함수역할: 시간대 선택과 저장 진행을 관리할 상태를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 새 홈 시간대 탐색 State.
   @override
   State<HomeMedicationSlotPager> createState() =>
       _HomeMedicationSlotPagerState();
 }
 
+// Class Name: _HomeMedicationSlotPagerState
+// Role: Owns the visible slot, swipe tracking and local save progress.
+// Responsibilities: Keep valid selections across schedule refreshes and advance after a successful completion only when selection has not changed.
+// Attributes: _slotKeys/_index: Pages; _userSelected: Explicit choice; _saving: Local write; _drag: Swipe displacement.
 class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
   List<String> _slotKeys = const [];
   int _index = 0;
@@ -54,6 +71,10 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
   bool _saving = false;
   double _drag = 0;
 
+  // 함수이름: initState
+  // 함수역할: 현재 일정에 실제로 존재하는 시간대와 최초 표시 위치를 계산한다.
+  // 매개변수: 없음.
+  // 반환값: 없음; 초기 우선 구간 또는 첫 미완료 구간을 선택한다.
   @override
   void initState() {
     super.initState();
@@ -68,6 +89,10 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
       .where((slot) => widget.schedules.any((s) => s.slotKeys.contains(slot)))
       .toList(growable: false);
 
+  // 함수이름: _initialIndex
+  // 함수역할: 선호 시간대가 있으면 우선하고 없으면 첫 미완료 시간대를 찾는다.
+  // 매개변수: 없음.
+  // 반환값: 선택할 인덱스; 모두 완료되었거나 목록이 비면 0.
   int _initialIndex() {
     final preferred = _slotKeys.indexOf(widget.initialSlotKey ?? '');
     if (preferred >= 0) return preferred;
@@ -82,6 +107,10 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
     return 0;
   }
 
+  // 함수이름: didUpdateWidget
+  // 함수역할: 일정 목록 변경 후에도 같은 시간대 선택을 유지하고 사라진 경우만 다시 고른다.
+  // 매개변수: oldWidget: 이전 일정·로딩 구성.
+  // 반환값: 없음; 사용자가 고르지 않은 최초 로딩 완료 때는 초기 선택을 다시 계산한다.
   @override
   void didUpdateWidget(HomeMedicationSlotPager oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -97,6 +126,10 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
     }
   }
 
+  // 함수이름: _select
+  // 함수역할: 유효한 다른 시간대로 이동하고 사용자의 명시적 선택을 기록한다.
+  // 매개변수: index: 새 페이지 인덱스.
+  // 반환값: 없음; 범위 밖이나 현재 위치는 무시한다.
   void _select(int index) {
     if (index < 0 || index >= _slotKeys.length || index == _index) {
       return;
@@ -107,12 +140,20 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
     });
   }
 
+  // Function Name: _slotLabel
+  // Description: Localizes a pager slot with a bedtime fallback.
+  // Parameters: slot: Medication slot key.
+  // Returns: The current-language slot label.
   String _slotLabel(String slot) => medicationSlotLabel(
     slot,
     isEnglish: widget.isEnglish,
     fallback: widget.isEnglish ? 'Bedtime' : '취침 전',
   );
 
+  // 함수이름: _medications
+  // 함수역할: 지정 시간대에 실제로 속하는 약 일정만 모은다.
+  // 매개변수: slot: 복용 구간 키.
+  // 반환값: 고정 길이 일정 목록.
   List<MedicationSchedule> _medications(String slot) => widget.schedules
       .where((schedule) => schedule.slotKeys.contains(slot))
       .toList(growable: false);
@@ -128,9 +169,10 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
         : '$label, $count개 시간대 중 ${index + 1}번째';
   }
 
-  // 함수이름: build
-  // 함수역할: 선택한 시간대 요약·점 표시와 역할에 맞는 기록 또는 상세 조회 버튼을 구성한다.
-  // 매개변수: context: 화면 구성 환경. 반환값: 시간대 탐색 영역.
+  // Function Name: build
+  // Description: Builds stable-height slot pages, accessible swipe navigation and optional record/details controls.
+  // Parameters: context: Flutter build context.
+  // Returns: The pager with writes disabled while loading, failed or already saving.
   @override
   Widget build(BuildContext context) {
     final slot = _slotKeys.isEmpty ? null : _slotKeys[_index];
@@ -206,7 +248,7 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
                   : Icon(
                       hasPending ? Icons.done_all_rounded : Icons.undo_rounded,
                     ),
-              label: Text(
+              label: KeepWordsText(
                 busy
                     ? (widget.isEnglish ? 'Saving...' : '저장 중...')
                     : unavailable
@@ -241,13 +283,19 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
               key: const Key('home-slot-view-schedule'),
               onPressed: widget.onDetailsRequested,
               icon: const Icon(Icons.calendar_month_outlined),
-              label: Text(widget.isEnglish ? 'View schedule' : '일정 보기'),
+              label: KeepWordsText(
+                widget.isEnglish ? 'View schedule' : '일정 보기',
+              ),
             ),
           ),
       ],
     );
   }
 
+  // Function Name: _slotSummary
+  // Description: Summarizes a slot's completion, first medication and optional alarm time.
+  // Parameters: slot: Selected slot, or null for the empty state.
+  // Returns: A HomeMedicationSummary distinguishing loading, unavailable, empty and dose-progress states without inventing missing caregiver alarm times.
   Widget _slotSummary(String? slot) {
     final medications = slot == null
         ? const <MedicationSchedule>[]
@@ -345,11 +393,10 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
     ),
   );
 
-  // 함수이름: _confirmUndo
-  // 함수역할: 같은 버튼을 연달아 눌러 방금 기록한 시간대 전체가 취소되지 않게 취소 전에 한 번 확인한다.
-  //           되돌리기는 드문 동작이라 기록하는 주된 흐름에는 확인 창을 띄우지 않는다.
-  // 매개변수: slot: 복용 완료를 취소할 시간대 키.
-  // 반환값: 사용자가 "복용 완료 취소"를 고르면 true, 닫거나 유지를 고르면 false.
+  // Function Name: _confirmUndo
+  // Description: Asks before undoing all completed doses in a slot to prevent accidental repeated-tap reversal.
+  // Parameters: slot: Slot whose completion will be undone.
+  // Returns: True for explicit undo confirmation, false for keep or dismissal.
   Future<bool> _confirmUndo(String slot) async {
     final label = _slotLabel(slot);
     return showMedBuddyConfirmDialog(
@@ -364,6 +411,10 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
     );
   }
 
+  // Function Name: _updateSlot
+  // Description: Requests a slot status change and advances to a later incomplete slot after successful completion.
+  // Parameters: slot: Target slot; completed: Desired state.
+  // Returns: Completion; undo requires confirmation, duplicate writes are ignored, errors propagate and mounted save state is always released.
   Future<void> _updateSlot(String slot, {required bool completed}) async {
     if (_saving ||
         widget.isCompletionLoading ||

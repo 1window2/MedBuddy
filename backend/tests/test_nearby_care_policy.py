@@ -137,10 +137,13 @@ def test_display_and_distance_are_feature_independent() -> None:
     )
 
 
-# Function Name: test_nearby_care_dependency_direction
-# Description: Prevents controller-to-controller imports and infrastructure dependencies in pure policy.
-# Parameters: None.
-# Returns: None.
+# 함수이름: test_nearby_care_dependency_direction
+# 함수역할:
+# - 주변 의료 정책에서 인프라 의존성을 금지하고 컨트롤 간 직접 import가 없는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - None.
 def test_nearby_care_dependency_direction() -> None:
     backend = Path(__file__).resolve().parents[1]
     for relative, allowed in (

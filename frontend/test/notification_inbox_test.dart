@@ -11,6 +11,7 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/notification_inbox_store.dart';
 import 'package:medbuddy_frontend/services/push_notification_service.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 
 // 함수이름: _entry
 // 함수역할: 고정 시각의 테스트 알림을 만든다. 매개변수: id, date, chat. 반환값: 알림.
@@ -26,9 +27,15 @@ NotificationInboxEntry _entry(String id, DateTime date, {bool chat = false}) =>
       occurredAt: date,
     );
 
-// 함수이름: main
-// 함수역할: 저장·수신·화면 회귀 테스트를 등록한다. 매개변수: 없음. 반환값: 없음.
+// Function Name: main
+// Description: Register inbox persistence, push deduplication/privacy, and accessible selection/navigation regressions.
+// Parameters: None.
+// Returns: void: Registers fixtures and test callbacks; assertions run in those callbacks.
 void main() {
+  // 함수이름: test: '필요시 복용 푸시 재전송은 읽음 상태를 보존하고 한 건으로 유지한다'
+  // 함수역할: 같은 필요시 복용 event_key를 읽음 처리·재전송·삭제 뒤 재전송하고 다른 event_key도 수신한다.
+  // 매개변수: 없음.
+  // 반환값: 반환값 없음; 같은 복용은 한 건의 읽음 상태와 삭제를 유지하며 별도 복용만 새 안 읽음 항목으로 남는다.
   test('필요시 복용 푸시 재전송은 읽음 상태를 보존하고 한 건으로 유지한다', () async {
     final store = NotificationInboxStore(userHash: 'caregiver');
     final data = {
@@ -53,7 +60,10 @@ void main() {
     expect(entries, hasLength(1));
     expect(entries.single.isRead, isFalse);
   });
-  // 서버가 같은 채팅 메시지를 다시 보내면 FCM 메시지 ID는 바뀌어도 event_id는 같다.
+  // Function Name: test: '채팅 푸시 재전송은 서버 event_id로 한 건만 남긴다'
+  // Description: Deliver chat retries with different FCM message IDs but the same server event_id, then a new event_id.
+  // Parameters: None.
+  // Returns: No value; retries collapse to one entry while a distinct chat event creates a second entry.
   test('채팅 푸시 재전송은 서버 event_id로 한 건만 남긴다', () async {
     final store = NotificationInboxStore(userHash: 'caregiver');
     final data = {
@@ -81,9 +91,17 @@ void main() {
     store = NotificationInboxStore(userHash: 'patient', now: () => now);
   });
 
+  // 함수이름: test: '기존 정형 복약 알림은 현재 언어로 표시하고 채팅은 보존한다'
+  // 함수역할: 기존 한글·영문 정형 복약 알림과 필요시 알림을 다른 언어로 표시하고 사용자 문구·채팅 본문을 비교한다.
+  // 매개변수: 없음.
+  // 반환값: 반환값 없음; 알려진 정형 제목·본문만 현재 언어로 바뀌며 사용자 작성 문구와 채팅은 보존된다.
   test('기존 정형 복약 알림은 현재 언어로 표시하고 채팅은 보존한다', () {
     final control = ManageNotificationInbox(store: store);
     addTearDown(control.dispose);
+    // 함수이름: reminder
+    // 함수역할: 같은 고정 ID·기준 시각에 시간대와 원래 표시 문구가 다른 복약 알림을 만든다.
+    // 매개변수: slot (String): schedule payload 시간대; title (String): 저장 제목; body (String): 저장 본문.
+    // 반환값: NotificationInboxEntry: 번역 판별에 사용할 복약 알림.
     NotificationInboxEntry reminder(String slot, String title, String body) =>
         NotificationInboxEntry(
           id: 'reminder:12:1',
@@ -139,9 +157,10 @@ void main() {
     expect(await restored.load(), isEmpty);
   });
 
-  // 함수이름: 삭제 내용 제거 테스트
-  // 함수역할: 삭제한 알림의 제목·본문·이동 정보가 기기 저장소에 남지 않고, 보관 기간이 지나면 빈 기록도
-  //   정리되는지 검사한다. 매개변수: 없음. 반환값: 검증 완료.
+  // Function Name: test: 'removing a notification erases its stored content'
+  // Description: Delete one of two chat notifications, inspect its stored tombstone, then load again after 91 days.
+  // Parameters: None.
+  // Returns: No value; title/body/navigation payload are erased immediately, the other row remains, and expired tombstone keys are eventually removed.
   test('removing a notification erases its stored content', () async {
     final entry = _entry('chat:7:1', now, chat: true);
     final kept = _entry('chat:7:2', now, chat: true);
@@ -415,9 +434,10 @@ void main() {
     expect(control.hasError, isFalse);
   });
 
-  // 함수이름: 묶음 저장 알림 테스트
-  // 함수역할: 여러 예약을 한 번에 저장하면 변경을 한 번만 알리고, 이미 있는 항목이나 지울 것이 없는 취소는
-  //   알리지 않는지 검증한다. 매개변수: 없음. 반환값: 검증 완료.
+  // Function Name: test: 'batched records and cancellations announce a change only when rows change'
+  // Description: Observe change events while batching future reminders, repeating unchanged writes, and cancelling absent or matching schedules.
+  // Parameters: None.
+  // Returns: No value; each real batch change emits one patient event, no-op operations emit none, and the cancelled reminder is absent when the remaining reminders become due.
   test(
     'batched records and cancellations announce a change only when rows change',
     () async {
@@ -426,6 +446,10 @@ void main() {
         events.add,
       );
       addTearDown(subscription.cancel);
+      // Function Name: reminder
+      // Description: Construct a morning reminder with a stable ID and a day offset for batch-write and cancellation checks.
+      // Parameters: id (int): Schedule identifier; day (int): Offset from the captured test date.
+      // Returns: NotificationInboxEntry: Medication reminder with matching ID, payload date, and occurrence time.
       NotificationInboxEntry reminder(int id, int day) =>
           NotificationInboxEntry(
             id: 'reminder:$id:$day',
@@ -460,9 +484,10 @@ void main() {
     },
   );
 
-  // 함수이름: 변경 없는 갱신 테스트
-  // 함수역할: 30초 주기 갱신처럼 목록이 그대로인 조회는 화면을 다시 그리게 하지 않고, 처음 불러올 때와
-  //   새 알림·읽음·삭제·오류처럼 보이는 내용이 바뀔 때만 알리는지 검증한다. 매개변수: 없음. 반환값: 검증 완료.
+  // Function Name: test: 'control notifies only when the visible inbox changes'
+  // Description: Count controller notifications across initial load, identical refreshes, a new row, reading, repeated storage failure, recovery, and removal.
+  // Parameters: None.
+  // Returns: No value; unchanged visible state stays silent, initial loading emits twice, and each later visible data/error transition emits once.
   test('control notifies only when the visible inbox changes', () async {
     var fails = false;
     final control = ManageNotificationInbox(
@@ -590,6 +615,10 @@ void main() {
   // 함수이름: 알림 시각 형식 테스트
   // 함수역할: 알림 시각이 사용자의 오전/오후·24시간 설정을 따르는지 검증한다. 매개변수: tester. 반환값: 검증 완료.
   for (final format in ['12h', '24h']) {
+    // Function Name: testWidgets: 'inbox time follows the $format setting'
+    // Description: Render a notification at 13:05 with each supported time-format preference.
+    // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+    // Returns: No value; the unread timestamp uses Korean PM 1:05 for 12h or 13:05 for 24h.
     testWidgets('inbox time follows the $format setting', (tester) async {
       await store.record(_entry('dose', DateTime(2026, 9, 10, 13, 5)));
       final control = ManageNotificationInbox(store: store);
@@ -611,8 +640,10 @@ void main() {
     });
   }
 
-  // 함수이름: 날짜 묶음 테스트
-  // 함수역할: 같은 날짜 알림을 한 제목 아래 모으고 날짜 제목을 화면 낭독기 제목으로 알리는지 검증한다. 매개변수: tester. 반환값: 검증 완료.
+  // Function Name: testWidgets: 'inbox shows one date heading per day'
+  // Description: Load two entries for one day and a third for the previous day, then inspect the date heading semantics.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; each day has one heading and the previous-day heading exposes the accessibility header flag.
   testWidgets('inbox shows one date heading per day', (tester) async {
     await store.record(_entry('late', DateTime(2026, 9, 11, 9)));
     await store.record(_entry('early', DateTime(2026, 9, 11, 7)));
@@ -743,11 +774,10 @@ void main() {
     expect(control.unreadCount, 2);
   });
 
-  // 함수이름: 알림 선택 스타일 테스트
-  // 함수역할: 공통 글꼴 굵기·자간과 선택 색상·개수 안내를 검증한다. 매개변수: tester. 반환값: 검증 완료.
-  // 함수이름: 보호자 미복용 알림 가리기 테스트
-  // 함수역할: 두 가지 보호자 알림 이동 경로 모두 유형만 표시 설정에서 제목과 내용을 가리는지 확인한다.
-  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // Function Name: test: 'type-only mode masks both caregiver payload formats'
+  // Description: Format sensitive medication entries with both caregiver payload versions under type-only and default detail settings.
+  // Parameters: None.
+  // Returns: No value; type-only uses generic title/body for both formats, while default formatting preserves the delivered sensitive text.
   test('type-only mode masks both caregiver payload formats', () async {
     final control = ManageNotificationInbox(store: store);
     addTearDown(control.dispose);
@@ -773,6 +803,10 @@ void main() {
     }
   });
 
+  // 함수이름: testWidgets: 'selection uses app typography and a clear selection count'
+  // 함수역할: 알림 하나로 선택 모드를 연 뒤 선택 전·전체 선택 후의 문구와 스타일을 검사한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 굵기 700·자간 0·선택 색상이 공통 규칙에 맞고 개수와 삭제 문구가 0에서 1로 바뀌며 선택만으로 읽음 처리하지 않는다.
   testWidgets('selection uses app typography and a clear selection count', (
     tester,
   ) async {
@@ -805,7 +839,7 @@ void main() {
     expect(button.onPressed, isNull);
     await tester.tap(find.byKey(const Key('inbox-select-all')));
     await tester.pumpAndSettle();
-    final count = tester.widget<Text>(
+    final count = tester.widget<KeepWordsText>(
       find.byKey(const Key('inbox-selection-count')),
     );
     expect(count.data, '1개 선택');

@@ -1,3 +1,5 @@
+# 파일명: hospital_department_search.py
+# 역할: 주변 주소 표본으로 발견한 지역의 진료과 목록을 제한된 시간 안에 수집한다.
 """주변 지역의 진료과별 목록을 모아 상세 조회 전에 거리순 후보를 만든다."""
 
 import asyncio
@@ -9,7 +11,7 @@ from boundaries.hospital_api_boundary import (
     HospitalApiResponseError, HospitalApiUnavailableError, HospitalLookupBoundary,
 )
 from core.config import settings
-from entities.nearby_hospital_entity import HospitalLocationRecord
+from entities.nearby_hospital_entity import HospitalLocationPage, HospitalLocationRecord
 from services.nearby_care_policy import haversine_distance
 
 _PROVINCES = {
@@ -30,6 +32,10 @@ _PROVINCE_ALIASES = {
 _ERRORS = (HospitalApiUnavailableError, HospitalApiResponseError, TimeoutError)
 
 
+# 클래스명: DepartmentCandidates
+# 역할: 거리순 병원 후보와 검색 근거의 한계를 전달한다.
+# 주요 책임: 실제 조회 제한·실패와 주소 표본에 따른 지역 범위 불확실성을 구분한다.
+# 속성: records (tuple)는 후보, partial (bool)은 실제 누락 가능성, region_scope_uncertain (bool)은 지역 추정의 한계다.
 @dataclass(frozen=True)
 class DepartmentCandidates:
     """실제 조회 실패·제한과 주소 표본으로 추정한 지역 범위를 구별한다."""
@@ -39,6 +45,10 @@ class DepartmentCandidates:
     region_scope_uncertain: bool = False
 
 
+# 함수이름: _region
+# 함수역할: 주소의 시도 별칭을 정규화하고 첫 시군구까지만 추출한다.
+# 매개변수: address (str)는 제공자 주소다.
+# 반환값: (시도, 시군구) 쌍. 세종은 빈 시군구, 인식할 수 없는 주소는 None이다.
 def _region(address: str) -> tuple[str, str] | None:
     """제공자 주소의 시도·시군구만 사용하고 병원명에서 지역을 추측하지 않는다."""
     parts = address.split()
@@ -55,6 +65,11 @@ def _region(address: str) -> tuple[str, str] | None:
     return None
 
 
+# Function Name: find_department_candidates
+# Description: Samples regions at five points, fairly pages specialty lists within a shared deadline, and deduplicates nearby candidates.
+# Parameters: boundary (HospitalLookupBoundary) supplies pages; latitude, longitude (float) are the center; radius_km (float) limits distance;
+#   department (str) is the specialty code; deadline (float) is the event-loop absolute deadline.
+# Returns: DepartmentCandidates with sorted records and separate partial/region uncertainty flags; raises when no region or no successful specialty page is available.
 async def find_department_candidates(
     boundary: HospitalLookupBoundary, *, latitude: float, longitude: float,
     radius_km: float, department: str, deadline: float,
@@ -68,7 +83,11 @@ async def find_department_candidates(
     partial = False
     region_scope_uncertain = False
 
-    def remember(page):
+    # 함수이름: remember
+    # 함수역할: 위치 페이지에서 지역을 모으고 제외된 행·불명확한 주소가 있으면 partial을 설정한다.
+    # 매개변수: page (HospitalLocationPage)는 주소 표본 페이지다.
+    # 반환값: None. 외부 regions와 partial만 갱신한다.
+    def remember(page: HospitalLocationPage) -> None:
         """주소 누락·유효하지 않은 행은 검색 범위가 불완전함을 나타낸다."""
         nonlocal partial
         partial |= page.row_count != len(page.records)
@@ -86,7 +105,11 @@ async def find_department_candidates(
               (latitude - dy, longitude), (latitude, longitude + dx),
               (latitude, longitude - dx)]
 
-    async def probe(lat, lon):
+    # 함수이름: probe
+    # 함수역할: 유효한 보조 좌표의 첫 페이지를 공통 마감 안에 조회한다.
+    # 매개변수: lat, lon (float)은 표본 좌표다.
+    # 반환값: HospitalLocationPage 또는 None. 좌표 범위 초과·마감·알려진 제공자 실패를 None으로 처리한다.
+    async def probe(lat: float, lon: float) -> HospitalLocationPage | None:
         """보조 지역 탐색 실패는 이미 찾은 지역을 버리지 않는다."""
         if (asyncio.get_running_loop().time() >= deadline
                 or not -90 <= lat <= 90 or not -180 <= lon <= 180):

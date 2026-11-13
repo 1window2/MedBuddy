@@ -1,3 +1,5 @@
+# 파일명: medication_care_receipts.py
+# 역할: 삭제된 약의 변경 영수증에서 건강정보를 비우되 재전송 방지 행은 보존한다.
 """약 삭제 시 응답의 건강정보만 지우고 재전송 방지 표식은 보존한다."""
 
 import json
@@ -9,6 +11,10 @@ from entities.medication_care_entity import _MedicationCareOperation
 from entities.saved_medication_entity import _SavedMedication
 
 
+# 함수이름: redact_medication_care_receipts
+# 함수역할: 대상 약·대체 약의 영수증을 잠가 응답을 지우고 소유 약이 불명확한 구버전 영수증도 보수적으로 정리한다.
+# 매개변수: db (Session)는 약을 먼저 잠근 호출자의 트랜잭션, patient_hash (str)는 환자 범위, medication_id (int)는 삭제 약 ID다.
+# 반환값: None. flush만 수행하며 commit은 호출자 책임이다. DB 오류는 전달한다.
 def redact_medication_care_receipts(db: Session, patient_hash: str, medication_id: int) -> None:
     # 호출자는 먼저 대상 약을 잠근다. 새 기록 저장과 영수증 정리가 교차하지 않게 한다.
     receipts = db.query(_MedicationCareOperation).filter(

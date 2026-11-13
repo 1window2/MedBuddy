@@ -33,15 +33,10 @@ class MedicationDetailCache:
     RETRY_COOLDOWN_SECONDS = 60.0
     SOCKET_TIMEOUT_SECONDS = 0.3
 
-    # 함수이름: __init__
-    # 함수역할:
-    # - Redis 약품 상세 캐시 연결을 준비하고 사용 가능 상태로 시작한다.
-    # - 직접 만드는 연결에는 접속·응답 제한 시간을 두어 Redis 장애가 요청을 붙잡지 않게 한다.
-    # 매개변수:
-    # - redis_client (redis.Redis | None): 직렬화된 약품 상세를 저장·조회할 Redis 연결.
-    # - clock (Callable[[], float]): 장애 후 재시도 대기 시간을 재는 단조 시계.
-    # 반환값:
-    # - 없음.
+    # Function Name: __init__
+    # Description: Uses an injected Redis client or creates one with bounded socket timeouts, and initializes the outage cooldown.
+    # Parameters: redis_client (Redis | None) overrides the configured endpoint; clock (Callable) measures cooldown time monotonically.
+    # Returns: None; no cache lookup or write is performed.
     def __init__(
         self,
         redis_client: redis.Redis | None = None,
@@ -56,16 +51,10 @@ class MedicationDetailCache:
         self._clock = clock
         self._disabled_until = 0.0
 
-    # Function Name: get
-    # Description:
-    # - Attempts to load MedicationDetail values from Redis.
-    # - Cache failures are treated as misses to preserve service availability.
-    # - A failed Redis command starts the cool-down; an entry that cannot be decoded, or that
-    #   holds a failed summary, is a miss for that key only and is replaced by the next save.
-    # Parameters:
-    # - drug_name (str): Search keyword used as cache key suffix.
-    # Returns:
-    # - Cached MedicationDetail list, or None when missing/unavailable.
+    # 함수이름: get
+    # 함수역할: 냉각 중 조회를 생략하고 캐시 JSON을 약 상세로 검증한 뒤 실패 요약이 섞인 항목은 미스로 취급한다.
+    # 매개변수: drug_name (str)은 v2 캐시 키에 사용할 약명이다.
+    # 반환값: MedicationDetail 목록 또는 미스·잘못된 값·Redis 장애 시 None. Redis 오류는 냉각을 시작하고 내용은 로그에 남기지 않는다.
     async def get(self, drug_name: str) -> list[MedicationDetail] | None:
         if self._is_cooling_down():
             return None
@@ -106,15 +95,10 @@ class MedicationDetailCache:
         logger.info("[Redis] medication detail cache hit.")
         return medication_details
 
-    # Function Name: set
-    # Description:
-    # - Stores complete MedicationDetail lookup results in Redis; partial candidate lists are retried.
-    # - Cache failures are logged but do not fail the use case; a failed Redis command starts the cool-down.
-    # Parameters:
-    # - drug_name (str): Search keyword used as cache key suffix.
-    # - result (MedicationLookupResult): MedicationDetail list and summary completeness to cache.
-    # Returns:
-    # - None.
+    # 함수이름: set
+    # 함수역할: 완전하고 비어 있지 않은 결과만 직렬화해 만료 시간을 지정해 저장하며 냉각 중에는 건너뛴다.
+    # 매개변수: drug_name (str)은 키용 약명, result (MedicationLookupResult)는 후보와 완전성 판정이다.
+    # 반환값: None. 직렬화 실패는 기록 후 생략하고 Redis 실패는 냉각을 시작하며 호출자에게 예외를 전파하지 않는다.
     async def set(
         self,
         drug_name: str,
@@ -159,13 +143,10 @@ class MedicationDetailCache:
     async def close(self) -> None:
         await self.redis_client.aclose()
 
-    # Function Name: _cache_key
-    # Description:
-    # - Uses the versioned drug_info namespace so old potentially partial lists are never reused.
-    # Parameters:
-    # - drug_name (str): Medication name to search or serialize.
-    # Returns:
-    # - Redis key for the supplied drug name.
+    # 함수이름: _cache_key
+    # 함수역할: 이전 캐시 형식과 섞이지 않도록 약명 앞에 v2 네임스페이스를 붙인다.
+    # 매개변수: drug_name (str)은 호출자가 정한 조회 이름이다.
+    # 반환값: drug_info:v2: 접두사와 원본 약명을 합친 str. 이름 정규화는 수행하지 않는다.
     def _cache_key(self, drug_name: str) -> str:
         return f"drug_info:v2:{drug_name}"
 

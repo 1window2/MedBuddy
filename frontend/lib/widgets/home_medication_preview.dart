@@ -6,7 +6,9 @@ import '../theme/medbuddy_theme.dart';
 import 'keep_words_text.dart';
 
 // 클래스명: HomeMedicationPreview
-// 역할: 진행률과 일정 요약을 표시하고 화면별 조회·복용 동작을 배치한다.
+// 역할: 홈에서 진행률과 일정 요약 또는 조회 상태 안내를 공통 틀로 표시한다.
+// 주요 책임: 이름 탐색·헤더 조작·일정 내용과 선택적 복용 명령을 화면 조건에 맞게 배치한다.
+// 속성: title 계열: 제목; progress 계열: 진행 표시; schedule 계열/statusContent: 정상·상태 내용; compact: 밀도; 콜백·선택 위젯: 조작 영역.
 class HomeMedicationPreview extends StatelessWidget {
   final String title;
   final String progressTitle;
@@ -25,6 +27,10 @@ class HomeMedicationPreview extends StatelessWidget {
   final Widget? scheduleContent;
   final Widget? statusContent;
 
+  // 함수이름: HomeMedicationPreview
+  // 함수역할: 진행률과 일정 요약을 표시하는 홈 미리보기를 구성한다.
+  // 매개변수: key/title: 식별과 제목; progressTitle/progressLabel/progress/progressSemanticsLabel: 진행 표시; scheduleTitle/scheduleDescription/hasPendingMedication: 요약; compact: 밀도; onTap: 진입; headerAction/action/titleLeading/titleTrailing/scheduleContent: 선택적 구성 요소.
+  // 반환값: 정상 일정 미리보기; statusContent는 사용하지 않는다.
   const HomeMedicationPreview({
     super.key,
     required this.title,
@@ -44,7 +50,10 @@ class HomeMedicationPreview extends StatelessWidget {
     this.scheduleContent,
   }) : statusContent = null;
 
-  // 조회 중·실패·연결 없음 안내도 정상 일정과 같은 카드 틀을 사용한다.
+  // 함수이름: HomeMedicationPreview.status
+  // 함수역할: 조회 중·실패·연결 없음 같은 상태 내용을 정상 일정과 같은 틀에 배치한다.
+  // 매개변수: key/title: 식별과 제목; content: 상태 내용; compact/onTap: 배치와 진입; headerAction/titleLeading/titleTrailing: 선택적 제목 조작.
+  // 반환값: 진행률과 일정 요약 대신 content를 표시하는 미리보기.
   const HomeMedicationPreview.status({
     super.key,
     required this.title,
@@ -65,6 +74,10 @@ class HomeMedicationPreview extends StatelessWidget {
        scheduleContent = null,
        action = null;
 
+  // 함수이름: _heart
+  // 함수역할: 미리보기 제목 옆 공통 하트 표시를 만든다.
+  // 매개변수: 없음.
+  // 반환값: compact에 따라 정해진 크기를 사용하는 아이콘 위젯.
   Widget _heart() => Container(
     key: const Key('home-preview-heart'),
     width: compact ? 42 : 46,
@@ -80,13 +93,17 @@ class HomeMedicationPreview extends StatelessWidget {
     ),
   );
 
+  // 함수이름: _titleGroup
+  // 함수역할: 양옆 탐색 위젯의 위치를 유지하면서 제목을 남은 너비에 배치한다.
+  // 매개변수: 없음.
+  // 반환값: 두 줄까지 표시하고 넘친 제목은 생략하는 Row.
   Widget _titleGroup() => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
       ?titleLeading,
       // 이름 길이가 바뀌어도 양옆 탐색 버튼의 가로 위치를 유지한다.
       Expanded(
-        child: Text(
+        child: KeepWordsText(
           title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
@@ -102,6 +119,10 @@ class HomeMedicationPreview extends StatelessWidget {
     ],
   );
 
+  // 함수이름: _header
+  // 함수역할: 너비와 글자 확대를 기준으로 제목·탐색 조작을 한 줄 또는 두 줄로 배치한다.
+  // 매개변수: context: 글자 배율을 읽을 구성 문맥.
+  // 반환값: 최소 높이를 유지하는 반응형 헤더.
   Widget _header(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final heartWidth = compact ? 42.0 : 46.0;
@@ -140,7 +161,10 @@ class HomeMedicationPreview extends StatelessWidget {
     },
   );
 
-  // 함수역할: 환자 화면의 간격과 글꼴을 유지하면서 선택적 조회·복용 동작을 배치한다.
+  // Function Name: build
+  // Description: Builds the shared preview frame with either status content or progress and schedule details.
+  // Parameters: context: Flutter build context.
+  // Returns: A tappable preview when onTap is supplied, with optional header and dose actions.
   @override
   Widget build(BuildContext context) => Material(
     color: MedBuddyColors.surface,
@@ -167,7 +191,7 @@ class HomeMedicationPreview extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
+                    child: KeepWordsText(
                       progressTitle,
                       style: const TextStyle(
                         color: MedBuddyColors.textStrong,
@@ -177,7 +201,7 @@ class HomeMedicationPreview extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Text(
+                  KeepWordsText(
                     progressLabel,
                     style: const TextStyle(
                       color: MedBuddyColors.primaryDark,
@@ -219,8 +243,10 @@ class HomeMedicationPreview extends StatelessWidget {
   );
 }
 
-// 클래스명: HomeMedicationSummary
-// 역할: 홈 미리보기의 아이콘·간단한 요약·선택적 시간대 위치 표시를 공유한다.
+// Class Name: HomeMedicationSummary
+// Role: Shares a compact medication summary with optional slot navigation indicators.
+// Responsibilities: Render semantic slot visuals, text and a details affordance without owning schedule state.
+// Attributes: title/description: Text; slotKey/hasPendingMedication: Visual state; compact/descriptionMaxLines/showDetailsArrow/pageIndicator: Layout options.
 class HomeMedicationSummary extends StatelessWidget {
   final String title;
   final String description;
@@ -231,12 +257,10 @@ class HomeMedicationSummary extends StatelessWidget {
   final Widget? pageIndicator;
   final String? slotKey;
 
-  // 함수이름: HomeMedicationSummary
-  // 함수역할: 요약 내용과 표시 옵션을 받아 공통 배치를 구성한다.
-  // 매개변수: title/description: 문구, hasPendingMedication: 미복용 여부,
-  //   compact/showDetailsArrow/descriptionMaxLines: 배치 옵션, pageIndicator: 시간대 위치 표시, key: 식별자,
-  //   slotKey: 시간대 색·아이콘을 적용할 복약 시간대(없으면 중립 표시).
-  // 반환값: 불변 요약 위젯.
+  // Function Name: HomeMedicationSummary
+  // Description: Configures summary content and optional slot-specific styling.
+  // Parameters: key: Identity; title/description: Text; hasPendingMedication: Incomplete state; compact/showDetailsArrow/descriptionMaxLines: Layout; pageIndicator: Optional navigation marker; slotKey: Optional style key.
+  // Returns: An immutable summary widget.
   const HomeMedicationSummary({
     super.key,
     required this.title,
@@ -249,9 +273,10 @@ class HomeMedicationSummary extends StatelessWidget {
     this.slotKey,
   });
 
-  // 함수이름: build
-  // 함수역할: 글 바로 아래에 선택적 점 표시를 붙이고 기존 요약 여백 안에 배치한다.
-  // 매개변수: context: 화면 구성 환경. 반환값: 요약 박스.
+  // Function Name: build
+  // Description: Builds slot-colored summary text and an optional page indicator within the existing padding.
+  // Parameters: context: Flutter build context.
+  // Returns: A summary surface with a neutral fallback when no slot is supplied.
   @override
   Widget build(BuildContext context) {
     final style = slotKey == null ? null : MedBuddySlotStyle.of(slotKey!);

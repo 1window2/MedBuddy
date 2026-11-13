@@ -17,7 +17,15 @@ import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
 import 'package:medbuddy_frontend/widgets/medbuddy_wordmark.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// 실제 Firebase 계정 생성과 메일 발송 없이 호출 순서와 선택 언어를 기록한다.
+// 클래스명: _FirebaseAuth
+// 역할: 실제 계정 생성이나 메일 전송 없이 인증 호출 순서와 언어를 기록하는 Firebase 대역이다.
+// 주요 책임:
+// - 메일 언어 설정 대기, 로그인 오류와 로그아웃 성공·실패를 재현한다.
+// 속성:
+// - calls (List<String>): 호출 순서와 메일 전송 언어.
+// - user (_User): 고정 사용자 대역. language (String?): 적용된 메일 언어.
+// - languageReady (Completer<void>?): 언어 설정 완료를 지연할 신호.
+// - failDelivery, failSignOut (bool): 메일·로그아웃 실패 여부. signedOut (bool): 현재 사용자 제거 여부.
 class _FirebaseAuth extends Fake implements FirebaseAuth {
   final calls = <String>[];
   late final _User user = _User(this);
@@ -27,9 +35,23 @@ class _FirebaseAuth extends Fake implements FirebaseAuth {
   bool failSignOut = false;
   bool signedOut = false;
 
+  // 함수이름: currentUser
+  // 함수역할:
+  // - 로그아웃 이후에는 사용자를 숨기고 그 전에는 고정 사용자 대역을 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - User?; 로그인 상태의 user 또는 로그아웃 뒤 null.
   @override
   User? get currentUser => signedOut ? null : user;
 
+  // 함수이름: signOut
+  // 함수역할:
+  // - 실패 설정이면 네트워크 오류를 발생시키고, 성공하면 호출을 기록하고 현재 사용자를 제거한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 실패 시 network-request-failed 코드의 FirebaseAuthException.
   @override
   Future<void> signOut() async {
     if (failSignOut) {
@@ -39,6 +61,13 @@ class _FirebaseAuth extends Fake implements FirebaseAuth {
     signedOut = true;
   }
 
+  // 함수이름: setLanguageCode
+  // 함수역할:
+  // - 언어 설정 요청을 먼저 기록하고 선택적 대기 신호가 끝나면 메일 언어를 반영한다.
+  // 매개변수:
+  // - languageCode (String?): 적용할 언어 코드 또는 null.
+  // 반환값:
+  // - Future<void>; 대기 신호와 언어 반영이 완료되면 끝난다.
   @override
   Future<void> setLanguageCode(String? languageCode) async {
     calls.add('language:$languageCode');
@@ -46,6 +75,14 @@ class _FirebaseAuth extends Fake implements FirebaseAuth {
     language = languageCode;
   }
 
+  // 함수이름: createUserWithEmailAndPassword
+  // 함수역할:
+  // - 가입 호출을 기록하고 고정 사용자 자격 증명을 반환하며 실제 계정을 생성하지 않는다.
+  // 매개변수:
+  // - email (String): 가입 인터페이스를 맞추기 위한 주소; 대역에서는 사용하지 않는다.
+  // - password (String): 가입 인터페이스를 맞추기 위한 비밀번호; 대역에서는 사용하지 않는다.
+  // 반환값:
+  // - Future<UserCredential>; 고정 user를 담은 자격 증명.
   @override
   Future<UserCredential> createUserWithEmailAndPassword({
     required String email,
@@ -55,6 +92,14 @@ class _FirebaseAuth extends Fake implements FirebaseAuth {
     return _Credential(user);
   }
 
+  // 함수이름: signInWithEmailAndPassword
+  // 함수역할:
+  // - 입력 내용과 무관하게 잘못된 비밀번호 오류를 발생시켜 로그인 실패 화면을 검증하게 한다.
+  // 매개변수:
+  // - email (String): 검증하지 않는 로그인 주소.
+  // - password (String): 검증하지 않는 로그인 비밀번호.
+  // 반환값:
+  // - Future<UserCredential>; 정상 반환 없이 wrong-password 코드의 FirebaseAuthException.
   @override
   Future<UserCredential> signInWithEmailAndPassword({
     required String email,
@@ -63,6 +108,14 @@ class _FirebaseAuth extends Fake implements FirebaseAuth {
     throw FirebaseAuthException(code: 'wrong-password');
   }
 
+  // 함수이름: sendPasswordResetEmail
+  // 함수역할:
+  // - 외부 메일 없이 비밀번호 재설정 요청에 적용된 현재 언어를 기록한다.
+  // 매개변수:
+  // - email (String): 재설정 수신 주소; 전송하지 않는다.
+  // - actionCodeSettings (ActionCodeSettings?): 선택적 메일 설정; 대역에서는 사용하지 않는다.
+  // 반환값:
+  // - Future<void>; 요청 기록 후 완료한다.
   @override
   Future<void> sendPasswordResetEmail({
     required String email,
@@ -72,9 +125,24 @@ class _FirebaseAuth extends Fake implements FirebaseAuth {
   }
 }
 
-// 미인증 이메일 계정으로 유지해 테스트가 실제 백엔드 세션을 요청하지 않게 한다.
+// 클래스명: _User
+// 역할: 메일 인증 상태와 네트워크 지연·실패를 조절할 수 있는 고정 Firebase 사용자 대역이다.
+// 주요 책임:
+// - 인증 확인 횟수와 강제 토큰 갱신 횟수를 기록하고 메일 전송 언어·오류를 재현한다.
+// 속성:
+// - auth (_FirebaseAuth): 메일 언어와 전송 실패 설정을 가진 소유자.
+// - reloads, tokenRefreshes (int): 사용자 재조회와 강제 토큰 갱신 횟수.
+// - reloadReady (Completer<void>?): 재조회 완료 대기 신호.
+// - failReload, verified (bool): 재조회 실패 여부와 현재 이메일 인증 상태.
 class _User extends Fake implements User {
   final _FirebaseAuth auth;
+  // 함수이름: _User
+  // 함수역할:
+  // - 메일 전송 설정과 호출 기록을 공유할 인증 대역을 연결한다.
+  // 매개변수:
+  // - auth (_FirebaseAuth): 사용자 대역이 참조할 인증 객체.
+  // 반환값:
+  // - _User; 미인증 상태와 초기화된 호출 횟수를 가진 사용자.
   _User(this.auth);
   int reloads = 0;
   Completer<void>? reloadReady;
@@ -82,26 +150,82 @@ class _User extends Fake implements User {
   bool verified = false;
   int tokenRefreshes = 0;
 
+  // 함수이름: uid
+  // 함수역할:
+  // - 인증 세션 검증에 사용할 고정 사용자 식별자를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - String; auth-language-fixture.
   @override
   String get uid => 'auth-language-fixture';
+  // 함수이름: email
+  // 함수역할:
+  // - 인증 안내에 표시할 고정 테스트 이메일 주소를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - String; language@example.test.
   @override
   String get email => 'language@example.test';
+  // 함수이름: isAnonymous
+  // 함수역할:
+  // - 익명 계정이 아닌 이메일 계정으로 판정되게 한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - bool; 항상 false.
   @override
   bool get isAnonymous => false;
+  // 함수이름: emailVerified
+  // 함수역할:
+  // - 테스트가 변경한 이메일 인증 여부를 그대로 노출한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - bool; 현재 verified 값.
   @override
   bool get emailVerified => verified;
+  // 함수이름: getIdToken
+  // 함수역할:
+  // - 고정 토큰을 반환하며 강제 갱신 요청만 횟수에 포함한다.
+  // 매개변수:
+  // - forceRefresh (bool): true이면 tokenRefreshes를 증가시키며 기본값은 false.
+  // 반환값:
+  // - Future<String?>; 항상 test-token.
   @override
   Future<String?> getIdToken([bool forceRefresh = false]) async {
     if (forceRefresh) tokenRefreshes++;
     return 'test-token';
   }
 
+  // 함수이름: providerData
+  // 함수역할:
+  // - 비밀번호 로그인 공급자를 가진 계정으로 인식되도록 공급자 목록을 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - List<UserInfo>; _ProviderInfo 한 건.
   @override
   List<UserInfo> get providerData => [_ProviderInfo()];
+  // 함수이름: multiFactor
+  // 함수역할:
+  // - 다중 인증 기능을 지원하지 않는 계정 조회 오류를 재현한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - MultiFactor; 정상 반환 없이 operation-not-allowed 코드의 FirebaseAuthException.
   @override
   MultiFactor get multiFactor =>
       throw FirebaseAuthException(code: 'operation-not-allowed');
 
+  // 함수이름: reload
+  // 함수역할:
+  // - 재조회 횟수를 늘리고 대기 신호 이후 성공하거나 설정된 네트워크 오류를 발생시킨다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; failReload가 true이면 FirebaseAuthException.
   @override
   Future<void> reload() async {
     reloads++;
@@ -111,6 +235,13 @@ class _User extends Fake implements User {
     }
   }
 
+  // 함수이름: sendEmailVerification
+  // 함수역할:
+  // - 전송 실패 설정이면 요청 제한 오류를 내고, 성공하면 현재 언어로 인증 메일 호출을 기록한다.
+  // 매개변수:
+  // - actionCodeSettings (ActionCodeSettings?): 선택적 링크 설정; 실제 메일은 전송하지 않는다.
+  // 반환값:
+  // - Future<void>; 실패 시 too-many-requests 코드의 FirebaseAuthException.
   @override
   Future<void> sendEmailVerification([
     ActionCodeSettings? actionCodeSettings,
@@ -122,18 +253,53 @@ class _User extends Fake implements User {
   }
 }
 
+// 클래스명: _ProviderInfo
+// 역할: 고정 이메일 로그인 공급자 정보를 제공한다.
+// 주요 책임:
+// - 사용자 계정이 비밀번호 인증 경로로 처리되도록 공급자 식별자를 노출한다.
+// 속성:
+// - 없음.
 class _ProviderInfo extends Fake implements UserInfo {
+  // 함수이름: providerId
+  // 함수역할:
+  // - Firebase 이메일·비밀번호 공급자 식별자를 반환한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - String; EmailAuthProvider.PROVIDER_ID.
   @override
   String get providerId => EmailAuthProvider.PROVIDER_ID;
 }
 
+// 클래스명: _Credential
+// 역할: 가입 성공 결과에 사용자 대역을 담는 자격 증명 객체다.
+// 주요 책임:
+// - 전달된 사용자를 UserCredential 인터페이스로 노출한다.
+// 속성:
+// - user (User): 가입 결과로 반환할 사용자.
 class _Credential extends Fake implements UserCredential {
   @override
   final User user;
+  // 함수이름: _Credential
+  // 함수역할:
+  // - 가입 결과에서 읽을 사용자를 저장한다.
+  // 매개변수:
+  // - user (User): 결과에 포함할 사용자 대역.
+  // 반환값:
+  // - _Credential; 전달된 사용자를 보관하는 자격 증명.
   _Credential(this.user);
 }
 
-// Navigator에 유지된 화면이 부모의 재생성 없이도 인증 상태를 직접 갱신해야 한다.
+// 함수이름: _showAuth
+// 함수역할:
+// - 지정 배율의 인증 화면을 표시하고 화면 제거를 정리 작업으로 등록한다. 부모 재생성 없이 내부 상태 갱신을 검사할 수 있다.
+// 매개변수:
+// - tester (WidgetTester): 화면 표시와 프레임 진행 도구.
+// - control (AuthenticationControl): 인증 상태와 작업을 제공할 객체.
+// - language (AppLanguageControl): 화면 번역과 언어 선택 상태.
+// - scale (double): 텍스트 배율; 기본값 1.
+// 반환값:
+// - Future<void>; 초기 화면이 안정된 뒤 완료한다.
 Future<void> _showAuth(
   WidgetTester tester,
   AuthenticationControl control,
@@ -155,7 +321,14 @@ Future<void> _showAuth(
   await tester.pumpAndSettle();
 }
 
-// 아이콘을 눌러 명시적으로 언어를 선택하는 실제 사용자 경로를 재사용한다.
+// 함수이름: _selectLanguage
+// 함수역할:
+// - 언어 아이콘과 선택 항목을 차례로 눌러 실제 사용자 경로로 화면 언어를 바꾼다.
+// 매개변수:
+// - tester (WidgetTester): 탭과 프레임 진행 도구.
+// - language (String): 선택할 ko 또는 en 코드.
+// 반환값:
+// - Future<void>; 언어 선택 후 화면 갱신이 안정되면 완료한다.
 Future<void> _selectLanguage(WidgetTester tester, String language) async {
   await tester.tap(find.byKey(const Key('authentication-language-toggle')));
   await tester.pumpAndSettle();
@@ -163,21 +336,45 @@ Future<void> _selectLanguage(WidgetTester tester, String language) async {
   await tester.pumpAndSettle();
 }
 
+// 함수이름: main
+// 함수역할:
+// - 환경설정 저장소를 테스트마다 초기화하고 인증 번역·메일 순서·자동 인증·오류 처리 테스트를 등록한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - void; 테스트 실행은 Flutter 테스트 러너가 수행한다.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // 함수이름: setUp
+  // 함수역할:
+  // - 각 테스트 전에 환경설정 대역을 비워 이전 언어 선택이 다음 테스트에 영향을 주지 않게 한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - void; 메모리 환경설정 저장소를 초기화한다.
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   for (final scenario in [
-    (size: const Size(390, 844), scale: 1.0),
-    (size: const Size(320, 568), scale: 2.0),
+    (size: const Size(390, 844), scale: 1.0, safeTop: 0.0),
+    (size: const Size(390, 844), scale: 1.0, safeTop: 24.0),
+    (size: const Size(320, 568), scale: 2.0, safeTop: 24.0),
   ]) {
+    // 함수이름: login header and inputs fit ${scenario.size} at ${scenario.scale}x
+    // 함수역할:
+    // - 일반 화면과 작은 화면·2배 글자에서 로고와 언어 버튼이 겹치지 않고 입력란 조작 및 접근성 이름이 유지되는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·탭·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증이 끝나면 완료한다.
     testWidgets(
-      'login header and inputs fit ${scenario.size} at ${scenario.scale}x',
+      'login header and inputs fit ${scenario.size} at ${scenario.scale}x with ${scenario.safeTop} top inset',
       (tester) async {
         tester.view.devicePixelRatio = 1;
         tester.view.physicalSize = scenario.size;
+        tester.view.padding = FakeViewPadding(top: scenario.safeTop);
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPadding);
         final auth = AuthenticationControl.development();
         final language = AppLanguageControl(loadPersisted: false);
         addTearDown(auth.dispose);
@@ -193,7 +390,8 @@ void main() {
         final logoRect = tester.getRect(logo);
         final buttonRect = tester.getRect(languageButton);
         expect(logoRect.left, closeTo(32, 0.1));
-        expect(logoRect.top, closeTo(0, 0.1));
+        expect(logoRect.top - scenario.safeTop, closeTo(logoRect.left, 0.1));
+        expect(logoRect.center.dy, closeTo(buttonRect.center.dy, 0.1));
         expect(logoRect.right, lessThanOrEqualTo(buttonRect.left));
         expect(logoRect.overlaps(buttonRect), isFalse);
         expect(
@@ -235,7 +433,13 @@ void main() {
     );
   }
 
-  // 영어 기기에서도 저장된 선택이 없으면 한국어로 시작하며 자동 선택창은 띄우지 않는다.
+  // 함수이름: fresh launch defaults to Korean and picker can be dismissed
+  // 함수역할:
+  // - 영어 기기에서도 저장된 선택이 없으면 한국어로 시작하고 언어 선택창을 닫아도 현재 언어가 유지되는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·탭·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets('fresh launch defaults to Korean and picker can be dismissed', (
     tester,
   ) async {
@@ -259,7 +463,13 @@ void main() {
     expect(language.language, 'ko');
   });
 
-  // 로그인 실패 뒤 부모가 화면을 새로 만들지 않아도 오류가 즉시 보여야 한다.
+  // 함수이름: retained sign-in screen updates authentication errors
+  // 함수역할:
+  // - 보존된 로그인 화면에 실패 안내가 즉시 나타나며 언어 변경만으로 기존 오류도 번역되는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·탭·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets('retained sign-in screen updates authentication errors', (
     tester,
   ) async {
@@ -282,7 +492,13 @@ void main() {
     expect(find.text('The email or password is incorrect.'), findsOneWidget);
   });
 
-  // 언어 변경이 입력값·가입 모드를 지우지 않고 다음 앱 실행에도 복원되는지 확인한다.
+  // 함수이름: language selection preserves signup inputs and persists
+  // 함수역할:
+  // - 가입 입력과 모드를 언어 변경 뒤에도 유지·복원하고 선택 언어로 인증 메일을 보내며 뒤로가기 시 이메일만 남긴 로그인 화면으로 돌아오는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·탭·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets('language selection preserves signup inputs and persists', (
     tester,
   ) async {
@@ -360,6 +576,13 @@ void main() {
 
   // 재확인 중 중복 입력을 막고, 미인증이면 안내만 표시하며 앱 진입을 허용하지 않는다.
   for (final code in ['ko', 'en']) {
+    // 함수이름: unverified refresh shows progress and guidance: $code
+    // 함수역할:
+    // - 한국어·영어 재확인 중 중복 확인과 뒤로가기를 막고 진행 표시 뒤 미인증 안내를 제공하되 앱 진입은 허용하지 않는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·탭·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증이 끝나면 완료한다.
     testWidgets('unverified refresh shows progress and guidance: $code', (
       tester,
     ) async {
@@ -430,7 +653,13 @@ void main() {
     });
   }
 
-  // 통신 실패를 미인증으로 오인하지 않고, 재시도하면 정상 조회 결과로 바뀌어야 한다.
+  // 함수이름: verification refresh recovers after a network failure
+  // 함수역할:
+  // - 인증 재조회 통신 실패를 미인증 안내와 구분하고 재시도 성공 뒤 정상 미인증 안내로 교체하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·탭·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets('verification refresh recovers after a network failure', (
     tester,
   ) async {
@@ -457,7 +686,13 @@ void main() {
     expect(find.textContaining('아직 인증되지'), findsOneWidget);
   });
 
-  // 뒤로가기는 미인증 계정을 삭제하지 않고 로그인으로 복귀하며, 실패 시 재시도할 수 있다.
+  // 함수이름: verification back button returns to sign in after retry
+  // 함수역할:
+  // - 인증 화면의 뒤로가기 실패 시 상태를 보존하고, 언어를 바꾼 뒤 재시도하면 계정을 삭제하지 않고 로그인 화면으로 돌아오는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·탭·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets('verification back button returns to sign in after retry', (
     tester,
   ) async {
@@ -495,7 +730,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 자동 조회는 미인증 경고를 새로 띄우지 않고, 복귀 시 즉시 확인하며 화면 종료 후 멈춘다.
+  // 함수이름: automatic verification pauses, resumes, and stops on back
+  // 함수역할:
+  // - 자동 인증 확인이 앱 비활성 중 멈추고 복귀 시 즉시 재개되며 로그인 화면으로 돌아온 뒤에는 더 호출되지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·탭·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets('automatic verification pauses, resumes, and stops on back', (
     tester,
   ) async {
@@ -533,7 +774,13 @@ void main() {
     expect(find.byType(TextFormField), findsNWidgets(2));
   });
 
-  // 느린 수동 확인과 자동 조회를 겹치지 않고 수동 확인 결과도 자동 조회가 지우지 않는다.
+  // 함수이름: automatic verification does not overlap a manual request
+  // 함수역할:
+  // - 느린 수동 확인과 자동 조회가 겹치지 않고 자동 조회가 수동 안내를 지우지 않으며 화면 제거 후에는 중단되는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·탭·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets('automatic verification does not overlap a manual request', (
     tester,
   ) async {
@@ -562,7 +809,13 @@ void main() {
     expect(firebase.user.reloads, 2);
   });
 
-  // 메일 인증 이후 토큰을 갱신하고 서버가 세션을 승인해야만 버튼 없이 앱을 연다.
+  // 함수이름: verified account enters the app automatically after server approval
+  // 함수역할:
+  // - 메일 인증 완료 후 토큰을 갱신해도 서버 승인 전에는 진입을 막고, 승인되면 자동 진입하면서 재조회가 멈추는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·탭·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets(
     'verified account enters the app automatically after server approval',
     (tester) async {
@@ -624,7 +877,13 @@ void main() {
     },
   );
 
-  // 발송 오류도 현재 언어로 표시하며 재선택한 언어로 즉시 다시 표시한다.
+  // 함수이름: verification errors follow the selected language
+  // 함수역할:
+  // - 인증 메일 요청 제한 오류가 현재 언어로 표시되고 재선택한 언어로 즉시 바뀌는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·탭·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets('verification errors follow the selected language', (
     tester,
   ) async {
@@ -649,7 +908,13 @@ void main() {
     );
   });
 
-  // 비밀번호 찾기의 발송과 완료 안내도 화면 언어와 일치해야 한다.
+  // 함수이름: password reset uses the selected language and localized feedback
+  // 함수역할:
+  // - 빈 이메일에는 입력 안내를 표시하고 재설정 메일 언어와 전송 완료 안내가 한국어·영어 선택을 따르는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·탭·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   testWidgets(
     'password reset uses the selected language and localized feedback',
     (tester) async {
@@ -683,6 +948,13 @@ void main() {
 
   // 작은 화면·큰 글씨에서도 인증 버튼과 언어 선택지를 스크롤해 누를 수 있어야 한다.
   for (final code in ['ko', 'en']) {
+    // 함수이름: verification fits a narrow screen at large text: $code
+    // 함수역할:
+    // - 320px 화면과 2배 글자에서도 두 언어의 인증 안내에 오류가 없고 재발송·뒤로가기·언어 선택을 조작할 수 있는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·탭·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증이 끝나면 완료한다.
     testWidgets('verification fits a narrow screen at large text: $code', (
       tester,
     ) async {
@@ -720,7 +992,13 @@ void main() {
     });
   }
 
-  // 모든 메일 발송이 언어 설정 완료를 기다리는지와 기본 한국어를 검증한다.
+  // 함수이름: mail operations await Firebase language before dispatch
+  // 함수역할:
+  // - 가입·재발송·비밀번호 재설정 메일이 언어 적용 완료를 기다리고 언어 미지정 시 한국어를 사용하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 비동기 검증이 끝나면 완료한다.
   test('mail operations await Firebase language before dispatch', () async {
     final firebase = _FirebaseAuth();
     final auth = AuthenticationControl.withFirebaseAuth(firebase);
@@ -744,7 +1022,13 @@ void main() {
     expect(firebase.calls.sublist(2), ['language:ko', 'reset:ko']);
   });
 
-  // 모든 인증 실패 코드는 두 언어의 안내를 가지며, 일반 안내로 뭉개지지 않는다.
+  // Function Name: every authentication error code has its own guidance
+  // Description:
+  // - Require nonempty Korean and English guidance for every error code, preserving coded StateError messages and distinct Korean guidance for non-generic failures.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - void; assertions verify each error-code mapping.
   test('every authentication error code has its own guidance', () {
     for (final code in AuthenticationErrorCode.values) {
       expect(code.english.trim(), isNotEmpty, reason: code.name);
@@ -765,7 +1049,13 @@ void main() {
     }
   });
 
-  // 예전에는 한국어 화면에서 일반 안내로만 보이던 실패도 원인에 맞는 문구로 보여야 한다.
+  // Function Name: operation failures are localized by code
+  // Description:
+  // - Map coded operation failures and signed-out session retries to both languages while retaining uncoded StateError text in English and generic Korean fallback guidance.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test('operation failures are localized by code', () async {
     final failures = <AuthenticationErrorCode>[
       AuthenticationErrorCode.googleIdentityTokenMissing,
@@ -785,7 +1075,7 @@ void main() {
       expect(auth.errorMessageForLanguage(isEnglish: false), code.korean);
     }
 
-    // 로그아웃된 상태의 세션 재시도는 로그인이 필요하다고 두 언어로 안내한다.
+    // A signed-out session retry requires sign-in, with guidance in both languages.
     final firebase = _FirebaseAuth()..signedOut = true;
     final auth = AuthenticationControl.withFirebaseAuth(firebase);
     addTearDown(auth.dispose);
@@ -796,7 +1086,7 @@ void main() {
       '보안 세션을 다시 연결하려면 먼저 로그인해 주세요.',
     );
 
-    // 코드가 없는 StateError는 영어 원문과 한국어 일반 안내를 유지한다.
+    // An uncoded StateError keeps its English text and uses generic Korean guidance.
     await auth.runAuthOperationForTest(
       () async => throw StateError('push token unregister failed'),
     );
@@ -807,7 +1097,13 @@ void main() {
     );
   });
 
-  // 계정 선택 창을 닫은 것은 오류가 아니며, 그 밖의 Google 실패는 플러그인 원문 대신 정해진 안내를 보인다.
+  // Function Name: a canceled Google prompt is not an error
+  // Description:
+  // - Treat Google prompt cancellation as a non-error and map other plugin failures to stable localized guidance without exposing provider details.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test('a canceled Google prompt is not an error', () async {
     final auth = AuthenticationControl.withFirebaseAuth(_FirebaseAuth());
     addTearDown(auth.dispose);
@@ -843,14 +1139,24 @@ void main() {
     }
   });
 
-  // 계정 삭제 재인증처럼 실패를 호출자에게 알리는 경로는 코드가 담긴 StateError를 던진다.
+  // Function Name: strict operations throw coded errors for the caller
+  // Description:
+  // - Require strict operations to throw the mapped authentication code for cancellation, provider, network, timeout, unknown, and already-running failures.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test('strict operations throw coded errors for the caller', () async {
     final auth = AuthenticationControl.withFirebaseAuth(_FirebaseAuth());
     addTearDown(auth.dispose);
 
-    // 함수이름: failWith
-    // 함수역할: 엄격한 인증 작업이 주어진 실패를 어떤 코드로 바꿔 던지는지 구한다.
-    // 매개변수: failure는 공급자 호출이 던질 실패. 반환값: 던져진 인증 실패 코드.
+    // Function Name: failWith
+    // Description:
+    // - Run an injected strict-operation failure and extract its typed authentication code.
+    // Parameters:
+    // - failure (Object): exception or error thrown by the fake provider operation.
+    // Returns:
+    // - Future<AuthenticationErrorCode>; mapped failure code, or StateError if the operation unexpectedly succeeds.
     Future<AuthenticationErrorCode> failWith(Object failure) async {
       try {
         await auth.runAuthOperationForTest(
@@ -897,7 +1203,7 @@ void main() {
       '인증 요청을 처리하지 못했습니다. 다시 시도해 주세요.',
     );
 
-    // 이미 진행 중인 작업이 있으면 두 번째 엄격한 작업은 시작하지 않는다.
+    // A second strict operation must not start while the first is still running.
     final gate = Completer<void>();
     final running = auth.runAuthOperationForTest(() => gate.future);
     expect(
@@ -908,52 +1214,61 @@ void main() {
     await running;
   });
 
-  // 실제 로그아웃 본문: 토큰이 유효한 동안 정리 → 공급자 로그아웃 → 세션·문자 인증 상태 비우기.
-  test('signOut runs cleanup, then the provider, then clears the session', () async {
-    final firebase = _FirebaseAuth();
-    firebase.user.verified = true;
-    final client = AuthenticatedApiClient(
-      inner: MockClient(
-        (_) async => http.Response(
-          jsonEncode({
-            'user_hash': 'sign-out-fixture',
-            'authenticated': true,
-            'email_verified': true,
-          }),
-          200,
+  // Function Name: signOut runs cleanup, then the provider, then clears the session
+  // Description:
+  // - Run cleanup before provider sign-out and clear authentication only on success; preserve the active session and report a localized error when provider sign-out fails.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
+  test(
+    'signOut runs cleanup, then the provider, then clears the session',
+    () async {
+      final firebase = _FirebaseAuth();
+      firebase.user.verified = true;
+      final client = AuthenticatedApiClient(
+        inner: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'user_hash': 'sign-out-fixture',
+              'authenticated': true,
+              'email_verified': true,
+            }),
+            200,
+          ),
         ),
-      ),
-      tokenProvider: () async => 'test-token',
-      appCheckRequired: false,
-    );
-    final auth = AuthenticationControl.withFirebaseAuth(
-      firebase,
-      apiClient: client,
-    );
-    addTearDown(auth.dispose);
-    await auth.retryBackendSession();
-    expect(auth.isAuthenticated, isTrue);
-    firebase.calls.clear();
-    auth.setBeforeSignOut(() async {
+        tokenProvider: () async => 'test-token',
+        appCheckRequired: false,
+      );
+      final auth = AuthenticationControl.withFirebaseAuth(
+        firebase,
+        apiClient: client,
+      );
+      addTearDown(auth.dispose);
+      await auth.retryBackendSession();
       expect(auth.isAuthenticated, isTrue);
-      firebase.calls.add('cleanup');
-    });
-    await auth.signOut();
-    expect(firebase.calls, ['cleanup', 'signOut']);
-    expect(auth.isAuthenticated, isFalse);
-    expect(auth.errorMessage, isNull);
-    expect(auth.isBusy, isFalse);
+      firebase.calls.clear();
+      auth.setBeforeSignOut(() async {
+        expect(auth.isAuthenticated, isTrue);
+        firebase.calls.add('cleanup');
+      });
+      await auth.signOut();
+      expect(firebase.calls, ['cleanup', 'signOut']);
+      expect(auth.isAuthenticated, isFalse);
+      expect(auth.errorMessage, isNull);
+      expect(auth.isBusy, isFalse);
 
-    // 공급자 로그아웃이 실패하면 세션을 유지하고 실패를 호출자에게 알린다.
-    firebase.signedOut = false;
-    await auth.retryBackendSession();
-    expect(auth.isAuthenticated, isTrue);
-    firebase.failSignOut = true;
-    await expectLater(auth.signOut(), throwsStateError);
-    expect(auth.isAuthenticated, isTrue);
-    expect(
-      auth.errorMessageForLanguage(isEnglish: false),
-      '인터넷 연결을 확인한 뒤 다시 시도해 주세요.',
-    );
-  });
+      // Provider sign-out failure preserves the session and is reported to the caller.
+      firebase.signedOut = false;
+      await auth.retryBackendSession();
+      expect(auth.isAuthenticated, isTrue);
+      firebase.failSignOut = true;
+      await expectLater(auth.signOut(), throwsStateError);
+      expect(auth.isAuthenticated, isTrue);
+      expect(
+        auth.errorMessageForLanguage(isEnglish: false),
+        '인터넷 연결을 확인한 뒤 다시 시도해 주세요.',
+      );
+    },
+  );
 }

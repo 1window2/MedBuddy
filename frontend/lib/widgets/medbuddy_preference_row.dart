@@ -6,7 +6,9 @@ import '../theme/medbuddy_theme.dart';
 import 'keep_words_text.dart';
 
 // 클래스명: MedBuddyPreferenceRow
-// 역할: 시간·공개 범위·화면 이동을 같은 라벨·값·화살표 배치로 제공한다.
+// 역할: 설정 제목·설명·현재 값을 하나의 선택 행으로 표시한다.
+// 주요 책임: 비활성 상태와 통합 접근성 정보를 제공하고 긴 문구를 줄바꿈한다.
+// 속성: title (String): 제목; description/value (String?): 설명·현재 값; onTap (VoidCallback?): 선택 동작, null이면 비활성.
 class MedBuddyPreferenceRow extends StatelessWidget {
   final String title;
   final String? description;
@@ -14,7 +16,9 @@ class MedBuddyPreferenceRow extends StatelessWidget {
   final VoidCallback? onTap;
 
   // 함수이름: MedBuddyPreferenceRow
-  // 함수역할: 라벨·설명·현재 값·선택 콜백을 받는다. 반환값: 설정 행.
+  // 함수역할: 설정 행의 표시 내용과 선택 가능 여부를 구성한다.
+  // 매개변수: title (String): 제목; onTap (VoidCallback?): 선택 동작; description/value (String?): 설명·값; key (Key?): 위젯 식별자.
+  // 반환값: MedBuddyPreferenceRow: 구성된 설정 행.
   const MedBuddyPreferenceRow({
     required this.title,
     required this.onTap,
@@ -23,9 +27,10 @@ class MedBuddyPreferenceRow extends StatelessWidget {
     super.key,
   });
 
-  // 함수이름: build
-  // 함수역할: 큰 글씨에서 현재 값의 너비를 제한해 제목과 겹치지 않게 배치한다.
-  // 매개변수: context는 접근성 배율과 테마. 반환값: 최소 64 높이의 설정 행.
+  // Function Name: build
+  // Description: Build one semantic button row with wrapped labels and a width-bounded value; disable interaction when no callback is provided.
+  // Parameters: context (BuildContext): layout context.
+  // Returns: Widget: preference row with merged accessibility semantics.
   @override
   Widget build(BuildContext context) => MergeSemantics(
     child: Semantics(
@@ -77,7 +82,7 @@ class MedBuddyPreferenceRow extends StatelessWidget {
                         constraints: BoxConstraints(
                           maxWidth: constraints.maxWidth * 0.42,
                         ),
-                        child: Text(
+                        child: KeepWordsText(
                           value!,
                           textAlign: TextAlign.end,
                           style: const TextStyle(

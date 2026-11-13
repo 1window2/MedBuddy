@@ -6,7 +6,11 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 
-from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operations
+from core.account_database_lock import (
+    ACCOUNT_BUSY_DETAIL,
+    ACCOUNT_DELETED_DETAIL,
+    lock_account_operations,
+)
 
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.patient_hash_entity import normalize_patient_hash
@@ -16,14 +20,10 @@ from repositories.patient_caregiver_link_repository import (
 )
 
 
-# 클래스명: AuthorizationControl
-# 역할:
-# - 인증 주체와 활성 환자 연동을 기준으로 데이터 접근 범위를 결정한다.
-# 주요 책임:
-# - 검증된 본인 범위와 허용된 활성 보호자 연동만 승인하고 필요한 사용자 기준 행을 보장한다.
-# 속성:
-# - db (Session | None): 현재 작업에 사용할 SQLAlchemy 세션.
-# - link_repository: 활성 환자·보호자 연동 저장소.
+# Class Name: AuthorizationControl
+# Role: Resolve trusted user and patient scopes from an authenticated principal.
+# Responsibilities: Require self access or an active caregiver link and recheck accounts before recommendations.
+# Attributes: db is the optional session; link_repository resolves active patient-caregiver links.
 class AuthorizationControl:
     """Resolves trusted user and patient scopes from an authenticated principal."""
 
@@ -140,11 +140,10 @@ class AuthorizationControl:
             return False
         return self.link_repository.has_active_pair(caregiver_hash, patient_hash)
 
-    # 외부 AI 대기 전후에 호출한다. 호출자와 환자를 잠근 뒤 삭제·연동을 다시 검사한다.
-    # 함수이름: validateRecommendationScope
-    # 함수역할: 계정을 재생성하지 않고 삭제 여부와 현재 보호자 연동을 재검증한다.
-    # 매개변수: principal: 인증 주체, patient_hash: 조회 대상 환자.
-    # 반환값: 없음. 삭제 410, 연동 실패 403, 잠금 실패 503.
+    # Function Name: validateRecommendationScope
+    # Description: Lock both accounts and recheck their existence and the active patient scope; deleted accounts raise 410 and database contention raises 503.
+    # Parameters: principal (AuthenticatedPrincipal) is the caller; patient_hash (str) is the target patient.
+    # Returns: None; a database session is required and authorization failures propagate.
     def validateRecommendationScope(
         self, principal: AuthenticatedPrincipal, patient_hash: str,
     ) -> None:
@@ -157,7 +156,7 @@ class AuthorizationControl:
             for owner in {principal.user_hash, patient_hash}:
                 account = self.db.get(_UserAccount, owner)
                 if account is None or account.deletion_requested_at is not None:
-                    raise HTTPException(410, "This MedBuddy account has been deleted.")
+                    raise HTTPException(410, ACCOUNT_DELETED_DETAIL)
             self.resolvePatientScope(principal, patient_hash, allow_caregiver=True)
         except OperationalError as exc:
             raise HTTPException(

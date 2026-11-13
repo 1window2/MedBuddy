@@ -4,10 +4,14 @@ part of 'medbuddy_view_model.dart';
 // Role: Coordinates recovery, refresh and account deletion across feature owners.
 
 // Class Name: MedBuddyApplicationFlows
-// Role: Application-level coordination without owning feature-private state.
-// Responsibilities: Preserve refresh/recovery policies and explicit reset operations.
+// Role: Coordinate recovery, refresh and account cleanup across feature owners.
+// Responsibilities: Preserve refresh policies and explicit reset operations without taking ownership of feature-private state.
+// Attributes: No extension-owned fields; uses the host view model's feature owners and refresh timestamp.
 extension MedBuddyApplicationFlows on MedBuddyViewModel {
-  /// Reconcile only reads and local alarms; never replay a completion write.
+  // Function Name: recoverMedicationConnectivity
+  // Description: Refreshes visible schedules and reminder settings after connectivity returns without replaying dose writes or replacing native alarms.
+  // Parameters: None.
+  // Returns: False when schedule loading is already active; otherwise whether both reads succeeded. Existing native snoozes remain untouched.
   Future<bool> recoverMedicationConnectivity() async {
     if (_schedules.isTodayScheduleLoading) return false;
     // Foreground recovery refreshes the visible state without replacing native
@@ -20,21 +24,21 @@ extension MedBuddyApplicationFlows on MedBuddyViewModel {
     return _schedules.lastLoadSucceeded && _reminders.lastLoadSucceeded;
   }
 
-  // 함수이름: refreshMedicationOverview
-  // 함수역할: 알림 설정과 오늘 복약 요약을 함께 조회하고 일정 조회가 성공한 경우에만 로컬 예약을 동기화한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
-  Future<void> refreshMedicationOverview() =>
-      _refreshScheduleAndReminders(fetchTodayMedicationInfo);
+  // Function Name: refreshMedicationOverview
+  // Description: Refreshes reminder settings and today's overview before conditional reminder reconciliation.
+  // Parameters: startedTodayInfo: today's overview load already started with the settings request, joined instead of starting another; a failed one is retried so its message uses the loaded language.
+  // Returns: Completion of the shared read-and-reconcile flow.
+  Future<void> refreshMedicationOverview({Future<void>? startedTodayInfo}) =>
+      _refreshScheduleAndReminders(() async {
+        if (startedTodayInfo == null) return fetchTodayMedicationInfo();
+        await startedTodayInfo;
+        if (!_schedules.lastLoadSucceeded) await fetchTodayMedicationInfo();
+      });
 
-  // 함수이름: refreshMedicationSchedule
-  // 함수역할: 알림 설정과 오늘 전체 일정을 함께 조회하고 최신 일정으로 알림 예약을 동기화한다.
-  // 매개변수:
-  // - reuseRecent (bool): 탭 재방문 시 같은 날의 최근 성공 조회를 재사용할지 여부.
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: refreshMedicationSchedule
+  // Description: Refreshes full schedules and reminder settings, optionally sharing current or recent successful work.
+  // Parameters: reuseRecent: Reuse same-day success less than 15 seconds old.
+  // Returns: A shared or new refresh Future; explicit error retries may start while an earlier reminder read is pending.
   Future<void> refreshMedicationSchedule({bool reuseRecent = false}) {
     final last = _scheduleRefreshedAt;
     final now = DateTime.now();
@@ -61,14 +65,10 @@ extension MedBuddyApplicationFlows on MedBuddyViewModel {
     return _scheduleRefresh = refresh;
   }
 
-  // 함수이름: _refreshScheduleAndReminders
-  // 함수역할:
-  // - 알림 설정과 fetch가 고른 오늘 일정을 함께 조회하고, 일정이 최신이면 로컬 알림 예약을 동기화한다.
-  // - 두 조회가 모두 성공했을 때만 최근 조회 재사용 기준 시각을 남기고, 아니면 지운다.
-  // 매개변수:
-  // - fetch (Future<void> Function()): 오늘 복약 요약 또는 전체 일정을 불러올 조회 함수.
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: _refreshScheduleAndReminders
+  // Description: Loads reminder settings and the chosen schedule view concurrently, then reconciles only fresh data.
+  // Parameters: fetch: Today's overview or full-schedule read.
+  // Returns: Completion; records a reuse timestamp only when both reads succeed, otherwise clears it.
   Future<void> _refreshScheduleAndReminders(
     Future<void> Function() fetch,
   ) async {

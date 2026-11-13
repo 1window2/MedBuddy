@@ -85,12 +85,12 @@ def test_android_signing_secrets_are_limited_to_exact_release_refs() -> None:
     ).read_text(encoding="utf-8")
 
     assert "github.ref == 'refs/heads/main'" in workflow
-    assert workflow.count("refs/heads/beta/v0.2.5") >= 4
+    assert workflow.count("refs/heads/beta/v1.0.0") >= 4
     assert "refs/heads/beta/*" not in workflow
     assert "refs/tags/v*" not in workflow
     assert "environment: beta-android" in workflow
     assert workflow.count(
-        "github.ref == 'refs/heads/beta/v0.2.5' && inputs.api_base_url"
+        "github.ref == 'refs/heads/beta/v1.0.0' && inputs.api_base_url"
     ) == 2
 
 
@@ -216,8 +216,15 @@ def test_self_hosted_database_url_uses_structured_credentials() -> None:
 
     assert "${POSTGRES_PASSWORD}@postgres" not in compose_source
     assert "DATABASE_URL:" not in compose_source
-    assert compose_source.count("DATABASE_PASSWORD: ${POSTGRES_PASSWORD") == 4
+    # Only the migration keeps the owner role; the services switch to the data-only role once
+    # both of its settings exist, and keep the owner role until then.
+    assert compose_source.count("DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}") == 1
+    assert compose_source.count(
+        "DATABASE_PASSWORD: ${MEDBUDDY_APP_DB_PASSWORD:-${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}}"
+    ) == 3
+    assert compose_source.count("DATABASE_USER: ${MEDBUDDY_APP_DB_USER:-medbuddy}") == 3
     assert compose_source.count("DATABASE_HOST: postgres") == 4
+    assert "python scripts/provision_database_roles.py" in compose_source
 
 
 # Function Name: test_core_startup_does_not_depend_on_catalog_imports
@@ -289,6 +296,7 @@ def test_backend_container_pins_token_checks_and_transport_limits() -> None:
     compose = (_REPOSITORY_ROOT / "compose.self-hosted.yml").read_text(encoding="utf-8")
     dockerfile = (_REPOSITORY_ROOT / "backend/Dockerfile").read_text(encoding="utf-8")
     assert 'FIREBASE_CHECK_REVOKED_TOKENS: "true"' in compose
+    assert 'FIREBASE_REVOCATION_CACHE_SECONDS: "30"' in compose
     assert 'FIREBASE_REQUIRE_VERIFIED_EMAIL: "true"' in compose
     assert "--ws-max-size 65536" in compose
     assert '"--ws-max-size", "65536"' in dockerfile

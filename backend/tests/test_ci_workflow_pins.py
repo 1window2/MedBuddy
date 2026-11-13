@@ -13,9 +13,9 @@ SPEC.loader.exec_module(gate)
 LIVE = (*gate.REQUIRED_WORKFLOWS, "release-android.yml")
 REF_CONDITION = (
     "    if: >-\n      github.ref == 'refs/heads/main' ||\n"
-    "      github.ref == 'refs/heads/beta/v0.2.5'\n"
+    "      github.ref == 'refs/heads/beta/v1.0.0'\n"
 )
-APK_ABI_CHECK = '"${APK_NATIVE_ABIS}" != "arm64-v8a,armeabi-v7a" || "${APK_ENGINE_ABIS}" != "${APK_NATIVE_ABIS}"'
+APK_ABI_CHECK = '"${APK_NATIVE_ABIS}" != "${ABI}" || "${APK_ENGINE_ABIS}" != "${ABI}"'
 
 
 # Function Name: _workflow
@@ -71,14 +71,17 @@ def test_release_gate_workflows_never_cancel_or_queue_push_runs() -> None:
 def test_signing_jobs_keep_the_exact_ref_condition() -> None:
     workflow = _workflow("release-android.yml")
     assert workflow.count(REF_CONDITION) == 2
-    assert workflow.count("refs/heads/beta/v0.2.5") == 5
+    assert workflow.count("refs/heads/beta/v1.0.0") == 5
     assert "        run: python3 scripts/check_release_ci.py\n" in workflow
 
 
-# Function Name: test_ci_and_release_keep_their_verification_commands
-# Description: The commands whose success the release gate treats as evidence must stay in the workflows.
-# Parameters: None.
-# Returns: None; fails if a verification command or the direct-APK ABI assertion is missing.
+# 함수이름: test_ci_and_release_keep_their_verification_commands
+# 함수역할:
+# - 릴리스 통과 근거인 검증 명령과 직접 배포 APK의 ABI 검사가 CI·릴리스 작업에 유지되는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - None.
 def test_ci_and_release_keep_their_verification_commands() -> None:
     frontend = _workflow("frontend-ci.yml")
     for command in (
@@ -86,9 +89,10 @@ def test_ci_and_release_keep_their_verification_commands() -> None:
         "run: flutter pub get --enforce-lockfile\n",
         "run: flutter analyze --no-pub\n",
         "run: flutter test --no-pub\n",
-        "run: flutter build apk --release --no-pub --target-platform android-arm,android-arm64\n",
+        'flutter build apk --release --no-pub --target-platform "${TARGET}"\n',
         "- name: Verify APK native ABIs\n",
         APK_ABI_CHECK,
+        "script: ./gradlew :app:connectedDebugAndroidTest -Ptarget-platform=android-x64\n",
     ):
         assert command in frontend, command
     backend = _workflow("backend-ci.yml")
@@ -96,9 +100,16 @@ def test_ci_and_release_keep_their_verification_commands() -> None:
     assert "python -m alembic -c alembic.ini downgrade base\n" in backend
     release = _workflow("release-android.yml")
     assert "run: flutter pub get --enforce-lockfile\n" in release
-    assert "flutter build apk --release --no-pub \\\n              --target-platform android-arm,android-arm64 \\\n" in release
+    assert 'flutter build apk --release --no-pub \\\n                --target-platform "${TARGET}" \\\n' in release
     assert APK_ABI_CHECK in release
-    assert release.count("if-no-files-found: error") == 2
+    assert release.count("if-no-files-found: error") == 3
+    for workflow in (frontend, release):
+        assert workflow.count("for ABI in armeabi-v7a arm64-v8a; do") == 2
+        assert "armeabi-v7a) TARGET=android-arm ;;" in workflow
+        assert "arm64-v8a) TARGET=android-arm64 ;;" in workflow
+        assert "--split-per-abi" not in workflow
+        assert "--build-number" not in workflow
+        assert "--target-platform android-arm,android-arm64" not in workflow
 
 
 # Function Name: test_dormant_cloud_workflows_stay_disabled
@@ -115,13 +126,11 @@ def test_dormant_cloud_workflows_stay_disabled() -> None:
 # Function Name: test_flutter_sdk_pin_is_identical_in_ci_and_signing
 # Description: The signed artifact must be built with the Flutter version that CI analyzed and tested.
 # Parameters: None.
-# Returns: None; fails if either workflow pins a different version or more than one.
+# Returns: None; fails if a CI job pins another version than the single signing pin.
 def test_flutter_sdk_pin_is_identical_in_ci_and_signing() -> None:
-    pins = {
-        name: re.findall(r"flutter-version: '([0-9.]+)'", _workflow(name))
-        for name in ("frontend-ci.yml", "release-android.yml")
-    }
-    assert pins["frontend-ci.yml"] == pins["release-android.yml"] and len(pins["frontend-ci.yml"]) == 1
+    ci = re.findall(r"flutter-version: '([0-9.]+)'", _workflow("frontend-ci.yml"))
+    signing = re.findall(r"flutter-version: '([0-9.]+)'", _workflow("release-android.yml"))
+    assert len(signing) == 1 and len(ci) == 2 and set(ci) == set(signing)
 
 # Function Name: test_third_party_actions_are_pinned_to_a_commit
 # Description: An action outside GitHub's own "actions" organisation must be referenced by a full

@@ -10,15 +10,19 @@ const int maxDoseIntervalDays = 90;
 const int _daysPerWeek = 7;
 const int _daysPerMonth = 30;
 
-// 필요시 지시는 고정 일정으로 추정하지 않고 별도의 복용 유형으로 보존한다.
+// 함수이름: isAsNeededDoseInstruction
+// 함수역할: 한국어·영어 필요시 지시 표현을 찾아 정기 일정과 구분한다.
+// 매개변수: value: 복용 지시 후보 문자열; null은 빈 문자열로 처리한다.
+// 반환값: 등록된 필요시 표현이 포함되면 true; 용량이나 임상 적절성을 판단하지 않는다.
 bool isAsNeededDoseInstruction(String? value) => RegExp(
   r'필요\s*(?:할\s*때|시|한\s*경우)|(?:통증|발열|증상)\s*(?:있을\s*때|시)|\bp\.?r\.?n\.?\b|\bas\s+needed\b|\b(?:when|if)\s+needed\b',
   caseSensitive: false,
 ).hasMatch(value ?? '');
 
-// 서버 resolve_dosing_mode와 같은 규칙으로 필요시 복용약을 판정한다. 복용 횟수의 필요시 지시는
-// 필요시로 보고, 1회량에만 있는 필요시 표현("1정 (통증 시 2정)")은 정기 횟수나 선택한 시간대가
-// 없을 때만 필요시로 본다. 정기 복용약의 추가 복용 안내 때문에 일정과 알림이 사라지지 않게 한다.
+// Function Name: isAsNeededRegimen
+// Description: Classifies as-needed regimens without letting optional extra-dose instructions erase an existing regular schedule.
+// Parameters: dosingMode: Explicit mode; frequency: Frequency instruction; dosage: Per-dose instruction; hasSlots: Whether regular slots exist.
+// Returns: True for explicit/as-needed frequency, or as-needed dosage only when neither frequency nor slots establishes a regular regimen.
 bool isAsNeededRegimen({
   required String dosingMode,
   String? frequency,
@@ -32,7 +36,10 @@ bool isAsNeededRegimen({
   return !regular && isAsNeededDoseInstruction(dosage);
 }
 
-// 기존의 빈 횟수 기본값은 유지하되, 복잡하거나 해석하지 못한 지시는 검토를 요구한다.
+// 함수이름: requiresDoseScheduleReview
+// 함수역할: 정기 횟수로 단순 해석할 수 없는 지시에 사용자 검토가 필요한지 판정한다.
+// 매개변수: value: 복용 횟수 지시 문자열.
+// 반환값: 복잡한 증감·교대 또는 미해석 지시는 true; 빈 값·필요시·인식한 주기 및 단순 횟수는 false.
 bool requiresDoseScheduleReview(String? value) {
   final text = _normalized(value);
   if (text.isEmpty || isAsNeededDoseInstruction(text)) return false;
@@ -407,6 +414,18 @@ int readDurationDays(String? rawDuration) {
 
 // Dose-day directions the registration editors offer. The empty text means every day.
 const List<String> doseDayChoices = ['', '격일', '주 1회', '월 1회'];
+
+// Function Name: englishDoseIntervalLabel
+// Description: Reads a custom interval saved by manual entry as "N일마다" for English screens; the fixed choices keep their own labels.
+// Parameters:
+// - doseDays (String): Stored dose-day direction.
+// Returns: String?: "Every day" or "Every N days", or null when the text is not a custom interval.
+String? englishDoseIntervalLabel(String doseDays) {
+  final match = RegExp(r'^(\d+)일마다$').firstMatch(doseDays.trim());
+  final days = int.tryParse(match?.group(1) ?? '');
+  if (days == null || days <= 0) return null;
+  return days == 1 ? 'Every day' : 'Every $days days';
+}
 
 // Function Name: composeDoseFrequency
 // Description: Joins a dose-day direction and the number of doses on a dose day into the one frequency text the server and the app both read, such as "3회", "주 1회" or "주 1회, 1일 2회".

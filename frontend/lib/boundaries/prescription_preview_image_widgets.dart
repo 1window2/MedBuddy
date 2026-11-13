@@ -17,6 +17,7 @@ class _ScrollableCenteredCard extends StatelessWidget {
   // 함수역할: 공간이 부족하면 스크롤되는 중앙 정렬 본문에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - child (Widget): 해당 레이아웃 안에 배치할 콘텐츠 위젯.
+  // - topPadding (double): 본문 위쪽 여백의 논리 픽셀 크기이며 기본값은 24이다. 사용 가능한 중앙 정렬 높이 계산에도 반영한다.
   // 반환값: 입력 설정이 반영된 _ScrollableCenteredCard 인스턴스.
   const _ScrollableCenteredCard({required this.child, this.topPadding = 24});
 
@@ -67,11 +68,10 @@ class _ScrollableCenteredCard extends StatelessWidget {
 class _RecognitionNoticeBanner extends StatelessWidget {
   final String message;
 
-  // 함수이름: _RecognitionNoticeBanner
-  // 함수역할: OCR 인식 결과의 검토 안내에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-  // 반환값: 입력 설정이 반영된 _RecognitionNoticeBanner 인스턴스.
+  // Function Name: _RecognitionNoticeBanner
+  // Description: Stores the OCR-result review notice shown with the prescription preview.
+  // Parameters: message (String): recognition guidance.
+  // Returns: A _RecognitionNoticeBanner.
   const _RecognitionNoticeBanner({required this.message});
 
   // 함수이름: build
@@ -259,9 +259,9 @@ class _RecognizedImageCanvas extends StatefulWidget {
 }
 
 // 클래스명: _RecognizedImageCanvasState
-// 역할: 처방전 이미지와 정규화 OCR 영역의 공통 좌표 배치의 화면 상태를 관리한다.
-// 주요 책임:
-// - 처방전 이미지와 정규화 OCR 영역의 공통 좌표 배치에 필요한 상태 변경과 사용자 동작을 연결한다.
+// 역할: 처방전 이미지 비율과 OCR 영역의 공통 좌표 배치 상태.
+// 주요 책임: 원본 크기를 읽고 변경된 이미지 스트림의 이전 감시를 해제한다.
+// 속성: _aspectRatio (double): 표시 비율; _resolvedImagePath (String): 현재 경로; _imageStream (ImageStream?): 이미지; _imageStreamListener (ImageStreamListener?): 크기 감시.
 class _RecognizedImageCanvasState extends State<_RecognizedImageCanvas> {
   double _aspectRatio = _RecognizedImageCanvas._fallbackPrescriptionAspectRatio;
   String _resolvedImagePath = '';
@@ -335,7 +335,7 @@ class _RecognizedImageCanvasState extends State<_RecognizedImageCanvas> {
                 // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
                 errorBuilder: (context, error, stackTrace) {
                   return Center(
-                    child: Text(
+                    child: KeepWordsText(
                       widget.previewText.imageUnavailable,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
@@ -383,7 +383,7 @@ class _RecognizedImageCanvasState extends State<_RecognizedImageCanvas> {
                             vertical: 8,
                           ),
                           color: Colors.black.withValues(alpha: 0.62),
-                          child: Text(
+                          child: KeepWordsText(
                             widget.previewText.regionUnavailable,
                             textAlign: TextAlign.center,
                             style: const TextStyle(
@@ -573,7 +573,7 @@ class _ExpandedRecognizedImageView extends StatelessWidget {
                     icon: const Icon(Icons.close, color: Colors.white),
                   ),
                   Expanded(
-                    child: Text(
+                    child: KeepWordsText(
                       previewText.expandedImageTitle,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
@@ -634,7 +634,7 @@ class _ExpandedRecognizedImageView extends StatelessWidget {
                         ),
                         const SizedBox(width: 7),
                         Expanded(
-                          child: Text(
+                          child: KeepWordsText(
                             previewText.recognizedRegionGuide,
                             style: const TextStyle(
                               color: Colors.white,
@@ -668,11 +668,10 @@ class _ExpandedRecognizedImageView extends StatelessWidget {
 class _PrivacyNoticeBanner extends StatelessWidget {
   final String message;
 
-  // 함수이름: _PrivacyNoticeBanner
-  // 함수역할: 처방전 이미지 전송과 개인정보 처리 범위 안내에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-  // 반환값: 입력 설정이 반영된 _PrivacyNoticeBanner 인스턴스.
+  // Function Name: _PrivacyNoticeBanner
+  // Description: Stores the notice describing prescription-image transmission and personal-data handling.
+  // Parameters: message (String): privacy explanation.
+  // Returns: A _PrivacyNoticeBanner.
   const _PrivacyNoticeBanner({required this.message});
 
   // 함수이름: build
@@ -700,7 +699,7 @@ class _PrivacyNoticeBanner extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
+            child: KeepWordsText(
               message,
               style: TextStyle(
                 color: MedBuddyColors.textBody,
@@ -735,6 +734,8 @@ class _AnalysisBottomBar extends StatelessWidget {
   // 매개변수:
   // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
   // - onPressed (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
+  // - continueLabel (String?): 확인된 약품만으로 계속하는 보조 버튼 문구. null이면 해당 버튼을 표시하지 않는다.
+  // - onContinue (VoidCallback?): 보조 버튼의 진행 동작. 문구가 있어도 null이면 버튼은 비활성화한다.
   // 반환값: 입력 설정이 반영된 _AnalysisBottomBar 인스턴스.
   const _AnalysisBottomBar({
     required this.label,
@@ -792,7 +793,10 @@ class _AnalysisBottomBar extends StatelessWidget {
                               textStyle: textStyle,
                             ),
                             onPressed: onPressed,
-                            child: Text(label, textAlign: TextAlign.center),
+                            child: KeepWordsText(
+                              label,
+                              textAlign: TextAlign.center,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -803,7 +807,7 @@ class _AnalysisBottomBar extends StatelessWidget {
                             ),
                             style: buttonStyle,
                             onPressed: onContinue,
-                            child: Text(
+                            child: KeepWordsText(
                               continueLabel!,
                               textAlign: TextAlign.center,
                             ),
@@ -816,7 +820,7 @@ class _AnalysisBottomBar extends StatelessWidget {
                     key: const Key('prescription-analyze-button'),
                     style: buttonStyle,
                     onPressed: onPressed,
-                    child: Text(label, textAlign: TextAlign.center),
+                    child: KeepWordsText(label, textAlign: TextAlign.center),
                   ),
           ),
         ),
@@ -837,13 +841,10 @@ class PrescriptionFlowBackButton extends StatelessWidget {
   final String tooltip;
   final VoidCallback onBackRequested;
 
-  // 함수이름: PrescriptionFlowBackButton
-  // 함수역할: 처방전 흐름에서 이전 단계로 이동에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
-  // - tooltip (String): 아이콘의 동작을 설명할 도움말·접근성 문구.
-  // - onBackRequested (VoidCallback): 이전 단계로 이동하거나 현재 화면을 닫을 때 실행할 콜백.
-  // 반환값: 입력 설정이 반영된 PrescriptionFlowBackButton 인스턴스.
+  // Function Name: PrescriptionFlowBackButton
+  // Description: Connects an accessible back action to the preceding prescription-flow step.
+  // Parameters: key (Key?): identity; tooltip (String): action description; onBackRequested (VoidCallback): return to the preceding step.
+  // Returns: A PrescriptionFlowBackButton.
   const PrescriptionFlowBackButton({
     super.key,
     required this.tooltip,

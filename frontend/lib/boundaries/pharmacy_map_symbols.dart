@@ -5,8 +5,9 @@ import 'package:flutter/material.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 클래스명: PharmacyMapPin
-// 역할: 고정 비율의 약국 핀을 일반 십자 또는 즐겨찾기 별로 표시한다.
-// 속성: selected: 선택 강조, favorite: 즐겨찾기 표시, size·selectedSize: 표시 크기.
+// 역할: 일반 또는 즐겨찾기 시설을 표시하는 지도 핀.
+// 주요 책임: 고정 비율에서 선택 여부에 따라 크기를 바꾸고 별과 십자를 구별한다.
+// 속성: selected/favorite (bool): 강조·즐겨찾기; size/selectedSize (Size): 출력 크기.
 class PharmacyMapPin extends StatelessWidget {
   // 함수이름: PharmacyMapPin
   // 함수역할: 선택·즐겨찾기 상태를 보관한다. 반환값: 지도용 핀.
@@ -53,8 +54,9 @@ class PharmacyMapPin extends StatelessWidget {
 }
 
 // 클래스명: _PharmacyPinPainter
-// 역할: 핀 외곽과 일반 약국의 십자를 그린다.
-// 속성: color: 핀 배경색, showCross: 일반 약국 십자 표시 여부.
+// 역할: 지도 핀 외곽과 선택적 십자를 그리는 렌더러.
+// 주요 책임: 기준 좌표를 출력 크기에 맞춰 확대하고 흰색 테두리를 유지한다.
+// 속성: color (Color): 배경; showCross (bool): 십자 표시.
 class _PharmacyPinPainter extends CustomPainter {
   // 함수이름: _PharmacyPinPainter
   // 함수역할: 배경색과 십자 표시 여부를 보관한다. 반환값: 핀 렌더러.
@@ -103,9 +105,10 @@ class _PharmacyPinPainter extends CustomPainter {
       oldDelegate.color != color || oldDelegate.showCross != showCross;
 }
 
-// Class Name: PharmacyDeviceLocationDot
-// Role: Render the device fix independently of pharmacy search markers.
-// Attributes: size fixes the blue dot bounds for native-map rendering.
+// 클래스명: PharmacyDeviceLocationDot
+// 역할: 시설 검색 핀과 구분되는 현재 기기 위치 점.
+// 주요 책임: 파란 중심·흰 테두리·옅은 주변 영역을 고정 크기로 표시한다.
+// 속성: size (Size): 네이티브 지도용 30 크기.
 class PharmacyDeviceLocationDot extends StatelessWidget {
   // Function Name: PharmacyDeviceLocationDot
   // Description: Initialize the location artwork. Parameters: key identifies the widget.
@@ -113,9 +116,10 @@ class PharmacyDeviceLocationDot extends StatelessWidget {
   const PharmacyDeviceLocationDot({super.key});
   static const size = Size.square(30);
 
-  // Function Name: build
-  // Description: Draw a blue center, white border and translucent accuracy halo.
-  // Parameters: context supplies the widget environment. Returns: location artwork.
+  // 함수이름: build
+  // 함수역할: 현재 위치를 파란 중심점·흰 테두리·반투명 정확도 영역으로 표시한다.
+  // 매개변수: context (BuildContext): 위젯 표시 문맥.
+  // 반환값: 현재 위치 표시 위젯.
   @override
   Widget build(BuildContext context) => Container(
     width: size.width,

@@ -180,6 +180,7 @@ class _FakeLinkPatientCaregiver extends LinkPatientCaregiver {
 // 역할: 연동 화면에서 채팅 진입 가능 여부를 결정할 활성 약 목록 대역.
 // 주요 책임:
 // - 선택한 연결의 채팅 진입 검사에 주입된 약 목록을 제공한다.
+// 속성: medications (List<ChatMedicationContext>): 채팅 진입 검사에 반환할 약 목록.
 class _FakeChatControl extends ManageLinkedChat {
   final List<ChatMedicationContext> medications;
 
@@ -220,6 +221,7 @@ class _FakeChatControl extends ManageLinkedChat {
 // 역할: 연동 화면의 채팅 진입 검사에서 약 목록 조회 실패를 재현하는 대역.
 // 주요 책임:
 // - 모든 연결의 약 목록 조회를 StateError로 실패시킨다.
+// 속성: 추가 상태 없음; 부모 제어기에 고정 보호자와 통신 대역을 연결한다.
 class _FailingChatControl extends ManageLinkedChat {
   // 함수이름: _FailingChatControl
   // 함수역할:
@@ -258,6 +260,7 @@ class _FailingChatControl extends ManageLinkedChat {
 // 역할: 화면을 그리지 않고도 새 경로가 열렸는지 확인할 수 있게 push된 경로를 기록한다.
 // 속성:
 // - pushedRoutes (List<Route<dynamic>>): 관찰한 Navigator에 push된 경로.
+// 주요 책임: Navigator의 경로 push를 순서대로 수집해 화면 이동 여부를 검증한다.
 class _RouteRecorder extends NavigatorObserver {
   final List<Route<dynamic>> pushedRoutes = [];
 

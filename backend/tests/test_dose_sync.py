@@ -1,13 +1,16 @@
 # 파일명: test_dose_sync.py
 # 역할: 오프라인 복약 재전송의 중복 방지, 계정·날짜 검증과 트랜잭션 롤백을 검증한다.
 """Offline retries, undo, ownership and midnight must not invent new doses."""
+from collections.abc import Iterator
 from datetime import timedelta
+from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from controls.sync_dose_control import SyncDose
 from controls.check_schedule_control import CheckSchedule
@@ -27,7 +30,7 @@ from entities.chat_message_entity import _ChatMessage
 # 함수역할: 격리된 메모리 DB에 두 계정과 아침 약을 만들고 테스트 종료 후 연결을 정리한다.
 # 매개변수: 없음. 반환값: 테스트 세션과 약 식별자를 제공하는 제너레이터.
 @pytest.fixture
-def fixture():
+def fixture() -> Iterator[tuple[Session, int]]:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     with Session(engine) as db:
@@ -45,13 +48,21 @@ def fixture():
 # 함수이름: operation
 # 함수역할: 오늘 아침 복용 완료 요청을 만들고 사례별로 지정한 필드만 덮어쓴다.
 # 매개변수: med_id: 약 식별자, changes: 변경할 요청 필드. 반환값: 동기화 요청.
-def operation(med_id, **changes):
+def operation(med_id: int, **changes: Any) -> DoseSyncRequest:
     return DoseSyncRequest(**dict(dict(operation_id="offline_dose_0001",
         schedule_date=application_today(), slot_key="morning", medication_ids=[med_id], completed=True), **changes))
 
 
+# 함수이름: test_offline_regimen_snapshot_rejects_changed_course
+# 함수역할:
+# - 오프라인 일정의 개정 변경·삭제·중단은 동기화를 거부하고 완료 기록·작업 영수증을 남기지 않는지 확인한다.
+# 매개변수:
+# - fixture: tuple[Session, int]; 격리 세션과 약품 ID.
+# - change: str; 개정 변경·삭제·중단 중 오래된 일정 조건.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("change", ["revision", "deleted", "stopped"])
-def test_offline_regimen_snapshot_rejects_changed_course(fixture, change):
+def test_offline_regimen_snapshot_rejects_changed_course(fixture: tuple[Session, int], change: str) -> None:
     db, med_id = fixture
     medication = db.get(_SavedMedication, med_id)
     request = operation(med_id, regimen_revisions={med_id: int(medication.regimen_revision or 0)})
@@ -69,7 +80,14 @@ def test_offline_regimen_snapshot_rejects_changed_course(fixture, change):
     assert db.query(_DoseSyncOperation).count() == 0
 
 
-def test_verified_offline_retry_survives_later_regimen_change(fixture):
+# 함수이름: test_verified_offline_retry_survives_later_regimen_change
+# 함수역할:
+# - 이미 검증·저장한 오프라인 작업의 재시도는 이후 일정 개정이 바뀌어도 기록·영수증 한 건을 유지하는지 확인한다.
+# 매개변수:
+# - fixture: tuple[Session, int]; 격리 세션과 약품 ID.
+# 반환값:
+# - None.
+def test_verified_offline_retry_survives_later_regimen_change(fixture: tuple[Session, int]) -> None:
     db, med_id = fixture
     medication = db.get(_SavedMedication, med_id)
     request = operation(med_id, regimen_revisions={med_id: int(medication.regimen_revision or 0)})
@@ -84,7 +102,7 @@ def test_verified_offline_retry_survives_later_regimen_change(fixture):
 # 함수이름: test_retry_after_undo_never_reapplies
 # 함수역할: 취소 뒤 원래 완료 요청이 재전송되어도 취소를 유지하고 처리 이력·알림을 중복 생성하지 않는지 검증한다.
 # 매개변수: fixture: 격리 DB와 약 식별자. 반환값: 없음; 불일치 시 단언 실패.
-def test_retry_after_undo_never_reapplies(fixture):
+def test_retry_after_undo_never_reapplies(fixture: tuple[Session, int]) -> None:
     db, med_id = fixture
     control = SyncDose(db)
     first = operation(med_id)
@@ -96,10 +114,40 @@ def test_retry_after_undo_never_reapplies(fixture):
     assert db.query(_CaregiverAlertOutbox).count() == 1
 
 
+# 함수이름: test_notification_repeated_regular_completion_never_emits_another_event
+# 함수역할:
+# - 동일·다른 요청 ID로 완료를 재확인해도 채팅 연동 유무와 무관하게 완료 이벤트·대기열을 추가하지 않는지 확인한다.
+# 매개변수:
+# - fixture: tuple[Session, int]; 격리 세션과 약품 ID.
+# - with_chat: bool; 채팅 연동을 함께 사용할지 지정한다.
+# 반환값:
+# - None.
+@pytest.mark.parametrize("with_chat", [False, True])
+def test_notification_repeated_regular_completion_never_emits_another_event(fixture: tuple[Session, int], with_chat: bool) -> None:
+    """서로 다른 알림 요청·동일 요청 재전송 모두 완료 상태의 재확인일 뿐 새 완료 이벤트가 아니다."""
+    db, med_id = fixture
+    link_id = None
+    if with_chat:
+        links = LinkPatientCaregiver(db)
+        code = links.generatePatientHash("offline-patient")["data"]["patient_code"]
+        link_id = links.requestPatientCaregiverLink("other-patient", code)["data"]["id"]
+    control = SyncDose(db)
+    first = operation(med_id, operation_id="notification_request_001", link_id=link_id)
+    events, _ = control.apply("offline-patient", first)
+    assert len(events) == 1
+    outbox_ids = [row.id for row in db.query(_CaregiverAlertOutbox).all()]
+    for request in [first, operation(med_id, operation_id="notification_request_002", link_id=link_id)]:
+        events, _ = control.apply("offline-patient", request)
+        assert events == []
+        assert [row.id for row in db.query(_CaregiverAlertOutbox).all()] == outbox_ids
+        assert db.query(_MedicationCompletion).count() == 1
+        assert db.query(_MedicationCompletion).one().completed is True
+
+
 # 함수이름: test_midnight_records_original_day_without_today_or_live_alert
 # 함수역할: 전날 기록을 원래 날짜에 저장하고 오늘 일정과 실시간 보호자 알림에는 반영하지 않는지 검증한다.
 # 매개변수: fixture: 격리 DB와 약 식별자. 반환값: 없음; 불일치 시 단언 실패.
-def test_midnight_records_original_day_without_today_or_live_alert(fixture):
+def test_midnight_records_original_day_without_today_or_live_alert(fixture: tuple[Session, int]) -> None:
     db, med_id = fixture
     yesterday = application_today()-timedelta(days=1)
     SyncDose(db).apply("offline-patient", operation(med_id, schedule_date=yesterday))
@@ -113,7 +161,7 @@ def test_midnight_records_original_day_without_today_or_live_alert(fixture):
 # 함수역할: 미래 또는 복구 허용 기간 밖의 요청을 409로 거부하고 처리 이력과 복용 기록을 남기지 않는지 검증한다.
 # 매개변수: fixture: 격리 DB와 약 식별자, days: 오늘 기준 날짜 차이. 반환값: 없음; 불일치 시 단언 실패.
 @pytest.mark.parametrize("days", [1, -31])
-def test_future_and_expired_dates_reject_without_receipt(fixture, days):
+def test_future_and_expired_dates_reject_without_receipt(fixture: tuple[Session, int], days: int) -> None:
     db, med_id = fixture
     with pytest.raises(HTTPException) as error:
         SyncDose(db).apply("offline-patient", operation(med_id, schedule_date=application_today()+timedelta(days=days)))
@@ -125,7 +173,7 @@ def test_future_and_expired_dates_reject_without_receipt(fixture, days):
 # 함수이름: test_wrong_owner_and_deleted_medication_reject
 # 함수역할: 타인 소유 약과 존재하지 않는 약의 요청을 거부해 무효한 기록이 생기지 않는지 검증한다.
 # 매개변수: fixture: 격리 DB와 약 식별자. 반환값: 없음; 불일치 시 단언 실패.
-def test_wrong_owner_and_deleted_medication_reject(fixture):
+def test_wrong_owner_and_deleted_medication_reject(fixture: tuple[Session, int]) -> None:
     db, med_id = fixture
     with pytest.raises(HTTPException):
         SyncDose(db).apply("other-patient", operation(med_id))
@@ -138,7 +186,7 @@ def test_wrong_owner_and_deleted_medication_reject(fixture):
 # 함수이름: test_receipt_payload_cannot_change
 # 함수역할: 같은 요청 식별자로 완료 상태를 바꾸면 409로 거부하고 최초 기록을 유지하는지 검증한다.
 # 매개변수: fixture: 격리 DB와 약 식별자. 반환값: 없음; 불일치 시 단언 실패.
-def test_receipt_payload_cannot_change(fixture):
+def test_receipt_payload_cannot_change(fixture: tuple[Session, int]) -> None:
     db, med_id = fixture
     SyncDose(db).apply("offline-patient", operation(med_id))
     with pytest.raises(HTTPException) as error:
@@ -150,7 +198,7 @@ def test_receipt_payload_cannot_change(fixture):
 # 함수이름: test_transaction_failure_rolls_back_receipt_and_dose
 # 함수역할: DB 커밋 실패 시 처리 이력·복용 기록·보호자 알림이 모두 롤백되는지 검증한다.
 # 매개변수: fixture: 격리 DB와 약 식별자. 반환값: 없음; 불일치 시 단언 실패.
-def test_transaction_failure_rolls_back_receipt_and_dose(fixture):
+def test_transaction_failure_rolls_back_receipt_and_dose(fixture: tuple[Session, int]) -> None:
     db, med_id = fixture
     with patch.object(db, "commit", side_effect=RuntimeError("disk failure")):
         with pytest.raises(RuntimeError):
@@ -163,7 +211,7 @@ def test_transaction_failure_rolls_back_receipt_and_dose(fixture):
 # 함수이름: test_chat_and_historical_dose_share_one_idempotent_transaction
 # 함수역할: 과거 복용 기록과 채팅이 한 번만 저장되고 메시지에도 원래 날짜가 유지되는지 검증한다.
 # 매개변수: fixture: 격리 DB와 약 식별자. 반환값: 없음; 불일치 시 단언 실패.
-def test_chat_and_historical_dose_share_one_idempotent_transaction(fixture):
+def test_chat_and_historical_dose_share_one_idempotent_transaction(fixture: tuple[Session, int]) -> None:
     db, med_id = fixture
     links = LinkPatientCaregiver(db)
     code = links.generatePatientHash("offline-patient")["data"]["patient_code"]
@@ -179,10 +227,14 @@ def test_chat_and_historical_dose_share_one_idempotent_transaction(fixture):
     assert db.query(_ChatMessage).one().context_payload["schedule_context"]["schedule_date"] == yesterday.isoformat()
 
 
-# 함수이름: test_dose_queued_with_a_removed_link_is_still_recorded
-# 함수역할: 연동이 해제된 뒤 도착한 채팅 연동 복용 요청을 거부하지 않고 채팅 없이 일반 복용 기록으로 저장하는지 검증한다.
-# 매개변수: fixture: 격리 DB와 약 식별자. 반환값: 없음; 불일치 시 단언 실패.
-def test_dose_queued_with_a_removed_link_is_still_recorded(fixture):
+# Function Name: test_dose_queued_with_a_removed_link_is_still_recorded
+# Description:
+# - Accept a queued dose after its chat link is removed, recording the dose without a chat receipt.
+# Parameters:
+# - fixture: tuple; isolated database session and medication identifier.
+# Returns:
+# - None.
+def test_dose_queued_with_a_removed_link_is_still_recorded(fixture: tuple[Session, int]) -> None:
     db, med_id = fixture
     events, message = SyncDose(db).apply("offline-patient", operation(med_id, link_id=987654))
     assert message is None
@@ -196,7 +248,7 @@ def test_dose_queued_with_a_removed_link_is_still_recorded(fixture):
 # 함수이름: test_chat_failure_rolls_back_the_dose_and_receipt
 # 함수역할: 채팅 저장 실패 시 복용 기록과 처리 이력도 함께 취소되어 재시도가 가능한지 검증한다.
 # 매개변수: fixture: 격리 DB와 약 식별자. 반환값: 없음; 불일치 시 단언 실패.
-def test_chat_failure_rolls_back_the_dose_and_receipt(fixture):
+def test_chat_failure_rolls_back_the_dose_and_receipt(fixture: tuple[Session, int]) -> None:
     db, med_id = fixture
     links = LinkPatientCaregiver(db)
     code = links.generatePatientHash("offline-patient")["data"]["patient_code"]
@@ -208,10 +260,14 @@ def test_chat_failure_rolls_back_the_dose_and_receipt(fixture):
     assert db.query(_MedicationCompletion).count() == 0
 
 
-# 함수이름: test_route_rejects_a_previous_accounts_queued_request
-# 함수역할: 로그인 계정과 다른 계정의 대기 요청을 API에서 403으로 거부하고 처리 이력을 남기지 않는지 검증한다.
-# 매개변수: fixture: 격리 DB와 약 식별자. 반환값: 없음; 불일치 시 단언 실패.
-def test_route_rejects_a_previous_accounts_queued_request(fixture):
+# Function Name: test_route_rejects_a_previous_accounts_queued_request
+# Description:
+# - Reject a queued request from a previous account with HTTP 403 without recording a processed operation.
+# Parameters:
+# - fixture: tuple; isolated database session and medication identifier.
+# Returns:
+# - None.
+def test_route_rejects_a_previous_accounts_queued_request(fixture: tuple[Session, int]) -> None:
     import asyncio
     from fastapi import BackgroundTasks, Request
     from api.router import sync_dose_operation
@@ -230,11 +286,14 @@ def test_route_rejects_a_previous_accounts_queued_request(fixture):
     assert db.query(_DoseSyncOperation).count() == 0
 
 
-# 함수이름: test_route_accepts_a_linked_dose_and_broadcasts_its_chat_receipt
-# 함수역할: 채팅 연동 복용 요청이 API에서 200으로 끝나고 저장된 복용 메시지를 실시간 연결에 한 번 전달하는지 검증한다.
-#   일일 채팅 한도를 한 번 확인하고, 완료 알림을 예약한 뒤에는 요청 세션의 트랜잭션을 끝내는지도 확인한다.
-# 매개변수: 없음. 반환값: 없음; 불일치 시 단언 실패.
-def test_route_accepts_a_linked_dose_and_broadcasts_its_chat_receipt():
+# Function Name: test_route_accepts_a_linked_dose_and_broadcasts_its_chat_receipt
+# Description:
+# - Return HTTP 200 and broadcast one linked dose receipt, checking chat quota once and releasing the request transaction after scheduling completion alerts.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_route_accepts_a_linked_dose_and_broadcasts_its_chat_receipt() -> None:
     import asyncio
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
@@ -292,11 +351,17 @@ def test_route_accepts_a_linked_dose_and_broadcasts_its_chat_receipt():
         engine.dispose()
 
 
-# 함수이름: _run_dose_route
-# 함수역할: 지정한 복약 완료 라우트 핸들러를 실제 Control과 요청 세션으로 직접 호출하고, 응답 뒤에 실행될 작업을 요청 세션이 열린 채로 실행한다.
-# 매개변수: route: 호출할 라우트 이름, db: 요청 세션, medication_id: 약 식별자, link_id: 채팅 연동 식별자.
-# 반환값: 라우트 응답 사전.
-def _run_dose_route(route, db, medication_id, link_id):
+# Function Name: _run_dose_route
+# Description:
+# - Invoke a dose-completion handler with real controls, then run its response tasks while the request session is still open.
+# Parameters:
+# - route: str; dose route to invoke.
+# - db: Session; shared request session.
+# - medication_id: int; medication to complete.
+# - link_id: int; chat link for receipt creation.
+# Returns:
+# - dict; route response payload.
+def _run_dose_route(route: str, db: Session, medication_id: int, link_id: int) -> dict[str, Any]:
     import asyncio
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
@@ -319,10 +384,14 @@ def _run_dose_route(route, db, medication_id, link_id):
     background_tasks = BackgroundTasks()
     today = application_today()
 
-    # 함수이름: exercise
-    # 함수역할: 핸들러를 호출한 뒤 FastAPI가 응답 이후에 하듯 예약된 작업을 실행한다.
-    # 매개변수: 없음. 반환값: 라우트 응답 사전.
-    async def exercise():
+    # Function Name: exercise
+    # Description:
+    # - Call the selected handler and execute its scheduled post-response tasks.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - dict; handler response payload.
+    async def exercise() -> dict[str, Any]:
         if route == "slot_status":
             response = medication_router.update_medication_slot_status(
                 slot_key="morning", request=MedicationStatusUpdate(medication_status=True),
@@ -364,10 +433,14 @@ def _run_dose_route(route, db, medication_id, link_id):
     return asyncio.run(exercise())
 
 
-# 함수이름: _seed_completion_push
-# 함수역할: 환자의 아침 약 한 건과, 아침 복용 완료 알림을 켜고 푸시 토큰을 등록한 연동 보호자를 만든다.
-# 매개변수: factory: 시험 DB의 세션 팩토리. 반환값: 연동 식별자와 약 식별자.
-def _seed_completion_push(factory):
+# Function Name: _seed_completion_push
+# Description:
+# - Seed a morning medication and linked caregiver with completion alerts enabled and a registered push token.
+# Parameters:
+# - factory: sessionmaker; isolated test database session factory.
+# Returns:
+# - tuple[int, int]; link and medication identifiers.
+def _seed_completion_push(factory: sessionmaker[Session]) -> tuple[int, int]:
     from entities.caregiver_notification_entity import (
         CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
         _CaregiverNotification,
@@ -400,15 +473,18 @@ def _seed_completion_push(factory):
         return link.id, medication.id
 
 
-# 함수이름: test_completion_push_is_sent_without_an_open_request_transaction
-# 함수역할: 시간대 완료를 만든 모든 라우트에서 응답 본문을 만든 뒤 요청 세션의 트랜잭션이 끝나 있고,
-#   응답 이후 보호자 푸시가 전송되는 시점에도 요청 세션이 연결을 잡고 있지 않은지 검증한다.
-# 매개변수: tmp_path: 연결을 세션별로 분리할 파일 DB 위치, route: 검증할 라우트 이름.
-# 반환값: 없음; 불일치 시 단언 실패.
+# Function Name: test_completion_push_is_sent_without_an_open_request_transaction
+# Description:
+# - Ensure every completion route releases its request transaction and connection before the background caregiver push.
+# Parameters:
+# - tmp_path: Path; isolated temporary directory.
+# - route: str; completion route under test.
+# Returns:
+# - None.
 @pytest.mark.parametrize("route", [
     "slot_status", "medication_status", "dose_sync", "dose_sync_with_chat", "chat_medication_taken",
 ])
-def test_completion_push_is_sent_without_an_open_request_transaction(tmp_path, route):
+def test_completion_push_is_sent_without_an_open_request_transaction(tmp_path: Path, route: str) -> None:
     from unittest.mock import AsyncMock
     from fastapi.encoders import jsonable_encoder
     from api import chat_router, route_support, router as medication_router
@@ -443,12 +519,14 @@ def test_completion_push_is_sent_without_an_open_request_transaction(tmp_path, r
         engine.dispose()
 
 
-# 함수이름: test_dose_sync_over_http_uses_one_request_session_released_before_the_push
-# 함수역할: 실제 라우터와 의존성으로 복용 동기화를 요청해, 요청 하나가 세션 하나만 쓰고(동기화 Control과
-#   일정 Control이 같은 세션을 공유), 응답 이후 푸시가 나가는 동안 그 세션이 트랜잭션 없이 열려 있다가
-#   푸시가 끝난 뒤에 닫히는지 검증한다.
-# 매개변수: tmp_path: 연결을 세션별로 분리할 파일 DB 위치. 반환값: 없음; 불일치 시 단언 실패.
-def test_dose_sync_over_http_uses_one_request_session_released_before_the_push(tmp_path):
+# Function Name: test_dose_sync_over_http_uses_one_request_session_released_before_the_push
+# Description:
+# - Share one request session across HTTP dose-sync controls, release its transaction before pushing, and close it after background delivery.
+# Parameters:
+# - tmp_path: Path; isolated temporary directory.
+# Returns:
+# - None.
+def test_dose_sync_over_http_uses_one_request_session_released_before_the_push(tmp_path: Path) -> None:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from api import route_support
@@ -466,10 +544,14 @@ def test_dose_sync_over_http_uses_one_request_session_released_before_the_push(t
         request_sessions = []
         timeline = []
 
-        # 함수이름: request_db
-        # 함수역할: get_db처럼 요청 세션을 제공하고, 세션을 연 시점과 닫는 시점을 기록한다.
-        # 매개변수: 없음. 반환값: 요청 세션을 내주는 제너레이터.
-        def request_db():
+        # Function Name: request_db
+        # Description:
+        # - Yield the request session and record its creation and closure around background delivery.
+        # Parameters:
+        # - None.
+        # Returns:
+        # - Iterator[Session]; request-scoped database session.
+        def request_db() -> Iterator[Session]:
             db = factory()
             request_sessions.append(db)
             try:
@@ -478,10 +560,14 @@ def test_dose_sync_over_http_uses_one_request_session_released_before_the_push(t
                 timeline.append("request session closed")
                 db.close()
 
-        # 함수이름: record_send
-        # 함수역할: 푸시 전송 시점에 요청 세션이 트랜잭션을 잡고 있는지 기록한다.
-        # 매개변수: _call: 기록된 푸시 요청. 반환값: 없음.
-        def record_send(_call):
+        # Function Name: record_send
+        # Description:
+        # - Record whether the request session still has a transaction when push delivery starts.
+        # Parameters:
+        # - _call: dict; recorded push request, unused.
+        # Returns:
+        # - None.
+        def record_send(_call: dict[str, object]) -> None:
             timeline.append(
                 "push sent with open transaction" if request_sessions[0].in_transaction()
                 else "push sent")
@@ -513,7 +599,7 @@ def test_dose_sync_over_http_uses_one_request_session_released_before_the_push(t
 # 함수이름: test_migration_accepts_demo_metadata_initialization
 # 함수역할: 데모 초기화로 테이블이 이미 있는 DB에서도 마이그레이션을 반복 실행할 수 있는지 검증한다.
 # 매개변수: fixture: 테이블이 생성된 격리 DB와 약 식별자. 반환값: 없음; 실행 오류 시 실패.
-def test_migration_accepts_demo_metadata_initialization(fixture):
+def test_migration_accepts_demo_metadata_initialization(fixture: tuple[Session, int]) -> None:
     import importlib.util
     from pathlib import Path
     from alembic.migration import MigrationContext

@@ -4,6 +4,7 @@ import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
 
 import '../entities/medication_schedule_entity.dart';
+import '../entities/offline_schedule_window.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
@@ -12,19 +13,16 @@ import '../services/api_response_parser.dart';
 // File Name: check_schedule_control.dart
 // Role: Loads patient medication schedules and persists individual or whole-slot completion changes.
 
-// Class Name: CheckSchedule
-// Role: Retrieves medication courses in the patient's schedule and persists completion changes.
-// Responsibilities:
-// - Scope API requests by patient hash, decode schedule entities, and update individual or entire-slot completion states.
-// Attributes:
-// - baseUrl (String): Base URL of the medication API.
-// - patientHash (String): Ownership hash of the patient targeted by lookup, storage, or alerts.
-// - _client (http.Client): HTTP transport; constructor documentation specifies ownership for injected clients.
+// 클래스명: CheckSchedule
+// 역할: 환자별 복약 일정과 기간 일정을 조회하고 복용 완료 상태를 저장한다.
+// 주요 책임: 환자 소유권을 요청에 포함하고 응답 모델과 오프라인 기간을 검증한다.
+// 속성: baseUrl/patientHash: API와 환자 범위; _client/_ownsClient: HTTP 연결과 해제 책임; _windowRequests: 일수별로 진행 중인 기간 일정 요청.
 class CheckSchedule {
   final String baseUrl;
   final String patientHash;
   final http.Client _client;
   final bool _ownsClient;
+  final Map<int, Future<Map<String, dynamic>>> _windowRequests = {};
 
   // Function Name: CheckSchedule
   // Description: Normalizes patient ownership and binds schedule reads and completion updates to an injected or owned authenticated client.
@@ -71,45 +69,74 @@ class CheckSchedule {
     );
   }
 
-  // Function Name: requestMedicationScheduleWindow
-  // Description: Requests courses overlapping the rolling reminder window.
-  // Parameters:
-  // - days (int): Inclusive window length beginning today, up to 14 days.
-  // Returns:
-  // - Medication courses needed to replenish notifications before they start;
-  //   invalid or unsuccessful envelopes raise StateError.
+  // 함수이름: requestMedicationScheduleWindow
+  // 함수역할: 오늘부터 지정 기간과 겹치는 복약 과정을 알림 예약용으로 조회한다.
+  // 매개변수: days: 오늘을 포함한 조회 일수, 1~14이며 기본 14.
+  // 반환값: 복약 일정 목록 Future; 범위 밖 days는 ArgumentError, 응답 검증 실패는 오류로 전달한다.
   Future<List<MedicationSchedule>> requestMedicationScheduleWindow({
-    int days = 14,
+    int days = OfflineScheduleWindow.maximumDays,
   }) => _requestScheduleWindow(days: days);
 
-  // 오프라인 저장용 응답은 서버가 명시한 조회 기간까지 확인해 기기 시각으로 임의 연장하지 않는다.
+  // 함수이름: requestOfflineScheduleWindow
+  // 함수역할: 오프라인 보관용 14일 일정을 조회하면서 서버가 명시한 시작일과 종료일을 검증한다.
+  // 매개변수: expectedStartDay: 기대하는 시작 날짜 문자열.
+  // 반환값: 기간이 일치하는 일정 목록; 기기 시각으로 유효기간을 임의 연장하지 않고 불일치 시 실패한다.
   Future<List<MedicationSchedule>> requestOfflineScheduleWindow({
     required String expectedStartDay,
-  }) => _requestScheduleWindow(days: 14, expectedStartDay: expectedStartDay);
+  }) => _requestScheduleWindow(
+    days: OfflineScheduleWindow.maximumDays,
+    expectedStartDay: expectedStartDay,
+  );
 
+  // 함수이름: _sharedScheduleWindow
+  // 함수역할: 같은 일수의 기간 일정 요청이 진행 중이면 그 응답을 함께 쓴다. 기록 동기화와 알림 동기화가 일정 갱신 직후 같은 14일 일정을 동시에 읽으므로 요청을 한 번만 보낸다. 끝난 응답은 보관하지 않는다.
+  // 매개변수: days: 1~14일.
+  // 반환값: 성공 응답의 JSON 맵 Future. 호출자는 읽기만 한다. 통신·응답 오류는 공유한 모든 호출자에게 전파한다.
+  Future<Map<String, dynamic>> _sharedScheduleWindow(int days) {
+    final pending = _windowRequests[days];
+    if (pending != null) return pending;
+    final request = () async {
+      final response = await _client
+          .get(_buildScheduleUri('schedule/window', {'days': '$days'}))
+          .timeout(const Duration(seconds: 30));
+      final responseBody = ApiResponseParser.requireOkBody(
+        'Schedule window lookup failed',
+        response,
+      );
+      final decodedData = ApiResponseParser.decodeMap(responseBody);
+      if (decodedData['success'] != true || decodedData['data'] is! List) {
+        throw StateError('Schedule window response could not be verified.');
+      }
+      return decodedData;
+    }();
+    _windowRequests[days] = request;
+    request.whenComplete(() {
+      if (identical(_windowRequests[days], request)) _windowRequests.remove(days);
+    }).ignore();
+    return request;
+  }
+
+  // 함수이름: _requestScheduleWindow
+  // 함수역할: 환자별 기간 일정을 30초 제한으로 읽고 선택적으로 정확한 조회 기간까지 검증한다.
+  // 매개변수: days: 1~14일; expectedStartDay: 지정 시 서버 기간과 대조할 시작일.
+  // 반환값: 검증된 일정 목록 Future; 일수 범위 오류와 통신·응답·기간 오류를 전파한다.
   Future<List<MedicationSchedule>> _requestScheduleWindow({
     required int days,
     String? expectedStartDay,
   }) async {
-    if (days < 1 || days > 14) {
-      throw ArgumentError.value(days, 'days', 'Must be between 1 and 14.');
+    if (days < 1 || days > OfflineScheduleWindow.maximumDays) {
+      throw ArgumentError.value(
+        days,
+        'days',
+        'Must be between 1 and ${OfflineScheduleWindow.maximumDays}.',
+      );
     }
     return ApiResponseParser.guardRequest(
       operation: 'Schedule window lookup failed',
       logName: 'CheckSchedule',
       logMessage: 'Medication schedule window request failed.',
       request: () async {
-        final response = await _client
-            .get(_buildScheduleUri('schedule/window', {'days': '$days'}))
-            .timeout(const Duration(seconds: 30));
-        final responseBody = ApiResponseParser.requireOkBody(
-          'Schedule window lookup failed',
-          response,
-        );
-        final decodedData = ApiResponseParser.decodeMap(responseBody);
-        if (decodedData['success'] != true || decodedData['data'] is! List) {
-          throw StateError('Schedule window response could not be verified.');
-        }
+        final decodedData = await _sharedScheduleWindow(days);
         if (expectedStartDay != null) {
           final start = DateTime.parse(expectedStartDay);
           final end = DateTime(
@@ -129,14 +156,10 @@ class CheckSchedule {
     );
   }
 
-  // Function Name: updateMedicationStatus
-  // Description: Persists one medication completion status.
-  // Parameters:
-  // - medicationId (String): Saved medication identifier.
-  // - medicationStatus (bool): New completion status.
-  // - slotKey (String?): Medication slot key: morning, lunch, evening, or bedtime.
-  // Returns:
-  // - Updated MedicationSchedule.
+  // 함수이름: updateMedicationStatus
+  // 함수역할: 약 한 건의 복용 상태를 저장하고 서버가 확정한 일정 모델을 읽는다.
+  // 매개변수: medicationId: 저장 약 ID; medicationStatus: 새 완료 여부; slotKey: 선택적 복용 구간, 공백 제거·소문자 변환 후 전송.
+  // 반환값: 갱신 일정 Future; 응답에 일정이 없거나 요청이 실패하면 오류를 전파한다.
   Future<MedicationSchedule> updateMedicationStatus(
     String medicationId,
     bool medicationStatus, {

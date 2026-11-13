@@ -25,6 +25,7 @@ import '../widgets/medication_entry_fields.dart';
 import '../widgets/pinned_analysis_summary.dart';
 import '../widgets/responsive_card_header.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/keep_words_text.dart';
 
 part 'prescription_preview_image_widgets.dart';
 part 'prescription_preview_medication_widgets.dart';
@@ -100,6 +101,9 @@ class PrescriptionAnalysisPreviewUI extends StatefulWidget {
   // - verifiedScheduleIndexes (Set<int>): 약품 상세 조회로 검증된 일정 인덱스 집합.
   // - isMedicationLookupReview (bool): 약품 상세 조회 실패 항목을 다시 검토하는지 여부.
   // - onVerifiedOnlyContinueRequested (VoidCallback?): 확인된 약품만으로 분석 또는 저장을 이어갈 콜백.
+  // - matchReviews (Map<int, MedicationMatchReview>): 일정 인덱스별 매칭 후보와 검토 맥락. 기본값은 빈 맵이다.
+  // - lookupStatuses (Map<int, MedicationLookupStatus>): 일정 인덱스별 조회 상태. 검증된 인덱스는 우선 verified로 표시하며 누락 상태는 후보 정보로 보완한다.
+  // - onCandidateConfirmed (void Function(int, MedicationDetail)?): 일정 인덱스와 사용자가 확인한 후보를 전달할 콜백. null이면 후보 선택을 열지 않으며 도중에 검토 정보가 바뀐 선택은 무시한다.
   // 반환값: 입력 설정이 반영된 PrescriptionAnalysisPreviewUI 인스턴스.
   const PrescriptionAnalysisPreviewUI({
     super.key,
@@ -130,10 +134,10 @@ class PrescriptionAnalysisPreviewUI extends StatefulWidget {
       _PrescriptionAnalysisPreviewUIState();
 }
 
-// Class Name: _PrescriptionAnalysisPreviewUIState
-// Role: Manages state for OCR schedule-table review, editing, addition, and analysis continuation.
-// Responsibilities:
-// - Adds medication missed by OCR using the existing editor layout, prefills editable date, batch, and duration defaults from the first prescription, and forwards the confirmed addition.
+// 클래스명: _PrescriptionAnalysisPreviewUIState
+// 역할: OCR 일정 검토·후보 선택·분석 재개 상태.
+// 주요 책임: 동일 분석 요청과 확정 약만 저장하는 확인창의 중복 실행을 막는다.
+// 속성: _isAnalysisRequested (bool): 분석 요청 잠금; _isVerifiedOnlyConfirmationOpen (bool): 확인창 열림.
 class _PrescriptionAnalysisPreviewUIState
     extends State<PrescriptionAnalysisPreviewUI> {
   bool _isAnalysisRequested = false;
@@ -245,7 +249,7 @@ class _PrescriptionAnalysisPreviewUIState
                               key: const Key('ocr-add-medication-button'),
                               onPressed: _showMedicationCreator,
                               icon: const Icon(Icons.add_rounded),
-                              label: Text(text.addMissingMedication),
+                              label: KeepWordsText(text.addMissingMedication),
                             ),
                           ),
                           const SizedBox(height: 10),
@@ -253,7 +257,6 @@ class _PrescriptionAnalysisPreviewUIState
                         _PreviewMedicationList(
                           medicationScheduleList: widget.medicationScheduleList,
                           previewText: text,
-                          userSetting: widget.userSetting,
                           onEditRequested: _showMedicationEditor,
                           verifiedScheduleIndexes:
                               widget.verifiedScheduleIndexes,
@@ -279,6 +282,10 @@ class _PrescriptionAnalysisPreviewUIState
     );
   }
 
+  // Function Name: _showMedicationCandidates
+  // Description: Shows candidate confirmation using the original or explicitly corrected medication name, accepting a result only if the same review is still attached.
+  // Parameters: index (int): valid schedule/review index; review (MedicationMatchReview): candidate snapshot being confirmed.
+  // Returns: Future<void>; cancellation, disposal or a replaced review does not invoke the parent confirmation callback.
   Future<void> _showMedicationCandidates(
     int index,
     MedicationMatchReview review,
@@ -330,7 +337,6 @@ class _PrescriptionAnalysisPreviewUIState
       builder: (context) => _MedicationScheduleEditDialog(
         medicationSchedule: medicationSchedule,
         previewText: _PreviewText(widget.userSetting.language),
-        userSetting: widget.userSetting,
         initialField: initialField,
       ),
     );
@@ -371,7 +377,6 @@ class _PrescriptionAnalysisPreviewUIState
       builder: (context) => _MedicationScheduleEditDialog(
         medicationSchedule: defaultSchedule,
         previewText: _PreviewText(widget.userSetting.language),
-        userSetting: widget.userSetting,
         initialField: _MedicationScheduleEditField.medicationName,
         isNewSchedule: true,
       ),

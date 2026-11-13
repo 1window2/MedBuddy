@@ -9,6 +9,7 @@ import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:medbuddy_frontend/boundaries/chat_list_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/medication_history_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/input_prescription_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/linked_chat_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/manage_user_setting_ui_boundary.dart';
@@ -36,27 +37,55 @@ import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_bound
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/link_patient_caregiver_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_caregiver_medication_ui_boundary.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 
 // 함수이름: _emptyResponse
-// 함수역할: 실제 통신을 막는 응답을 제공한다. 매개변수: request: 요청. 반환값: 빈 성공 응답.
+// 함수역할:
+// - 외부 통신 없이 모든 요청에 빈 JSON 객체와 성공 상태를 응답한다.
+// 매개변수:
+// - request (http.Request): 수신한 요청이며 응답 내용에는 사용하지 않는다.
+// 반환값:
+// - Future<http.Response>; 상태 200과 본문 {}인 응답.
 Future<http.Response> _emptyResponse(http.Request request) async =>
     http.Response('{}', 200);
 // 함수이름: _noop
-// 함수역할: 외부 동작 없는 콜백을 제공한다. 매개변수: 없음. 반환값: 없음.
+// 함수역할:
+// - 화면에서 요구하는 동작 콜백을 부작용 없이 완료한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - void; 반환값 없음.
 void _noop() {}
 
 // 클래스명: _Links
-// 역할: 연동 응답·오류·지연을 제어한다. 속성: result, fail, pending, calls: 응답과 요청 상태.
+// 역할: 연동 목록 조회의 성공·실패·지연을 재현하는 대역.
+// 주요 책임:
+// - 조회 횟수를 기록하고 한 번만 사용하는 지연 응답을 우선 처리한다.
+// 속성:
+// - result (List<PatientCaregiverLink>): 즉시 반환할 연동 목록.
+// - fail (bool): 지연 응답이 없을 때 조회 오류를 발생시킬지 여부.
+// - calls (int): 누적 조회 횟수.
+// - pending (Completer<List<PatientCaregiverLink>>?): 다음 조회를 보류할 완료자.
 class _Links extends LinkPatientCaregiver {
   List<PatientCaregiverLink> result = [];
   bool fail = false;
   int calls = 0;
   Completer<List<PatientCaregiverLink>>? pending;
   // 함수이름: _Links
-  // 함수역할: 연동 조회 대역을 만든다. 매개변수: 없음. 반환값: 테스트 Control.
+  // 함수역할:
+  // - 빈 JSON 응답 클라이언트를 사용하는 연동 조회 대역을 생성한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - _Links; 실제 네트워크를 사용하지 않는 인스턴스.
   _Links() : super(client: MockClient(_emptyResponse));
   // 함수이름: requestLinkScreen
-  // 함수역할: 요청 횟수를 기록하고 응답·오류를 반환한다. 매개변수: 없음. 반환값: 연동 목록 Future.
+  // 함수역할:
+  // - 조회 횟수를 늘리고 pending을 한 번 소비한다. 지연 응답이 없으면 fail에 따라 StateError를 던지거나 result를 반환한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<List<PatientCaregiverLink>>; 설정한 연동 목록 또는 보류 중인 결과.
   @override
   Future<List<PatientCaregiverLink>> requestLinkScreen() async {
     calls++;
@@ -71,12 +100,26 @@ class _Links extends LinkPatientCaregiver {
 }
 
 // 클래스명: _History
-// 역할: 최근 메시지 조회와 실패를 재현한다. 속성: messages, failed: 응답·실패 연동 ID.
+// 역할: 대화 미리보기와 읽지 않은 메시지 수를 제공하는 대역.
+// 주요 책임:
+// - 연동별 응답과 실패를 설정하고 미리보기 조회 범위를 검사한다.
+// 속성:
+// - messages (Map<int, List<ChatMessage>>): 연동별 메시지 목록.
+// - unreadCounts (Map<int, int>): 연동별 읽지 않은 메시지 수.
+// - unreadFails (bool): 읽지 않은 메시지 수 조회의 실패 여부.
+// - failed (int?): 미리보기 조회를 실패시킬 연동 ID.
+// - calls (int): 미리보기 조회 횟수.
 class _History extends ManageLinkedChat {
   final Map<int, List<ChatMessage>> messages = {};
   final unreadCounts = <int, int>{};
   bool unreadFails = false;
-  // 읽음 집계 실패를 미리보기 실패와 별도로 재현한다.
+  // 함수이름: requestUnreadSummary
+  // 함수역할:
+  // - 연동별 읽지 않은 메시지 수를 반환하며 unreadFails가 켜져 있으면 StateError로 실패한다.
+  // 매개변수:
+  // - linkId (int): 조회할 연동 ID.
+  // 반환값:
+  // - Future<ChatUnreadSummary>; 설정한 수 또는 기본값 0을 담은 요약.
   @override
   Future<ChatUnreadSummary> requestUnreadSummary({required int linkId}) async {
     if (unreadFails) throw StateError('unread offline');
@@ -86,11 +129,22 @@ class _History extends ManageLinkedChat {
   int? failed;
   int calls = 0;
   // 함수이름: _History
-  // 함수역할: 채팅 조회 대역을 만든다. 매개변수: 없음. 반환값: 테스트 Control.
+  // 함수역할:
+  // - caregiver 계정과 빈 응답 클라이언트로 대화 조회 대역을 생성한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - _History; 메시지와 읽지 않은 수를 설정할 수 있는 대역.
   _History() : super(userHash: 'caregiver', client: MockClient(_emptyResponse));
   // 함수이름: requestHistory
-  // 함수역할: 최근 한 메시지 요청을 검증하고 지정 이력을 제공한다.
-  // 매개변수: linkId, beforeMessageId, limit: 연동·이력 기준·페이지 크기. 반환값: 지정 메시지 또는 실패.
+  // 함수역할:
+  // - 미리보기 요청이 한 건으로 제한되는지 검사하고 조회 횟수를 늘린다. 지정한 연동은 StateError로 실패한다.
+  // 매개변수:
+  // - linkId (int): 메시지를 조회할 연동 ID.
+  // - beforeMessageId (int?): 이 대역에서는 사용하지 않는 이전 메시지 커서.
+  // - limit (int): 기본값은 50이지만 이 테스트 대역은 1인 요청만 허용한다.
+  // 반환값:
+  // - Future<List<ChatMessage>>; 해당 연동의 설정된 메시지 또는 빈 목록.
   @override
   Future<List<ChatMessage>> requestHistory({
     required int linkId,
@@ -105,13 +159,22 @@ class _History extends ManageLinkedChat {
 }
 
 // 클래스명: _ViewModel
-// 역할: 화면 테스트용 사용자 표시 설정을 고정한다. 속성: setting: 표시 설정.
+// 역할: 홈 표시 설정과 본인 약 보유 여부를 제어하는 뷰 모델 대역.
+// 주요 책임:
+// - 조회 없이 테스트가 설정한 화면 상태를 제공한다.
+// 속성:
+// - setting (UserSetting): 화면에 노출할 사용자 설정.
+// - hasOwnMedication (bool): 본인 약 한 건을 반환할지 여부.
 class _ViewModel extends MedBuddyViewModel {
   UserSetting setting = const UserSetting();
   bool hasOwnMedication = false;
   // 함수이름: savedMedicationInfoList
-  // 함수역할: 본인 약의 유무만 바꿔 홈 일정 출처가 약 보유 여부에 좌우되지 않는지 검사한다.
-  // 매개변수: 없음. 반환값: 본인 약 한 건 또는 기본 저장 약 목록.
+  // 함수역할:
+  // - 본인 약 보유 설정이 켜져 있으면 고정 약 한 건을, 아니면 부모의 저장 약 목록을 반환한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - List<MedicationDetail>; 화면에서 조회하는 저장 약 목록.
   @override
   List<MedicationDetail> get savedMedicationInfoList => hasOwnMedication
       ? const [
@@ -124,24 +187,48 @@ class _ViewModel extends MedBuddyViewModel {
         ]
       : super.savedMedicationInfoList;
   // 함수이름: _ViewModel
-  // 함수역할: 지정 계정의 화면 모델을 만든다. 매개변수: hash: 계정. 반환값: 테스트 화면 모델.
+  // 함수역할:
+  // - 지정한 계정과 빈 응답 클라이언트를 사용하는 홈 화면 뷰 모델을 생성한다.
+  // 매개변수:
+  // - hash (String): 사용자 해시이며 기본값은 caregiver이다.
+  // 반환값:
+  // - _ViewModel; 사용자 설정을 직접 제어할 수 있는 인스턴스.
   _ViewModel([String hash = 'caregiver'])
     : super(patientHash: hash, apiClient: MockClient(_emptyResponse));
   // 함수이름: userSetting
-  // 함수역할: 테스트 설정을 제공한다. 매개변수: 없음. 반환값: 현재 설정.
+  // 함수역할:
+  // - 부모 저장소 대신 테스트에서 지정한 설정을 노출한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - UserSetting; 현재 setting 값.
   @override
   UserSetting get userSetting => setting;
 }
 
 // 클래스명: _HomeMonitoring
-// 역할: 홈 조립 테스트에 활성 환자의 빈 일정을 제공한다.
+// 역할: 환자별 홈 복약 요약 조회를 기록하는 대역.
+// 주요 책임:
+// - 전달받은 연동마다 알림 설정과 일정이 비어 있는 스냅샷을 만든다.
+// 속성:
+// - calls (int): 스냅샷 조회 횟수.
 class _HomeMonitoring extends CheckCaregiverMedication {
-  // Bind the fake API to the authenticated caregiver used by this fixture.
+  // Function Name: _HomeMonitoring
+  // Description:
+  // - Creates the home-monitoring fake for the caregiver account.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - _HomeMonitoring; a counter-backed snapshot provider.
   _HomeMonitoring() : super(caregiverHash: 'caregiver');
   int calls = 0;
   // 함수이름: requestScheduleSnapshot
-  // 함수역할: 조회 횟수를 기록하고 활성 환자의 빈 일정을 제공한다.
-  // 매개변수: links: 현재 홈의 연결 목록. 반환값: 테스트 환자별 일정 목록 Future.
+  // 함수역할:
+  // - 호출 횟수를 늘리고 전달된 모든 연동을 빈 일정 스냅샷으로 변환한다. 연동 상태를 별도로 필터링하지 않는다.
+  // 매개변수:
+  // - links (List<PatientCaregiverLink>?): 스냅샷에 포함할 연동이며 null이면 빈 목록을 반환한다.
+  // 반환값:
+  // - Future<List<CaregiverMonitoringSnapshot>>; 입력 연동별 빈 일정 스냅샷.
   @override
   Future<List<CaregiverMonitoringSnapshot>> requestScheduleSnapshot({
     List<PatientCaregiverLink>? links,
@@ -159,7 +246,14 @@ class _HomeMonitoring extends CheckCaregiverMedication {
 }
 
 // 함수이름: _link
-// 함수역할: 다른 환자를 가진 연동을 만든다. 매개변수: id, caregiver, active: ID·보호자·활성 여부. 반환값: 연동.
+// 함수역할:
+// - ID에서 환자 해시와 별칭을 만들고 보호자 및 활성 상태를 지정한 연동을 생성한다.
+// 매개변수:
+// - id (int): 연동 ID이자 환자 해시·별칭의 구분자.
+// - caregiver (String): 보호자 해시이며 기본값은 caregiver이다.
+// - active (bool): 활성 연동 여부이며 기본값은 true이다.
+// 반환값:
+// - PatientCaregiverLink; 목록 필터링과 상대 이름 표시용 연동.
 PatientCaregiverLink _link(
   int id, {
   String caregiver = 'caregiver',
@@ -172,7 +266,14 @@ PatientCaregiverLink _link(
   linkStatus: active,
 );
 // 함수이름: _message
-// 함수역할: 삭제·숨김·정렬 시각이 있는 메시지를 만든다. 매개변수: id, hidden, deleted: 연동·숨김·삭제. 반환값: 메시지.
+// 함수역할:
+// - ID를 메시지·연동 식별자와 발송 시각에 반영한 환자 메시지를 생성한다.
+// 매개변수:
+// - id (int): 메시지·연동 ID 및 발송 시각의 분 값.
+// - hidden (bool): 미리보기 숨김 여부이며 기본값은 false이다.
+// - deleted (bool): 삭제 상태 여부이며 기본값은 false이다.
+// 반환값:
+// - ChatMessage; 숨김·삭제 상태를 조절할 수 있는 미리보기 메시지.
 ChatMessage _message(int id, {bool hidden = false, bool deleted = false}) =>
     ChatMessage(
       messageId: id,
@@ -185,7 +286,13 @@ ChatMessage _message(int id, {bool hidden = false, bool deleted = false}) =>
       deletedForEveryone: deleted,
     );
 // 함수이름: _viewport
-// 함수역할: 화면 크기를 고정하고 종료 후 복구한다. 매개변수: tester, width: 도구·너비. 반환값: 없음.
+// 함수역할:
+// - 고정 높이 950과 픽셀 비율 1로 화면 크기를 설정하고 테스트 종료 시 원래 값을 복원한다.
+// 매개변수:
+// - tester (WidgetTester): 화면 설정과 종료 정리를 등록할 테스트 도구.
+// - width (double): 테스트 화면 너비.
+// 반환값:
+// - void; 반환값 없음.
 void _viewport(WidgetTester tester, double width) {
   tester.view.physicalSize = Size(width, 950);
   tester.view.devicePixelRatio = 1;
@@ -194,10 +301,268 @@ void _viewport(WidgetTester tester, double width) {
 }
 
 // 함수이름: main
-// 함수역할: 대화 조회와 동적 탐색 테스트를 등록한다. 매개변수: 없음. 반환값: 없음.
+// 함수역할:
+// - 홈 기능 검색, 연동 갱신, 대화 미리보기·배지 및 접근성 탐색 테스트를 등록한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - void; 반환값 없음.
 void main() {
+  // 함수이름: 하단 기록 탭 재사용 검증
+  // 함수역할: 홈을 거쳐 기록 탭에 돌아와도 동일한 화면 상태를 유지하는지 확인한다.
+  // 매개변수: tester(WidgetTester): 하단 메뉴 조작 도구. 반환값: 검증 완료 Future<void>.
+  testWidgets('history tab retains its state when returning from home', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    _viewport(tester, 390);
+    final model = _ViewModel();
+    addTearDown(model.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: model,
+        child: MaterialApp(
+          home: HomeScreen(
+            chatListFactory: (hash) => ManageChatList(
+              userHash: hash,
+              linkControl: _Links(),
+              chatControl: _History(),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final tab = find.byKey(
+      const ValueKey('bottomNavigation-medicationHistory'),
+    );
+    await tester.tap(tab);
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(MedicationHistoryUI));
+    await tester.tap(find.byKey(const ValueKey('bottomNavigation-home')));
+    await tester.pumpAndSettle();
+    await tester.tap(tab);
+    await tester.pumpAndSettle();
+    expect(tester.state(find.byType(MedicationHistoryUI)), same(state));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  for (final language in ['한국어', 'English']) {
+    // 함수이름: cold offline chat remains reachable and recovers
+    // 함수역할: 인터넷 없이 시작해도 채팅과 재시도를 유지하고, 복구 후 대화를 표시하며 실제 연결 해제 때만 홈으로 돌아간다.
+    // 매개변수: tester: 화면과 사용자 입력 검증 도구.
+    // 반환값: 언어별 상태·화면 이동 검증 완료 Future<void>.
+    testWidgets('cold offline chat remains reachable and recovers: $language', (
+      tester,
+    ) async {
+      // This device saw a connection before, so an offline start keeps chat reachable.
+      SharedPreferences.setMockInitialValues({
+        ManageChatList.linkPresenceKeyFor('caregiver'): true,
+      });
+      _viewport(tester, 390);
+      final links = _Links()..fail = true;
+      final model = _ViewModel()..setting = UserSetting(language: language);
+      addTearDown(model.dispose);
+      late ManageChatList control;
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: model,
+          child: MaterialApp(
+            home: HomeScreen(
+              chatListFactory: (hash) => control = ManageChatList(
+                userHash: hash,
+                linkControl: links,
+                chatControl: _History(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final chatTab = find.byKey(const ValueKey('bottomNavigation-chat'));
+      expect(chatTab, findsOneWidget);
+      await tester.tap(chatTab);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('chatLinkLookupError')), findsOneWidget);
+      expect(find.text('연동된 대화가 없어요'), findsNothing);
+      expect(find.text('No connected chats'), findsNothing);
+      expect(find.byType(LinkedChatUI), findsNothing);
+      expect(
+        find.text(language == 'English' ? 'Retry' : '다시 시도'),
+        findsOneWidget,
+      );
+
+      links
+        ..fail = false
+        ..result = [_link(1)];
+      await tester.tap(find.byKey(const ValueKey('chatLinkLookupRetry')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('chatLinkLookupError')), findsNothing);
+      expect(find.byKey(const ValueKey('chatConversation-1')), findsOneWidget);
+
+      links.fail = true;
+      await control.refresh();
+      await tester.pumpAndSettle();
+      expect(chatTab, findsOneWidget);
+      expect(find.byKey(const ValueKey('chatConversation-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chatLinkLookupError')), findsOneWidget);
+
+      links
+        ..fail = false
+        ..result = [];
+      await control.refresh();
+      await tester.pumpAndSettle();
+      expect(chatTab, findsNothing);
+      expect(find.byType(InputPrescriptionUI), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    // 함수이름: offline retry notice fits large text
+    // 함수역할: 좁은 화면과 큰 글씨에서도 오프라인 안내와 재시도 버튼이 잘리지 않는지 검증한다.
+    // 매개변수: tester: 화면 크기와 렌더링 검증 도구.
+    // 반환값: 언어별 안내 영역 검증 완료 Future<void>.
+    testWidgets('offline retry notice fits large text: $language', (
+      tester,
+    ) async {
+      _viewport(tester, 320);
+      final control = ManageChatList(
+        userHash: 'caregiver',
+        linkControl: _Links()..fail = true,
+        chatControl: _History(),
+      );
+      addTearDown(control.dispose);
+      await control.refresh();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+            child: ChatListUI(
+              control: control,
+              userSetting: UserSetting(language: language),
+              onManageLinks: _noop,
+            ),
+          ),
+        ),
+      );
+      final notice = tester.getRect(
+        find.byKey(const ValueKey('chatLinkLookupError')),
+      );
+      final retry = tester.getRect(
+        find.byKey(const ValueKey('chatLinkLookupRetry')),
+      );
+      expect(notice.contains(retry.topLeft), isTrue);
+      expect(notice.contains(retry.bottomRight), isTrue);
+      expect(notice.left, greaterThanOrEqualTo(0));
+      expect(notice.right, lessThanOrEqualTo(320));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  // 함수이름: a device without connections never flashes the chat tab
+  // 함수역할:
+  // - 연동이 없던 기기와 처음 쓰는 기기는 첫 조회 전에도 채팅 탭을 보이지 않아 실행마다 탭이 나타났다 사라지지 않는지, 연동이 생기면 다음 실행부터 바로 보이는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
+  for (final remembered in [null, false]) {
+    testWidgets('a device without connections never flashes the chat tab: $remembered', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({
+        ManageChatList.linkPresenceKeyFor('caregiver'): ?remembered,
+      });
+      _viewport(tester, 390);
+      final pending = Completer<List<PatientCaregiverLink>>();
+      final links = _Links()..pending = pending;
+      final model = _ViewModel();
+      addTearDown(model.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: model,
+          child: MaterialApp(
+            home: HomeScreen(
+              chatListFactory: (hash) => ManageChatList(
+                userHash: hash,
+                linkControl: links,
+                chatControl: _History(),
+              ),
+            ),
+          ),
+        ),
+      );
+      final chatTab = find.byKey(const ValueKey('bottomNavigation-chat'));
+      for (var frame = 0; frame < 5; frame++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(chatTab, findsNothing);
+      }
+      pending.complete([_link(1)]);
+      await tester.pumpAndSettle();
+      expect(chatTab, findsOneWidget);
+      final preferences = await SharedPreferences.getInstance();
+      expect(
+        preferences.getBool(ManageChatList.linkPresenceKeyFor('caregiver')),
+        isTrue,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  // 함수이름: pending initial links allow chat without claiming no connections
+  // 함수역할: 첫 조회 대기 중 채팅 진입을 허용하고 빈 응답이 확정될 때만 채팅 탭을 숨긴다.
+  // 매개변수: tester: 화면과 지연 응답 검증 도구.
+  // 반환값: 대기·빈 응답 전환 검증 완료 Future<void>.
+  testWidgets(
+    'pending initial links allow chat without claiming no connections',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({
+        ManageChatList.linkPresenceKeyFor('caregiver'): true,
+      });
+      _viewport(tester, 390);
+      final pending = Completer<List<PatientCaregiverLink>>();
+      final links = _Links()..pending = pending;
+      final model = _ViewModel();
+      addTearDown(model.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: model,
+          child: MaterialApp(
+            home: HomeScreen(
+              chatListFactory: (hash) => ManageChatList(
+                userHash: hash,
+                linkControl: links,
+                chatControl: _History(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('bottomNavigation-chat')));
+      await tester.pump();
+      expect(find.byType(ChatListUI), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      expect(find.text('연동된 대화가 없어요'), findsNothing);
+      pending.complete([]);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('bottomNavigation-chat')), findsNothing);
+      expect(find.byType(InputPrescriptionUI), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
   // 홈의 두 일정 모드에서 실제 검색 진입과 기존 설정·등록·연동 경로를 검증한다.
   for (final source in ['self', 'patients']) {
+    // 함수이름: 기능 찾기는 $source 홈에서도 동일한 안전한 이동을 제공한다
+    // 함수역할:
+    // - 본인·환자 모드에서 기능 검색으로 글씨 설정·약 추가·촬영·연동 관리·복약 일정에 진입하고, 뒤로 가기 시 검색어가 유지되는지 검증한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+    // 반환값:
+    // - Future<void>; 비동기 검증 후 완료한다.
     testWidgets('기능 찾기는 $source 홈에서도 동일한 안전한 이동을 제공한다', (tester) async {
       SharedPreferences.setMockInitialValues({});
       _viewport(tester, 390);
@@ -341,7 +706,13 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     });
   }
-  // 환자 일정 검색 결과는 연동 확인을 기다린 뒤 열리므로, 그사이 다른 화면을 열었다면 덮지 않는다.
+  // 함수이름: 기능 찾기의 환자 일정은 대기 중 다른 화면을 열면 그 위에 열지 않는다
+  // 함수역할:
+  // - 환자 일정 조회 중 검색 화면을 닫으면 늦은 응답이 다른 화면 위에 열리지 않고, 새 검색에서는 정상 진입하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('기능 찾기의 환자 일정은 대기 중 다른 화면을 열면 그 위에 열지 않는다', (tester) async {
     SharedPreferences.setMockInitialValues({});
     _viewport(tester, 390);
@@ -377,6 +748,13 @@ void main() {
     );
     await tester.pumpAndSettle();
     final search = find.byKey(const ValueKey('homeFeatureSearchButton'));
+    // Function Name: chooseCaregiverSchedule
+    // Description:
+    // - Opens feature search and selects caregiver schedules using the captured tester; pumps the selection without waiting for a deferred link lookup.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes after the search and selection frames.
     Future<void> chooseCaregiverSchedule() async {
       await tester.tap(search);
       await tester.pumpAndSettle();
@@ -408,7 +786,13 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
-  // 저장 설정이 연동 조회보다 늦게 복원되어도 환자 조회와 위젯 발행 출처를 갱신한다.
+  // 함수이름: late home source restoration refreshes linked patient schedules
+  // 함수역할:
+  // - 홈을 연 뒤 변경된 일정 표시 설정을 반영하며 환자 모드로 전환할 때마다 요약을 조회하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets(
     'late home source restoration refreshes linked patient schedules',
     (tester) async {
@@ -453,16 +837,19 @@ void main() {
     },
   );
 
-  // 함수역할: 홈의 실제 구성에서 설정과 연동 해제에 따라 환자 현황을 표시한다.
   for (final (source, ownMedication) in [
     ('self', false),
     ('self', true),
     ('patients', false),
     ('patients', true),
   ]) {
-    // 함수이름: 홈 일정 출처 테스트
-    // 함수역할: 명시한 일정 출처를 본인 약 유무와 관계없이 따르고 환자 연결이 해제되면 연결 안내로 바뀌는지 검증한다.
-    // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+    // Function Name: 홈은 명시적 일정 선택을 따르고 연결 해제 시 안내한다: $source/$ownMedication
+    // Description:
+    // - Checks that home summaries follow the selected source, not ownership of medication; draft setting changes stay unsaved, returning home refreshes patient summaries, and removed links show the empty state.
+    // Parameters:
+    // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+    // Returns:
+    // - Future<void>; completes after the asynchronous assertions.
     testWidgets('홈은 명시적 일정 선택을 따르고 연결 해제 시 안내한다: $source/$ownMedication', (
       tester,
     ) async {
@@ -603,11 +990,21 @@ void main() {
     });
   }
   TestWidgetsFlutterBinding.ensureInitialized();
-  // 함수이름: 초기화 콜백
-  // 함수역할: 테스트 기기 저장소를 비운다. 매개변수: 없음. 반환값: 없음.
+  // 함수이름: setUp
+  // 함수역할:
+  // - 각 테스트 시작 전에 공유 환경설정을 비워 이전 테스트의 저장 상태를 제거한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - void; 반환값 없음.
   setUp(() => SharedPreferences.setMockInitialValues({}));
-  // 함수이름: 참여 범위 테스트
-  // 함수역할: 유효 연동만 남기고 중복을 제거하며 두 역할의 이름을 구분한다. 매개변수: 없음. 반환값: 검증 완료.
+  // Function Name: filters active participants and resolves names for both roles
+  // Description:
+  // - Filters inactive, duplicate, nonpositive, and unrelated links; resolves the caregiver-facing patient alias and patient-facing shortened caregiver name without fetching previews.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test(
     'filters active participants and resolves names for both roles',
     () async {
@@ -648,8 +1045,13 @@ void main() {
       );
     },
   );
-  // 함수이름: 미리보기 테스트
-  // 함수역할: 최근 대화 정렬·숨김·개별 조회 실패·연동 삭제를 검증한다. 매개변수: 없음. 반환값: 검증 완료.
+  // 함수이름: previews sort by recency and discard hidden or failed data
+  // 함수역할:
+  // - 삭제·숨김 표시를 포함한 최신 메시지 순으로 미리보기를 정렬하고, 숨김·조회 실패·연동 삭제 후 이전 본문과 상태가 남지 않는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   test('previews sort by recency and discard hidden or failed data', () async {
     final links = _Links()..result = [_link(1), _link(2), _link(3)];
     final history = _History()
@@ -677,8 +1079,13 @@ void main() {
     expect(control.links, isEmpty);
     expect(control.latestMessage(3), isNull);
   });
-  // 함수이름: 재시도 테스트
-  // 함수역할: 오프라인 때 목록을 유지하고 재시도 성공 시 오류를 해제한다. 매개변수: 없음. 반환값: 검증 완료.
+  // 함수이름: lookup errors preserve conversations and recover
+  // 함수역할:
+  // - 연동 조회가 실패하면 기존 목록과 오류를 유지하고, 재조회 성공 시 빈 목록과 정상 상태로 갱신하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   test('lookup errors preserve conversations and recover', () async {
     final links = _Links()..result = [_link(1)];
     final control = ManageChatList(
@@ -698,8 +1105,13 @@ void main() {
     expect(control.hasError, isFalse);
     expect(control.links, isEmpty);
   });
-  // 함수이름: 중복·종료 테스트
-  // 함수역할: 조회 중 새 갱신을 합치고 폐기한 계정의 늦은 응답을 무시한다. 매개변수: 없음. 반환값: 검증 완료.
+  // 함수이름: queues refresh and ignores late disposed responses
+  // 함수역할:
+  // - 진행 중인 갱신은 같은 Future를 공유하고 추가 갱신을 한 번 예약하며, dispose 이후 도착한 결과는 반영하지 않는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   test('queues refresh and ignores late disposed responses', () async {
     final pending = Completer<List<PatientCaregiverLink>>();
     final links = _Links()..pending = pending;
@@ -723,9 +1135,13 @@ void main() {
     await third;
     expect(control.links, isEmpty);
   });
-  // 함수이름: 동적 탭·수명주기 테스트
-  // 함수역할: 연동 시 탭 표시, 여러 상대, 백그라운드 중지, 마지막 연동 해제 후 복귀와 표시 설정 변경 시 탭 유지를 검증한다.
-  // 매개변수: tester: 위젯 도구. 반환값: 검증 완료.
+  // 함수이름: chat follows links and lifecycle independently of display settings
+  // 함수역할:
+  // - 연동 유무에 따라 채팅 탭이 추가·제거되고 앱 일시정지 중 조회가 멈추며, 복귀와 글씨 설정 변경 후에도 올바른 대화 화면을 유지하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets(
     'chat follows links and lifecycle independently of display settings',
     (tester) async {
@@ -793,9 +1209,70 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
-  // 함수이름: 목록·선택 테스트
-  // 함수역할: 삭제된 본문을 숨기고 선택한 환자의 기존 채팅으로 이동한다. 매개변수: tester: 도구. 반환값: 검증 완료.
-  // 숫자는 실제 미확인 개수이며 0·실패 때는 표시하지 않고 100 이상은 99+로 줄인다.
+  // 함수이름: link polling pauses while another screen covers home
+  // 함수역할:
+  // - 다른 화면이 홈을 덮은 동안에는 15초 연동 조회를 하지 않고, 홈이 다시 보이면 바로 한 번 조회하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 시간을 진행한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
+  testWidgets('link polling pauses while another screen covers home', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    _viewport(tester, 390);
+    final links = _Links()..result = [_link(1)];
+    final model = _ViewModel();
+    addTearDown(model.dispose);
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: model,
+        child: MaterialApp(
+          navigatorKey: navigator,
+          home: HomeScreen(
+            chatListFactory: (hash) => ManageChatList(
+              userHash: hash,
+              linkControl: links,
+              chatControl: _History(),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final initial = links.calls;
+    await tester.pump(const Duration(seconds: 16));
+    expect(links.calls, initial + 1);
+
+    unawaited(
+      navigator.currentState!.push(
+        MaterialPageRoute<void>(builder: (_) => const Scaffold()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // 50 s puts the old 15 s schedule's next tick within 10 s of the return below.
+    await tester.pump(const Duration(seconds: 50));
+    expect(links.calls, initial + 1);
+
+    navigator.currentState!.pop();
+    await tester.pumpAndSettle();
+    expect(links.calls, initial + 2);
+    // The period restarts on return, so the next read comes 15 s later, not on the old schedule.
+    await tester.pump(const Duration(seconds: 10));
+    expect(links.calls, initial + 2);
+    await tester.pump(const Duration(seconds: 6));
+    expect(links.calls, initial + 3);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  // 함수이름: conversation badges refresh and clear without marking read
+  // 함수역할:
+  // - 큰 글씨 화면에서 읽지 않은 수를 3과 99+로 표시하되 원래 수 120은 유지하며, 0·조회 실패·연동 삭제 시 배지를 제거하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('conversation badges refresh and clear without marking read', (
     tester,
   ) async {
@@ -841,6 +1318,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: redacts deleted previews and opens the selected patient
+  // 함수역할:
+  // - 삭제된 본문 대신 안내 문구와 지정된 목록 간격·서체를 표시하고, 선택한 환자와 연동으로 채팅을 열어 해당 경로만 관찰하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('redacts deleted previews and opens the selected patient', (
     tester,
   ) async {
@@ -882,8 +1366,9 @@ void main() {
       (frame.shape! as RoundedRectangleBorder).borderRadius,
       MedBuddyRadii.largeCard,
     );
-    final titleStyle = (tile.title! as Text).style!;
-    final previewStyle = ((tile.subtitle! as Padding).child! as Text).style!;
+    final titleStyle = (tile.title! as KeepWordsText).style!;
+    final previewStyle = ((tile.subtitle! as Padding).child! as KeepWordsText)
+        .style!;
     expect(titleStyle.fontSize, 17);
     expect(titleStyle.fontWeight, FontWeight.w700);
     expect(previewStyle.fontSize, 13);
@@ -910,9 +1395,13 @@ void main() {
   for (final width in [320.0, 390.0, 800.0]) {
     for (final scale in [1.0, 1.3, 2.0]) {
       for (final language in ['ko', 'en']) {
-        // 함수이름: 채팅 제목 일관성 테스트
-        // 함수역할: 공통 제목 스타일과 확대 시 제목·도구 영역의 비겹침을 검증한다.
-        // 매개변수: tester: 화면 테스트 도구. 반환값: 검증 완료.
+        // Function Name: chat title fits $width $scale $language
+        // Description:
+        // - Checks localized chat headers across screen widths and text scales: title styling and insets stay fixed, while the text remains inside the header without colliding with action icons.
+        // Parameters:
+        // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+        // Returns:
+        // - Future<void>; completes after the asynchronous assertions.
         testWidgets('chat title fits $width $scale $language', (tester) async {
           _viewport(tester, width);
           final control = ManageChatList(
@@ -937,7 +1426,7 @@ void main() {
             ),
           );
           final titleFinder = find.byKey(const ValueKey('chatListTitle'));
-          final title = tester.widget<Text>(titleFinder);
+          final title = tester.widget<KeepWordsText>(titleFinder);
           expect(title.data, language == 'en' ? 'Chat' : '채팅');
           expect(
             find.text(
@@ -962,8 +1451,13 @@ void main() {
           }
           expect(tester.takeException(), isNull);
         });
-        // 함수이름: 다섯 탭 접근성 테스트
-        // 함수역할: 다양한 화면·언어·배율에서 레이블·터치 영역을 검증한다. 매개변수: tester: 도구. 반환값: 검증 완료.
+        // Function Name: five tabs fit $width $scale $language
+        // Description:
+        // - Checks all five navigation destinations across widths, languages, and text scales: labels remain readable on one line and each target retains at least 48-by-48 logical pixels.
+        // Parameters:
+        // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+        // Returns:
+        // - Future<void>; completes after the asynchronous assertions.
         testWidgets('five tabs fit $width $scale $language', (tester) async {
           _viewport(tester, width);
           await tester.pumpWidget(
@@ -978,8 +1472,10 @@ void main() {
                     selectedDestination: MedBuddyDestination.chat,
                     language: language,
                     showChat: true,
-                    // 함수이름: 선택 콜백
-                    // 함수역할: 외부 동작 없는 선택 계약이다. 매개변수: destination: 목적지. 반환값: 없음.
+                    // Function Name: onDestinationSelected callback
+                    // Description: Accept a destination without navigating during the layout check.
+                    // Parameters: destination (MedBuddyDestination): selected destination, unused here.
+                    // Returns: void; no side effects.
                     onDestinationSelected: (destination) {},
                   ),
                 ),
@@ -998,7 +1494,7 @@ void main() {
             final paragraph = element.renderObject! as RenderParagraph;
             expect(paragraph.didExceedMaxLines, isFalse);
             expect(paragraph.size.height, greaterThan(0));
-            // 탭 이름은 13pt 이상으로 읽힌다.
+            // Navigation labels remain at least 13 logical pixels high in font size.
             expect(
               (element.widget as Text).style!.fontSize,
               greaterThanOrEqualTo(13),
@@ -1017,9 +1513,13 @@ void main() {
   }
   for (final scale in [1.0, 1.3, 2.0]) {
     for (final language in ['ko', 'en']) {
-      // 함수이름: 알림·약국 2×2 배치 테스트
-      // 함수역할: 건강 추천은 두 번째, 약국은 세 번째, 설정은 네 번째 칸에서 각각의 진입 동작을 유지한다.
-      // 매개변수: tester: 위젯 도구. 반환값: 검증 완료.
+      // 함수이름: settings and pharmacy coexist in 2x2 $scale $language
+      // 함수역할:
+      // - 화면 크기·글씨·언어가 달라도 처방전·건강 및 약국·설정 항목의 두 열 정렬을 유지하고, 설정과 약국 선택이 각각 해당 콜백만 호출하는지 검증한다.
+      // 매개변수:
+      // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+      // 반환값:
+      // - Future<void>; 비동기 검증 후 완료한다.
       testWidgets('settings and pharmacy coexist in 2x2 $scale $language', (
         tester,
       ) async {
@@ -1036,17 +1536,23 @@ void main() {
               child: InputPrescriptionUI(
                 userSetting: UserSetting(language: language),
                 onTodayScheduleRequested: _noop,
-                // 함수역할: 선택한 알약 촬영 방식을 받고 실제 탐색은 생략한다.
-                // 매개변수: mode. 반환값: 없음.
+                // 함수이름: onPillIdentificationRequested 콜백
+                // 함수역할: 촬영 요청을 받아도 배치 검사 중에는 화면을 이동하지 않는다.
+                // 매개변수: mode (PillCaptureMode): 선택한 촬영 방식이며 여기서는 사용하지 않는다.
+                // 반환값: void; 부작용 없음.
                 onPillIdentificationRequested: (mode) {},
+                // 함수이름: onUserSettingRequested 콜백
+                // 함수역할: 설정 항목이 선택된 횟수를 기록한다.
+                // 매개변수: 없음.
+                // 반환값: void; reminderOpens를 증가시킨다.
                 onUserSettingRequested: () {
                   reminderOpens++;
                 },
                 onHealthRecommendationRequested: _noop,
-                // 함수이름: 알림 설정 진입 콜백
-                // 함수역할: 선택 횟수를 센다. 매개변수: 없음. 반환값: 없음.
-                // 함수이름: 약국 진입 콜백
-                // 함수역할: 선택 횟수를 센다. 매개변수: 없음. 반환값: 없음.
+                // 함수이름: onNearbyPharmacyRequested 콜백
+                // 함수역할: 약국 항목이 선택된 횟수를 기록한다.
+                // 매개변수: 없음.
+                // 반환값: void; opens를 증가시킨다.
                 onNearbyPharmacyRequested: () {
                   opens++;
                 },

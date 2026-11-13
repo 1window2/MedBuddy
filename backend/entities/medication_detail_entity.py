@@ -25,22 +25,10 @@ def normalize_catalog_item_name(name: str) -> str:
     return _CATALOG_NAME_WHITESPACE.sub("", name).strip().lower()
 
 
-# Class Name: MedicationDetail
-# Role:
-# - Represents medication detail information shown to the user.
-# Responsibilities:
-# - Carry efficacy, usage, warning, source, and optional guide text.
-# Attributes:
-# - item_seq (str): Canonical public product identifier shared by MFDS datasets.
-# - item_name (str): Public medication item name.
-# - efficacy (str): Medication efficacy summary.
-# - usage_method (str): Medication use method summary.
-# - warning (str): Medication warning summary.
-# - dosage_per_time (str): Optional dose per administration from prescription analysis.
-# - daily_frequency (str): Optional daily frequency from prescription analysis.
-# - total_days (str): Optional total medication days from prescription analysis.
-# - source (str): Data source label.
-# - ai_guide (Optional[str]): Optional AI-generated patient guide.
+# 클래스명: MedicationDetail
+# 역할: 공공 약품 정보와 처방·요약 정보를 API 응답 모델로 표현한다.
+# 주요 책임: use_method와 warning_message 별칭을 유지하고 선택적인 제조사·상호작용·이미지·AI 안내를 함께 전달한다.
+# 속성: item_seq와 item_name은 품목, manufacturer는 제조사, efficacy·usage_method·warning 등은 약품 설명, dosage_per_time·daily_frequency·total_days는 복약 표기, image_url·source·ai_guide는 표시 보조 정보이다.
 class MedicationDetail(BaseModel):
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
@@ -156,3 +144,37 @@ class _DrugApprovalInfo(Base):
     raw_json = Column(Text, nullable=False)
     catalog_sync_token = Column(String(36), index=True, nullable=True)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+# Field lengths of a searched product. The cache columns, the chat attachment schema
+# (schemas.chat.ChatMedicationReference) and the cache writer share them, so every cached
+# product can be attached and every attachment fits the cache.
+SEARCHED_MEDICATION_ITEM_SEQ_MAX_LENGTH = 64
+SEARCHED_MEDICATION_NAME_MAX_LENGTH = 300
+SEARCHED_MEDICATION_MANUFACTURER_MAX_LENGTH = 200
+
+
+# Class Name: MedicationSearchCacheRecord
+# Role:
+# - Public product details that the medication search returned, kept briefly so a searched
+#   medication attached to a chat message is shown from server data, not from the sender's app.
+# Responsibilities:
+# - Keep only public catalogue fields keyed by item number; never the searching account.
+# Attributes:
+# - item_seq (String(64)): Public item number.
+# - item_name (String(300)): Product name as returned by the search.
+# - manufacturer (String(200)): Manufacturer as returned by the search.
+# - image_url (String(2048)): Allowed public image address, or an empty string.
+# - fetched_at (DateTime): When a search last returned the product (naive UTC).
+class MedicationSearchCacheRecord(Base):
+    """검색한 계정 정보 없이 공개 품목 정보만 24시간 재사용한다."""
+
+    __tablename__ = "medication_search_cache"
+
+    item_seq = Column(String(length=SEARCHED_MEDICATION_ITEM_SEQ_MAX_LENGTH), primary_key=True)
+    item_name = Column(String(length=SEARCHED_MEDICATION_NAME_MAX_LENGTH), nullable=False)
+    manufacturer = Column(
+        String(length=SEARCHED_MEDICATION_MANUFACTURER_MAX_LENGTH), nullable=False, default="",
+    )
+    image_url = Column(String(length=2048), nullable=False, default="")
+    fetched_at = Column(DateTime, nullable=False, index=True)

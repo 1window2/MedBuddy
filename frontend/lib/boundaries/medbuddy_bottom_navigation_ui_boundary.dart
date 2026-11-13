@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 파일명: medbuddy_bottom_navigation_ui_boundary.dart
 // 역할: 고정 목적지와 조건부 채팅 탭의 하단 탐색을 구성한다.
 
-// 클래스명: MedBuddyDestination
-// 역할: 고정 목적지와 활성 연동이 있을 때만 노출하는 채팅 목적지를 구분한다.
+// Class Name: MedBuddyDestination
+// Role: Top-level destinations with an optional linked-chat tab.
+// Responsibilities: Names home, schedule, medication history, chat and profile routes for navigation callbacks.
+// Attributes: home/schedule/medicationHistory/chat/profile: destination values.
 enum MedBuddyDestination { home, schedule, medicationHistory, chat, profile }
 
 // 하단 탭 레이블 글자 크기. 어르신이 읽을 수 있게 13pt로 두고 사용자 글자 크기 배율을 그대로 적용한다.
@@ -21,6 +24,7 @@ const double _labelFontSize = 13;
 // Attributes:
 // - selectedDestination (MedBuddyDestination): Top-level navigation destination to display or select.
 // - language (String): Language code selecting visible wording.
+// - showChat (bool): Whether the linked-chat destination is included.
 // - onDestinationSelected (ValueChanged<MedBuddyDestination>): Callback reporting the selected top-level destination.
 class MedBuddyBottomNavigationUI extends StatelessWidget {
   final MedBuddyDestination selectedDestination;
@@ -41,9 +45,10 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
     required this.onDestinationSelected,
   });
 
-  // 함수이름: build
-  // 함수역할: 채팅 노출 여부에 맞춰 항목을 구성하고 큰 글씨의 줄바꿈 높이를 확보한다.
-  // 매개변수: context: 테마·언어·글씨 배율 문맥. 반환값: 하단 탐색 막대.
+  // Function Name: build
+  // Description: Includes chat only when enabled and gives all destinations a common height measured from scaled single-line labels.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final text = _BottomNavigationText(language);
@@ -85,7 +90,7 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
 
     return LayoutBuilder(
       // 함수이름: 탐색 막대 builder
-      // 함수역할: 실제 항목 너비와 글씨 배율로 필요한 높이를 계산해 다섯 탭의 줄바꿈을 보존한다.
+      // 함수역할: 표시할 탭의 너비와 글씨 배율로 공통 높이를 계산해 아이콘과 한 줄 문구를 정렬한다.
       // 매개변수: context, constraints: 표시 문맥과 탐색 막대 크기. 반환값: 탐색 막대.
       builder: (context, constraints) {
         final height = _navigationHeight(context, constraints.maxWidth, items);
@@ -128,7 +133,7 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
   }
 
   // 함수이름: _navigationHeight
-  // 함수역할: 모든 레이블의 줄바꿈 높이를 측정해 선택 상태나 글씨 크기로 잘리지 않도록 한다.
+  // 함수역할: 표시할 각 레이블의 한 줄 높이를 현재 글씨 배율로 측정해 아이콘 여백을 포함한 최대 높이를 구한다.
   // 매개변수: context, width, items: 표시 문맥, 전체 너비, 표시할 목적지.
   // 반환값: 레이블과 아이콘을 포함하는 공통 높이.
   double _navigationHeight(
@@ -166,6 +171,7 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
 // Attributes:
 // - item (_BottomNavigationItem): Destination, icon, and label definition for this navigation button.
 // - selected (bool): Whether the item belongs to the current selection.
+// - labelHeight (double): Shared label-region height used to align all destinations.
 // - onPressed (VoidCallback): Callback executing the item's documented primary action.
 class _BottomNavigationButton extends StatelessWidget {
   final _BottomNavigationItem item;
@@ -173,13 +179,10 @@ class _BottomNavigationButton extends StatelessWidget {
   final double labelHeight;
   final VoidCallback onPressed;
 
-  // Function Name: _BottomNavigationButton
-  // Description: Initializes a navigation destination with icon, label, and selected state with the supplied configuration.
-  // Parameters:
-  // - item (_BottomNavigationItem): Destination, icon, and label definition for this navigation button.
-  // - selected (bool): Whether the item belongs to the current selection.
-  // - onPressed (VoidCallback): Callback executing the item's documented primary action.
-  // Returns: Initialized _BottomNavigationButton instance.
+  // 함수이름: _BottomNavigationButton
+  // 함수역할: 하단 탐색 항목의 아이콘·문구·선택 상태와 이동 동작을 받는다.
+  // 매개변수: item (_BottomNavigationItem): 목적지 표시 정보; selected (bool): 현재 선택 여부; labelHeight (double): 한 줄 문구를 정렬할 공통 영역 높이; onPressed (VoidCallback): 목적지 이동.
+  // 반환값: 새 _BottomNavigationButton.
   const _BottomNavigationButton({
     required this.item,
     required this.selected,
@@ -187,9 +190,10 @@ class _BottomNavigationButton extends StatelessWidget {
     required this.onPressed,
   });
 
-  // 함수이름: build
-  // 함수역할: 목적지 아이콘·선택 상태와 글씨 배율을 보존하는 다중 행 레이블을 표시한다.
-  // 매개변수: context: 테마·접근성 문맥. 반환값: 목적지 선택 버튼.
+  // Function Name: build
+  // Description: Shows the selected icon and accessible destination label, aligning a single-line label in the shared height and scaling it down only when it exceeds the available width.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final foreground = selected
@@ -295,27 +299,27 @@ class _BottomNavigationItem {
 }
 
 // Class Name: _BottomNavigationText
-// Role: Represents localized wording for bottom navigation between Home, Schedule, Pillbox, and My Info.
+// Role: Supplies localized labels for home, schedule, medication records, chat, and profile destinations.
 // Responsibilities:
-// - Selects Korean or English labels and interpolates message values for localized wording for bottom navigation between Home, Schedule, Pillbox, and My Info.
+// - Uses the normalized language prefix to select English or Korean destination labels.
 // Attributes:
 // - language (String): Language code selecting visible wording.
 class _BottomNavigationText {
   final String language;
 
   // Function Name: _BottomNavigationText
-  // Description: Stores the language used to select localized wording for bottom navigation between Home, Schedule, Pillbox, and My Info.
+  // Description: Stores the language code used by all five destination-label getters.
   // Parameters:
   // - language (String): Language code selecting visible wording.
   // Returns: Initialized _BottomNavigationText instance.
   const _BottomNavigationText(this.language);
 
   // Function Name: isEnglish
-  // Description: Recognizes English locale prefixes after trimming and lowercasing the language code.
+  // Description: Applies the shared isEnglishLanguage rule to the language code.
   // Parameters:
   // - None.
   // Returns: True when the documented condition holds; false otherwise.
-  bool get isEnglish => language.trim().toLowerCase().startsWith('en');
+  bool get isEnglish => isEnglishLanguage(language);
 
   // Function Name: home
   // Description: Provides localized wording for "Home" using the current language and message inputs.
@@ -333,11 +337,11 @@ class _BottomNavigationText {
   // - None.
   // Returns: The formatted display text or identifier described above.
   String get schedule => isEnglish ? 'Schedule' : '일정';
-  // Function Name: medicationCabinet
-  // Description: Provides localized wording for "Medications" using the current language and message inputs.
+  // Function Name: medicationHistory
+  // Description: Labels the medication-records destination in bottom navigation.
   // Parameters:
   // - None.
-  // Returns: The formatted display text or identifier described above.
+  // Returns: The localized medication-history navigation label.
   String get medicationHistory => isEnglish ? 'Records' : '복약 기록';
   // Function Name: profile
   // Description: Provides localized wording for "My Info" using the current language and message inputs.

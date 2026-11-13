@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 
 const _medications = [
   MedicationSchedule(
@@ -59,6 +60,13 @@ Widget _selectionApp({
 // 매개변수: 없음. 반환값: 없음.
 void main() {
   for (final language in ['ko', 'en']) {
+    // 함수이름: 필요시 약의 독립 선택
+    // 함수역할:
+    // - 두 언어에서 필요시 약을 정기 시간대 없이 선택·반환하며 아침 선택 항목을 만들지 않는지 확인한다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets(
       'PRN is selected separately and returned without a regular slot $language',
       (tester) async {
@@ -129,7 +137,7 @@ void main() {
     await tester.tap(find.byKey(_allKey));
     await tester.pumpAndSettle();
     expect(_all(tester).value, isTrue);
-    expect(tester.widget<Text>(find.byKey(_countKey)).data, '4개 선택');
+    expect(tester.widget<KeepWordsText>(find.byKey(_countKey)).data, '4개 선택');
     expect(
       tester.widget<FilledButton>(find.byKey(_doneKey)).onPressed,
       isNotNull,
@@ -140,14 +148,14 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(_all(tester).value, isNull);
-    expect(tester.widget<Text>(find.byKey(_countKey)).data, '3개 선택');
+    expect(tester.widget<KeepWordsText>(find.byKey(_countKey)).data, '3개 선택');
     await tester.tap(find.byKey(_allKey));
     await tester.pumpAndSettle();
     expect(_all(tester).value, isTrue);
     await tester.tap(find.byKey(_allKey));
     await tester.pumpAndSettle();
     expect(_all(tester).value, isFalse);
-    expect(tester.widget<Text>(find.byKey(_countKey)).data, '0개 선택');
+    expect(tester.widget<KeepWordsText>(find.byKey(_countKey)).data, '0개 선택');
     expect(tester.widget<FilledButton>(find.byKey(_doneKey)).onPressed, isNull);
     expect(_medications.first.isSlotCompleted('morning'), isTrue);
     expect(_medications.first.isSlotCompleted('evening'), isFalse);
@@ -231,11 +239,11 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(_all(tester).value, isTrue);
-    expect(tester.widget<Text>(find.byKey(_countKey)).data, '4개 선택');
+    expect(tester.widget<KeepWordsText>(find.byKey(_countKey)).data, '4개 선택');
     await tester.pumpWidget(_selectionApp(schedules: [_medications.first]));
     await tester.pumpAndSettle();
     expect(_all(tester).value, isTrue);
-    expect(tester.widget<Text>(find.byKey(_countKey)).data, '2개 선택');
+    expect(tester.widget<KeepWordsText>(find.byKey(_countKey)).data, '2개 선택');
     expect(tester.takeException(), isNull);
   });
 
@@ -260,7 +268,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(_all(tester).value, isFalse);
       expect(_all(tester).onChanged, isNull);
-      expect(tester.widget<Text>(find.byKey(_countKey)).data, '0개 선택');
+      expect(tester.widget<KeepWordsText>(find.byKey(_countKey)).data, '0개 선택');
       expect(
         tester.widget<FilledButton>(find.byKey(_doneKey)).onPressed,
         isNull,
@@ -302,7 +310,7 @@ void main() {
         await tester.tap(find.byKey(_allKey));
         await tester.pumpAndSettle();
         expect(
-          tester.widget<Text>(find.byKey(_countKey)).data,
+          tester.widget<KeepWordsText>(find.byKey(_countKey)).data,
           language == 'en' ? '4 selected' : '4개 선택',
         );
         await tester.drag(find.byType(ListView), const Offset(0, -240));

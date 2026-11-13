@@ -25,30 +25,20 @@ _client_schedules_by_dose_days: ContextVar[bool] = ContextVar(
 )
 
 
-# 함수이름: record_client_features
-# 함수역할:
-# - 요청 헤더의 클라이언트 기능 목록을 읽어 이 요청의 일정 조회 방식을 정한다.
-# - 0.2.1 이하 앱은 오늘 일정에 약이 없는 시간대의 알림을 서버에서 꺼 버리므로, 기능을 알리지
-#   않은 클라이언트에게는 예전처럼 복용 기간 안의 약을 매일 돌려준다.
-# - 스레드풀로 넘어가는 동기 경로에도 값이 전달되도록 비동기 의존성으로 둔다.
-# 매개변수:
-# - connection (HTTPConnection): HTTP 요청 또는 WebSocket 연결.
-# 반환값:
-# - 없음.
+# Function Name: record_client_features
+# Description: Stores this connection's dose-day capability in request context so synchronous worker paths inherit it; undeclared clients retain legacy daily-within-course schedules.
+# Parameters: connection (HTTPConnection) supplies HTTP/WebSocket feature headers.
+# Returns: None; updates the request-local capability rather than a process-wide flag.
 async def record_client_features(connection: HTTPConnection) -> None:
     _client_schedules_by_dose_days.set(
         client_declares_feature(connection, DOSE_DAYS_FEATURE)
     )
 
 
-# 함수이름: client_declares_feature
-# 함수역할:
-# - 요청 또는 WebSocket 연결의 헤더가 지정한 클라이언트 기능을 알렸는지 확인한다.
-# 매개변수:
-# - connection (HTTPConnection): HTTP 요청 또는 WebSocket 연결.
-# - feature (str): 확인할 기능 이름.
-# 반환값:
-# - 기능 목록에 그 이름이 있으면 True.
+# Function Name: client_declares_feature
+# Description: Splits the declared header into trimmed lowercase feature names and checks membership.
+# Parameters: connection (HTTPConnection) supplies the header; feature (str) is the already-normalized capability to test.
+# Returns: bool; a missing header does not declare nonempty features.
 def client_declares_feature(connection: HTTPConnection, feature: str) -> bool:
     return feature in {
         declared.strip().lower()
@@ -56,13 +46,10 @@ def client_declares_feature(connection: HTTPConnection, feature: str) -> bool:
     }
 
 
-# 함수이름: client_schedules_by_dose_days
-# 함수역할:
-# - 현재 요청의 클라이언트가 복용하는 날에만 약을 받는지 알려 준다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 복용하는 날 기준이면 True. 요청 밖에서는 항상 True.
+# Function Name: client_schedules_by_dose_days
+# Description: Reads whether this context should filter schedules to actual dose days rather than all active course days.
+# Parameters: None.
+# Returns: bool from the request ContextVar, whose default is True outside a context that sets it.
 def client_schedules_by_dose_days() -> bool:
     return _client_schedules_by_dose_days.get()
 

@@ -7,9 +7,12 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from sqlite3 import Cursor
+from typing import Any
 
 from google.genai import types
 from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Connection, ExecutionContext
 from sqlalchemy.orm import sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -29,6 +32,7 @@ from services.prescription_medication_name_verifier import (  # noqa: E402
 )
 from core.database import Base  # noqa: E402
 from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo  # noqa: E402
+from entities.medication_schedule_entity import MedicationSchedule  # noqa: E402
 from entities.prescription_analysis_entity import (  # noqa: E402
     MedicationCandidate,
     MedicationCandidateList,
@@ -85,7 +89,7 @@ class _FakeGeminiModels:
     # - **kwargs (object): Keyword arguments accepted by the substituted service interface.
     # Returns:
     # - Gemini-compatible response carrying the configured analysis JSON.
-    async def generate_content(self, **kwargs):
+    async def generate_content(self, **kwargs: Any) -> _FakeGeminiResponse:
         self.call_count += 1
         self.last_request = kwargs
         return _FakeGeminiResponse(self.response_text)
@@ -169,6 +173,8 @@ class _RecordingOCRServiceBoundary:
 # Role: Prescription text-analysis double that simulates an external deadline failure.
 # Responsibilities:
 # - Raises an analysis timeout without forwarding prescription text to an external service.
+# Attributes:
+# - None.
 class _TimedOutOCRServiceBoundary:
     # Function Name: extractPrescriptionTextData
     # Description:
@@ -383,12 +389,12 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         # Returns:
         # - None.
         def count_catalog_queries(
-            connection,
-            cursor,
-            statement,
-            parameters,
-            context,
-            executemany,
+            connection: Connection,
+            cursor: Cursor,
+            statement: str,
+            parameters: tuple[Any, ...] | list[tuple[Any, ...]],
+            context: ExecutionContext,
+            executemany: bool,
         ) -> None:
             nonlocal query_count
             if (
@@ -443,12 +449,12 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         # Returns:
         # - None.
         def capture_catalog_queries(
-            connection,
-            cursor,
-            statement,
-            parameters,
-            context,
-            executemany,
+            connection: Connection,
+            cursor: Cursor,
+            statement: str,
+            parameters: tuple[Any, ...] | list[tuple[Any, ...]],
+            context: ExecutionContext,
+            executemany: bool,
         ) -> None:
             if "drug_approval_infos" in statement:
                 statements.append(statement)
@@ -1201,7 +1207,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
     # - item (dict[str, str]): Medication or catalog payload being parsed or verified.
     # Returns:
     # - The verified medication schedule and its name-verification metadata.
-    def _verify_medication_item(self, item: dict[str, str]):
+    def _verify_medication_item(self, item: dict[str, str]) -> tuple[MedicationSchedule, MedicationNameVerification]:
         return asyncio.run(self.control._to_verified_medication_schedules([item]))[0]
 
     # Function Name: _normalize_name

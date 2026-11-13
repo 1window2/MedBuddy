@@ -11,8 +11,9 @@ depends_on = None
 
 
 # 함수이름: upgrade
-# 함수역할: 전국 카탈로그와 별개로 공개 약국 정보 및 캐시 시각을 보관한다.
-# 매개변수: 없음. 반환값: 없음.
+# 함수역할: 공개 약국 검색 캐시 테이블과 조회 시각 인덱스를 누락된 경우에만 생성하여 기존 로컬 데이터를 보존한다.
+# 매개변수: 없음. Alembic의 현재 연결을 사용한다.
+# 반환값: 없음. 테이블 조사·생성 오류는 전파한다.
 def upgrade() -> None:
     inspector = sa.inspect(op.get_bind())
     if not inspector.has_table("pharmacy_search_cache"):
@@ -33,8 +34,9 @@ def upgrade() -> None:
 
 
 # 함수이름: downgrade
-# 함수역할: 임시 검색 캐시만 제거하고 카탈로그·대화·복용 기록은 유지한다.
-# 매개변수: 없음. 반환값: 없음.
+# 함수역할: 약국 검색 캐시의 조회 시각 인덱스와 테이블을 제거하여 캐시 데이터를 폐기한다.
+# 매개변수: 없음. Alembic의 현재 연결을 사용한다.
+# 반환값: 없음. 삭제 실패는 전파한다.
 def downgrade() -> None:
     op.drop_index("ix_pharmacy_search_cache_fetched_at", table_name="pharmacy_search_cache")
     op.drop_table("pharmacy_search_cache")

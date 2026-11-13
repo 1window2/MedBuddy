@@ -5,12 +5,10 @@ import 'package:path_provider/path_provider.dart';
 // File Name: app_temp_file.dart
 // Role: Deletes image copies the app or its image picker left in the app temporary directory.
 
-// Function Name: deleteAppTempFile
-// Description: Deletes a file only when its canonical location is inside the app temporary directory, so a user's original photo or any other file outside it is never touched. Never throws.
-// Parameters:
-// - path (String): Path of the picked, captured or cropped copy to remove.
-// Returns:
-// - True when the file was inside the temporary directory and was deleted; false for a missing file, a directory, a location outside the temporary directory or any failure.
+// 함수이름: deleteAppTempFile
+// 함수역할: 실제 경로가 앱 임시 폴더 안의 파일일 때만 삭제하고 Windows 공유 잠금 오류는 최대 세 번 재시도한다.
+// 매개변수: path (String): 삭제 후보 경로; 빈 값·폴더·앱 임시 영역 밖의 파일은 거절한다.
+// 반환값: Future<bool>: 삭제 성공이면 true; 경로 검증 실패나 처리되지 않은 파일 오류이면 false.
 Future<bool> deleteAppTempFile(String path) async {
   if (path.trim().isEmpty) {
     return false;

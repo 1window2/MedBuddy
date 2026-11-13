@@ -43,10 +43,9 @@ class ManageUserHubUI extends StatelessWidget {
   });
 
   // Function Name: build
-  // 함수역할: 공통 제목 아래 계정 요약과 연동·환경설정 동선을 표시한다.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for the account summary and link or settings management actions.
+  // Description: Displays guest or signed-in account identity beneath the shared profile header, with link-management and preference entry actions.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final text = _UserHubText(userSetting.language);
@@ -185,7 +184,7 @@ class _AccountSummaryCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                KeepWordsText(
                   accountLabel,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -345,9 +344,10 @@ class _UserHubText {
   // - None.
   // Returns: The formatted display text or identifier described above.
   String get title => isEnglish ? 'My Info' : '내 정보';
-  // 함수이름: subtitle
-  // 함수역할: 내 정보의 제목 아래 표시할 짧은 설명을 선택한다.
-  // 매개변수: 없음. 반환값: 현재 언어의 계정·연동·설정 요약.
+  // Function Name: subtitle
+  // Description: Summarizes the account, links and preferences available below the profile heading.
+  // Parameters: None.
+  // Returns: The localized profile subtitle.
   String get subtitle => isEnglish
       ? 'Manage your account and family links.'
       : '계정과 가족 연동, 앱 설정을 관리합니다.';

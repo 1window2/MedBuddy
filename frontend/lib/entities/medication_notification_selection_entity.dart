@@ -3,10 +3,10 @@
 
 import 'caregiver_alert_context_entity.dart';
 
-// 클래스명: MedicationNotificationDestination
-// 역할: 복약 일정·보호자 환자 일정·가족 채팅 알림의 이동 대상을 구분한다.
-// 주요 책임:
-// - payload 해석과 앱 내 경로 선택에서 동일한 목적지 분류를 사용하게 한다.
+// Class Name: MedicationNotificationDestination
+// Role: Identify the screen targeted by a medication-related notification.
+// Responsibilities: Keep routing choices independent of platform payload formats.
+// Attributes: schedule: own doses; caregiverSchedule: linked patient's doses; linkedChat: linked conversation.
 enum MedicationNotificationDestination {
   schedule,
   caregiverSchedule,
@@ -14,9 +14,9 @@ enum MedicationNotificationDestination {
 }
 
 // Class Name: MedicationNotificationAction
-// Role: Distinguishes opening a reminder, completing its slot, and snoozing for ten minutes.
-// Responsibilities:
-// - Preserve the selected system-notification action for application dispatch.
+// Role: Identify the operation requested by a notification interaction.
+// Responsibilities: Separate navigation, dose recording and reminder/caregiver actions.
+// Attributes: open, markSlotTaken, snoozeTenMinutes, caregiverSnooze and caregiverRequestCheck: supported interaction kinds.
 enum MedicationNotificationAction {
   open,
   markSlotTaken,

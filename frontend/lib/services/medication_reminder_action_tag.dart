@@ -22,6 +22,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 // Attributes:
 // - preferencesLoader: Replaceable preferences source for tests.
 class MedicationReminderActionTag {
+  // Function Name: MedicationReminderActionTag._
+  // Description: Prevents external instances of the static reminder-action signing API.
+  // Parameters: None.
+  // Returns: A private stateless instance; signing uses the static preferences loader.
   const MedicationReminderActionTag._();
 
   static const String _keyName = 'medbuddy_reminder_action_key_v1';
@@ -68,6 +72,10 @@ class MedicationReminderActionTag {
     return difference == 0;
   }
 
+  // Function Name: _mac
+  // Description: Binds the trimmed account and exact payload with a newline separator in an HMAC-SHA256 message.
+  // Parameters: key (List<int>) - secret key bytes; owner (String) - account; payload (String) - unsigned action payload.
+  // Returns: Full 32-byte MAC; callers truncate it for the notification tag and cryptography errors propagate.
   static Future<List<int>> _mac(
     List<int> key,
     String owner,
@@ -80,6 +88,10 @@ class MedicationReminderActionTag {
     return mac.bytes;
   }
 
+  // Function Name: _key
+  // Description: Reloads the shared preference key and optionally replaces a missing or malformed Base64 value with 32 random bytes.
+  // Parameters: create (bool) - whether signing may create a new key; verification passes false.
+  // Returns: Decoded/new key, or null when unavailable without creation; preference/random-source errors propagate.
   static Future<List<int>?> _key({required bool create}) async {
     final preferences = await preferencesLoader();
     // Another isolate may have written the key since this one cached its preferences.

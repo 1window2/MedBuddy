@@ -4,7 +4,7 @@ skinparam defaultFontName Nanum Gothic
 scale max 16000*16000
 left to right direction
 
-title beta/v0.2.4 핵심 Class Diagram
+title beta/v1.0.0 핵심 Class Diagram
 
 skinparam classAttributeIconSize 0
 skinparam linetype ortho
@@ -900,7 +900,7 @@ package "Flutter Frontend" {
         }
 
         class "TTSService" as TTSService <<Service: 기기 음성 합성>> {
-            - _flutterTts: FlutterTts
+            - _engine: DeviceSpeechEngine
             + speak(text, language, speed): Future<void>
             + stop(): Future<void>
         }
@@ -1697,7 +1697,7 @@ package "FastAPI Backend" {
 
         class "ManagePushToken" as BManagePushToken <<Control: FCM Token 관리>> {
             - db: Session
-            + registerPushToken(user_hash, token, platform): dict
+            + registerPushToken(user_hash, token, platform, supports_caregiver_actions, sessions_valid_after): dict
             + unregisterPushToken(user_hash, token): dict
         }
 
@@ -1721,10 +1721,32 @@ package "FastAPI Backend" {
             + {static} from_verified_claims(claims): AuthenticatedPrincipal
         }
 
-        note "api/dependencies.py module functions\nverify_app_check_token()\nget_authenticated_principal()\nget_recently_authenticated_principal()\n_lock_account_operation()\nget_registered_principal()" as BAccountDependencies
-        class "AccountOperationLocks" as AccountOperationLocks <<Service: SQLite request ownership>> {
+        note "api/dependencies.py module functions\nverify_app_check_token()\nget_authenticated_principal()\nget_recently_authenticated_principal()\n_lock_account_operation()\nget_registered_principal()\nget_session_revocation_boundary()" as BAccountDependencies
+        class "AccountOperationLocks" as AccountOperationLocks <<Service: process-local account turns>> {
             + active_scope_count: int
+            + acquire(user_hash, timeout): Callable release
             + hold(user_hash, timeout): AsyncContextManager
+        }
+
+        class "RequestDatabaseGate" as RequestDatabaseGate <<Service: PostgreSQL request admission>> {
+            + accounts: AccountOperationLocks
+            + slots: DatabaseSlots
+            + admit(db, user_hash): AsyncContextManager
+        }
+
+        class "DatabaseSlots" as DatabaseSlots <<Service: event-loop slot queue>> {
+            + capacity: int
+            + available: int
+            + acquire(timeout): None
+            + release(): None
+        }
+
+        class "RequestDatabaseAdmission" as RequestDatabaseAdmission <<Service: one request's turn and slot>> {
+            + held: bool
+            + ensure_admitted(): None
+            + release(): None
+            + release_if_idle(): None
+            + finish(): None
         }
 
         class "TrustedHostMiddleware" as BTrustedHostMiddleware <<Framework Middleware: production Host allowlist>> {
@@ -1963,6 +1985,10 @@ package "FastAPI Backend" {
 
         class "FirebaseIdentityDeletionBoundary" as FirebaseIdentityDeletionBoundary <<Wrapper: Firebase 계정 삭제>> {
             + deleteIdentity(subject): void
+        }
+
+        class "FirebaseSessionRevocationBoundary" as FirebaseSessionRevocationBoundary <<Wrapper: Firebase 세션 취소 시각>> {
+            + sessionsValidAfter(subject): datetime?
         }
 
         class "OCRServiceBoundary" as OCRServiceBoundary <<Wrapper: Gemini 처방 구조화>> {
@@ -2471,6 +2497,17 @@ package "FastAPI Backend" {
             한 날짜 운영시간을 주간 시간표로 추정하지 않는다.
         end note
 
+        class "MedicationSearchCacheRecord" as DBMedicationSearchCache <<ORM: medication_search_cache>> {
+            + item_seq: String
+            + item_name, manufacturer, image_url: String
+            + fetched_at: DateTime
+        }
+        note right of DBMedicationSearchCache
+            약 검색(/identify)이 돌려준 공개 품목 정보만 24시간 보관한다.
+            검색한 계정은 남기지 않는다. 채팅 검색약 카드는
+            이 값으로 다시 만들고, 하루 안에 검색되지 않은 품목은 거절한다.
+        end note
+
         class "PharmacyHolidayScheduleRecord" as DBPharmacyHolidaySchedule <<ORM: pharmacy_holiday_schedules>> {
             + schedule_date: Date
             + pharmacy_id: String
@@ -2889,6 +2926,8 @@ NEMCPharmacyAPI ..> BPharmacyCatalogEntry
 PharmacyCatalogRepository ..> BPharmacyCatalogEntry
 PharmacyCatalogRepository --> DBPharmacyCatalog
 PharmacyCatalogRepository --> DBPharmacySearchCache
+BCheckMedicationDetail ..> DBMedicationSearchCache : 검색 결과 기억(라우터가 별도 세션으로 저장)
+BManageLinkedChat --> DBMedicationSearchCache : 검색약 카드 재구성
 PharmacyCatalogRepository --> DBPharmacyHolidaySchedule
 PharmacyCatalogRepository --> DBPharmacyHolidayFetch
 PharmacyCatalogRepository --> DBKoreanHoliday
@@ -2954,10 +2993,22 @@ BManageAccount o-- IdentityDeletionBoundary
 FirebaseIdentityDeletionBoundary ..|> IdentityDeletionBoundary
 BAccountDependencies ..> OIDCTokenVerifier : ID Token 검증
 BAccountDependencies ..> AppCheckTokenVerifier : App Check Token 검증
+BAccountDependencies ..> FirebaseSessionRevocationBoundary : push-token 등록에 세션 취소 시각 전달
 BAccountDependencies --> BAuthenticatedPrincipal : identity 생성 및 freshness policy
 BAccountDependencies ..> BManageAccount : tombstone registration
 BAccountDependencies --> DBUserAccount : transaction lock scope
 BAccountDependencies --> AccountOperationLocks : SQLite holder/waiter lifecycle
+BAccountDependencies --> RequestDatabaseGate : PostgreSQL admission before registration
+RequestDatabaseGate *-- AccountOperationLocks : account turn first
+RequestDatabaseGate *-- DatabaseSlots : then slot (pool - 1)
+RequestDatabaseGate ..> RequestDatabaseAdmission : issues
+note bottom of RequestDatabaseGate
+  Waits happen on the event loop, never in a worker thread.
+  Turn and slot go back after work that leaves no transaction open
+  (a synchronous endpoint keeps them until it returns);
+  run_request_database_work re-admits later database steps.
+  PostgreSQL advisory locks stay behind the gate.
+end note
 
 DispatchCaregiverAlert --|> MedicationCompletionEventBoundary
 DispatchCaregiverAlert o-- PushNotificationBoundary

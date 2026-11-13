@@ -35,15 +35,10 @@ class ChatMessageRetentionPolicy:
             raise ValueError("채팅 보관 기간은 1일 이상이어야 합니다.")
         self.retention_days = configured_days
 
-    # 함수이름: cleanup_expired_messages
-    # 함수역할:
-    # - 생성 시각이 보관 기한보다 오래된 채팅을 일괄 삭제한다.
-    # 매개변수:
-    # - db (Session): 영속 기록에 접근할 호출자의 SQLAlchemy 세션.
-    # - now (datetime | None): 보존 기한 비교 기준 시각; 생략 시 현재 UTC 시각.
-    # - commit (bool): 호출자 트랜잭션에 맡기지 않고 여기서 삭제를 커밋할지 여부.
-    # 반환값:
-    # - 삭제한 채팅 메시지 수
+    # Function Name: cleanup_expired_messages
+    # Description: Deletes messages strictly older than the retention cutoff after converting the comparison time to naive UTC.
+    # Parameters: db (Session) owns the deletion; now (datetime | None) overrides current UTC; commit (bool) controls whether this helper commits.
+    # Returns: Deleted row count (int); database errors propagate for caller rollback.
     def cleanup_expired_messages(
         self,
         db: Session,

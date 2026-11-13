@@ -386,6 +386,8 @@ class DrugCatalogSyncTest(unittest.TestCase):
         #   commit checks.
         # Responsibilities:
         # - Returns one basic-drug record and an upstream total of one.
+        # Attributes:
+        # - None.
         class _BasicAPI:
             # Function Name: fetchPage
             # Description:
@@ -548,6 +550,8 @@ class DrugCatalogSyncTest(unittest.TestCase):
         #   later dataset failure.
         # Responsibilities:
         # - Returns replacement basic-drug metadata with a complete one-record total.
+        # Attributes:
+        # - None.
         class _BasicAPI:
             # Function Name: fetchPage
             # Description:
@@ -582,6 +586,8 @@ class DrugCatalogSyncTest(unittest.TestCase):
         #   dataset failure.
         # Responsibilities:
         # - Returns replacement approval metadata with a complete one-record total.
+        # Attributes:
+        # - None.
         class _ApprovalAPI:
             # Function Name: fetchPage
             # Description:
@@ -669,6 +675,8 @@ class DrugCatalogSyncTest(unittest.TestCase):
         #   basic record.
         # Responsibilities:
         # - Returns one basic record and its matching total for the atomic refresh.
+        # Attributes:
+        # - None.
         class _BasicAPI:
             # Function Name: fetchPage
             # Description:
@@ -694,6 +702,8 @@ class DrugCatalogSyncTest(unittest.TestCase):
         #   approval record.
         # Responsibilities:
         # - Returns one approval record and its matching total for the atomic refresh.
+        # Attributes:
+        # - None.
         class _ApprovalAPI:
             # Function Name: fetchPage
             # Description:
@@ -787,6 +797,8 @@ class DrugCatalogSyncTest(unittest.TestCase):
         #   pruning.
         # Responsibilities:
         # - Returns the retained basic product with its updated name and a total of one.
+        # Attributes:
+        # - None.
         class _BasicAPI:
             # Function Name: fetchPage
             # Description:
@@ -816,6 +828,8 @@ class DrugCatalogSyncTest(unittest.TestCase):
         # Responsibilities:
         # - Returns the retained approval product with its updated name and a total of
         #   one.
+        # Attributes:
+        # - None.
         class _ApprovalAPI:
             # Function Name: fetchPage
             # Description:
@@ -891,6 +905,8 @@ class DrugCatalogSyncTest(unittest.TestCase):
         # Responsibilities:
         # - Returns the visited product with a larger upstream total to exercise
         #   page-limited preservation.
+        # Attributes:
+        # - None.
         class _BasicAPI:
             # Function Name: fetchPage
             # Description:
@@ -945,6 +961,8 @@ class DrugCatalogSyncTest(unittest.TestCase):
         # Responsibilities:
         # - Returns one record on page one and an empty later page while continuing to
         #   advertise two records.
+        # Attributes:
+        # - None.
         class _TruncatedBasicAPI:
             # Function Name: fetchPage
             # Description:
@@ -1007,6 +1025,8 @@ class DrugCatalogSyncTest(unittest.TestCase):
         #   replacement dataset.
         # Responsibilities:
         # - Returns one surviving basic product to trigger the mass-pruning guard.
+        # Attributes:
+        # - None.
         class _PartialBasicAPI:
             # Function Name: fetchPage
             # Description:

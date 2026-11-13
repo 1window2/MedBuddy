@@ -59,6 +59,7 @@ package "FastAPI Backend" #EAF8F0 {
   class AppCheckTokenVerifier <<Service>>
   class ApiContractMiddleware <<Service>>
   class AccountOperationLocks <<Service>>
+  class RequestDatabaseGate <<Service>>
   note "api/dependencies.py module functions\nApp Check 및 ID Token 검증\nauth freshness, account lock, registration" as BAccountDependencies
   class "AuthorizationControl" as BAuthorizationControl <<Control>>
   class "ManageUserSetting" as BManageUserSetting <<Control>>
@@ -92,11 +93,17 @@ BAccountDependencies --> OIDCTokenVerifier : ID token verification
 BAccountDependencies --> AppCheckTokenVerifier : App Check verification
 BAccountDependencies --> BAuthorizationControl
 BAccountDependencies --> AccountOperationLocks : SQLite request-lifetime scope
+BAccountDependencies --> RequestDatabaseGate : PostgreSQL admission
+RequestDatabaseGate *-- AccountOperationLocks : account turn
 note bottom of AccountOperationLocks
   Owns holder/waiter references and cancellation-safe cleanup.
   Inline timed acquisition preserves cancellation during ownership handoff.
   Idle account identities are removed; locks are process-local.
-  PostgreSQL retains its transaction-scoped advisory locks.
+end note
+note bottom of RequestDatabaseGate
+  PostgreSQL requests wait on the event loop for the account turn,
+  then a database slot (pool - 1), until their work leaves no transaction open.
+  PostgreSQL retains its transaction-scoped advisory locks behind it.
 end note
 BAuthorizationControl --> DBUserAccount
 

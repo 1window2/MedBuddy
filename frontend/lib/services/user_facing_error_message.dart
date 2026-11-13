@@ -10,19 +10,15 @@ import 'authenticated_api_client.dart';
 // 역할: 기술 오류를 사용자가 이해하고 대응할 수 있는 안내 문구로 변환한다.
 
 // 클래스명: UserFacingErrorContext
-// 역할: 일반 요청과 약품 상세 검색의 오류 표시 맥락을 구분한다.
-// 주요 책임:
-// - 같은 서버 오류라도 약 검색에서는 이름 검토와 공공데이터 복구 안내를 선택하게 한다.
-// 비고:
-// - 파일명: user_facing_error_message.dart
+// 역할: 일반 요청과 약품 상세 검색의 오류 안내 맥락을 구분한다.
+// 주요 책임: 약 검색에서 이름 검토·공공데이터 복구 안내를 별도로 선택하게 한다.
+// 속성: general: 일반 요청; medicationLookup: 약품 상세 조회.
 enum UserFacingErrorContext { general, medicationLookup }
 
-// 클래스명: _RequestFailureKind
-// 역할: 상태 코드나 오류 문구에서 판정한 요청 실패의 안내 유형을 구분한다.
-// 주요 책임:
-// - 유형이 정해진 API 오류와 문구로만 판정하는 오류가 같은 안내 문구를 쓰게 한다.
-// 비고:
-// - 파일명: user_facing_error_message.dart
+// Class Name: _RequestFailureKind
+// Role: Categorizes request failures for consistent localized user guidance.
+// Responsibilities: Share message selection between typed API failures and legacy text-only failures.
+// Attributes: Values distinguish identity/access/link issues, delays/quotas and medication/public-data/server availability.
 enum _RequestFailureKind {
   signInExpired,
   accessDenied,
@@ -39,11 +35,10 @@ enum _RequestFailureKind {
   serverUnavailable,
 }
 
-// 클래스명: UserFacingErrorMessage
-// 역할: 기술 예외를 사용자가 이해할 수 있는 한국어·영어 오류 안내로 변환한다.
-// 주요 책임:
-// - 버전·네트워크·인증·과부하·약 검색 오류를 구분하고 처리 가능한 StateError 메시지는 보존한다.
-// - ApiRequestException은 원인 예외나 상태 코드로만 구분하고 서버 상세 문구는 판정에 쓰지 않는다.
+// Class Name: UserFacingErrorMessage
+// Role: Converts technical failures into Korean or English user guidance.
+// Responsibilities: Prioritize typed transport causes, recognize selected status/detail combinations and preserve appropriate user-facing state errors.
+// Attributes: Static helpers and character-pattern constants; no instance state.
 class UserFacingErrorMessage {
   // 함수이름: UserFacingErrorMessage._
   // 함수역할: 공통 오류를 언어별 사용자 안내로 바꾸는 정적 API만 사용하도록 외부 생성을 막는다.
@@ -53,14 +48,10 @@ class UserFacingErrorMessage {
   // - UserFacingErrorMessage: 초기화된 인스턴스.
   const UserFacingErrorMessage._();
 
-  // 함수이름: resolve
-  // 함수역할: 예외 종류와 서버 상태 문구를 기준으로 네트워크, 인증, 검색, 외부 서비스 오류를 구분한다. ApiRequestException은 원인 예외가 있으면 그 종류를, 없으면 상태 코드만 기준으로 삼고 문구는 검사하지 않는다.
-  // 매개변수:
-  // - error (Object): 처리하거나 기록할 원래 실패 객체
-  // - isEnglish (bool): 영어 표시 문구를 선택할지 여부
-  // - context (UserFacingErrorContext): 오류 안내의 작업별 문구를 선택할 분류
-  // 반환값:
-  // - String: 예외 종류와 서버 상태 문구를 기준으로 네트워크, 인증, 검색, 외부 서비스 오류를 구분한다.
+  // Function Name: resolve
+  // Description: Resolves typed causes first, then recognized API status/detail combinations and legacy text markers.
+  // Parameters: error: Original failure; isEnglish: Display language; context: Operation-specific classification.
+  // Returns: Localized guidance; selected Korean server details may be preserved, unknown API failures include status, and unsupported diagnostics fall back to a generic message.
   static String resolve(
     Object error, {
     required bool isEnglish,
@@ -110,18 +101,20 @@ class UserFacingErrorMessage {
 
     final originalMessage = error.toString().replaceFirst('Bad state: ', '');
     if (originalMessage.trim().isNotEmpty && error is StateError) {
+      // 영어 StateError 문구는 개발자용 확인 문구다(예: 응답에 필요한 데이터가 없음). 한국어 화면에는
+      // 그대로 보여 주지 않고 일반 안내로 바꾼다.
+      if (!isEnglish && !_isKoreanSentence(originalMessage.trim())) {
+        return _genericMessage(isEnglish);
+      }
       return originalMessage;
     }
     return _genericMessage(isEnglish);
   }
 
-  // 함수이름: _messageForTransportError
-  // 함수역할: 계약 버전 불일치·응답 지연·연결 실패를 예외 종류만으로 구분해 안내 문구를 제공한다.
-  // 매개변수:
-  // - error (Object): 응답을 받기 전에 발생한 원래 예외
-  // - isEnglish (bool): 영어 표시 문구를 선택할지 여부
-  // 반환값:
-  // - String?: 예외 종류에 대응하는 안내 문구. 해당하는 종류가 아니면 null.
+  // Function Name: _messageForTransportError
+  // Description: Maps recognized contract, timeout and network exception types without inspecting their messages.
+  // Parameters: error: Transport or contract failure; isEnglish: Display language.
+  // Returns: Localized guidance, or null for an unrecognized exception type.
   static String? _messageForTransportError(
     Object error, {
     required bool isEnglish,
@@ -152,25 +145,20 @@ class UserFacingErrorMessage {
   static final RegExp _hangul = RegExp(r'[가-힣]');
   static final RegExp _latin = RegExp(r'[A-Za-z]');
 
-  // 함수이름: _isKoreanSentence
-  // 함수역할: 서버 문구가 한국어 문장인지 판정한다. 약 이름처럼 한글이 일부 섞인 영어 문구는 제외하도록 글자의 대부분이 한글일 때만 참으로 본다.
-  // 매개변수:
-  // - text (String): 판정할 서버 문구
-  // 반환값:
-  // - bool: 한글이 영문자보다 세 배 이상 많으면 true.
+  // Function Name: _isKoreanSentence
+  // Description: Uses a Hangul-to-Latin character ratio to identify predominantly Korean user-facing text.
+  // Parameters: text: Candidate server message.
+  // Returns: True only with at least one Hangul character and at least three times as many Hangul characters as Latin letters.
   static bool _isKoreanSentence(String text) {
     final hangul = _hangul.allMatches(text).length;
     final latin = _latin.allMatches(text).length;
     return hangul > 0 && hangul >= latin * 3;
   }
 
-  // 함수이름: _kindForDetail
-  // 함수역할: 상태 코드만으로는 뜻이 드러나지 않는 서버 응답(해제된 연동, 만료되거나 사용한 연동 코드, 내일에야 풀리는 하루 한도, 모든 사용자가 함께 쓰는 병원 조회 예산)을 서버 문구로 구분한다.
-  // 매개변수:
-  // - statusCode (int?): 실패 응답의 HTTP 상태 코드
-  // - detail (String): 서버가 보낸 detail 문구
-  // 반환값:
-  // - _RequestFailureKind?: 구분한 안내 유형; 해당 없으면 null.
+  // Function Name: _kindForDetail
+  // Description: Recognizes status-and-detail combinations whose meaning is more specific than the status alone.
+  // Parameters: statusCode: HTTP status; detail: Server explanation.
+  // Returns: A quota or relationship-related failure kind, or null when no configured combination matches.
   static _RequestFailureKind? _kindForDetail(int? statusCode, String detail) {
     final text = detail.toLowerCase();
     if (statusCode == 429 && (text.contains('내일') || text.contains('오늘'))) {
@@ -199,6 +187,10 @@ class UserFacingErrorMessage {
     return null;
   }
 
+  // Function Name: _kindForStatusCode
+  // Description: Classifies HTTP failures while distinguishing denied access from expired sign-in and medication-data outages from generic server errors.
+  // Parameters: statusCode (int?) - response status, if known; context (UserFacingErrorContext) - operation-specific classification.
+  // Returns: Matching failure kind or null for unrecognized/missing status; 404/502/503 have medication-lookup-specific meanings.
   static _RequestFailureKind? _kindForStatusCode(
     int? statusCode,
     UserFacingErrorContext context,
@@ -233,13 +225,10 @@ class UserFacingErrorMessage {
     return null;
   }
 
-  // 함수이름: _kindForText
-  // 함수역할: 유형이 없는 오류의 소문자 문구에서 상태 코드와 표식 단어를 찾아 안내 유형을 정한다.
-  // 매개변수:
-  // - normalized (String): `Bad state: ` 접두어를 떼고 소문자로 바꾼 오류 문구
-  // - context (UserFacingErrorContext): 오류 안내의 작업별 문구를 선택할 분류
-  // 반환값:
-  // - _RequestFailureKind?: 문구에서 찾은 안내 유형. 해당 표식이 없으면 null.
+  // Function Name: _kindForText
+  // Description: Classifies legacy untyped failures from normalized status markers and keywords.
+  // Parameters: normalized: Lowercase error text without the Bad state prefix; context: Operation category.
+  // Returns: The first matching failure kind, or null; medication-specific rules apply only to medication lookup.
   static _RequestFailureKind? _kindForText(
     String normalized,
     UserFacingErrorContext context,
@@ -279,13 +268,10 @@ class UserFacingErrorMessage {
     return null;
   }
 
-  // 함수이름: _messageForKind
-  // 함수역할: 안내 유형에 대응하는 한국어 또는 영어 문구를 제공한다.
-  // 매개변수:
-  // - kind (_RequestFailureKind): 상태 코드나 문구에서 판정한 안내 유형
-  // - isEnglish (bool): 영어 표시 문구를 선택할지 여부
-  // 반환값:
-  // - String: 사용자가 다음 행동을 정할 수 있는 안내 문구.
+  // Function Name: _messageForKind
+  // Description: Chooses actionable Korean or English guidance for a classified request failure.
+  // Parameters: kind: Resolved failure category; isEnglish: Display language.
+  // Returns: The corresponding localized message.
   static String _messageForKind(
     _RequestFailureKind kind, {
     required bool isEnglish,
@@ -346,24 +332,19 @@ class UserFacingErrorMessage {
     };
   }
 
-  // 함수이름: _genericMessage
-  // 함수역할: 원인을 구분하지 못한 실패에 쓰는 일반 재시도 안내를 제공한다.
-  // 매개변수:
-  // - isEnglish (bool): 영어 표시 문구를 선택할지 여부
-  // 반환값:
-  // - String: 다시 시도를 권하는 일반 안내 문구.
-  // 함수이름: _genericMessageWithStatus
-  // 함수역할: 개발자용 문구 대신 일반 안내를 보여 주되, 문의를 추적할 수 있게 상태 코드를 괄호로 덧붙인다.
-  // 매개변수:
-  // - isEnglish (bool): 영어 표시 문구를 선택할지 여부
-  // - statusCode (int?): 실패 응답의 HTTP 상태 코드; 모르면 null
-  // 반환값:
-  // - String: 일반 안내 문구.
+  // Function Name: _genericMessageWithStatus
+  // Description: Adds an optional HTTP status to generic localized retry guidance without exposing diagnostic text.
+  // Parameters: isEnglish: Display language; statusCode: Known HTTP status, or null.
+  // Returns: The generic message with a parenthesized status only when supplied.
   static String _genericMessageWithStatus(bool isEnglish, int? statusCode) {
     final generic = _genericMessage(isEnglish);
     return statusCode == null ? generic : '$generic ($statusCode)';
   }
 
+  // Function Name: _genericMessage
+  // Description: Supplies a retry suggestion without exposing diagnostic or server-provided details.
+  // Parameters: isEnglish (bool) - whether to use English instead of Korean.
+  // Returns: The fixed localized fallback error message.
   static String _genericMessage(bool isEnglish) {
     return isEnglish
         ? 'Something went wrong. Please try again.'

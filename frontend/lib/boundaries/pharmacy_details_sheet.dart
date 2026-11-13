@@ -3,8 +3,9 @@
 part of 'check_nearby_pharmacy_ui_boundary.dart';
 
 // 클래스명: _PharmacyDetailsSheet
-// 역할: 지도 위 정보창의 내용과 높이 통지 설정을 보관한다.
-// 속성: contentBuilder: 접힘·펼침 내용, onExtentChanged: 지도 여백 갱신.
+// 역할: 지도 위 시설 상세 내용과 높이 통지 구성을 보관한다.
+// 주요 책임: 펼침 상태별 내용을 제공하고 높이 변경으로 지도 여백을 조정하게 한다.
+// 속성: isEnglish/hospitals (bool): 표시 모드; onExtentChanged (ValueChanged<double>): 높이; contentBuilder (Widget Function(BuildContext,bool)): 내용.
 class _PharmacyDetailsSheet extends StatefulWidget {
   static const initialExtent = .65;
   final bool isEnglish;
@@ -13,7 +14,14 @@ class _PharmacyDetailsSheet extends StatefulWidget {
   final Widget Function(BuildContext, bool) contentBuilder;
 
   // 함수이름: _PharmacyDetailsSheet
-  // 함수역할: 표시 설정을 보관한다. 매개변수: 선언된 설정값. 반환값: 정보창.
+  // 함수역할: 병원·약국 상세의 접힘·펼침 콘텐츠와 높이 변경 알림을 연결한다.
+  // 매개변수:
+  // - key (Key?): 정보창 상태를 구분할 위젯 키.
+  // - isEnglish (bool): 펼침·접힘 도움말을 영문으로 표시할지 여부.
+  // - hospitals (bool): 도움말의 시설 종류. 기본값 false는 약국이다.
+  // - onExtentChanged (ValueChanged<double>): 부모 높이 대비 시트 높이 비율을 전달해 지도 여백을 갱신할 콜백.
+  // - contentBuilder (Widget Function(BuildContext, bool)): 화면 문맥과 접힘 여부로 콘텐츠를 만든다. 표시뿐 아니라 두 상태의 비표시 높이 측정에도 호출된다.
+  // 반환값: 높이를 조절할 수 있는 시설 상세 정보창.
   const _PharmacyDetailsSheet({
     super.key,
     required this.isEnglish,
@@ -29,8 +37,9 @@ class _PharmacyDetailsSheet extends StatefulWidget {
 }
 
 // 클래스명: _PharmacyDetailsSheetState
-// 역할: 실제 내용 크기를 시트 높이에 반영하고 긴 내용은 스크롤로 제공한다.
-// 속성: _controller: 드래그 제어, _contentHeights: 두 표시 상태의 측정 높이.
+// 역할: 실제 상세 내용 크기에 맞춘 시트 높이와 드래그 상태.
+// 주요 책임: 접힘·펼침 높이를 측정하고 긴 내용은 스크롤로 제공한다.
+// 속성: _controller (DraggableScrollableController): 드래그; _contentHeights (Map<bool,double>): 내용 높이; _compact/_changingExtent/_sizeUpdateScheduled (bool): 갱신 상태.
 class _PharmacyDetailsSheetState extends State<_PharmacyDetailsSheet> {
   static const _handleHeight = 32.0;
   final _controller = DraggableScrollableController();
@@ -214,8 +223,9 @@ class _PharmacyDetailsSheetState extends State<_PharmacyDetailsSheet> {
 }
 
 // 클래스명: _PharmacySheetSizeObserver
-// 역할: 내용의 실제 레이아웃 크기를 시트에 전달한다.
-// 속성: onSizeChanged: 크기 변경 통지.
+// 역할: 상세 시트 내용 크기를 측정하는 위젯.
+// 주요 책임: 자식의 실제 레이아웃 크기 변경을 시트 상태에 전달한다.
+// 속성: onSizeChanged (ValueChanged<Size>): 측정 통지; child (Widget, 상속): 측정 대상.
 class _PharmacySheetSizeObserver extends SingleChildRenderObjectWidget {
   final ValueChanged<Size> onSizeChanged;
 
@@ -244,8 +254,9 @@ class _PharmacySheetSizeObserver extends SingleChildRenderObjectWidget {
 }
 
 // 클래스명: _PharmacySheetSizeRenderBox
-// 역할: 폭·문구·글씨 크기가 바뀌면 새 내용 높이를 통지한다.
-// 속성: _previousSize: 마지막 측정 크기, onSizeChanged: 통지 함수.
+// 역할: 시설 상세 내용의 크기 변경 감시 렌더러.
+// 주요 책임: 이전 크기와 다를 때만 레이아웃 이후 통지한다.
+// 속성: _previousSize (Size?): 마지막 크기; onSizeChanged (ValueChanged<Size>): 통지.
 class _PharmacySheetSizeRenderBox extends RenderProxyBox {
   ValueChanged<Size> onSizeChanged;
   Size? _previousSize;

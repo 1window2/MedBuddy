@@ -28,6 +28,7 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:medbuddy_frontend/widgets/home_medication_preview.dart';
 import 'package:medbuddy_frontend/widgets/home_medication_slot_pager.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -37,6 +38,7 @@ import 'support/test_viewport.dart';
 // 역할: 접근성 레이아웃 검증에 사용할 긴 약 이름의 복약 일정을 제공한다.
 // 주요 책임:
 // - 줄바꿈과 카드 높이를 검사하도록 긴 약명을 가진 두 복약 일정을 제공한다.
+// 속성: 추가 상태 없음; 고정 긴 약명 일정은 조회 메서드에서 구성한다.
 class _AccessibilityScheduleControl extends CheckSchedule {
   // 함수이름: requestTodayMedicationSchedule
   // 함수역할:
@@ -70,6 +72,7 @@ class _AccessibilityScheduleControl extends CheckSchedule {
 // 역할: 외부 통신 없이 알림 미설정 상태를 제공한다.
 // 주요 책임:
 // - 알림이 설정되지 않은 접근성 화면을 외부 조회 없이 구성한다.
+// 속성: 추가 상태 없음; 상속한 알림 제어기의 조회만 대체한다.
 class _EmptyNotificationControl extends SetNotification {
   // 함수이름: requestMedicationAlarm
   // 함수역할:
@@ -88,6 +91,7 @@ class _EmptyNotificationControl extends SetNotification {
 // 역할: 외부 통신 없이 큰 글씨 건강 추천 화면에 긴 안내 문구를 제공한다.
 // 주요 책임:
 // - 큰 글씨에서 건강 추천 영역이 늘어나는지 검사할 긴 식사·운동·주의 문구를 제공한다.
+// 속성: 추가 상태 없음; 긴 안내 문구는 고정 응답으로 제공한다.
 class _AccessibilityHealthRecommendationControl
     extends CheckHealthRecommendation {
   // 함수이름: requestHealthRecommendation
@@ -1190,6 +1194,13 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    // 함수이름: test callback
+    // 함수역할:
+    // - 모든 시간대의 기본 미복용 확인 시각이 복약 알림보다 이르지 않고 늦은 취침 전 알림의 마감은 23:59 이내로 제한되는지 확인한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - 없음; 기대값과 다르면 테스트가 실패한다.
     test('기본 확인 시각은 어느 시간대에서도 복약 알림 시각보다 이르지 않다', () {
       for (final slotKey in ['morning', 'lunch', 'evening', 'bedtime']) {
         final reminder = SetCaregiverNotificationUI.slotReminderTime(slotKey);
@@ -1217,6 +1228,13 @@ void main() {
       );
     });
 
+    // Function Name: testWidgets callback
+    // Description:
+    // - Uses and saves 23:00 as the missed-dose deadline when bedtime has no saved deadline.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     testWidgets('마감 시각이 없던 취침 전 설정은 알림 뒤의 시각으로 저장된다', (tester) async {
       final results = <CaregiverNotification?>[];
       await openDialog(
@@ -1237,6 +1255,13 @@ void main() {
     });
 
     for (final language in ['ko', 'en']) {
+      // 함수이름: testWidgets callback
+      // 함수역할:
+      // - 저장된 21시 값은 그대로 표시하되 22시 복약 알림보다 이른 이유를 두 언어로 안내하고 저장을 막으며 끄기 전환 후에는 마감 없이 저장하는지 확인한다.
+      // 매개변수:
+      // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+      // 반환값:
+      // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
       testWidgets('알림보다 이른 저장값은 이유를 보여 주고 저장하지 않는다 ($language)', (
         tester,
       ) async {
@@ -1255,7 +1280,7 @@ void main() {
 
         // 저장된 시각은 바꾸지 않고 그대로 보여 준다.
         expect(find.textContaining('21:00'), findsOneWidget);
-        final guidance = tester.widget<Text>(
+        final guidance = tester.widget<KeepWordsText>(
           find.byKey(const Key('caregiver-deadline-guidance')),
         );
         expect(guidance.data, contains('22:00'));
@@ -1280,6 +1305,13 @@ void main() {
       });
     }
 
+    // Function Name: testWidgets callback
+    // Description:
+    // - Preserves a saved 22:00 deadline equal to the bedtime reminder when saving the dialog.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     testWidgets('알림 시각과 같거나 늦은 저장값은 그대로 저장된다', (tester) async {
       final results = <CaregiverNotification?>[];
       await openDialog(
@@ -1300,6 +1332,13 @@ void main() {
       expect(results.single?.deadlineMinute, 0);
     });
 
+    // Function Name: testWidgets callback
+    // Description:
+    // - Keeps early-deadline guidance reachable at 320px and double text scale without rendering exceptions.
+    // Parameters:
+    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+    // Returns:
+    // - Future<void>: Completes the checks; an unexpected result fails the test.
     testWidgets('이른 시각 안내는 작은 화면과 2배 글씨에서도 넘치지 않는다', (tester) async {
       setTestViewport(tester, const Size(320, 568));
       await tester.pumpWidget(

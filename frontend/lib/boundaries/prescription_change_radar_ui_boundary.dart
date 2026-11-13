@@ -4,6 +4,7 @@ import '../entities/prescription_change_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/expandable_medication_section.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: prescription_change_radar_ui_boundary.dart
 // 역할: 이전 처방 대비 약품 추가·일정 변경·미확인 항목 비교를 제공한다.
@@ -78,11 +79,10 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
     );
   }
 
-  // 함수이름: _buildUnavailableContent
-  // 함수역할: 비교 실패·만료·무관한 처방 상태에 맞춘 아이콘과 생략 이유를 표시한다.
-  // 매개변수:
-  // - text (_PrescriptionChangeText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 처방 비교 상태와 추가·변경·미확인 약품에 쓰는 위젯 트리.
+  // Function Name: _buildUnavailableContent
+  // Description: Explains why comparison is unavailable, expired or unrelated using a matching status icon.
+  // Parameters: text (_PrescriptionChangeText): localized comparison copy.
+  // Returns: The unavailable-comparison content.
   Widget _buildUnavailableContent(_PrescriptionChangeText text) {
     final icon = switch (radar.comparisonStatus) {
       PrescriptionComparisonStatus.expired => Icons.event_busy_outlined,
@@ -95,7 +95,7 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
         Icon(icon, color: MedBuddyColors.textMuted, size: 24),
         const SizedBox(width: 10),
         Expanded(
-          child: Text(
+          child: KeepWordsText(
             text.unavailableMessage(
               radar.comparisonStatus,
               radar.comparisonWindowDays,
@@ -121,7 +121,7 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        KeepWordsText(
           text.comparisonPeriod(
             radar.previousPrescriptionDate,
             radar.currentPrescriptionDate,
@@ -142,7 +142,7 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
           // - change (콜백 계약에서 추론): 약품 한 건의 추가·일정 변경·미확인 정보.
           // 반환값: 컬렉션 연산에 전달할 변환값.
         ] else if (radar.hasChanges)
-          Text(
+          KeepWordsText(
             text.isEnglish
                 ? 'Change details are unavailable.'
                 : '변경 상세 정보를 불러오지 못했습니다.',
@@ -154,12 +154,10 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
   }
 }
 
-// 클래스명: PrescriptionChangeRadarLoadingUI
-// 역할: 분석 결과를 가리지 않는 처방 비교 진행 표시를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 분석 결과를 가리지 않는 처방 비교 진행 표시 위젯을 구성한다.
-// 속성:
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
+// Class Name: PrescriptionChangeRadarLoadingUI
+// Role: Nonblocking prescription-comparison progress.
+// Responsibilities: Shows comparison activity without hiding completed prescription analysis.
+// Attributes: userSetting (UserSetting): language and display preferences.
 class PrescriptionChangeRadarLoadingUI extends StatelessWidget {
   final UserSetting userSetting;
 
@@ -174,11 +172,10 @@ class PrescriptionChangeRadarLoadingUI extends StatelessWidget {
     required this.userSetting,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 분석 결과를 가리지 않는 처방 비교 진행 표시 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 분석 결과를 가리지 않는 처방 비교 진행 표시에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays comparison progress while leaving analysis results visible.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final text = _PrescriptionChangeText(userSetting.language);
@@ -203,7 +200,7 @@ class PrescriptionChangeRadarLoadingUI extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
+            child: KeepWordsText(
               text.loading,
               style: TextStyle(
                 color: MedBuddyColors.primaryDark,
@@ -235,6 +232,7 @@ class _RadarHeader extends StatelessWidget {
   // 매개변수:
   // - text (_PrescriptionChangeText): 해당 화면 구역의 언어별 표시 문구.
   // - comparisonWindowDays (int): 이전 처방을 찾는 비교 기간의 일수.
+  // - toggle (Widget): 상위 펼침 위젯이 제공하는 처방 변화 전체의 접기·펼치기 버튼.
   // 반환값: 입력 설정이 반영된 _RadarHeader 인스턴스.
   const _RadarHeader({
     required this.text,
@@ -273,7 +271,7 @@ class _RadarHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                KeepWordsText(
                   text.title,
                   style: TextStyle(
                     color: MedBuddyColors.textStrong,
@@ -282,7 +280,7 @@ class _RadarHeader extends StatelessWidget {
                     letterSpacing: 0,
                   ),
                 ),
-                Text(
+                KeepWordsText(
                   text.subtitle(comparisonWindowDays),
                   style: TextStyle(
                     color: MedBuddyColors.textMuted,
@@ -311,17 +309,23 @@ class _ChangeSummary extends StatefulWidget {
   final _PrescriptionChangeText text;
 
   // 함수이름: _ChangeSummary
-  // 함수역할: 추가·일정 변경·미확인 약 개수에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - summary (PrescriptionChangeSummary): 화면에 반영할 작업 결과 또는 요약·추천 데이터.
-  // - text (_PrescriptionChangeText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 입력 설정이 반영된 _ChangeSummary 인스턴스.
+  // 함수역할: 변경 목록과 요약을 담은 레이더 및 표시 문구를 받는다.
+  // 매개변수: radar (PrescriptionChangeRadar): 처방 비교 결과; text (_PrescriptionChangeText): 표시 문구.
+  // 반환값: 새 _ChangeSummary.
   const _ChangeSummary({required this.radar, required this.text});
 
+  // 함수이름: createState
+  // 함수역할: 변화 범주 선택과 페이지·상세 펼침 상태를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 새 _ChangeSummaryState.
   @override
   State<_ChangeSummary> createState() => _ChangeSummaryState();
 }
 
+// Class Name: _ChangeSummaryState
+// Role: Presents prescription changes by category in bounded pages.
+// Responsibilities: Keeps category choice while resetting stale pages and expanded details when the changes list is replaced.
+// Attributes: _selected (PrescriptionChangeType): category; _page (int): page; _expandedIndex (int?): expanded source row; _pageSize (int): rows per page.
 class _ChangeSummaryState extends State<_ChangeSummary> {
   static const _pageSize = 3;
   static const _types = [
@@ -337,6 +341,10 @@ class _ChangeSummaryState extends State<_ChangeSummary> {
   int _page = 0;
   int? _expandedIndex;
 
+  // 함수이름: didUpdateWidget
+  // 함수역할: 새 변경 목록을 받으면 페이지와 펼친 상세를 초기화한다.
+  // 매개변수: oldWidget (_ChangeSummary): 이전 변경 목록.
+  // 반환값: 없음. 선택 범주는 유지한다.
   @override
   void didUpdateWidget(covariant _ChangeSummary oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -346,17 +354,20 @@ class _ChangeSummaryState extends State<_ChangeSummary> {
     }
   }
 
+  // 함수이름: _select
+  // 함수역할: 변화 범주를 선택하고 해당 범주의 첫 페이지로 돌아가 상세 펼침을 초기화한다.
+  // 매개변수: type (PrescriptionChangeType): 선택 범주.
+  // 반환값: 없음.
   void _select(PrescriptionChangeType type) => setState(() {
     _selected = type;
     _page = 0;
     _expandedIndex = null;
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 추가·일정 변경·미확인 약 개수 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 추가·일정 변경·미확인 약 개수에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Shows counts for added medications, changed schedules and unconfirmed entries.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final text = widget.text;
@@ -406,7 +417,7 @@ class _ChangeSummaryState extends State<_ChangeSummary> {
         if (_selected == PrescriptionChangeType.missing && changes.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 10),
-            child: Text(
+            child: KeepWordsText(
               text.missing,
               style: const TextStyle(
                 fontSize: 12.5,
@@ -417,7 +428,7 @@ class _ChangeSummaryState extends State<_ChangeSummary> {
         if (changes.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 24),
-            child: Text(
+            child: KeepWordsText(
               text.isEnglish
                   ? 'No medications in this category.'
                   : '이 분류에 해당하는 약이 없습니다.',
@@ -506,6 +517,10 @@ class _SummaryChip extends StatelessWidget {
   // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
   // - foreground (Color): 문자·아이콘·상태 가이드에 적용할 전경 또는 강조 색상.
   // - background (Color): 항목의 바탕 색상.
+  // - key (Key?): 변화 유형 탭을 구분할 위젯 키.
+  // - count (int): 이 변화 유형에 속하는 약품 수.
+  // - selected (bool): 현재 선택된 변화 유형인지 여부.
+  // - onTap (VoidCallback): 해당 유형을 선택하여 목록을 필터링할 콜백.
   // 반환값: 입력 설정이 반영된 _SummaryChip 인스턴스.
   const _SummaryChip({
     super.key,
@@ -544,7 +559,7 @@ class _SummaryChip extends StatelessWidget {
             ),
             child: Column(
               children: [
-                Text(
+                KeepWordsText(
                   label,
                   textAlign: TextAlign.center,
                   style: TextStyle(
@@ -588,6 +603,9 @@ class _MedicationChangeRow extends StatelessWidget {
   // 매개변수:
   // - change (PrescriptionMedicationChange): 약품 한 건의 추가·일정 변경·미확인 정보.
   // - text (_PrescriptionChangeText): 해당 화면 구역의 언어별 표시 문구.
+  // - key (Key?): 약품 변화 항목의 위젯 식별 키.
+  // - isExpanded (bool): 변경 전후 상세 내용을 펼쳐 표시할지 여부.
+  // - onToggle (VoidCallback): 상위 목록에 이 항목의 펼침 상태 전환을 요청할 콜백.
   // 반환값: 입력 설정이 반영된 _MedicationChangeRow 인스턴스.
   const _MedicationChangeRow({
     super.key,
@@ -615,7 +633,7 @@ class _MedicationChangeRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                KeepWordsText(
                   change.itemName.isEmpty
                       ? text.unknownMedication
                       : change.itemName,
@@ -628,7 +646,7 @@ class _MedicationChangeRow extends StatelessWidget {
                 ),
                 if (change.changedFields.isNotEmpty) ...[
                   const SizedBox(height: 3),
-                  Text(
+                  KeepWordsText(
                     change.changedFields.map(text.fieldLabel).join(' · '),
                     style: const TextStyle(
                       color: MedBuddyColors.textMuted,
@@ -721,9 +739,13 @@ class _MedicationChangeRow extends StatelessWidget {
     );
   }
 
+  // 함수이름: _detailCell
+  // 함수역할: 변경 전후 비교표의 셀을 표시하고 제목 셀은 다른 색·굵기로 구분한다.
+  // 매개변수: value (String): 셀 내용; heading (bool): 제목 여부.
+  // 반환값: 여백을 둔 Text 셀.
   Widget _detailCell(String value, {bool heading = false}) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-    child: Text(
+    child: KeepWordsText(
       value,
       style: TextStyle(
         color: heading ? MedBuddyColors.textMuted : MedBuddyColors.textStrong,
@@ -734,27 +756,23 @@ class _MedicationChangeRow extends StatelessWidget {
   );
 }
 
-// 클래스명: _NoChangeMessage
-// 역할: 비교 가능한 처방에 변화가 없다는 안내를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 비교 가능한 처방에 변화가 없다는 안내 위젯을 구성한다.
-// 속성:
-// - text (_PrescriptionChangeText): 해당 화면 구역의 언어별 표시 문구.
+// Class Name: _NoChangeMessage
+// Role: No differences in a comparable prescription.
+// Responsibilities: Distinguishes a successful unchanged comparison from an unavailable comparison.
+// Attributes: text (_PrescriptionChangeText): unchanged-result message.
 class _NoChangeMessage extends StatelessWidget {
   final _PrescriptionChangeText text;
 
-  // 함수이름: _NoChangeMessage
-  // 함수역할: 비교 가능한 처방에 변화가 없다는 안내에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - text (_PrescriptionChangeText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 입력 설정이 반영된 _NoChangeMessage 인스턴스.
+  // Function Name: _NoChangeMessage
+  // Description: Stores localized copy for a successful comparison with no changes.
+  // Parameters: text (_PrescriptionChangeText): comparison labels.
+  // Returns: A _NoChangeMessage.
   const _NoChangeMessage({required this.text});
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 비교 가능한 처방에 변화가 없다는 안내 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 비교 가능한 처방에 변화가 없다는 안내에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays the no-change result for comparable prescriptions.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -766,7 +784,7 @@ class _NoChangeMessage extends StatelessWidget {
         ),
         const SizedBox(width: 9),
         Expanded(
-          child: Text(
+          child: KeepWordsText(
             text.noChanges,
             style: TextStyle(
               color: MedBuddyColors.primaryDark,
@@ -781,11 +799,10 @@ class _NoChangeMessage extends StatelessWidget {
   }
 }
 
-// 함수이름: _changeTypeColors
-// 함수역할: 처방 변화 유형별 분류 칩의 글자·배경 색상을 고른다.
-// 매개변수:
-// - type (PrescriptionChangeType): 색상을 고를 처방 변화 유형.
-// 반환값: 칩 글자색(foreground)과 배경색(background).
+// Function Name: _changeTypeColors
+// Description: Selects category-chip text and background colors for a prescription change type.
+// Parameters: type (PrescriptionChangeType): change category.
+// Returns: A record containing foreground and background colors.
 ({Color foreground, Color background}) _changeTypeColors(
   PrescriptionChangeType type,
 ) => switch (type) {
@@ -823,6 +840,10 @@ class _PrescriptionChangeText {
   // 반환값: 입력 설정이 반영된 _PrescriptionChangeText 인스턴스.
   const _PrescriptionChangeText(this.language);
 
+  // 함수이름: category
+  // 함수역할: 처방 변화 유형을 일정 변경·새로 확인·이번에 없음·기타로 표현한다.
+  // 매개변수: type (PrescriptionChangeType): 변화 유형.
+  // 반환값: 현재 언어의 범주 라벨.
   String category(PrescriptionChangeType type) => switch (type) {
     PrescriptionChangeType.scheduleChanged => isEnglish ? 'Changed' : '일정 변경',
     PrescriptionChangeType.added => isEnglish ? 'New' : '새로 확인',
@@ -830,6 +851,10 @@ class _PrescriptionChangeText {
     PrescriptionChangeType.unknown => isEnglish ? 'Other' : '기타',
   };
 
+  // 함수이름: fieldLabel
+  // 함수역할: 용량·횟수·일수 변경 필드에 표시 이름을 붙인다.
+  // 매개변수: field (String): 저장 필드명.
+  // 반환값: 현재 언어의 필드 라벨; 미등록 필드는 복약 일정.
   String fieldLabel(String field) => switch (field) {
     'dosage_per_time' => isEnglish ? 'Dose' : '1회 투약량',
     'daily_frequency' => isEnglish ? 'Frequency' : '1일 횟수',
@@ -837,15 +862,18 @@ class _PrescriptionChangeText {
     _ => isEnglish ? 'Schedule' : '복약 일정',
   };
 
+  // 함수이름: snapshotValue
+  // 함수역할: 비어 있거나 없는 비교 값을 기록 없음으로 표시하고 유효한 값은 양끝 공백만 정리한다.
+  // 매개변수: value (String?): 이전 또는 현재 스냅샷 값.
+  // 반환값: 정리한 값 또는 현재 언어의 기록 없음.
   String snapshotValue(String? value) => value == null || value.trim().isEmpty
       ? (isEnglish ? 'Not recorded' : '기록 없음')
       : value.trim();
 
-  // 함수이름: isEnglish
-  // 함수역할: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두어로 영어 여부를 판별한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: isEnglish
+  // Description: Normalizes the language code and checks its English prefix.
+  // Parameters: None.
+  // Returns: True when the normalized code begins with en.
   bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: title

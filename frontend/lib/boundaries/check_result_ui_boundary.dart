@@ -13,6 +13,7 @@ import '../widgets/pinned_analysis_summary.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../widgets/responsive_card_header.dart';
 import 'prescription_change_radar_ui_boundary.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: check_result_ui_boundary.dart
 // 역할: 공공데이터 분석이 끝난 처방전 결과 목록 화면을 구성한다.
@@ -48,25 +49,10 @@ class CheckResultUI extends StatelessWidget {
   )
   onMedicationSaveRequested;
 
-  // 함수이름: CheckResultUI
-  // 함수역할: 분석 약 목록과 개별·전체 저장 상태에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
-  // - analyzedMedicationList (List<AnalyzedMedication>): 약 상세와 일정을 함께 가진 처방 분석 결과 목록.
-  // - prescriptionChangeRadar (PrescriptionChangeRadar?): 이전 처방과의 비교 상태·변화 목록.
-  // - isPrescriptionChangeLoading (bool): 해당 저장·분석·복약 갱신 요청이 진행 중인지 여부.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // - statusMessageProvider (String Function()): 작업 후 최신 상태 안내를 읽는 함수.
-  // - savingMedicationIndex (int?): 대상 약품·사진·행의 0부터 시작하는 목록 위치.
-  // - completedMedicationSaveIndexes (Set<int>): 이미 저장을 완료한 분석 결과의 인덱스 집합.
-  // - isAllMedicationSaving (bool): 해당 저장·분석·복약 갱신 요청이 진행 중인지 여부.
-  // - onCloseRequested (VoidCallback?): 이전 단계로 이동하거나 현재 화면을 닫을 때 실행할 콜백.
-  // - onTodayScheduleRequested (VoidCallback?): 오늘 복약 일정 화면을 여는 콜백.
-  // - onSavedMedicationRequested (VoidCallback?): 저장 복약함 화면을 여는 콜백.
-  // - onHomeRequested (VoidCallback?): 홈 화면으로 이동할 콜백.
-  // - onAllMedicationSaveRequested (Future<bool> Function()): 선택한 약품 또는 분석 결과를 일괄 저장할 콜백.
-  // - onMedicationSaveRequested (Future<bool> Function(AnalyzedMedication analyzedMedication, int medicationIndex)): 검증한 약품과 복약 정보를 저장할 콜백.
-  // 반환값: 입력 설정이 반영된 CheckResultUI 인스턴스.
+  // Function Name: CheckResultUI
+  // Description: Binds analyzed medications, comparison results and externally owned per-item/bulk save state to result review and navigation.
+  // Parameters: key: identity; analyzedMedicationList: analyzed details/schedules; prescriptionChangeRadar/isPrescriptionChangeLoading: comparison result/progress; userSetting: display settings; statusMessageProvider: latest result text; savingMedicationIndex/completedMedicationSaveIndexes/isAllMedicationSaving: save progress; onCloseRequested/onTodayScheduleRequested/onSavedMedicationRequested/onHomeRequested: navigation; onAllMedicationSaveRequested/onMedicationSaveRequested: persistence callbacks returning success.
+  // Returns: A configured CheckResultUI.
   const CheckResultUI({
     super.key,
     required this.analyzedMedicationList,
@@ -129,7 +115,6 @@ class CheckResultUI extends StatelessWidget {
                         summary: _AnalysisSummary(
                           count: analyzedMedicationList.length,
                           text: text,
-                          userSetting: userSetting,
                         ),
                         child: ListView.builder(
                           key: const Key('analysis-result-list'),
@@ -169,7 +154,6 @@ class CheckResultUI extends StatelessWidget {
                               medicationIndex: medicationIndex,
                               analyzedMedication: analyzedMedication,
                               text: text,
-                              userSetting: userSetting,
                               isMedicationSaving:
                                   savingMedicationIndex == medicationIndex,
                               isMedicationSaved: completedMedicationSaveIndexes
@@ -210,7 +194,6 @@ class CheckResultUI extends StatelessWidget {
                     ),
                     _BulkSaveButton(
                       text: text,
-                      userSetting: userSetting,
                       isSaving:
                           isAllMedicationSaving ||
                           savingMedicationIndex != null,
@@ -244,16 +227,14 @@ class CheckResultUI extends StatelessWidget {
     );
   }
 
-  // 함수이름: _showSaveResultMessage
-  // 함수역할: 현재 저장 결과 문구를 성공·실패 색상으로 2초간 표시한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // - success (bool): 직전 저장·조회·변경 요청의 성공 여부.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // Function Name: _showSaveResultMessage
+  // Description: Shows the latest save result for two seconds with success or failure coloring.
+  // Parameters: context (BuildContext): snackbar host; success (bool): save outcome.
+  // Returns: None.
   void _showSaveResultMessage(BuildContext context, bool success) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(statusMessageProvider()),
+        content: KeepWordsText(statusMessageProvider()),
         backgroundColor: success
             ? MedBuddyColors.primary
             : MedBuddyColors.danger,
@@ -280,7 +261,6 @@ class CheckResultUI extends StatelessWidget {
       // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
       builder: (sheetContext) => _SaveCompletedSheet(
         text: text,
-        userSetting: userSetting,
         onTodayScheduleRequested: onTodayScheduleRequested == null
             ? null
             // 함수이름: _showSaveCompletedSheet.onTodayScheduleRequested callback
@@ -324,13 +304,11 @@ class CheckResultUI extends StatelessWidget {
 // 주요 책임:
 // - 부모가 전달한 표시값과 동작을 반영해 저장 완료 후 오늘 일정·복약함·홈 이동 위젯을 구성한다.
 // 속성:
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
 // - onTodayScheduleRequested (VoidCallback?): 오늘 복약 일정 화면을 여는 콜백.
 // - onSavedMedicationRequested (VoidCallback?): 저장 복약함 화면을 여는 콜백.
 // - onHomeRequested (VoidCallback?): 홈 화면으로 이동할 콜백.
 class _SaveCompletedSheet extends StatelessWidget {
   final _ResultText text;
-  final UserSetting userSetting;
   final VoidCallback? onTodayScheduleRequested;
   final VoidCallback? onSavedMedicationRequested;
   final VoidCallback? onHomeRequested;
@@ -339,14 +317,12 @@ class _SaveCompletedSheet extends StatelessWidget {
   // 함수역할: 저장 완료 후 오늘 일정·복약함·홈 이동에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - text (_ResultText): 해당 화면 구역의 언어별 표시 문구.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
   // - onTodayScheduleRequested (VoidCallback?): 오늘 복약 일정 화면을 여는 콜백.
   // - onSavedMedicationRequested (VoidCallback?): 저장 복약함 화면을 여는 콜백.
   // - onHomeRequested (VoidCallback?): 홈 화면으로 이동할 콜백.
   // 반환값: 입력 설정이 반영된 _SaveCompletedSheet 인스턴스.
   const _SaveCompletedSheet({
     required this.text,
-    required this.userSetting,
     required this.onTodayScheduleRequested,
     required this.onSavedMedicationRequested,
     required this.onHomeRequested,
@@ -375,7 +351,7 @@ class _SaveCompletedSheet extends StatelessWidget {
             size: 58,
           ),
           const SizedBox(height: 12),
-          Text(
+          KeepWordsText(
             text.saveCompletedTitle,
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -385,7 +361,7 @@ class _SaveCompletedSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
+          KeepWordsText(
             text.saveCompletedDescription,
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -399,7 +375,7 @@ class _SaveCompletedSheet extends StatelessWidget {
             FilledButton.icon(
               onPressed: onTodayScheduleRequested,
               icon: const Icon(Icons.event_available_outlined),
-              label: Text(text.openTodaySchedule),
+              label: KeepWordsText(text.openTodaySchedule),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(58),
                 backgroundColor: MedBuddyColors.primary,
@@ -410,7 +386,7 @@ class _SaveCompletedSheet extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: onSavedMedicationRequested,
               icon: const Icon(Icons.inventory_2_outlined),
-              label: Text(text.openSavedMedication),
+              label: KeepWordsText(text.openSavedMedication),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(58),
               ),
@@ -420,7 +396,7 @@ class _SaveCompletedSheet extends StatelessWidget {
             const SizedBox(height: 8),
             TextButton(
               onPressed: onHomeRequested,
-              child: Text(text.returnHome),
+              child: KeepWordsText(text.returnHome),
             ),
           ],
         ],
@@ -429,14 +405,10 @@ class _SaveCompletedSheet extends StatelessWidget {
   }
 }
 
-// 클래스명: _ResultHeader
-// 역할: 처방 분석 결과 제목과 닫기 명령을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 처방 분석 결과 제목과 닫기 명령 위젯을 구성한다.
-// 속성:
-// - title (String): 화면·구역·항목에 표시할 제목.
-// - backTooltip (String): 아이콘의 동작을 설명할 도움말·접근성 문구.
-// - onCloseRequested (VoidCallback?): 이전 단계로 이동하거나 현재 화면을 닫을 때 실행할 콜백.
+// Class Name: _ResultHeader
+// Role: Analysis-result header and close action.
+// Responsibilities: Labels the result screen and exposes the supplied close callback.
+// Attributes: title: heading; backTooltip: close-action description; onCloseRequested: optional navigation callback.
 class _ResultHeader extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -449,6 +421,7 @@ class _ResultHeader extends StatelessWidget {
   // - title (String): 화면·구역·항목에 표시할 제목.
   // - backTooltip (String): 아이콘의 동작을 설명할 도움말·접근성 문구.
   // - onCloseRequested (VoidCallback?): 이전 단계로 이동하거나 현재 화면을 닫을 때 실행할 콜백.
+  // - subtitle (String): 결과 제목 아래에 표시할 분석 약품·복용 일정 확인 안내.
   // 반환값: 입력 설정이 반영된 _ResultHeader 인스턴스.
   const _ResultHeader({
     required this.title,
@@ -457,11 +430,10 @@ class _ResultHeader extends StatelessWidget {
     required this.onCloseRequested,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 처방 분석 결과 제목과 닫기 명령 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 처방 분석 결과 제목과 닫기 명령에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Renders the result title and accessible close action.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return MedBuddyPageHeader(
@@ -483,24 +455,17 @@ class _ResultHeader extends StatelessWidget {
 // - Composes a summary of analyzed medications ready to save using the display values and actions supplied by its parent.
 // Attributes:
 // - count (int): Item count or ordinal number used in wording or a list.
-// - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
 class _AnalysisSummary extends StatelessWidget {
   final int count;
   final _ResultText text;
-  final UserSetting userSetting;
 
   // 함수이름: _AnalysisSummary
   // 함수역할: 저장 가능한 분석 약품 수 요약에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - count (int): 문구나 목록에 표시할 항목 수 또는 일련번호.
   // - text (_ResultText): 해당 화면 구역의 언어별 표시 문구.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
   // 반환값: 입력 설정이 반영된 _AnalysisSummary 인스턴스.
-  const _AnalysisSummary({
-    required this.count,
-    required this.text,
-    required this.userSetting,
-  });
+  const _AnalysisSummary({required this.count, required this.text});
 
   // Function Name: build
   // Description: Renders a summary of analyzed medications ready to save from the current configuration and state.
@@ -539,7 +504,7 @@ class _AnalysisSummary extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                KeepWordsText(
                   text.complete,
                   style: TextStyle(
                     color: MedBuddyColors.primaryDark,
@@ -548,7 +513,7 @@ class _AnalysisSummary extends StatelessWidget {
                     letterSpacing: 0,
                   ),
                 ),
-                Text(
+                KeepWordsText(
                   text.summary(count),
                   style: TextStyle(
                     color: MedBuddyColors.textMuted,
@@ -565,18 +530,12 @@ class _AnalysisSummary extends StatelessWidget {
   }
 }
 
-// Class Name: _BulkSaveButton
-// Role: Represents the bulk-save action with busy and completed states preventing duplicate requests.
-// Responsibilities:
-// - Composes the bulk-save action with busy and completed states preventing duplicate requests using the display values and actions supplied by its parent.
-// Attributes:
-// - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
-// - isSaving (bool): Whether the associated save, analysis, or medication update is in progress.
-// - isCompleted (bool): Completion state of the dose or save operation.
-// - onPressed (Future<void> Function()): Callback executing the item's documented primary action.
+// 클래스명: _BulkSaveButton
+// 역할: 전체 분석 약 저장 버튼.
+// 주요 책임: 저장 중이거나 완료한 상태에서 중복 저장을 막고 진행·완료 상태를 보여 준다.
+// 속성: text: 표시 문구; isSaving/isCompleted: 저장 상태; onPressed: 전체 저장 콜백.
 class _BulkSaveButton extends StatelessWidget {
   final _ResultText text;
-  final UserSetting userSetting;
   final bool isSaving;
   final bool isCompleted;
   final Future<void> Function() onPressed;
@@ -585,24 +544,21 @@ class _BulkSaveButton extends StatelessWidget {
   // 함수역할: 중복 요청을 막는 전체 저장·완료 상태에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - text (_ResultText): 해당 화면 구역의 언어별 표시 문구.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
   // - isSaving (bool): 해당 저장·분석·복약 갱신 요청이 진행 중인지 여부.
   // - isCompleted (bool): 복약 또는 저장 작업의 완료 상태.
   // - onPressed (Future<void> Function()): 해당 항목의 명시된 주 동작을 실행할 콜백.
   // 반환값: 입력 설정이 반영된 _BulkSaveButton 인스턴스.
   const _BulkSaveButton({
     required this.text,
-    required this.userSetting,
     required this.isSaving,
     required this.isCompleted,
     required this.onPressed,
   });
 
-  // Function Name: build
-  // Description: Renders the bulk-save action with busy and completed states preventing duplicate requests from the current configuration and state.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for the bulk-save action with busy and completed states preventing duplicate requests.
+  // 함수이름: build
+  // 함수역할: 전체 저장의 진행·완료 표시를 구성하고 중복 실행할 수 없는 상태에서는 버튼을 비활성화한다.
+  // 매개변수: context (BuildContext): 테마·접근성 문맥.
+  // 반환값: 상태가 반영된 전체 저장 버튼.
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -635,7 +591,7 @@ class _BulkSaveButton extends StatelessWidget {
                   isCompleted ? Icons.check_circle_outline : Icons.done_all,
                   size: 22,
                 ),
-          label: Text(
+          label: KeepWordsText(
             isCompleted
                 ? text.allSaved
                 : isSaving
@@ -658,54 +614,44 @@ class _BulkSaveButton extends StatelessWidget {
   }
 }
 
-// 클래스명: _MedicationResultCard
-// 역할: 약 한 건의 복용량·횟수·기간과 개별 저장을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 약 한 건의 복용량·횟수·기간과 개별 저장 위젯을 구성한다.
-// 속성:
-// - analyzedMedication (AnalyzedMedication): 표시·변환·저장·비교할 약품 데이터.
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-// - isMedicationSaving (bool): 해당 저장·분석·복약 갱신 요청이 진행 중인지 여부.
-// - isMedicationSaved (bool): 복약 또는 저장 작업의 완료 상태.
+// Class Name: _MedicationResultCard
+// Role: One analyzed medication and its save action.
+// Responsibilities: Displays dosage, frequency and duration while respecting item and bulk-save progress.
+// Attributes: analyzedMedication: analysis data; text: display labels; isMedicationSaving/isMedicationSaved/isAllMedicationSaving: save state; onMedicationSaveRequested: item save.
 class _MedicationResultCard extends StatelessWidget {
   final int medicationIndex;
   final AnalyzedMedication analyzedMedication;
   final _ResultText text;
-  final UserSetting userSetting;
   final bool isMedicationSaving;
   final bool isMedicationSaved;
   final bool isAllMedicationSaving;
   final Future<void> Function() onMedicationSaveRequested;
 
-  // 함수이름: _MedicationResultCard
-  // 함수역할: 약 한 건의 복용량·횟수·기간과 개별 저장에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - key (Key?): 목록 위치가 바뀌어도 같은 약 카드의 펼침 상태를 유지할 식별 키.
-  // - analyzedMedication (AnalyzedMedication): 표시·변환·저장·비교할 약품 데이터.
-  // - text (_ResultText): 해당 화면 구역의 언어별 표시 문구.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // - isMedicationSaving (bool): 해당 저장·분석·복약 갱신 요청이 진행 중인지 여부.
-  // - isMedicationSaved (bool): 복약 또는 저장 작업의 완료 상태.
-  // - isAllMedicationSaving (bool): 해당 저장·분석·복약 갱신 요청이 진행 중인지 여부.
-  // - onMedicationSaveRequested (Future<void> Function()): 검증한 약품과 복약 정보를 저장할 콜백.
-  // 반환값: 입력 설정이 반영된 _MedicationResultCard 인스턴스.
+  // Function Name: _MedicationResultCard
+  // Description: Bind an analyzed medication, its display labels and save state to an expandable result card.
+  // Parameters:
+  // - key (Key?): Preserve this card's element identity when the list changes.
+  // - medicationIndex (int): Zero-based result position used for the displayed one-based number and child keys.
+  // - analyzedMedication (AnalyzedMedication): Medication details and schedule to review.
+  // - text (_ResultText): Localized labels.
+  // - isMedicationSaving, isMedicationSaved, isAllMedicationSaving (bool): Per-item progress, saved state and batch-save progress that govern the save button.
+  // - onMedicationSaveRequested (Future<void> Function()): Save this medication when the button is enabled.
+  // Returns: A configured _MedicationResultCard; construction does not start saving.
   const _MedicationResultCard({
     super.key,
     required this.medicationIndex,
     required this.analyzedMedication,
     required this.text,
-    required this.userSetting,
     required this.isMedicationSaving,
     required this.isMedicationSaved,
     required this.isAllMedicationSaving,
     required this.onMedicationSaveRequested,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 약 한 건의 복용량·횟수·기간과 개별 저장 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 약 한 건의 복용량·횟수·기간과 개별 저장에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays medication details and dose information with an item-save action governed by current item/bulk save state.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final schedule = analyzedMedication.schedule;
@@ -725,7 +671,7 @@ class _MedicationResultCard extends StatelessWidget {
         isEnglish: text.isEnglish,
         toggleKey: Key('result-medication-toggle-$medicationIndex'),
         headerBuilder: (toggle) {
-          final name = Text(
+          final name = KeepWordsText(
             analyzedMedication.displayNameForLanguage(text.language),
             key: Key('result-medication-name-$medicationIndex'),
             style: const TextStyle(
@@ -836,25 +782,19 @@ class _MedicationResultCard extends StatelessWidget {
     );
   }
 
-  // 함수이름: _displayValue
-  // 함수역할: 빈 값을 정보 없음 문구로 대체한다.
-  // 매개변수:
-  // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: _displayValue
+  // Description: Replaces an empty medication field with the localized missing-information label.
+  // Parameters: value (String): field value.
+  // Returns: The trimmed value or missing-information text.
   String _displayValue(String value) {
     return value.trim().isEmpty ? text.noInformation : value.trim();
   }
 }
 
-// Class Name: _MedicationSaveIconButton
-// Role: Represents the medication-save icon disabled during saving or after completion.
-// Responsibilities:
-// - Composes the medication-save icon disabled during saving or after completion using the display values and actions supplied by its parent.
-// Attributes:
-// - isMedicationSaving (bool): Whether the associated save, analysis, or medication update is in progress.
-// - isMedicationSaved (bool): Completion state of the dose or save operation.
-// - isAllMedicationSaving (bool): Whether the associated save, analysis, or medication update is in progress.
-// - onPressed (Future<void> Function()): Callback executing the item's documented primary action.
+// 클래스명: _MedicationSaveIconButton
+// 역할: 개별 약 저장 아이콘.
+// 주요 책임: 개별·전체 저장 중 또는 저장 완료 시 중복 요청을 막고 완료 여부를 표시한다.
+// 속성: text: 표시 문구; isMedicationSaving/isMedicationSaved/isAllMedicationSaving: 저장 상태; onPressed: 개별 저장 콜백.
 class _MedicationSaveIconButton extends StatelessWidget {
   final _ResultText text;
   final bool isMedicationSaving;
@@ -862,15 +802,10 @@ class _MedicationSaveIconButton extends StatelessWidget {
   final bool isAllMedicationSaving;
   final Future<void> Function() onPressed;
 
-  // Function Name: _MedicationSaveIconButton
-  // Description: Initializes the medication-save icon disabled during saving or after completion with the supplied configuration.
-  // Parameters:
-  // - text (_ResultText): Localized labels used by this section.
-  // - isMedicationSaving (bool): Whether the associated save, analysis, or medication update is in progress.
-  // - isMedicationSaved (bool): Completion state of the dose or save operation.
-  // - isAllMedicationSaving (bool): Whether the associated save, analysis, or medication update is in progress.
-  // - onPressed (Future<void> Function()): Callback executing the item's documented primary action.
-  // Returns: Initialized _MedicationSaveIconButton instance.
+  // 함수이름: _MedicationSaveIconButton
+  // 함수역할: 개별 저장 버튼에 표시 문구와 저장 상태 및 저장 동작을 전달한다.
+  // 매개변수: key (Key?): 목록 안의 저장 버튼 식별 키; text (_ResultText): 문구; isMedicationSaving/isMedicationSaved/isAllMedicationSaving (bool): 진행·완료 상태; onPressed (Future<void> Function()): 저장 동작.
+  // 반환값: 새 _MedicationSaveIconButton.
   const _MedicationSaveIconButton({
     super.key,
     required this.text,
@@ -928,13 +863,10 @@ class _MedicationSaveIconButton extends StatelessWidget {
   }
 }
 
-// 클래스명: _DoseInfoCell
-// 역할: 복약 정보 표의 라벨과 값을 중앙에 표시한다.
-// 주요 책임:
-// - 내용과 글자 크기에 맞춰 표의 셀 높이를 조절한다.
-// 속성:
-// - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-// - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
+// Class Name: _DoseInfoCell
+// Role: A labeled dosage-table value.
+// Responsibilities: Centers each label/value while allowing the cell height to follow content and text scale.
+// Attributes: label (String): dose field name; value (String): displayed dose value.
 class _DoseInfoCell extends StatelessWidget {
   final String label;
   final String value;
@@ -947,11 +879,10 @@ class _DoseInfoCell extends StatelessWidget {
   // 반환값: 입력 설정이 반영된 _DoseInfoCell 인스턴스.
   const _DoseInfoCell({required this.label, required this.value});
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 복용량·횟수·기간의 라벨과 값 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 복용량·횟수·기간의 라벨과 값에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Centers one dose, frequency or duration label above its value.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -960,7 +891,7 @@ class _DoseInfoCell extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          KeepWordsText(
             label,
             textAlign: TextAlign.center,
             style: const TextStyle(
@@ -970,7 +901,7 @@ class _DoseInfoCell extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 2),
-          Text(
+          KeepWordsText(
             value,
             textAlign: TextAlign.center,
             style: const TextStyle(
@@ -1002,11 +933,10 @@ class _ResultText {
   // 반환값: 입력 설정이 반영된 _ResultText 인스턴스.
   const _ResultText(this.language);
 
-  // 함수이름: isEnglish
-  // 함수역할: 공통 언어 판별 규칙으로 언어 코드가 영어인지 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: isEnglish
+  // Description: Uses the shared language-code rule for result messages.
+  // Parameters: None.
+  // Returns: True when the language selects English.
   bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: title
@@ -1015,6 +945,10 @@ class _ResultText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get title => isEnglish ? 'Prescription Analysis Result' : '처방전 분석 결과';
+  // 함수이름: subtitle
+  // 함수역할: 분석한 약과 복용 일정을 확인하고 저장하도록 안내한다.
+  // 매개변수: 없음.
+  // 반환값: 현재 언어의 결과 화면 부제목.
   String get subtitle => isEnglish
       ? 'Review and save your medication schedules.'
       : '분석한 약과 복용 일정을 확인하고 저장합니다.';
@@ -1044,7 +978,15 @@ class _ResultText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get dose => isEnglish ? 'Dose' : '1회 투약량';
+  // 함수이름: medicationStartDate
+  // 함수역할: 약 복용 시작 날짜 라벨를 현재 언어로 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 표시 문구.
   String get medicationStartDate => isEnglish ? 'Start date' : '복용 시작일';
+  // 함수이름: scheduleSlots
+  // 함수역할: 복약 시간대 라벨를 현재 언어로 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 표시 문구.
   String get scheduleSlots => isEnglish ? 'Medication time slots' : '실제 복약 시간대';
   // 함수이름: duration
   // 함수역할: 현재 언어와 입력값에 맞춰 "총 투약일" 문구를 제공한다.
@@ -1096,11 +1038,10 @@ class _ResultText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get saveCompletedTitle =>
       isEnglish ? 'Medication schedule saved' : '복약 일정 저장 완료';
-  // 함수이름: saveCompletedDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "저장한 약을 오늘 일정이나 복약함에서 바로 확인할 수 있습니다." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: saveCompletedDescription
+  // Description: Explains where saved medications can be opened after saving.
+  // Parameters: None.
+  // Returns: Localized guidance to today's schedule or the medication cabinet.
   String get saveCompletedDescription => isEnglish
       ? 'Review the saved schedule now or return home.'
       : '저장한 약을 오늘 일정이나 복약함에서 바로 확인할 수 있습니다.';

@@ -46,6 +46,14 @@ void main() {
   //   한국어 표시는 저장된 그대로 두는지 검증한다.
   // 매개변수: 없음. 반환값: 없음; 불일치 시 테스트 실패.
   test('frequency label reads the stored count forms in English', () {
+    // Function Name: label
+    // Description:
+    // - Resolves the frequency label of a minimal schedule from stored intake text and a requested language.
+    // Parameters:
+    // - intakeTime (String): Stored frequency wording.
+    // - language (String): Output language code.
+    // Returns:
+    // - String: The schedule's localized daily-frequency label.
     String label(String intakeTime, String language) => MedicationSchedule(
       medicationName: 'synthetic',
       intakeTime: intakeTime,

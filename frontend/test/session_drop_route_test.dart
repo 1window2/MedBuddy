@@ -13,9 +13,14 @@ import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/main.dart';
 import 'package:medbuddy_frontend/services/notification_service.dart';
+import 'package:medbuddy_frontend/services/slot_check_notification_context.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// Class Name: _EmptyCheckSchedule
+// Role: Keep the routed schedule empty in the session-invalidation regression.
+// Responsibilities: Avoid backend reads while the provider-backed route is opened and removed.
+// Attributes: No additional state; overridden reads ignore inherited client configuration.
 class _EmptyCheckSchedule extends CheckSchedule {
   // Function Name: requestTodayMedicationSchedule
   // Description:
@@ -30,6 +35,10 @@ class _EmptyCheckSchedule extends CheckSchedule {
   }
 }
 
+// Class Name: _EmptySetNotification
+// Role: Remove stored alarm dependencies from the route teardown test.
+// Responsibilities: Return no alarm settings without invoking persistence or device synchronization.
+// Attributes: No additional state.
 class _EmptySetNotification extends SetNotification {
   // Function Name: requestMedicationAlarm
   // Description:
@@ -44,82 +53,85 @@ class _EmptySetNotification extends SetNotification {
   }
 }
 
+// Class Name: _NoopNotificationService
+// Role: Satisfy notification dependencies while testing session-driven route removal.
+// Responsibilities: Accept display, scheduling and cleanup calls without device effects; report permission as granted.
+// Attributes: None; this fake retains no reminders, account history or notification payloads.
 class _NoopNotificationService implements NotificationService {
+  // Function Name: showSlotCheckAlert
+  // Description: Accept a caregiver dose-check notification without showing it or recording history.
+  // Parameters: request (SlotCheckNotificationContext) is the action context; id (int), language (String) and messagePreview (String?) describe display; recordHistory and withTakenAction (bool) select persistence/actions. All are ignored by this fake.
+  // Returns: Future<void> completing without platform calls.
+  @override
+  Future<void> showSlotCheckAlert({
+    required SlotCheckNotificationContext request,
+    required int id,
+    required String language,
+    String? messagePreview,
+    bool recordHistory = false,
+    bool withTakenAction = true,
+  }) async {}
+
+  // 함수이름: updateLanguage
+  // 함수역할: 경로 정리 테스트에서 실제 알림 채널을 변경하지 않고 언어 변경 요청을 받아들인다.
+  // 매개변수: language (String)는 요청 언어이며 이 대역에서는 사용하지 않는다.
+  // 반환값: 플랫폼 호출 없이 완료되는 Future<void>.
   @override
   Future<void> updateLanguage(String language) async {}
 
-  // 함수이름: setHistoryUser
-  // 함수역할: 테스트에서는 계정별 플랫폼 저장을 생략한다. 매개변수: 계정과 저장 여부. 반환값: 없음.
+  // Function Name: setHistoryUser
+  // Description: Accept account-history configuration without changing stored notification ownership.
+  // Parameters: userHash (String?) is the requested owner; persistSession (bool) requests persistence. Both are unused here.
+  // Returns: None.
   @override
   void setHistoryUser(String? userHash, {bool persistSession = true}) {}
 
-  // 함수이름: setShowSensitiveDetails
-  // 함수역할:
-  // - 플랫폼 알림을 표시하지 않는 대역이므로 잠금 화면 상세정보 설정을 외부에 적용하지 않는다.
-  // 매개변수:
-  // - showSensitiveDetails (bool): 잠금 화면 알림에 민감 상세정보를 표시할지 여부. 이 대역에서는 직접 사용하지 않는다.
-  // 반환값:
-  // - 없음; 플랫폼 상태를 변경하지 않는다.
+  // Function Name: setShowSensitiveDetails
+  // Description: Ignore lock-screen detail preferences because the route test never displays native notifications.
+  // Parameters: showSensitiveDetails (bool) is the requested preview policy.
+  // Returns: None; no state is retained.
   @override
   void setShowSensitiveDetails(bool showSensitiveDetails) {}
 
-  // 함수이름: forgetArmedRemindersForTest
-  // 함수역할:
-  // - 기억한 예약이 없으므로 아무 일도 하지 않는다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음.
+  // Function Name: forgetArmedRemindersForTest
+  // Description: Satisfy reminder-reset calls; this fake has no armed-reminder registry.
+  // Parameters: None.
+  // Returns: None.
   @override
   void forgetArmedRemindersForTest() {}
 
-  // 함수이름: canScheduleExactReminders
-  // 함수역할:
-  // - 플랫폼에 묻지 않고 정확한 알람이 허용된 것으로 답한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<bool>; 항상 true.
+  // Function Name: canScheduleExactReminders
+  // Description: Make exact-alarm capability available without querying the operating system.
+  // Parameters: None.
+  // Returns: Future<bool> resolving to true.
   @override
   Future<bool> canScheduleExactReminders() async => true;
 
-  // 함수이름: requestExactReminderPermission
-  // 함수역할:
-  // - 시스템 설정 화면을 열지 않고 허용된 것으로 답한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<bool>; 항상 true.
+  // Function Name: requestExactReminderPermission
+  // Description: Grant the test's exact-alarm permission request without opening settings.
+  // Parameters: None.
+  // Returns: Future<bool> resolving to true.
   @override
   Future<bool> requestExactReminderPermission() async => true;
 
-  // 함수이름: rescheduleInexactRemindersAsExact
-  // 함수역할:
-  // - 실제 기기 알림을 건드리지 않고 재예약을 성공 처리한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>; 플랫폼 호출 없이 완료된다.
+  // Function Name: rescheduleInexactRemindersAsExact
+  // Description: Acknowledge alarm upgrading without creating or replacing native alarms.
+  // Parameters: None.
+  // Returns: Future<void> completing immediately.
   @override
   Future<void> rescheduleInexactRemindersAsExact() async {}
 
-  // 함수이름: openSystemNotificationSettings
-  // 함수역할:
-  // - 기기의 설정 앱을 열지 않고 시스템 알림 설정 이동을 성공 처리한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>; 플랫폼 호출 없이 완료된다.
+  // Function Name: openSystemNotificationSettings
+  // Description: Keep a requested notification-settings transition inside the test process.
+  // Parameters: None.
+  // Returns: Future<void> without launching system settings.
   @override
   Future<void> openSystemNotificationSettings() async {}
 
-  // 함수이름: cancelAllScheduledMedicationReminders
-  // 함수역할:
-  // - 실제 기기 알림을 건드리지 않고 예약 복약 알림 정리를 성공 처리한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>; 플랫폼 호출 없이 완료된다.
+  // Function Name: cancelAllScheduledMedicationReminders
+  // Description: Acknowledge scheduled-reminder cleanup without contacting the notification plugin.
+  // Parameters: None.
+  // Returns: Future<void>; the fake has no stored schedules to remove.
   @override
   Future<void> cancelAllScheduledMedicationReminders() async {}
 
@@ -173,17 +185,17 @@ class _NoopNotificationService implements NotificationService {
     String language = 'ko',
   }) async {}
 
-  // 함수이름: cancelReminder
-  // 함수역할:
-  // - 기기 예약을 변경하지 않고 개별 복약 알림 취소를 성공 처리한다.
-  // 매개변수:
-  // - id (int): 약·메시지·알림 대역의 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - slotKey (String?): 아침·점심·저녁·취침 전 등을 구분하는 복약 시간대 키. 이 대역에서는 직접 사용하지 않는다.
-  // 반환값:
-  // - Future<void>; 플랫폼 호출 없이 완료된다.
+  // Function Name: cancelReminder
+  // Description: Accept one reminder's cancellation without touching device schedules.
+  // Parameters: id (int) selects the reminder; slotKey (String?) optionally narrows its slot. Both are unused.
+  // Returns: Future<void> completing immediately.
   @override
   Future<void> cancelReminder(int id, {String? slotKey}) async {}
 
+  // Function Name: cancelReminderForDate
+  // Description: Accept date-scoped reminder cleanup without retaining or canceling platform alarms.
+  // Parameters: owner (String), slotKey (String) and date (DateTime) identify the requested dose; all are ignored.
+  // Returns: Future<void> completing immediately.
   @override
   Future<void> cancelReminderForDate({
     required String owner,
@@ -215,6 +227,7 @@ class _NoopNotificationService implements NotificationService {
   //   consumed by this fixture.
   // - delay (Duration): Requested snooze interval or retry-wait callback. Accepted but not consumed by
   //   this fixture.
+  // - scheduleDate (DateTime?): Original dose date to preserve when snoozing; accepted but unused by this fake.
   // Returns:
   // - Future<void>; completes without a platform call.
   @override
@@ -236,6 +249,7 @@ class _NoopNotificationService implements NotificationService {
   // - body (String): 호출자가 전달한 알림 또는 메시지 본문. 이 대역에서는 직접 사용하지 않는다.
   // - patientHash (String?): 요청 데이터 범위를 제한하는 환자 식별자. 이 대역에서는 직접 사용하지 않는다.
   // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+  // - alertContext (CaregiverAlertContext?): 보호자 조치 맥락, historyUserHash (String?): 이력 소유자, recordHistory (bool): 이력 저장 여부, onlyAlertOnce (bool): 재알림 억제 여부. 이 대역은 모두 무시한다.
   // 반환값:
   // - Future<void>; 플랫폼 호출 없이 완료된다.
   @override
@@ -261,6 +275,7 @@ class _NoopNotificationService implements NotificationService {
   // - messageKind (String?): 일반 텍스트 또는 복약 문맥 메시지 유형. 이 대역에서는 직접 사용하지 않는다.
   // - messagePreview (String?): 알림 인터페이스로 전달하는 선택적 채팅 미리보기. 이 대역에서는 직접 사용하지 않는다.
   // - slotKey (String?): 아침·점심·저녁·취침 전 등을 구분하는 복약 시간대 키. 이 대역에서는 직접 사용하지 않는다.
+  // - summary (ChatNotificationSummary?): 묶음 알림 요약, historyUserHash (String?): 이력 소유자, recordHistory (bool): 이력 저장 여부. 이 대역은 모두 무시한다.
   // 반환값:
   // - Future<void>; 플랫폼 호출 없이 완료된다.
   @override
@@ -277,7 +292,15 @@ class _NoopNotificationService implements NotificationService {
   }) async {}
 }
 
+// 함수이름: main
+// 함수역할: 인증 세션이 무효화될 때 루트 위의 복약 일정 경로가 안전하게 정리되는 위젯 회귀 검사를 등록한다.
+// 매개변수: 없음.
+// 반환값: 없음. 실제 검증은 등록된 테스트에서 수행한다.
 void main() {
+  // 함수이름: ending the session removes routes above the root without a provider error
+  // 함수역할: 알림으로 복약 일정 경로를 연 뒤 세션을 무효화하여 제거된 provider를 참조하는 화면이 남지 않는지 확인한다.
+  // 매개변수: tester (WidgetTester)는 화면·알림 이동·세션 무효화 후 프레임을 진행한다.
+  // 반환값: Future<void>. Flutter 오류가 없고 루트 위 경로와 일정 화면이 모두 사라져야 한다.
   testWidgets(
     'ending the session removes routes above the root without a provider error',
     (tester) async {

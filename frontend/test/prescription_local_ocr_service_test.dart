@@ -28,9 +28,23 @@ class _FakeTextRecognizer implements TextRecognizer {
   // - _FakeTextRecognizer: 초기화된 인스턴스.
   _FakeTextRecognizer(this.recognizedText);
 
+  // Function Name: script
+  // Description:
+  // - Identifies the fake recognizer as the Korean script implementation.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - TextRecognitionScript.korean.
   @override
   TextRecognitionScript get script => TextRecognitionScript.korean;
 
+  // Function Name: id
+  // Description:
+  // - Provides a stable recognizer identifier without a native instance.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - String: fake-text-recognizer.
   @override
   String get id => 'fake-text-recognizer';
 
@@ -217,6 +231,13 @@ void main() {
     );
   });
 
+  // 함수이름: test callback
+  // 함수역할:
+  // - 복약 문구 속 전화번호·이메일·주민번호 원문을 제거하고 각 종류의 제거 표시로 바꾸는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('복약 문구에 섞인 직접 식별자는 원문을 남기지 않는다', () {
     final masked = filter.maskInlineIdentifiers(
       '문의 010-1234-5678, user@example.com, 900101-1234567',
@@ -589,5 +610,126 @@ void main() {
     expect(result.maskedText.split('\n'), hasLength(85));
     expect(result.maskedText, contains('복약 안내 84'));
     expect(result.maskedText, isNot(contains('홍길동')));
+  });
+
+  // 함수이름: 표의 같은 행 값 가리기 테스트
+  // 함수역할: 인식기가 표의 값 칸을 라벨 칸보다 먼저 돌려줘도, 개인정보 라벨 오른쪽 같은 행의 가장 가까운 칸을 가리고
+  //   다른 라벨의 값과 약 행은 남기는지 검증한다.
+  // 매개변수: 없음. 반환값: 없음; 불일치 시 테스트 실패.
+  test('표에서 값 칸이 라벨보다 먼저 인식돼도 같은 행의 개인정보 값을 가린다', () {
+    const filter = PrescriptionPrivacyFilter();
+    // 사용설명서 촬영 중 에뮬레이터에서 본 순서: 이름 칸이 라벨 열보다 먼저 나왔다.
+    const lines = [
+      '홍길동 (가상)',
+      '교부일자',
+      '의료기관',
+      '환자 성명',
+      '주민등록번호',
+      '2026-11-11',
+      '메드버디의원',
+      '******-*******',
+      '아스피린정100밀리그램 1정 1일 1회',
+    ];
+    // 함수이름: cell
+    // 함수역할: 표의 칸 위치를 픽셀 경계로 만든다.
+    // 매개변수: left (double): 왼쪽 픽셀; row (int): 표의 행. 반환값: Rect.
+    Rect cell(double left, int row) =>
+        Rect.fromLTWH(left, 210 + row * 60.0, 200, 30);
+    final boxes = [
+      cell(380, 2),
+      cell(100, 0),
+      cell(100, 1),
+      cell(100, 2),
+      cell(100, 3),
+      cell(380, 0),
+      cell(380, 1),
+      cell(380, 3),
+      cell(100, 6),
+    ];
+    final byOrder = filter.sensitiveLineFlags(lines);
+    expect(byOrder.first, isFalse, reason: '순서만 보면 이름 칸을 놓친다');
+
+    final flags = filter.withSameRowValues(lines, boxes, byOrder);
+
+    expect(flags[0], isTrue, reason: '환자 성명 오른쪽 칸');
+    expect(flags[3], isTrue);
+    expect(flags[4], isTrue);
+    expect(flags[7], isTrue, reason: '주민등록번호 오른쪽 칸');
+    expect(flags[1], isFalse);
+    expect(flags[2], isFalse);
+    expect(flags[8], isFalse);
+    // 같은 행이라도 약 행과 다른 라벨 줄은 값으로 보지 않는다.
+    expect(
+      filter.withSameRowValues(
+        const ['성명', '아스피린 100mg', '주소'],
+        [cell(100, 0), cell(380, 0), cell(700, 0)],
+        const [true, false, true],
+      ),
+      [true, false, true],
+    );
+  });
+
+  // 함수이름: recognizeAndMask 표 배치 전송 텍스트 테스트
+  // 함수역할: 값 칸이 라벨 칸보다 먼저 인식된 표에서 환자 이름이 전송 텍스트에 남지 않고 마스킹 영역이 되는지 검증한다.
+  // 매개변수: 없음. 반환값: Future<void>; 불일치 시 테스트 실패.
+  test('recognizeAndMask는 표의 이름 칸이 먼저 인식돼도 전송하지 않는다', () async {
+    final imagePath = await _writeBlankImage();
+    // 함수이름: line
+    // 함수역할: 지정한 칸 위치의 OCR 줄을 만든다.
+    // 매개변수: text (String): 줄 문구; left (double): 왼쪽 픽셀; row (int): 표의 행. 반환값: TextLine.
+    TextLine line(String text, double left, int row) => TextLine(
+      text: text,
+      elements: const [],
+      boundingBox: Rect.fromLTWH(left / 6, 20 + row * 30.0, 30, 16),
+      recognizedLanguages: const ['ko'],
+      cornerPoints: const <Point<int>>[],
+      confidence: null,
+      angle: null,
+    );
+    // 함수이름: block
+    // 함수역할: 줄 묶음을 한 블록으로 만든다. 매개변수: lines (List<TextLine>). 반환값: TextBlock.
+    TextBlock block(List<TextLine> lines) => TextBlock(
+      text: [for (final line in lines) line.text].join('\n'),
+      lines: lines,
+      boundingBox: const Rect.fromLTRB(0, 0, 200, 10),
+      recognizedLanguages: const ['ko'],
+      cornerPoints: const <Point<int>>[],
+    );
+    final blocks = [
+      block([line('홍길동 (가상)', 380, 2)]),
+      block([
+        line('교부일자', 100, 0),
+        line('의료기관', 100, 1),
+        line('환자 성명', 100, 2),
+      ]),
+      block([line('2026-11-11', 380, 0), line('메드버디의원', 380, 1)]),
+      block([line('타이레놀정 500mg 1정 3회 5일', 100, 5)]),
+    ];
+    final service = PrescriptionLocalOcrService(
+      textRecognizer: _FakeTextRecognizer(
+        RecognizedText(
+          text: [
+            for (final textBlock in blocks) textBlock.text,
+          ].join('\n'),
+          blocks: blocks,
+        ),
+      ),
+    );
+
+    final result = await service.recognizeAndMask(imagePath);
+
+    expect(result.maskedText, isNot(contains('홍길동')));
+    expect(result.maskedText, contains('메드버디의원'));
+    expect(result.maskedText, contains('타이레놀정 500mg 1정 3회 5일'));
+    // 이름 행(위쪽 80px / 2000px = 40)의 라벨과 이름 칸이 모두 마스킹 영역이다.
+    expect(
+      result.regions.where(
+        // 함수이름: where 콜백
+        // 함수역할: 이름 행의 개인정보 영역만 고른다.
+        // 매개변수: region (RecognizedTextRegion): 검사할 영역. 반환값: 이름 행의 개인정보 영역이면 true.
+        (region) => region.isSensitive && region.box2d.first == 40,
+      ),
+      hasLength(2),
+    );
   });
 }

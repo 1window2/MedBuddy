@@ -1,5 +1,5 @@
 // 파일명: medication_search_setting_ui_test.dart
-// 역할: 약품 검색 슬라이더의 초안·저장·접근성과 작은 화면 배치를 검증한다.
+// 역할: 약 검색 모드의 초안·저장 잠금과 좁은 화면 접근성 조작을 검증한다.
 import 'dart:async';
 import 'dart:ui' show SemanticsAction, Tristate;
 
@@ -11,10 +11,22 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 
 final _slider = find.byKey(const ValueKey('medicationSearchModeSlider'));
+// 함수이름: _label
+// 함수역할: 검색 모드별 선택 라벨을 안정적인 키로 찾는다.
+// 매개변수: mode (String): fast·balanced·thorough 저장 값.
+// 반환값: 해당 라벨의 Finder.
 Finder _label(String mode) =>
     find.byKey(ValueKey('medicationSearchMode-$mode'));
 
+// 함수이름: main
+// 함수역할: 검색 모드 배치·초안 이탈·저장 잠금·언어별 큰 글씨 접근성 사례를 등록한다.
+// 매개변수: 없음.
+// 반환값: 없음. 검색 설정 UI 테스트 등록.
 void main() {
+  // 함수이름: testWidgets: '검색은 알림 수신 뒤에 놓이고 슬라이더와 라벨은 저장 전 초안만 바꾼다'
+  // 함수역할: 검색 구역의 순서와 3단계 슬라이더를 확인하고 라벨·드래그로 값을 바꾼 뒤 저장한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 저장 전 호출은 없고 최종 thorough만 저장되며 뒤로갈 때 미저장 경고가 없다.
   testWidgets('검색은 알림 수신 뒤에 놓이고 슬라이더와 라벨은 저장 전 초안만 바꾼다', (tester) async {
     final saved = <UserSetting>[];
     await _pumpSettings(
@@ -68,6 +80,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets: '검색 모드만 바꿔도 미저장 확인을 띄우고 취소하거나 원래 값으로 복귀한다'
+  // 함수역할: 모드만 변경해 이탈 후 취소하고, 다시 다른 모드에서 balanced로 돌아온 뒤 이탈한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 취소 후 기본 모드가 복원되고 원래 값으로 돌아오면 경고·저장 호출이 없다.
   testWidgets('검색 모드만 바꿔도 미저장 확인을 띄우고 취소하거나 원래 값으로 복귀한다', (tester) async {
     var saves = 0;
     await _pumpSettings(
@@ -100,6 +116,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets: '저장 중에는 검색 슬라이더와 라벨을 잠근다'
+  // 함수역할: fast 저장 응답을 대기시킨 상태에서 thorough 라벨을 누른 뒤 저장을 완료한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 대기 중 슬라이더와 라벨은 값을 바꾸지 못하고 저장 후 슬라이더 동작이 복구된다.
   testWidgets('저장 중에는 검색 슬라이더와 라벨을 잠근다', (tester) async {
     final save = Completer<UserSettingSaveResult>();
     UserSetting? saving;
@@ -127,6 +147,10 @@ void main() {
 
   for (final language in ['ko', 'en']) {
     for (final scale in [1.0, 2.0]) {
+      // 함수이름: testWidgets: '320px와 큰 글씨에서 세 라벨과 접근성 동작을 유지한다 $language $scale'
+      // 함수역할: 320px에서 언어·글씨 배율별로 세 선택 라벨과 슬라이더 의미 정보를 확인하고 thorough를 저장한다.
+      // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+      // 반환값: 라벨은 겹치지 않고 48px 이상 터치 영역·선택 의미를 유지하며 증가/감소 음성 동작과 저장값이 맞고 예외가 없다.
       testWidgets('320px와 큰 글씨에서 세 라벨과 접근성 동작을 유지한다 $language $scale', (
         tester,
       ) async {
@@ -199,7 +223,10 @@ void main() {
   }
 }
 
-// 함수역할: 실제 설정 화면을 열되 계정·저장·음성 동작은 테스트로 격리한다.
+// 함수이름: _pumpSettings
+// 함수역할: 개발 인증·무동작 음성·주입 저장 대역으로 실제 설정을 열고 약품 검색 구역을 드러낸다.
+// 매개변수: tester (WidgetTester): 화면 제어; language (String): 표시 언어; onSave (Future<UserSettingSaveResult> Function(UserSetting)): 저장 대역.
+// 반환값: 설정 생성 및 검색 구역 표시 완료.
 Future<void> _pumpSettings(
   WidgetTester tester, {
   String language = 'ko',
@@ -222,6 +249,10 @@ Future<void> _pumpSettings(
   await _openMedicationSettings(tester);
 }
 
+// 함수이름: _openMedicationSettings
+// 함수역할: 복약 및 알림 메뉴로 진입해 검색 모드 구역을 화면 안에 놓는다.
+// 매개변수: tester (WidgetTester): 화면 탐색·스크롤 제어.
+// 반환값: 검색 구역까지 전환·스크롤 완료.
 Future<void> _openMedicationSettings(WidgetTester tester) async {
   final menu = find.byKey(
     const ValueKey('settingsMedicationAndNotificationsMenu'),

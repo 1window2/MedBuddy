@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import '../boundaries/medication_search_ui_boundary.dart';
 import '../services/dose_home_widget_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -51,23 +52,23 @@ import '../entities/feature_search_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: home_screen.dart
 // 역할: ViewModel의 처방전 분석 상태에 따라 실제 표시할 화면을 선택한다.
 
-// Class Name: HomeScreen
-// Role: Represents the active screen selected by prescription flow and navigation destination.
-// Responsibilities:
-// - Renders one screen for the current PrescriptionFlowState.
-// - Connects Home navigation to saved medications, today's schedule, and settings.
+// 클래스명: HomeScreen
+// 역할: 처방 흐름과 하단 탐색에 맞춰 현재 계정의 화면을 선택한다.
+// 주요 책임: 홈·채팅·일정·설정 이동과 계정별 보호자 현황을 연결한다.
+// 속성: chatListFactory/caregiverHomeFactory: 선택적 계정별 제어기 생성 함수; nowProvider: 홈 일정 판단용 시각 주입.
 class HomeScreen extends StatefulWidget {
   final ManageChatList Function(String userHash)? chatListFactory;
   final CheckCaregiverHome Function(String userHash)? caregiverHomeFactory;
   final DateTime Function()? nowProvider;
   // 함수이름: HomeScreen
-  // 함수역할: 처방 흐름과 하단 탐색을 관리하는 홈 화면을 생성한다.
-  // 매개변수: key: 위젯 식별자, chatListFactory: 계정별 채팅 목록 Control의 선택적 생성 경계.
-  // 반환값: 홈 화면.
+  // 함수역할: 처방 흐름과 하단 탐색을 관리하며 테스트·조립용 조회 및 시계 경계를 선택적으로 주입한다.
+  // 매개변수: key (Key?): 위젯 식별자; chatListFactory (ManageChatList Function(String)?): 계정별 채팅 목록 Control 생성; caregiverHomeFactory (CheckCaregiverHome Function(String)?): 계정별 보호자 홈 조회 생성; nowProvider (DateTime Function()? ): 날짜·시간 판단 시계.
+  // 반환값: HomeScreen: 구성된 홈 화면.
   const HomeScreen({
     super.key,
     this.chatListFactory,
@@ -94,7 +95,6 @@ class HomeScreen extends StatefulWidget {
 // - _selectedDestination (MedBuddyDestination): Top-level navigation destination to display or select.
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   MedBuddyDestination _selectedDestination = MedBuddyDestination.home;
-  int _historyRevision = 0;
   ManageChatList? _chatList;
   CheckCaregiverHome? _caregiverHome;
   String? _homeScheduleSource;
@@ -105,6 +105,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? _widgetCacheSignature;
   ForegroundRecoveryService? _medicationRecovery;
   MedBuddyViewModel? _recoveryOwner;
+  // 함수이름: _onScheduleRecoveryNeeded
+  // 함수역할: 화면이 활성 상태이고 일정 조회 실패가 남아 있을 때 복구 조회를 시작한다.
+  // 매개변수: 없음.
+  // 반환값: 없음; 이미 조회 중이거나 소유 모델이 없으면 시작하지 않는다.
   void _onScheduleRecoveryNeeded() {
     final owner = _recoveryOwner;
     if (_isForeground &&
@@ -116,6 +120,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   bool _isForeground = true;
+  // Whether this screen's route was on top at the last dependency change; links refresh when it returns to the top.
+  bool _routeWasCurrent = true;
   bool _featureSearchOpen = false;
   bool _prescriptionExitDialogOpen = false;
   String? _updatingHomeMedicationSlotKey;
@@ -135,9 +141,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
   }
 
-  // 함수이름: _syncChatControl
-  // 함수역할: 계정 변경에 맞춰 목록 Control을 교체하고 이전 계정 상태를 비운다.
-  // 매개변수: viewModel: 현재 계정과 설정. 반환값: 없음. 첫 조회는 빌드 완료 뒤 실행한다.
+  // 함수이름: didChangeDependencies
+  // 함수역할: 홈을 덮던 화면이 닫혀 홈이 다시 맨 위가 되면, 덮여 있는 동안 건너뛴 연동 조회를 바로 하고 주기를 다시 시작한다.
+  // 매개변수: 없음. 반환값: 없음.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+    if (isCurrent && !_routeWasCurrent && _isForeground && _chatList != null) {
+      // Restarting also moves the next periodic read 15 s after this one.
+      _startChatRefresh();
+    }
+    _routeWasCurrent = isCurrent;
+  }
+
+  // Function Name: _syncChatControl
+  // Description: Rebinds chat and caregiver-home controllers on account changes and refreshes language/source changes after the frame.
+  // Parameters: viewModel: Current account and settings.
+  // Returns: None; disposes old account controllers, clears visited chat state and defers initial reads until build completes.
   void _syncChatControl(MedBuddyViewModel viewModel) {
     final userHash = viewModel.patientHash;
     final source = viewModel.userSetting.homeScheduleSource;
@@ -196,12 +217,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  // 함수이름: _showChatDestination
+  // 함수역할: 연동 조회 전이나 최초 조회 실패를 연결 해제로 오인하지 않도록, 지난번에 연동이 있던 계정은 채팅 진입을 유지한다.
+  // 매개변수: 없음.
+  // 반환값: 확인된 연동이 있거나, 확인 전이고 이 기기에서 지난번에 연동이 있었으면 true. 대화 접근 권한과는 별개다.
+  bool get _showChatDestination => _chatList?.offersChat ?? false;
+
   // 함수이름: _onChatListChanged
-  // 함수역할: 연동 유무에 따라 탭을 갱신하며 마지막 연동이 사라지면 홈으로 돌아간다.
+  // 함수역할: 연동 조회 상태에 따라 탭을 갱신하며 서버에서 마지막 연동 해제를 확인하면 홈으로 돌아간다.
   // 매개변수: 없음. 반환값: 없음.
   void _onChatListChanged() {
     if (!mounted) return;
     final signature = jsonEncode([
+      _chatList?.hasResolvedLinks,
+      _chatList?.offersChat,
       _chatList?.hasError,
       _chatList?.links
           .map(
@@ -220,10 +249,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _publishCaregiverWidget();
     setState(
       // 함수이름: 연동 상태 갱신 콜백
-      // 함수역할: 연동 없는 채팅 탭의 방문·선택 상태를 해제한다.
+      // 함수역할: 연동 없음이 확인된 채팅 탭의 방문·선택 상태만 해제한다.
       // 매개변수: 없음. 반환값: 없음.
       () {
-        if (_chatList?.links.isEmpty ?? true) {
+        if (!_showChatDestination) {
           _visitedDestinations.remove(MedBuddyDestination.chat);
           if (_selectedDestination == MedBuddyDestination.chat) {
             _selectedDestination = MedBuddyDestination.home;
@@ -245,7 +274,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
-  // 현재 화면에 필요한 연동·환자 일정만 읽고 완료한 상태를 위젯과 공유한다.
+  // 함수이름: _loadHomeLinks
+  // 함수역할: 현재 화면에 필요한 연동과 선택된 환자 홈 일정만 조회한다.
+  // 매개변수: 없음.
+  // 반환값: 조회 완료 Future; 현재 전면 홈 화면에서 환자 일정을 선택한 경우에만 보호자 현황과 위젯을 갱신한다.
   Future<void> _loadHomeLinks() async {
     if (!_isForeground) return;
     final chat = _chatList;
@@ -266,7 +298,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  // 앱에서 확인한 연동 해제·별칭·복약 상태도 위젯에 즉시 반영한다.
+  // 함수이름: _publishCaregiverWidget
+  // 함수역할: 앱에서 확인한 보호자 연동·별칭·일정 상태를 변경된 경우에만 위젯으로 게시한다.
+  // 매개변수: 없음.
+  // 반환값: 없음; 게시 실패나 거절 시 서명을 비워 다음 게시를 재시도할 수 있게 한다.
   void _publishCaregiverWidget() {
     final control = _caregiverHome;
     if (!mounted || control == null || _homeScheduleSource != 'patients') {
@@ -306,15 +341,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _chatRefreshTimer = Timer.periodic(
       const Duration(seconds: 15),
       // 함수이름: 연동 조회 타이머 콜백
-      // 함수역할: 활성 앱의 연동 상태를 갱신한다.
+      // 함수역할: 활성 앱의 연동 상태를 갱신한다. 다른 화면이 홈을 덮고 있으면 결과를 보는 곳이 없으므로 건너뛰고, 홈이 다시 보일 때 didChangeDependencies가 바로 갱신한다.
       // 매개변수: timer: 주기 타이머. 반환값: 없음.
-      (timer) => _refreshChatList(),
+      (timer) {
+        if (ModalRoute.of(context)?.isCurrent ?? true) _refreshChatList();
+      },
     );
   }
 
-  // 함수이름: didChangeAppLifecycleState
-  // 함수역할: 앱 복귀 시 즉시 조회하고 비활성 상태에서는 타이머를 중지한다.
-  // 매개변수: state: 앱 실행 상태. 반환값: 없음.
+  // Function Name: didChangeAppLifecycleState
+  // Description: Starts foreground refresh/recovery on resume and stops polling when inactive.
+  // Parameters: state: New app lifecycle state.
+  // Returns: None; resumed state also attempts to upgrade inexact reminders after permission changes without surfacing plugin errors.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _isForeground = state == AppLifecycleState.resumed;
@@ -607,6 +645,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  // Function Name: _confirmResultExit
+  // Description: Confirms leaving unsaved analysis while preventing duplicate dialogs or stale-flow cancellation.
+  // Parameters: context: Dialog context; viewModel: Prescription flow owner.
+  // Returns: Completion after any confirmation; fully saved results close immediately, and a confirmed exit clears only the unchanged flow.
   Future<void> _confirmResultExit(
     BuildContext context,
     MedBuddyViewModel viewModel,
@@ -626,8 +668,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: Text(english ? 'Leave analysis?' : '분석 결과를 나갈까요?'),
-          content: Text(
+          title: KeepWordsText(english ? 'Leave analysis?' : '분석 결과를 나갈까요?'),
+          content: KeepWordsText(
             english
                 ? 'You will return to the home screen. Unsaved results will be lost, and you will need to take or select the photo again.'
                 : '메인 화면으로 이동합니다. 저장하지 않은 결과는 사라지며 사진을 다시 촬영하거나 선택해야 합니다.',
@@ -654,21 +696,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  // 함수이름: _openMedicationCabinet
+  // 함수역할: 복약함 화면을 별도 경로로 열고 돌아올 때까지 기다린다.
+  // 매개변수: 없음.
+  // 반환값: 복약함 경로가 닫히면 완료되는 Future.
   Future<void> _openMedicationCabinet() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(builder: (_) => const CheckSavedMedicationUI()),
     );
   }
 
-  // 함수이름: _buildApplicationShell
-  // 함수역할: 방문한 화면 상태를 유지하고 활성 연동이 있을 때만 채팅 목적지와 탭을 추가한다.
-  // 매개변수: context, viewModel: 화면 문맥과 현재 사용자 상태.
-  // 반환값: 활성 목적지와 하단 탐색 막대.
+  // Function Name: _buildApplicationShell
+  // Description: Builds persistent visited destinations and keeps chat available until the server confirms there are no active links.
+  // Parameters: context: Build context; viewModel: Current account state.
+  // Returns: The navigation shell with dose-sync notices; back from a non-home destination selects Home.
   Widget _buildApplicationShell(
     BuildContext context,
     MedBuddyViewModel viewModel,
   ) {
-    final showChat = _chatList?.links.isNotEmpty ?? false;
+    final showChat = _showChatDestination;
     final destinations = [
       MedBuddyDestination.home,
       MedBuddyDestination.schedule,
@@ -681,7 +727,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return PopScope<void>(
       canPop: _selectedDestination == MedBuddyDestination.home,
       // Function Name: _buildApplicationShell.onPopInvokedWithResult callback
-      // Description: Refreshes revisited Schedule or Pillbox destinations and records a newly selected destination as visited.
+      // Description: Selects Home when back navigation was intercepted on another destination.
       // Parameters:
       // - didPop (bool): Whether the navigation framework already popped the route.
       // - _ (inferred by callback contract): Argument required by the callback contract but unused by the body.
@@ -717,12 +763,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _buildDestination(
               MedBuddyDestination.medicationHistory,
               // Function Name: _buildApplicationShell._buildDestination callback
-              // Description: Supplies the signed-in user's own medication history, rebuilt each time the tab is selected.
+              // Description: Preserves the signed-in user's history state across tab changes; activation refreshes its data.
               // Parameters:
               // - None.
               // Returns: The medication history screen.
               () => MedicationHistoryUI(
-                key: ValueKey((viewModel.patientHash, _historyRevision)),
+                key: ValueKey(viewModel.patientHash),
                 patientHash: viewModel.patientHash,
                 currentUserHash: viewModel.patientHash,
                 isEnglish: viewModel.userSetting.isEnglish,
@@ -753,7 +799,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _buildDestination(
               MedBuddyDestination.profile,
               // Function Name: _buildApplicationShell._buildDestination callback
-              // 함수역할: 현재 사용자 정보로 환자·보호자 연동 관리 화면을 연다.
+              // Description: Builds the account hub with current settings and account-management navigation.
               // Parameters:
               // - None.
               // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
@@ -761,7 +807,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 userSetting: viewModel.userSetting,
                 authenticationControl: context.read<AuthenticationControl>(),
                 // Function Name: _buildApplicationShell.onPatientCaregiverLinkRequested callback
-                // 함수역할: 현재 사용자 정보로 환자·보호자 연동 관리 화면을 연다.
+                // Description: Opens patient-caregiver link management for the current account.
                 // Parameters:
                 // - None.
                 // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
@@ -784,7 +830,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             if (viewModel.doseSync case final sync?)
               DoseSyncStatus(
                 service: sync,
-                isEnglish: viewModel.userSetting.language == 'en',
+                isEnglish: isEnglishLanguage(viewModel.userSetting.language),
               ),
             MedBuddyBottomNavigationUI(
               selectedDestination: _selectedDestination,
@@ -814,13 +860,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return KeyedSubtree(key: ValueKey(destination), child: builder());
   }
 
-  // 함수이름: _selectDestination
-  // 함수역할: 연동 없는 채팅 진입을 막고 일정·복약함·채팅을 갱신한 뒤 목적지를 선택한다.
-  // 매개변수: destination: 선택할 목적지. 반환값: 없음.
+  // Function Name: _selectDestination
+  // Description: Selects an available destination and triggers its relevant refresh without waiting for navigation; conversation access is checked separately.
+  // Parameters: destination: Requested bottom-navigation target.
+  // Returns: None; chat with a confirmed empty link list is refused and visited screens retain their state while refreshing relevant data.
   void _selectDestination(MedBuddyDestination destination) {
     if (destination == MedBuddyDestination.home) unawaited(_refreshChatList());
-    if (destination == MedBuddyDestination.chat &&
-        (_chatList?.links.isEmpty ?? true)) {
+    if (destination == MedBuddyDestination.chat && !_showChatDestination) {
       return;
     }
     if (destination == MedBuddyDestination.chat) {
@@ -843,9 +889,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // - None.
     // Returns: No payload; applies the captured state changes.
     setState(() {
-      if (destination == MedBuddyDestination.medicationHistory) {
-        _historyRevision++;
-      }
       _selectedDestination = destination;
       _visitedDestinations.add(destination);
     });
@@ -867,7 +910,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               _chatList?.hasError == false &&
               (_caregiverHome?.links.isNotEmpty ?? false)
           ? HomeLinkedPatientHint(
-              isEnglish: viewModel.userSetting.language == 'en',
+              isEnglish: isEnglishLanguage(viewModel.userSetting.language),
               onTap: () => _openUserSettings(
                 context,
                 viewModel,
@@ -971,16 +1014,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  // 함수이름: _sameSession
-  // 함수역할: 비동기 대기 뒤에도 같은 화면 모델·계정인지 확인한다. context를 읽으므로 mounted 확인 뒤 호출한다.
-  // 매개변수: viewModel·owner는 작업을 시작한 세션의 화면 모델과 계정. 반환값: 같은 세션이면 true.
+  // Function Name: _sameSession
+  // Description: Verifies that asynchronous navigation still belongs to the same model and account.
+  // Parameters: viewModel: Original model; owner: Original account hash; caller must first verify mounted.
+  // Returns: True when the current provider instance and patient hash still match.
   bool _sameSession(MedBuddyViewModel viewModel, String owner) =>
       identical(context.read<MedBuddyViewModel>(), viewModel) &&
       viewModel.patientHash == owner;
 
-  // 함수이름: _openNearbyCare
-  // 함수역할: 병원 또는 약국 지도 탐색 화면을 현재 계정으로 열고 화면이 닫힐 때 완료한다.
-  // 매개변수: context는 내비게이터 위치, viewModel은 현재 화면 모델, hospitals는 병원 탐색 여부.
+  // Function Name: _openNearbyCare
+  // Description: Opens hospital or pharmacy search with explicit account ownership for local preferences.
+  // Parameters: context: Navigator location; viewModel: Current settings owner; hospitals: Provider type.
+  // Returns: Completion when the nearby-care route closes.
   Future<void> _openNearbyCare(
     BuildContext context,
     MedBuddyViewModel viewModel, {
@@ -998,9 +1043,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     ),
   );
 
-  // 함수이름: _openFeatureSearch
-  // 함수역할: 검색이 끝난 뒤에도 같은 계정인지 확인하고 기존 진입점으로 이동한다.
-  // 매개변수: viewModel은 검색을 시작한 세션의 화면 모델. 반환값: 이동 화면 종료.
+  // Function Name: _openFeatureSearch
+  // Description: Opens a single feature-search route whose selections remain tied to the initiating account.
+  // Parameters: viewModel: Session that initiated the search.
+  // Returns: Completion after route closure; prevents duplicate search routes and always releases its open flag.
   Future<void> _openFeatureSearch(MedBuddyViewModel viewModel) async {
     if (_featureSearchOpen) return;
     _featureSearchOpen = true;
@@ -1025,6 +1071,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  // 함수이름: _openSearchedFeature
+  // 함수역할: 검색 결과를 기존 기능 진입점에 연결하고 비동기 선택 뒤에도 같은 계정인지 확인한다.
+  // 매개변수: searchContext: 검색 화면 문맥; viewModel/owner: 시작한 계정 상태; feature: 선택 기능.
+  // 반환값: 관련 화면 처리 완료 Future; 종료·세션 변경은 무시하고 확인되지 않은 채팅 권한은 연동 관리로 안내한다.
   Future<void> _openSearchedFeature(
     BuildContext searchContext,
     MedBuddyViewModel viewModel,
@@ -1061,6 +1111,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     switch (feature) {
       case AppFeature.manualMedication:
         _openManualMedicationEntry(context, viewModel);
+      case AppFeature.medicationSearch:
+        await Navigator.push<void>(
+          searchContext,
+          MaterialPageRoute(
+            builder: (_) =>
+                MedicationSearchUI(userSetting: viewModel.userSetting),
+          ),
+        );
       case AppFeature.schedule:
         _selectDestination(MedBuddyDestination.schedule);
         if (searchContext.mounted) Navigator.pop(searchContext);
@@ -1165,7 +1223,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   // 함수이름: _openSearchedPatient
-  // 함수역할: 보호자 본인의 기록 대신 현재 연결된 환자를 선택하고 기존 권한 재검증 경로로 연다.
+  // 함수역할: 최신 보호자 연동을 조회해 환자를 선택하고 기존 권한 재검증 경로로 이동한다.
+  // 매개변수: viewModel: 시작한 세션 모델; origin: 선택적 검색 경로 문맥.
+  // 반환값: 선택·이동 완료 Future; 계정·화면이 바뀌면 중단하고 유효한 연동이 없으면 연동 관리를 연다.
   Future<void> _openSearchedPatient(
     MedBuddyViewModel viewModel, {
     BuildContext? origin,
@@ -1204,7 +1264,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   children: [
                     Padding(
                       padding: const EdgeInsets.all(20),
-                      child: Text(
+                      child: KeepWordsText(
                         viewModel.userSetting.isEnglish
                             ? 'Choose a patient'
                             : '환자 선택',
@@ -1217,7 +1277,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     for (final link in links)
                       ListTile(
                         leading: const Icon(Icons.person_outline),
-                        title: Text(
+                        title: KeepWordsText(
                           chat!.peerName(
                             link,
                             isEnglish: viewModel.userSetting.isEnglish,
@@ -1235,8 +1295,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _openCaregiverPatient(viewModel, selected);
   }
 
-  // 함수역할: 복용약 유무가 아닌 사용자가 저장한 홈 일정 선택만 적용한다.
-  // 매개변수: 현재 사용자 ViewModel. 반환값: 가족 현황 또는 기존 홈 유지용 null.
+  // Function Name: _buildCaregiverSummary
+  // Description: Builds caregiver home content only when the saved home-source preference explicitly selects patients.
+  // Parameters: viewModel: Current settings and account.
+  // Returns: The caregiver summary, or null to retain the normal home layout when source/controllers are unavailable.
   Widget? _buildCaregiverSummary(MedBuddyViewModel viewModel) {
     final control = _caregiverHome;
     final chat = _chatList;
@@ -1245,7 +1307,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         chat == null) {
       return null;
     }
-    final english = viewModel.userSetting.language == 'en';
+    final english = isEnglishLanguage(viewModel.userSetting.language);
     return CaregiverHomeSummaryUI(
       control: control,
       isEnglish: english,
@@ -1258,8 +1320,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  // 함수역할: 현재 연동을 재확인하고 기존 읽기 전용 환자 복약 화면을 연다.
-  // 매개변수: 현재 사용자와 선택 연동. 반환값: 상세 화면 종료 및 갱신 완료.
+  // Function Name: _openCaregiverPatient
+  // Description: Revalidates the selected active caregiver relationship before opening read-only patient medication details.
+  // Parameters: viewModel: Current owner; link: Selected relationship.
+  // Returns: Completion when details close; invalid/error/cross-account links are ignored and return triggers a background home refresh.
   Future<void> _openCaregiverPatient(
     MedBuddyViewModel viewModel,
     PatientCaregiverLink link,
@@ -1285,7 +1349,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           patientHash: link.patientHash,
           patientLabel: chat.peerName(
             link,
-            isEnglish: viewModel.userSetting.language == 'en',
+            isEnglish: isEnglishLanguage(viewModel.userSetting.language),
           ),
           userSetting: viewModel.userSetting,
         ),
@@ -1294,13 +1358,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) unawaited(_refreshChatList());
   }
 
-  // Function Name: _updateHomeMedicationSlot
-  // Description: Saves completion or cancellation through the existing sync path and offers schedule review after success.
-  // Parameters:
-  // - viewModel (MedBuddyViewModel): View model exposing screen state, user settings, and medication actions.
-  // - slotKey (String): Key identifying morning, lunch, evening, or bedtime.
-  // - completed (bool): Completion state to save for the selected slot.
-  // Returns: True when the requested state was durably accepted.
+  // 함수이름: _updateHomeMedicationSlot
+  // 함수역할: 홈 시간대 완료·취소를 기존 저장 경로에 전달하고 누른 시각 기준으로 필요한 안내를 표시한다.
+  // 매개변수: viewModel: 현재 기록 소유 모델; slotKey: 시간대; completed: 새 완료 여부.
+  // 반환값: 저장 경로의 승인 여부; 중복 실행이나 화면 종료는 false이며 승인 자체가 서버 전송 완료를 보장하지는 않는다.
   Future<bool> _updateHomeMedicationSlot(
     MedBuddyViewModel viewModel,
     String slotKey,
@@ -1311,15 +1372,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     // 응답 도착 시각이 아니라 사용자가 기록 버튼을 누른 시각을 기준으로 판단한다.
     final pressedAt = widget.nowProvider?.call() ?? DateTime.now();
-    final defaultTime = viewModel.userSetting
-        .defaultTimeForSlot(slotKey)
-        .split(':');
     final alarm =
         viewModel.medicationReminderSettings[slotKey] ??
-        MedicationAlarm.defaults(
+        MedicationAlarm.defaultsAt(
           slotKey,
-          hour: int.tryParse(defaultTime.first),
-          minute: defaultTime.length > 1 ? int.tryParse(defaultTime[1]) : null,
+          viewModel.userSetting.defaultTimeForSlot(slotKey),
         );
     final scheduledAt = DateTime(
       pressedAt.year,
@@ -1388,7 +1445,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               child: SingleChildScrollView(
                 key: const Key('home-dose-record-notice'),
-                child: Text(noticeText),
+                child: KeepWordsText(noticeText),
               ),
             ),
             if (success)
@@ -1409,7 +1466,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     messenger.hideCurrentSnackBar();
                     _selectDestination(MedBuddyDestination.schedule);
                   },
-                  child: Text(isEnglish ? 'View' : '일정 확인'),
+                  child: KeepWordsText(isEnglish ? 'View' : '일정 확인'),
                 ),
               ),
           ],
@@ -1429,14 +1486,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return success;
   }
 
-  // 함수이름: _openManualMedicationEntry
-  // 함수역할:
-  // - 홈 입력 화면과 설정 화면의 약 등록 진입점이 같은 약 직접 입력 화면을 열게 한다.
-  // 매개변수:
-  // - context (BuildContext): 새 화면을 올릴 내비게이터를 찾을 위젯 트리 위치.
-  // - viewModel (MedBuddyViewModel): 입력 화면에 넘길 사용자 설정과 저장 동작을 가진 화면 상태.
-  // 반환값:
-  // - 없음. 입력 화면이 닫힐 때까지 기다리지 않는다.
+  // Function Name: _openManualMedicationEntry
+  // Description: Opens manual medication entry with deferred per-save refresh and one final batch refresh.
+  // Parameters: context: Navigator location; viewModel: Settings and save-action owner.
+  // Returns: None; does not wait for route closure.
   void _openManualMedicationEntry(
     BuildContext context,
     MedBuddyViewModel viewModel,
@@ -1451,7 +1504,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // 반환값: 약 직접 입력 화면 위젯.
         builder: (context) => ManualMedicationEntryUI(
           userSetting: viewModel.userSetting,
-          onSaveRequested: viewModel.saveManualMedication,
+          // 여러 약을 저장해도 목록·일정·알림은 마지막에 한 번만 갱신한다.
+          onSaveRequested: (entry) =>
+              viewModel.saveManualMedication(entry, refreshAfterSave: false),
+          onSavesFinished: viewModel.refreshAfterMedicationSaves,
         ),
       ),
     );
@@ -1483,12 +1539,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) _refreshChatList();
   }
 
-  // Function Name: _openUserSettings
-  // Description: Opens settings wired to authentication, setting/language persistence, and ordered account deletion.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // - viewModel (MedBuddyViewModel): View model exposing screen state, user settings, and medication actions.
-  // Returns: None; updates state or performs the documented action.
+  // 함수이름: _openUserSettings
+  // 함수역할: 인증·설정·언어 저장과 순서가 보장된 계정 삭제를 연결해 설정 화면을 연다.
+  // 매개변수: context: 내비게이터 문맥; viewModel: 현재 사용자 설정·작업; initialDestination: 선택적 설정 구역.
+  // 반환값: 설정 화면 종료 Future; 복귀 후 활성 화면이면 연동 목록을 다시 읽는다.
   Future<void> _openUserSettings(
     BuildContext context,
     MedBuddyViewModel viewModel, {

@@ -43,9 +43,10 @@ def get_history(
 
 
 # 함수이름: update_history
-# 함수역할: 환자 본인이 날짜별 상태를 수정하며 필요시 복용의 UUID 시간대를 허용한다.
-# 매개변수: medication_id/schedule_date/slot_key: 대상, request: 본문, principal: 주체, db: 세션.
-# 반환값: 갱신한 사용자 보고 기록.
+# 함수역할: 환자 본인의 날짜별 정기·필요시 복용 기록을 수정한 뒤 새 완료 이벤트의 후속 알림을 예약한다.
+# 매개변수: medication_id (int), schedule_date (date), slot_key (str)는 대상, request (DoseHistoryUpdate)는 보고 내용이다.
+#   background_tasks (BackgroundTasks)는 응답 후 작업, principal (AuthenticatedPrincipal)은 주체, db (Session)는 요청 세션이다.
+# 반환값: 갱신한 기록 응답. 권한·날짜·버전·재전송 충돌 오류는 Control에서 전달한다.
 @router.put("/history/{medication_id}/{schedule_date}/{slot_key}")
 def update_history(
     medication_id: int, schedule_date: date, slot_key: str, request: DoseHistoryUpdate,

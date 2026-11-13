@@ -10,7 +10,9 @@ import '../entities/user_setting_entity.dart';
 import '../services/authenticated_api_client.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/medbuddy_page_header.dart';
+import '../widgets/medbuddy_notice.dart';
 import 'linked_chat_ui_boundary.dart';
+import '../widgets/keep_words_text.dart';
 
 // 클래스명: ChatListUI
 // 역할: 대화 상대·최근 메시지와 갱신 상태를 표시하고 선택한 연동의 채팅을 연다.
@@ -23,11 +25,10 @@ class ChatListUI extends StatelessWidget {
   final VoidCallback onManageLinks;
   final AuthenticatedApiClient? apiClient;
 
-  // 함수이름: ChatListUI
-  // 함수역할: 목록 Control과 표시 설정을 주입받는다. Control과 apiClient 소유권은 상위 화면에 있다.
-  // 매개변수: key, control, userSetting, onManageLinks: 위젯 식별자, 상태, 설정, 연동 관리 명령,
-  //           apiClient: 401 처리를 세션과 공유할 선택적 인증 클라이언트.
-  // 반환값: 채팅 목록 UI.
+  // Function Name: ChatListUI
+  // Description: Binds chat-list state and display settings without taking ownership of the controller or optional authenticated client.
+  // Parameters: key (Key?): identity; control (ManageChatList): list state; userSetting (UserSetting): display settings; onManageLinks: link-management action; apiClient: optional client sharing session-expiry handling.
+  // Returns: A configured ChatListUI.
   const ChatListUI({
     super.key,
     required this.control,
@@ -36,9 +37,10 @@ class ChatListUI extends StatelessWidget {
     this.apiClient,
   });
 
-  // 함수이름: _isEnglish
-  // 함수역할: 현재 설정에서 영어 표시 여부를 읽는다.
-  // 매개변수: 없음. 반환값: 영어 여부.
+  // Function Name: _isEnglish
+  // Description: Reads the selected language from the supplied user settings.
+  // Parameters: None.
+  // Returns: True when English is selected.
   bool get _isEnglish => userSetting.isEnglish;
 
   // 함수이름: build
@@ -76,15 +78,6 @@ class ChatListUI extends StatelessWidget {
               ],
             ),
             if (control.isLoading) const LinearProgressIndicator(minHeight: 2),
-            if (control.hasError)
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  _isEnglish
-                      ? 'Could not refresh connections. Please try again.'
-                      : '연동 목록을 새로 불러오지 못했어요. 다시 시도해주세요.',
-                ),
-              ),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _refreshRequested,
@@ -92,10 +85,33 @@ class ChatListUI extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
                   physics: const AlwaysScrollableScrollPhysics(),
                   children: [
-                    if (control.links.isEmpty && !control.isLoading)
+                    if (control.hasError)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: MedBuddyNotice(
+                          key: const ValueKey('chatLinkLookupError'),
+                          message: _isEnglish
+                              ? 'Could not check your connections. Check your internet connection and try again.'
+                              : '연동 상태를 확인하지 못했어요. 인터넷 연결을 확인하고 다시 시도해주세요.',
+                          action: OutlinedButton.icon(
+                            key: const ValueKey('chatLinkLookupRetry'),
+                            onPressed: control.isLoading
+                                ? null
+                                : _refreshRequested,
+                            icon: const Icon(Icons.refresh),
+                            label: KeepWordsText(
+                              _isEnglish ? 'Retry' : '다시 시도',
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (control.hasResolvedLinks &&
+                        control.links.isEmpty &&
+                        !control.hasError &&
+                        !control.isLoading)
                       Padding(
                         padding: const EdgeInsets.all(24),
-                        child: Text(
+                        child: KeepWordsText(
                           _isEnglish ? 'No connected chats' : '연동된 대화가 없어요',
                         ),
                       ),
@@ -148,7 +164,7 @@ class ChatListUI extends StatelessWidget {
               size: 27,
             ),
           ),
-          title: Text(
+          title: KeepWordsText(
             control.peerName(link, isEnglish: _isEnglish),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -162,7 +178,7 @@ class ChatListUI extends StatelessWidget {
           ),
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 5),
-            child: Text(
+            child: KeepWordsText(
               _preview(link.linkId!, message),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -224,15 +240,17 @@ class ChatListUI extends StatelessWidget {
   // 매개변수: 없음. 반환값: 갱신 완료.
   Future<void> _refresh() => control.refresh(includeMessages: true);
 
-  // 함수이름: _refreshRequested
-  // 함수역할: 사용자가 직접 누른 새로고침은 진행 표시와 함께 갱신한다.
-  // 매개변수: 없음. 반환값: 갱신 완료.
+  // Function Name: _refreshRequested
+  // Description: Refreshes links and message previews with visible progress for an explicit user request.
+  // Parameters: None.
+  // Returns: Future completing after the refresh.
   Future<void> _refreshRequested() =>
       control.refresh(includeMessages: true, showLoading: true);
 
-  // 함수이름: _openChat
-  // 함수역할: 기존 권한 검증·복약 첨부·실시간 대화 화면을 열고 돌아오면 미리보기를 갱신한다.
-  // 매개변수: context, link: 표시 문맥과 선택한 연동. 반환값: 대화 종료와 목록 갱신 완료.
+  // Function Name: _openChat
+  // Description: Opens the linked conversation with permission checks and medication attachments, then refreshes its preview on return.
+  // Parameters: context (BuildContext): navigation host; link: selected patient-caregiver link.
+  // Returns: Future completing when the conversation closes and refresh finishes.
   Future<void> _openChat(
     BuildContext context,
     PatientCaregiverLink link,

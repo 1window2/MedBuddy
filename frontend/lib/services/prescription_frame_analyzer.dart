@@ -8,13 +8,9 @@ import '../entities/prescription_camera_guide_entity.dart';
 // 역할: 카메라의 저해상도 밝기 정보를 이용해 처방전과 카메라 사이 거리를 추정한다.
 
 // 클래스명: PrescriptionFrameAnalyzer
-// 역할: 밝은 문서 영역의 크기와 위치를 분석해 촬영 거리 안내 상태를 계산한다.
-// 주요 책임:
-// - 카메라 원본 프레임을 작은 격자로 축소해 분석 비용을 제한한다.
-// - 가장 큰 밝은 연결 영역을 처방전 후보로 선택한다.
-// - 후보가 화면에서 차지하는 비율에 따라 가까이/적정/멀리 상태를 반환한다.
-// 비고:
-// - 거리 판정은 촬영을 제한하지 않는 보조 안내로만 사용한다.
+// 역할: 카메라 휘도 표본으로 처방전 촬영 안내 상태를 계산한다.
+// 주요 책임: 가이드 영역·회전을 반영해 밝기와 문서 영역을 분석하고 촬영 품질 판단을 반환한다.
+// 속성: _sampleWidth/_sampleHeight (int): 48×64 표본 격자; 문서 점유율 최소·최대 임계값 (double): 0.18·0.82.
 class PrescriptionFrameAnalyzer {
   static const int _sampleWidth = 48;
   static const int _sampleHeight = 64;

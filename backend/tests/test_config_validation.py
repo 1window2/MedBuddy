@@ -20,6 +20,8 @@ from core.config import Settings
 # - 공공 데이터 API 주소가 HTTP이면 ValidationError로 거절하는지 검증한다.
 # - 존재하지 않는 시간대 이름이 서버 설정으로 사용되지 못하는지 검증한다.
 # - 0 이하 채팅 보관 기간을 ValidationError로 거절하는지 검증한다.
+# 속성:
+# - 없음; 각 테스트에서 설정 객체를 직접 생성한다.
 class ConfigValidationTest(unittest.TestCase):
     # 함수이름: test_http_public_data_endpoint_is_rejected
     # 함수역할:

@@ -30,6 +30,13 @@ void main() {
     {'success': false, 'data': []},
     {'success': true, 'data': null},
   ]) {
+    // 함수이름: 실패 응답과 목록 누락 구분
+    // 함수역할:
+    // - HTTP 200이어도 success=false 또는 data=null이면 빈 약 목록으로 오인하지 않고 StateError를 전달하는지 확인한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     test('실패하거나 목록이 누락된 조회는 빈 목록을 반환하지 않는다: $payload', () async {
       final client = MockClient(
         (_) async => http.Response(jsonEncode(payload), 200),

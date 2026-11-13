@@ -8,30 +8,21 @@ import 'package:flutter/material.dart';
 import '../services/notification_service.dart';
 import '../theme/medbuddy_theme.dart';
 import 'medbuddy_notice.dart';
+import 'keep_words_text.dart';
 
-// 클래스명: ExactReminderNotice
-// 역할: 정확한 알람이 허용되지 않은 동안에만 보이는 안내와 시스템 설정으로 가는 버튼을 담당한다.
-// 주요 책임:
-// - 화면에 들어올 때와 앱으로 돌아올 때 허용 여부를 다시 확인해, 허용된 뒤에는 스스로 사라진다.
-// - 버튼을 누르면 시스템의 '알람 및 리마인더' 화면을 열고, 허용되면 이미 예약된 알림을 정확한 알람으로 바꾼다.
-// - 허용하지 않아도 화면 사용을 막지 않는다. 알림은 지금처럼 예약되고 몇 분 늦을 수 있을 뿐이다.
-// 속성:
-// - notificationService (NotificationService): 허용 여부 확인·요청과 재예약을 맡는 알림 서비스.
-// - isEnglish (bool): 영어 문구 사용 여부.
-// - margin (EdgeInsetsGeometry): 안내가 보일 때만 적용하는 바깥 여백.
+// Class Name: ExactReminderNotice
+// Role: Offer exact-reminder permission guidance when Android reports it unavailable.
+// Responsibilities: Recheck permission on resume and promote inexact reminders when allowed.
+// Attributes: notificationService (NotificationService): permission/scheduling boundary; isEnglish (bool): locale; margin (EdgeInsetsGeometry): outer spacing.
 class ExactReminderNotice extends StatefulWidget {
   final NotificationService notificationService;
   final bool isEnglish;
   final EdgeInsetsGeometry margin;
 
-  // 함수이름: ExactReminderNotice
-  // 함수역할: 안내에 쓸 알림 서비스와 언어, 바깥 여백을 받는다.
-  // 매개변수:
-  // - key (Key?): 위젯 식별 키.
-  // - notificationService (NotificationService): 허용 여부 확인·요청과 재예약을 맡는 알림 서비스.
-  // - isEnglish (bool): 영어 문구 사용 여부.
-  // - margin (EdgeInsetsGeometry): 안내가 보일 때만 적용하는 바깥 여백.
-  // 반환값: 입력 설정이 반영된 ExactReminderNotice 인스턴스.
+  // Function Name: ExactReminderNotice
+  // Description: Configure the permission notice without requesting permission during construction.
+  // Parameters: key (Key?): widget identity; notificationService (NotificationService): permission boundary; isEnglish (bool): locale; margin (EdgeInsetsGeometry): outer spacing.
+  // Returns: ExactReminderNotice: configured widget.
   const ExactReminderNotice({
     super.key,
     required this.notificationService,
@@ -39,30 +30,27 @@ class ExactReminderNotice extends StatefulWidget {
     this.margin = EdgeInsets.zero,
   });
 
-  // 함수이름: createState
-  // 함수역할: 허용 여부를 추적하는 상태 객체를 만든다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 새 _ExactReminderNoticeState 인스턴스.
+  // Function Name: createState
+  // Description: Create lifecycle-aware permission state.
+  // Parameters: None.
+  // Returns: State<ExactReminderNotice>: notice state.
   @override
   State<ExactReminderNotice> createState() => _ExactReminderNoticeState();
 }
 
-// 클래스명: _ExactReminderNoticeState
-// 역할: 정확한 알람 허용 여부를 확인하고 앱 복귀 시 다시 확인한다.
-// 속성:
-// - _allowed (bool?): 마지막으로 확인한 허용 여부; 확인 전이거나 확인하지 못하면 null이며 안내를 보이지 않는다.
-// - _requesting (bool): 시스템 설정 화면을 여는 중인지 여부.
+// Class Name: _ExactReminderNoticeState
+// Role: Track exact-alarm availability and permission-request progress.
+// Responsibilities: Observe app resume, refresh capability and prevent duplicate permission prompts.
+// Attributes: _allowed (bool?): capability or unknown; _requesting (bool): prompt in progress.
 class _ExactReminderNoticeState extends State<ExactReminderNotice>
     with WidgetsBindingObserver {
   bool? _allowed;
   bool _requesting = false;
 
-  // 함수이름: initState
-  // 함수역할: 앱 실행 상태 관찰을 시작하고 허용 여부를 처음 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 없음.
+  // Function Name: initState
+  // Description: Observe app lifecycle and begin an asynchronous capability refresh.
+  // Parameters: None.
+  // Returns: void.
   @override
   void initState() {
     super.initState();
@@ -70,22 +58,20 @@ class _ExactReminderNoticeState extends State<ExactReminderNotice>
     unawaited(_refresh());
   }
 
-  // 함수이름: dispose
-  // 함수역할: 앱 실행 상태 관찰을 끝낸다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 없음.
+  // Function Name: dispose
+  // Description: Unregister the lifecycle observer before releasing widget state.
+  // Parameters: None.
+  // Returns: void.
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  // 함수이름: didChangeAppLifecycleState
-  // 함수역할: 시스템 설정에서 돌아오면 허용 여부를 다시 확인한다.
-  // 매개변수:
-  // - state (AppLifecycleState): 새 앱 실행 상태.
-  // 반환값: 없음.
+  // Function Name: didChangeAppLifecycleState
+  // Description: Refresh permission after returning from system settings or another app.
+  // Parameters: state (AppLifecycleState): lifecycle event.
+  // Returns: void; only resumed triggers a refresh.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -93,12 +79,10 @@ class _ExactReminderNoticeState extends State<ExactReminderNotice>
     }
   }
 
-  // 함수이름: _refresh
-  // 함수역할: 허용 여부를 읽어 화면에 반영하고, 허용되어 있으면 부정확 알람으로 남은 예약을 정확한 알람으로 바꾼다.
-  //   확인에 실패하면 안내를 보이지 않는다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 확인을 마치면 완료되는 Future<void>.
+  // Function Name: _refresh
+  // Description: Query exact-alarm capability and promote schedules when allowed; suppress platform failures and update only mounted state.
+  // Parameters: None.
+  // Returns: Future<void>: refresh attempt completion.
   Future<void> _refresh() async {
     bool? allowed;
     try {
@@ -114,11 +98,10 @@ class _ExactReminderNoticeState extends State<ExactReminderNotice>
     }
   }
 
-  // 함수이름: _requestPermission
-  // 함수역할: 시스템의 '알람 및 리마인더' 화면을 열고, 돌아온 뒤 허용 여부를 다시 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청과 확인을 마치면 완료되는 Future<void>.
+  // Function Name: _requestPermission
+  // Description: Prevent duplicate permission prompts, request permission and refresh the resulting capability.
+  // Parameters: None.
+  // Returns: Future<void>: prompt/refresh completion; request errors are suppressed.
   Future<void> _requestPermission() async {
     if (_requesting) return;
     setState(() => _requesting = true);
@@ -133,11 +116,10 @@ class _ExactReminderNoticeState extends State<ExactReminderNotice>
     }
   }
 
-  // 함수이름: build
-  // 함수역할: 정확한 알람이 허용되지 않은 것으로 확인된 동안에만 안내와 버튼을 그린다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정을 참조할 위젯 트리 위치.
-  // 반환값: 안내 위젯, 보일 필요가 없으면 빈 위젯.
+  // Function Name: build
+  // Description: Render localized permission guidance only when capability is explicitly false; disable the action during a request.
+  // Parameters: context (BuildContext): widget build context.
+  // Returns: Widget: notice or an empty box for allowed/unknown capability.
   @override
   Widget build(BuildContext context) {
     if (_allowed != false) {
@@ -161,7 +143,7 @@ class _ExactReminderNoticeState extends State<ExactReminderNotice>
             minimumSize: const Size.fromHeight(48),
             foregroundColor: MedBuddyColors.primaryDark,
           ),
-          child: Text(
+          child: KeepWordsText(
             widget.isEnglish ? 'Allow on-time reminders' : '정확한 시각에 알림 받기',
             textAlign: TextAlign.center,
           ),

@@ -24,6 +24,7 @@ DEVICE_LEVELS = ("NO_INTEGRITY", "MEETS_DEVICE_INTEGRITY")
 # Class Name: PreflightError
 # Role: Carry only locally authored, credential-free diagnostics.
 # Responsibilities: Keep arbitrary transport exception messages out of release logs.
+# Attributes: Inherited exception arguments contain only caller-authored diagnostic text.
 class PreflightError(ValueError):
     """An expected rejection safe to report in CI output."""
 
@@ -31,6 +32,7 @@ class PreflightError(ValueError):
 # Class Name: NoRedirect
 # Role: Keep the OAuth credential on the explicitly addressed Google API.
 # Responsibilities: Reject redirects instead of forwarding authorization headers.
+# Attributes: No additional state; inherits urllib redirect-handler configuration.
 class NoRedirect(HTTPRedirectHandler):
     # Function Name: redirect_request
     # Description: Disable redirects for authenticated configuration reads.
@@ -68,9 +70,10 @@ def _settings_object(payload: Mapping[str, object], field: str) -> dict[str, obj
 
 
 # Function Name: validate_configuration
-# Description: Bind certificates and verdict policy to the intended active Firebase Android app.
-# Parameters: android_app, integrity: Live API responses; remaining values: Protected release expectations.
-# Returns: None; mismatches fail closed without printing provider responses.
+# Description: Verifies active Firebase app identity, channel-appropriate certificate registration, reviewed integrity verdicts and supported token lifetime without printing provider payloads.
+# Parameters: android_app and integrity (Mapping) are live API responses; project_id, project_number and app_id (str) identify the release;
+#   upload_certificate and play_certificate (str) are SHA-256 expectations; distribution (str) is play/both; device_integrity (str) is the reviewed minimum verdict.
+# Returns: None on agreement; raises PreflightError for malformed or mismatched configuration.
 def validate_configuration(
     android_app: Mapping[str, object], integrity: Mapping[str, object], *,
     project_id: str, project_number: str, app_id: str,

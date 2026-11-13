@@ -18,12 +18,13 @@ import 'package:medbuddy_frontend/services/push_notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Class Name: _FakePushPlatform
-// Role: Stands in for Firebase Messaging so startup can be driven without Firebase.
-// Responsibilities:
-// - Count permission prompts, token reads, handler registrations and stream subscriptions.
-// - Let a test push a refreshed token or a foreground message, and fail any single call.
-// Attributes: token - token returned by getToken; initialMessage - message that launched the app;
-//   failTokenReads - number of getToken calls that throw before one succeeds; log - call order.
+// Role: Controllable Firebase Messaging substitute for push lifecycle tests.
+// Responsibilities: Expose injected token/message streams, record platform calls, and fail a configured number of token reads.
+// Attributes:
+// - tokenRefresh, messages, opened: Broadcast controllers for refresh, foreground, and opened-message events.
+// - token, initialMessage: Results returned by token and launch-message reads.
+// - failTokenReads: Remaining token reads that throw StateError.
+// - permissionRequests, tokenReads, initialMessageReads: Per-operation counters; log records call order.
 class _FakePushPlatform extends PushMessagingPlatform {
   final tokenRefresh = StreamController<String>.broadcast();
   final messages = StreamController<RemoteMessage>.broadcast();
@@ -36,12 +37,24 @@ class _FakePushPlatform extends PushMessagingPlatform {
   int tokenReads = 0;
   int initialMessageReads = 0;
 
+  // Function Name: enabled
+  // Description: Enables push startup in tests without checking the device platform.
+  // Parameters: None.
+  // Returns: bool; always true.
   @override
   bool get enabled => true;
 
+  // Function Name: registerBackgroundHandler
+  // Description: Records background-handler setup without registering Firebase callbacks.
+  // Parameters: None.
+  // Returns: void; appends background-handler to log.
   @override
   void registerBackgroundHandler() => log.add('background-handler');
 
+  // Function Name: requestPermission
+  // Description: Counts and logs a permission request without displaying a system prompt.
+  // Parameters: None.
+  // Returns: Future<void>; completes after updating the counter and log.
   @override
   Future<void> requestPermission() async {
     permissionRequests++;
@@ -49,14 +62,16 @@ class _FakePushPlatform extends PushMessagingPlatform {
   }
 
   // Function Name: deleteToken
-  // Description: Records that the device token was discarded.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>; completes after the log entry is added.
+  // Description: Records a token-discard request without clearing the configured token or contacting Firebase.
+  // Parameters: None.
+  // Returns: Future<void>; completes after appending delete-token to log.
   @override
   Future<void> deleteToken() async => log.add('delete-token');
 
+  // Function Name: getToken
+  // Description: Counts and logs each read; consumes one configured failing read and throws StateError, otherwise returns token.
+  // Parameters: None.
+  // Returns: Future<String?>; the configured device token, including null.
   @override
   Future<String?> getToken() async {
     tokenReads++;
@@ -68,24 +83,40 @@ class _FakePushPlatform extends PushMessagingPlatform {
     return token;
   }
 
+  // Function Name: onTokenRefresh
+  // Description: Logs access to the token-refresh stream so tests can detect repeated subscriptions.
+  // Parameters: None.
+  // Returns: Stream<String>; events injected through tokenRefresh.
   @override
   Stream<String> get onTokenRefresh {
     log.add('listen-token-refresh');
     return tokenRefresh.stream;
   }
 
+  // Function Name: onMessage
+  // Description: Logs access to the foreground-message stream without contacting Firebase.
+  // Parameters: None.
+  // Returns: Stream<RemoteMessage>; events injected through messages.
   @override
   Stream<RemoteMessage> get onMessage {
     log.add('listen-foreground');
     return messages.stream;
   }
 
+  // Function Name: onMessageOpenedApp
+  // Description: Logs access to the notification-open stream without platform callbacks.
+  // Parameters: None.
+  // Returns: Stream<RemoteMessage>; events injected through opened.
   @override
   Stream<RemoteMessage> get onMessageOpenedApp {
     log.add('listen-opened');
     return opened.stream;
   }
 
+  // Function Name: getInitialMessage
+  // Description: Counts and logs launch-message reads without consuming the configured message.
+  // Parameters: None.
+  // Returns: Future<RemoteMessage?>; initialMessage, or null when none is configured.
   @override
   Future<RemoteMessage?> getInitialMessage() async {
     initialMessageReads++;
@@ -100,19 +131,21 @@ class _FakePushPlatform extends PushMessagingPlatform {
       tokenRefresh.hasListener && messages.hasListener && opened.hasListener;
 
   // Function Name: subscriptions
-  // Description: Counts how many times each stream was subscribed, to catch a second subscription.
-  // Parameters: name - log label of the stream. Returns: Number of subscriptions made.
+  // Description: Counts occurrences of a platform-call label, including stream getter access, to detect duplicated startup work.
+  // Parameters: name (String) - exact label to count in log.
+  // Returns: int; number of matching log entries, not the stream's current listener count.
   int subscriptions(String name) => log.where((entry) => entry == name).length;
 }
 
-// Function Name: main
-// Description:
-// - Register regression cases for strict push-token cleanup after rejection or in-flight registration.
-// Parameters:
-// - None.
-// Returns:
-// - No value; the test framework executes the registered cases.
+// 함수이름: main
+// 함수역할: 푸시 등록·재시도·해제와 알림 문구·개인정보 표시·플랫폼 기능 전달의 회귀 테스트를 등록한다.
+// 매개변수: 없음.
+// 반환값: void; 등록한 콜백은 테스트 프레임워크가 실행한다.
 void main() {
+  // 함수이름: 필요시 복용 알림 문구 테스트
+  // 함수역할: 한국어와 영어 필요시 복용 푸시가 전체 복용 완료가 아닌 새 복용 기록을 안내하는지 검증한다.
+  // 매개변수: 없음.
+  // 반환값: void; 문구 기대값이 다르면 테스트가 실패한다.
   test('필요시 복용 푸시는 전체 완료가 아닌 새 기록으로 안내한다', () {
     for (final language in ['ko', 'en']) {
       final text = PushNotificationService.caregiverNotificationTextForTesting(
@@ -133,6 +166,10 @@ void main() {
   // Description:
   // - A failed token registration must not leave push dead for the whole process: the subscriptions
   //   stay attached and registration is retried, without subscribing, prompting or registering twice.
+  // 함수이름: start 테스트 그룹
+  // 함수역할: 가짜 플랫폼과 HTTP 응답으로 시작 시 구독 유지, 토큰 등록 재시도·중복 방지 및 종료 동작을 검증할 사례를 등록한다.
+  // 매개변수: 없음.
+  // 반환값: void; 그룹의 준비·정리 콜백과 테스트를 등록한다.
   group('start', () {
     late _FakePushPlatform platform;
     late List<http.Request> requests;
@@ -153,12 +190,18 @@ void main() {
     );
 
     // Function Name: posts
-    // Description: Returns the token registration requests received so far.
+    // Description: Filters the recorded HTTP requests to token-registration POST attempts.
+    // Parameters: None.
+    // Returns: List<http.Request>; POST requests in their original order.
     List<http.Request> posts() => [
       for (final request in requests)
         if (request.method == 'POST') request,
     ];
 
+    // Function Name: setUp callback
+    // Description: Resets preferences and the fake platform; records HTTP requests with configurable POST failures and DELETE rejection.
+    // Parameters: None.
+    // Returns: void; installs isolated client and failure counters for each startup test.
     setUp(() {
       SharedPreferences.setMockInitialValues({});
       platform = _FakePushPlatform();
@@ -178,6 +221,10 @@ void main() {
       });
     });
 
+    // Function Name: tearDown callback
+    // Description: Clears the notification handler, closes the client, and checks that all requests used the push-token endpoint.
+    // Parameters: None.
+    // Returns: void; an unexpected request URL fails the test.
     tearDown(() {
       NotificationService.setNotificationSelectionHandler(null);
       client.close();
@@ -187,9 +234,10 @@ void main() {
       }
     });
 
-    // Function Name: failed first registration test
-    // Description: The first POST fails. Subscriptions and the launch message are already handled,
-    //   the retry five seconds later registers the token, and nothing is repeated.
+    // 함수이름: 첫 등록 실패 후 재시도 테스트
+    // 함수역할: 첫 POST 실패에도 구독과 시작 메시지 처리가 유지되고 5초 뒤 한 번 재시도하며, 성공 뒤 중복 등록 없이 종료 시 토큰을 해제하는지 검증한다.
+    // 매개변수: tester (WidgetTester) - 재시도 타이머와 비동기 시작·종료를 진행하는 테스트 실행기.
+    // 반환값: Future<void>; 구독 횟수·요청 순서·메시지 전달 기대값이 다르면 실패한다.
     testWidgets('a failed registration keeps the subscriptions and is retried', (
       tester,
     ) async {
@@ -258,9 +306,10 @@ void main() {
       expect(platform.listening, isFalse);
     });
 
-    // Function Name: growing delay test
-    // Description: While the server keeps failing, attempts are spaced 5 s, 10 s, 20 s and then held
-    //   at the configured cap.
+    // 함수이름: 등록 재시도 간격 상한 테스트
+    // 함수역할: 연속 실패 시 간격이 5·10·20초에서 설정된 30초 상한까지 증가하고, 구독·권한 요청은 반복하지 않으며 종료 후 재시도를 멈추는지 검증한다.
+    // 매개변수: tester (WidgetTester) - 재시도 간격을 가상 시간으로 진행하는 실행기.
+    // 반환값: Future<void>; 각 시점의 요청 횟수나 종료 후 동작이 다르면 실패한다.
     testWidgets(
       'retries back off up to the cap while registration keeps failing',
       (tester) async {
@@ -295,9 +344,10 @@ void main() {
       },
     );
 
-    // Function Name: resume trigger test
-    // Description: retryRegistration (called when the app returns to the foreground) retries at once,
-    //   concurrent calls share one attempt, and success cancels the scheduled retry.
+    // 함수이름: 즉시 재시도 중복 방지 테스트
+    // 함수역할: 시작 전 재시도는 무시하고, 시작 후 겹친 즉시 재시도는 한 요청을 공유하며 성공하면 예약된 재시도가 취소되는지 검증한다.
+    // 매개변수: tester (WidgetTester) - 겹친 요청과 재시도 타이머를 진행하는 실행기.
+    // 반환값: Future<void>; 등록·권한 요청 횟수가 기대와 다르면 실패한다.
     testWidgets(
       'retryRegistration retries immediately without duplicating the attempt',
       (tester) async {
@@ -332,10 +382,10 @@ void main() {
       },
     );
 
-    // Function Name: stale token discard test
-    // Description: When the session has ended and the server refuses the unregistration, the device
-    //   token is deleted so the ended account's registration stops delivering here. A token the
-    //   server did unregister, or a stop that does not ask for it, leaves the device token alone.
+    // 함수이름: 서버 해제 실패 토큰 폐기 테스트
+    // 함수역할: 일반 종료는 기기 토큰을 보존하지만 해제 실패 후 명시적으로 폐기를 요청하면 한 번만 삭제하고 후속 종료에서는 재처리하지 않는지 검증한다.
+    // 매개변수: tester (WidgetTester) - 비동기 등록과 종료를 진행하는 실행기.
+    // 반환값: Future<void>; DELETE 또는 기기 토큰 삭제 횟수가 다르면 실패한다.
     testWidgets(
       'a token the server could not unregister is discarded on request',
       (tester) async {
@@ -368,9 +418,10 @@ void main() {
       },
     );
 
-    // Function Name: unconfirmed registration test
-    // Description: A run whose registration never succeeded still unregisters the device token on
-    //   stop, because an earlier run may have registered it for the account that is ending.
+    // 함수이름: 이전 실행에서 등록됐을 수 있는 토큰 해제 테스트
+    // 함수역할: 현재 실행의 등록이 계속 실패해도 이전 실행의 서버 등록을 정리하도록 종료 시 기기 토큰의 DELETE를 보내는지 검증한다.
+    // 매개변수: tester (WidgetTester) - 실패한 등록과 종료를 진행하는 실행기.
+    // 반환값: Future<void>; 해제 요청의 토큰이나 메서드가 다르면 실패한다.
     testWidgets(
       'a token registered by an earlier run is unregistered on stop',
       (tester) async {
@@ -388,8 +439,10 @@ void main() {
       },
     );
 
-    // Function Name: unregistered token test
-    // Description: A token the server unregistered is not deleted on the device.
+    // 함수이름: 서버 해제 성공 시 기기 토큰 보존 테스트
+    // 함수역할: 서버 해제가 성공하면 실패 토큰 폐기 옵션을 켜도 기기 토큰은 삭제하지 않는지 검증한다.
+    // 매개변수: tester (WidgetTester) - 등록과 종료 요청을 진행하는 실행기.
+    // 반환값: Future<void>; 기기 토큰 삭제가 발생하면 실패한다.
     testWidgets('a token the server unregistered is kept on the device', (
       tester,
     ) async {
@@ -404,7 +457,9 @@ void main() {
     });
 
     // Function Name: token read failure test
-    // Description: A failure before the POST (no token yet) is retried the same way.
+    // Description: Verifies that an initial token-read exception leaves subscriptions attached and retries the read after five seconds before registering.
+    // Parameters: tester (WidgetTester) - advances startup and the retry timer.
+    // Returns: Future<void>; fails if token reads, subscriptions, or POST counts differ.
     testWidgets('a failed token read is retried', (tester) async {
       platform.failTokenReads = 1;
       final service = build();
@@ -422,6 +477,10 @@ void main() {
     });
 
     for (final unavailableToken in <String?>[null, '   ']) {
+      // 함수이름: 토큰 미발급 상태의 자동 재시도 테스트
+      // 함수역할: null 또는 공백 토큰은 등록하지 않고 재조회하며, 유효한 토큰을 얻으면 권한 요청·시작 메시지 처리를 반복하지 않고 등록 후 재시도를 멈추는지 검증한다.
+      // 매개변수: tester (WidgetTester) - 5초·10초 재시도와 성공 후 대기 시간을 진행하는 실행기.
+      // 반환값: Future<void>; 토큰 조회·등록·권한 요청 횟수가 다르면 실패한다.
       testWidgets(
         'an unavailable token is retried without another prompt: $unavailableToken',
         (tester) async {
@@ -453,6 +512,10 @@ void main() {
       );
     }
 
+    // 함수이름: 토큰 미발급 후 즉시 재시도 테스트
+    // 함수역할: 처음 없던 토큰이 준비되면 전경 복귀용 재시도가 즉시 등록하고 기존 재시도 타이머는 더 조회하지 않는지 검증한다.
+    // 매개변수: tester (WidgetTester) - 시작·즉시 재시도와 후속 대기 시간을 진행하는 실행기.
+    // 반환값: Future<void>; 토큰 조회나 등록 횟수가 다르면 실패한다.
     testWidgets('foreground retry recovers a token that was initially absent', (
       tester,
     ) async {
@@ -470,9 +533,10 @@ void main() {
       await tester.pump();
     });
 
-    // Function Name: duplicate token test
-    // Description: Firebase reports the current token on the refresh stream while the first
-    //   registration is still in flight; the same token is sent to the server once.
+    // 함수이름: 등록 중 동일 토큰 갱신 중복 방지 테스트
+    // 함수역할: 등록 진행 중 같은 토큰의 갱신 이벤트는 중복 POST를 만들지 않고, 이후 바뀐 토큰은 새로 등록해 종료 시 그 토큰을 해제하는지 검증한다.
+    // 매개변수: 없음.
+    // 반환값: Future<void>; 등록 횟수나 등록·해제 토큰이 다르면 실패한다.
     test(
       'a refresh of the token being registered does not register it twice',
       () async {
@@ -513,8 +577,10 @@ void main() {
       },
     );
 
-    // Function Name: failed refresh test
-    // Description: A refreshed token whose registration fails is registered by a later retry.
+    // 함수이름: 갱신 토큰 등록 실패 후 재시도 테스트
+    // 함수역할: 갱신된 토큰의 등록이 실패하면 5초 뒤 해당 토큰을 재등록하고 성공 뒤에는 추가 요청을 보내지 않는지 검증한다.
+    // 매개변수: tester (WidgetTester) - 갱신 이벤트와 재시도 타이머를 진행하는 실행기.
+    // 반환값: Future<void>; POST 횟수나 재시도 토큰이 다르면 실패한다.
     testWidgets('a failed refreshed-token registration is retried', (
       tester,
     ) async {
@@ -541,9 +607,10 @@ void main() {
       await tester.pump();
     });
 
-    // Function Name: stored privacy mode test
-    // Description: The content-hidden mode stored on this device is applied by start, so a caregiver
-    //   message received right after startup is shown without its details.
+    // 함수이름: 저장된 알림 내용 숨김 설정 적용 테스트
+    // 함수역할: 시작 시 저장된 type_only 설정을 적용하여 바로 수신한 보호자 알림에도 환자·복약 상세 대신 일반 안내 문구를 표시하는지 검증한다.
+    // 매개변수: 없음.
+    // 반환값: Future<void>; 표시된 알림 본문이 기대값과 다르면 실패한다.
     test(
       'start applies the stored type_only mode to foreground caregiver alerts',
       () async {
@@ -592,13 +659,10 @@ void main() {
     );
   });
 
-  // Function Name: test callback
-  // Description:
-  // - Verifies localized foreground copy for a server-originated missed-dose alert.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - No value; synchronous assertions complete the test.
+  // 함수이름: 미복용 푸시 현지화 문구 테스트
+  // 함수역할: 서버의 미복용 알림에 한국어·영어 제목과 해당 저녁·아침 시간대 문구가 포함되는지 검증한다.
+  // 매개변수: 없음.
+  // 반환값: void; 제목이나 시간대 문구가 다르면 실패한다.
   test('missed-dose push uses the caregiver schedule copy', () {
     final korean = PushNotificationService.caregiverNotificationTextForTesting(
       type: 'caregiver_slot_missed',
@@ -617,17 +681,10 @@ void main() {
     expect(english.body, contains('morning'));
   });
 
-  // Function Name: test callback
-  // Description:
-  // - Expected behavior: strict stop retries a push token after server rejection.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
-  // Function Name: token registration platform test
-  // Description: Verifies that only Android registers the caregiver action capability, because
-  //   the notification action buttons exist only there.
-  // Parameters: None. Returns: Future<void>; completes when the assertions pass.
+  // 함수이름: 플랫폼별 보호자 알림 동작 지원 등록 테스트
+  // 함수역할: 토큰 등록 본문의 플랫폼 값과 보호자·복용 확인 동작 지원 값이 Android에서만 활성화되고 iOS에서는 비활성화되는지 검증한다.
+  // 매개변수: 없음.
+  // 반환값: Future<void>; 전송한 플랫폼 또는 지원 값이 다르면 실패한다.
   test('only Android registers the caregiver action capability', () async {
     final bodies = <Map<String, dynamic>>[];
     final client = MockClient((request) async {
@@ -652,10 +709,16 @@ void main() {
 
     expect(bodies[0]['platform'], 'android');
     expect(bodies[0]['supports_caregiver_actions'], isTrue);
+    expect(bodies[0]['supports_slot_check_actions'], isTrue);
     expect(bodies[1]['platform'], 'ios');
     expect(bodies[1]['supports_caregiver_actions'], isFalse);
+    expect(bodies[1]['supports_slot_check_actions'], isFalse);
   });
 
+  // Function Name: strict stop rejection retry test
+  // Description: Verifies that strict shutdown throws StateError on a rejected DELETE, retries the retained token successfully, and sends no third request.
+  // Parameters: None.
+  // Returns: Future<void>; fails if rejection is swallowed or the unregister count is not two.
   test('strict stop retries a push token after server rejection', () async {
     var requestCount = 0;
     // Function Name: MockClient callback
@@ -691,13 +754,10 @@ void main() {
     client.close();
   });
 
-  // Function Name: test callback
-  // Description:
-  // - Expected behavior: strict stop waits for an in-flight token registration.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // Function Name: strict stop in-flight registration test
+  // Description: Verifies that strict shutdown stays pending until an in-flight POST finishes, then unregisters the token with DELETE.
+  // Parameters: None.
+  // Returns: Future<void>; fails if shutdown finishes early or request order differs from POST then DELETE.
   test('strict stop waits for an in-flight token registration', () async {
     final postStarted = Completer<void>();
     final allowPost = Completer<void>();

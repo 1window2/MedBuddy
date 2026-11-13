@@ -6,8 +6,22 @@ import 'package:medbuddy_frontend/entities/medication_history_export.dart';
 
 import 'medication_history_fixtures.dart';
 
+// 함수이름: main
+// 함수역할:
+// - 한글·영어 외부 공유에서 빈 기록과 복용 상태별 표현·개인정보 제외를 검증한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - 없음; 두 언어의 공유 본문 테스트를 등록한다.
 void main() {
   for (final english in [false, true]) {
+    // 함수이름: test callback
+    // 함수역할:
+    // - 기록 없는 스냅샷은 한영 빈 기록 안내만 공유하고 저장 약 이름·CSV 흔적·BOM을 내보내지 않는지 검증한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - 없음; 기대값과 다르면 테스트가 실패한다.
     test(
       'empty text share is readable and excludes stored medicines ($english)',
       () {
@@ -27,6 +41,13 @@ void main() {
       },
     );
 
+    // 함수이름: test callback
+    // 함수역할:
+    // - 여러 상태와 반복 필요시 기록을 날짜·시간대 순서로 공유하고 한국 시각·사유·불확실성 안내를 보존하되 계정·작업 ID·리비전은 제외하는지 검증한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - 없음; 기대값과 다르면 테스트가 실패한다.
     test(
       'text share retains every status and repeated PRN event ($english)',
       () {

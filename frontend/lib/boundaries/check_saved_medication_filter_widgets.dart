@@ -4,8 +4,9 @@ part of 'check_saved_medication_ui_boundary.dart';
 // 역할: 저장 약품의 복용 상태 필터와 필터별 빈 결과를 제공한다.
 
 // 클래스명: _SavedMedicationFilterControl
-// 역할: 복용 상태·날짜 기준·정렬 방향을 한 시트에서 선택하고 적용한다.
-// 속성: 현재 조회값과 onChanged는 소유 화면의 목록/선택 상태에 연결된다.
+// 역할: 저장 약품의 상태·날짜 기준·정렬 방향을 함께 선택하는 버튼.
+// 주요 책임: 선택 초안을 시트에 보관하고 적용 시에만 부모 목록을 갱신한다.
+// 속성: filterMode/sortMode/sortDirection: 현재 조건 열거값; text (_SavedMedicationText): 문구; enabled (bool): 활성; onChanged (void Function): 세 조건 전달.
 class _SavedMedicationFilterControl extends StatelessWidget {
   final _SavedMedicationFilterMode filterMode;
   final _SavedMedicationSortMode sortMode;
@@ -19,7 +20,10 @@ class _SavedMedicationFilterControl extends StatelessWidget {
   )
   onChanged;
 
-  // 함수역할: 현재 조회 조건과 적용 콜백을 받는다. 반환값: 조회 조건 버튼.
+  // 함수이름: _SavedMedicationFilterControl
+  // 함수역할: 현재 필터·정렬 상태와 적용 콜백을 연결한다.
+  // 매개변수: filterMode (_SavedMedicationFilterMode): 상태; sortMode (_SavedMedicationSortMode): 날짜 기준; sortDirection (_SavedMedicationSortDirection): 방향; text (_SavedMedicationText): 문구; enabled (bool): 활성; onChanged: 적용 함수.
+  // 반환값: 새 _SavedMedicationFilterControl.
   const _SavedMedicationFilterControl({
     required this.filterMode,
     required this.sortMode,
@@ -29,7 +33,10 @@ class _SavedMedicationFilterControl extends StatelessWidget {
     required this.onChanged,
   });
 
-  // 함수역할: 현재 조건을 표시하고 선택 시트를 연다. 매개변수: context.
+  // 함수이름: build
+  // 함수역할: 선택한 상태와 정렬 기준·방향을 표시하고 활성 상태에서만 선택창을 연다.
+  // 매개변수: context (BuildContext): 선택창 위치.
+  // 반환값: 조회 조건 OutlinedButton.
   @override
   Widget build(BuildContext context) => OutlinedButton(
     key: const Key('saved-medication-filter-selector'),
@@ -50,7 +57,7 @@ class _SavedMedicationFilterControl extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              KeepWordsText(
                 text.selectedFilter(filterMode),
                 style: const TextStyle(
                   fontSize: 16,
@@ -60,7 +67,7 @@ class _SavedMedicationFilterControl extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
-              Text(
+              KeepWordsText(
                 '${_sortLabel(sortMode)} · ${_directionLabel(sortDirection)}',
                 style: const TextStyle(
                   fontSize: 14,
@@ -76,17 +83,27 @@ class _SavedMedicationFilterControl extends StatelessWidget {
     ),
   );
 
-  // 함수역할: 날짜 정렬의 기준/방향을 일상적인 문구로 표시한다. 매개변수: 선택값.
+  // 함수이름: _sortLabel
+  // 함수역할: 등록일 또는 복용일에 해당하는 정렬 기준 문구를 선택한다.
+  // 매개변수: mode (_SavedMedicationSortMode): 정렬 기준.
+  // 반환값: 현재 언어의 날짜 기준 라벨.
   String _sortLabel(_SavedMedicationSortMode mode) =>
       mode == _SavedMedicationSortMode.registeredDate
       ? text.sortByRegisteredDate
       : text.sortByMedicationDate;
+  // 함수이름: _directionLabel
+  // 함수역할: 내림차순은 최신순, 오름차순은 오래된순으로 표현한다.
+  // 매개변수: direction (_SavedMedicationSortDirection): 정렬 방향.
+  // 반환값: 현재 언어의 정렬 방향 문구.
   String _directionLabel(_SavedMedicationSortDirection direction) =>
       direction == _SavedMedicationSortDirection.descending
       ? (text.isEnglish ? 'Newest first' : '최신순')
       : (text.isEnglish ? 'Oldest first' : '오래된순');
 
-  // 함수역할: 임시 선택을 유지하다 적용할 때만 부모에 전달한다. 취소는 기존 조건을 보존한다.
+  // 함수이름: _showFilterPicker
+  // 함수역할: 조건 초안을 높이 제한과 스크롤이 있는 선택창에 보관하고, 적용을 선택한 살아 있는 화면에만 변경을 전달한다.
+  // 매개변수: context (BuildContext): 선택창을 여는 위치.
+  // 반환값: 선택창 종료 Future<void>; 취소는 기존 조건을 유지한다.
   Future<void> _showFilterPicker(BuildContext context) async {
     FocusScope.of(context).unfocus();
     var filter = filterMode;
@@ -115,7 +132,7 @@ class _SavedMedicationFilterControl extends StatelessWidget {
                   child: Row(
                     children: [
                       Expanded(
-                        child: Text(
+                        child: KeepWordsText(
                           text.filterTitle,
                           style: const TextStyle(
                             fontSize: 22,
@@ -213,8 +230,10 @@ class _SavedMedicationFilterControl extends StatelessWidget {
     if (context.mounted && applied == true) onChanged(filter, sort, direction);
   }
 
-  // 함수역할: 현재 값을 공통 설정 행에 표시하고 해당 항목의 선택지만 연다.
-  // 매개변수: 행 식별자·제목·초안 값·선택지. 반환값: 선택 후 초안만 갱신하는 행.
+  // Function Name: _choiceRow
+  // Description: Shows one draft condition and opens its enum choices, applying a result only while the initiating context remains mounted.
+  // Parameters: context (BuildContext): sheet location; title/preferenceKey (String): heading/key; value (T): current draft; values (List<T>): options; label (String Function(T)): display text; onSelected (ValueChanged<T>): draft update.
+  // Returns: MedBuddyPreferenceRow; T is an Enum.
   Widget _choiceRow<T extends Enum>({
     required BuildContext context,
     required String title,
@@ -241,7 +260,7 @@ class _SavedMedicationFilterControl extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
+                KeepWordsText(
                   title,
                   style: const TextStyle(
                     fontSize: 18,
@@ -267,8 +286,10 @@ class _SavedMedicationFilterControl extends StatelessWidget {
     },
   );
 
-  // 함수역할: 단일 선택 상태를 시각 표시와 접근성 정보로 함께 제공한다.
-  // 매개변수: 식별 키·문구·선택 여부·선택 콜백. 반환값: 라디오 형식 행.
+  // Function Name: _option
+  // Description: Exposes one filter choice as a mutually exclusive accessible radio row.
+  // Parameters: key (Key): row identity; label (String): choice text; selected (bool): checked state; onTap (VoidCallback): select this choice.
+  // Returns: A ListTile with checked semantics.
   Widget _option({
     required Key key,
     required String label,
@@ -284,7 +305,7 @@ class _SavedMedicationFilterControl extends StatelessWidget {
         selected ? Icons.radio_button_checked : Icons.radio_button_off,
         color: selected ? MedBuddyColors.primary : MedBuddyColors.textMuted,
       ),
-      title: Text(
+      title: KeepWordsText(
         label,
         style: const TextStyle(
           fontSize: 17,
@@ -312,8 +333,13 @@ class _SavedMedicationFilteredEmptyState extends StatelessWidget {
   final VoidCallback? onRegister;
 
   // 함수이름: _SavedMedicationFilteredEmptyState
-  // 함수역할: 빈 결과의 조건과 연결 동작을 받는다.
-  // 매개변수: filterMode, text, onShowAll, onRegister. 반환값: 빈 결과 위젯.
+  // 함수역할: 검색 결과 없음과 복용 상태 필터의 빈 결과를 구분하고 전체 보기·등록 동작을 연결한다.
+  // 매개변수:
+  // - isSearching (bool): true이면 검색어에 맞는 약이 없다는 문구를 사용하며 기본값은 false이다.
+  // - filterMode (_SavedMedicationFilterMode): 검색 중이 아닐 때 빈 결과를 설명할 복약 상태 필터.
+  // - text (_SavedMedicationText): 현재 언어의 안내와 버튼 문구.
+  // - onShowAll, onRegister (VoidCallback?): 전체 약 보기와 새 약 등록 콜백. null인 동작은 비활성화한다.
+  // 반환값: 조건에 맞는 빈 결과 안내 위젯.
   const _SavedMedicationFilteredEmptyState({
     this.isSearching = false,
     required this.filterMode,
@@ -329,7 +355,7 @@ class _SavedMedicationFilteredEmptyState extends StatelessWidget {
   Widget build(BuildContext context) => _SavedMedicationStateShell(
     icon: Icons.medication_outlined,
     gap: 20,
-    message: Text(
+    message: KeepWordsText(
       isSearching
           ? (text.isEnglish
                 ? 'No medications match your search.'
@@ -350,7 +376,7 @@ class _SavedMedicationFilteredEmptyState extends StatelessWidget {
           minimumSize: const Size.fromHeight(48),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
-        child: Text(text.showAll, textAlign: TextAlign.center),
+        child: KeepWordsText(text.showAll, textAlign: TextAlign.center),
       ),
       if (filterMode == _SavedMedicationFilterMode.active) ...[
         const SizedBox(height: 12),
@@ -365,7 +391,7 @@ class _SavedMedicationFilteredEmptyState extends StatelessWidget {
             ),
           ),
           icon: const Icon(Icons.add),
-          label: Text(text.registerMedication, textAlign: TextAlign.center),
+          label: KeepWordsText(text.registerMedication, textAlign: TextAlign.center),
         ),
       ],
     ],

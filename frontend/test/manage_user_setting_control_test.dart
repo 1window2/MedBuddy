@@ -21,6 +21,10 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   _pendingSyncMain();
 
+  // 함수이름: test: '홈 일정 설정은 기본값·계정별 복원·서버 왕복을 지원한다'
+  // 함수역할: 기본·잘못된 홈 일정 값을 확인하고 patients를 서버에 저장한 뒤 같은 계정·다른 계정과 JSON으로 복원한다.
+  // 매개변수: 없음.
+  // 반환값: 기본/잘못된 값은 self이고 저장 계정만 patients를 유지하며 서버·JSON 왕복이 일치한다.
   test('홈 일정 설정은 기본값·계정별 복원·서버 왕복을 지원한다', () async {
     expect(const UserSetting().homeScheduleSource, 'self');
     expect(
@@ -69,13 +73,10 @@ void main() {
     );
   });
 
-  // 함수이름: test 콜백
-  // 함수역할:
-  // - 기대 동작: 사용자 설정에 따라 시각을 12시간제와 24시간제로 표시한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
+  // 함수이름: test: '사용자 설정에 따라 시각을 12시간제와 24시간제로 표시한다'
+  // 함수역할: 18:05를 한국어/영어 12시간 설정과 24시간 설정으로 각각 표시한다.
+  // 매개변수: 없음.
+  // 반환값: 오후 6:05, PM 6:05, 18:05의 정확한 결과를 단언한다.
   test('사용자 설정에 따라 시각을 12시간제와 24시간제로 표시한다', () {
     const koreanSetting = UserSetting(language: 'ko', timeFormat: '12h');
     const englishSetting = UserSetting(language: 'en', timeFormat: '12h');
@@ -207,13 +208,10 @@ void main() {
     );
   });
 
-  // Function Name: test callback
-  // Description:
-  // - Expected behavior: requestUserSetting restores saved values.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // Function Name: test: 'requestUserSetting restores saved values'
+  // Description: Loads legacy unscoped size, speech-speed and language preferences with remote persistence disabled.
+  // Parameters: None.
+  // Returns: The restored options are small, slow and English.
   test('requestUserSetting restores saved values', () async {
     SharedPreferences.setMockInitialValues({
       'user_setting_font_size': 14,
@@ -229,13 +227,10 @@ void main() {
     expect(setting.language, 'en');
   });
 
-  // Function Name: test callback
-  // Description:
-  // - Expected behavior: requestUserSetting prefers scoped cache over legacy keys.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // Function Name: test: 'requestUserSetting prefers scoped cache over legacy keys'
+  // Description: Seeds conflicting account-scoped and legacy preferences, then loads user-a locally.
+  // Parameters: None.
+  // Returns: The scoped large/fast/English values win and the account remains user-a.
   test('requestUserSetting prefers scoped cache over legacy keys', () async {
     SharedPreferences.setMockInitialValues({
       'user_setting_user-a_font_size': 20,
@@ -479,7 +474,10 @@ void main() {
     expect(preferences.getInt('user_setting_user-a_font_size'), 14);
     control.dispose();
   });
-  // 캐시에서 읽은 언어도 서버 응답과 같은 기준으로 ko·en만 남아야 화면마다 다르게 판정되지 않는다.
+  // Function Name: test: '캐시의 언어 값은 ko·en으로 정규화해 복원한다'
+  // Description: Restores both scoped and legacy language keys containing case, whitespace, locale suffixes or unsupported values.
+  // Parameters: None.
+  // Returns: Each path normalizes identically to ko or en according to the fixture table.
   test('캐시의 언어 값은 ko·en으로 정규화해 복원한다', () async {
     for (final entry in const {
       'EN': 'en',
@@ -508,7 +506,10 @@ void main() {
     }
   });
 
-  // 설정 전체를 저장하는 경로는 값을 선택지 단계로 바꾸지 않고 그대로 저장·전송한다.
+  // 함수이름: test: 'saveUserSettingSnapshot은 설정 전체를 변환 없이 저장한다'
+  // 함수역할: 선택 단계가 아닌 글씨 크기 18·배속 0.9 등을 포함한 전체 초안을 다른 userHash로 저장하고 로컬 재조회한다.
+  // 매개변수: 없음.
+  // 반환값: 값은 변환되지 않고 계정만 user-a로 고정되며 요청 revision과 저장/복원 JSON이 일치한다.
   test('saveUserSettingSnapshot은 설정 전체를 변환 없이 저장한다', () async {
     SharedPreferences.setMockInitialValues({});
     Map<String, dynamic>? sent;
@@ -550,7 +551,10 @@ void main() {
     expect((await restored.requestUserSetting()).toJson(), expected);
   });
 
-  // 서버 사본을 받았는지 알아야 캐시만 가진 설정을 자동으로 올리지 않을 수 있다.
+  // Function Name: test: 'lastLookupReachedServer는 최근 조회가 서버 응답이었는지 알려 준다'
+  // Description: Reads the server-reached flag before lookup, after HTTP 200 and after a later HTTP 503.
+  // Parameters: None.
+  // Returns: The flag is false, true, then false, distinguishing authoritative lookup from cache fallback.
   test('lastLookupReachedServer는 최근 조회가 서버 응답이었는지 알려 준다', () async {
     SharedPreferences.setMockInitialValues({});
     var statusCode = 200;
@@ -572,14 +576,10 @@ void main() {
     expect(control.lastLookupReachedServer, isFalse);
   });
 
-  // Function Name: test callback
-  // Description:
-  // - Expected behavior: a failed remote save of a full non-default setting writes exactly the
-  //   account-scoped preference keys below, built from the trimmed user hash.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>; completes after the stored key set is checked and fails the test on mismatch.
+  // 함수이름: test: 'failed save writes exactly the scoped user setting keys'
+  // 함수역할: 공백이 포함된 사용자 해시로 비기본 전체 설정을 저장하되 서버가 500으로 실패하게 한다.
+  // 매개변수: 없음.
+  // 반환값: 기기 전용 저장을 보고하고 공백을 제거한 usr_pin 범위의 명시된 설정·전송·스냅샷 키 집합만 생성한다.
   test('failed save writes exactly the scoped user setting keys', () async {
     SharedPreferences.setMockInitialValues({});
     final control = ManageUserSetting(
@@ -655,7 +655,10 @@ void main() {
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void _pendingSyncMain() {
-  // 오프라인에서 끈 복약 알림이 다음 서버 조회로 다시 켜지지 않고, 대기한 저장이 재전송되어야 한다.
+  // Function Name: test: '오프라인 저장은 다음 조회가 서버 사본으로 덮지 않고 다시 보낸다'
+  // Description: Saves disabled reminders offline, recreates the controller, then performs an online worker lookup followed by a normal GET.
+  // Parameters: None.
+  // Returns: Pending settings are preserved and PUT before any GET; synchronization clears the pending key, after which fresh server changes update the cache.
   test('오프라인 저장은 다음 조회가 서버 사본으로 덮지 않고 다시 보낸다', () async {
     SharedPreferences.setMockInitialValues({});
     var available = false;
@@ -723,7 +726,10 @@ void _pendingSyncMain() {
     expect(preferences.getString('user_setting_user-a_pending_sync'), isNull);
   });
 
-  // 대기 표시는 계정별이라 다른 계정의 조회는 평소처럼 서버 사본을 캐시한다.
+  // 함수이름: test: '서버 반영 대기 표시는 계정별로 적용된다'
+  // 함수역할: user-a에만 보류 저장을 남기고 user-b를 조회한 다음 user-a를 조회한다.
+  // 매개변수: 없음.
+  // 반환값: 다른 계정은 GET으로 정상 복원하고 소유 계정만 PUT으로 보류 값을 재전송한다.
   test('서버 반영 대기 표시는 계정별로 적용된다', () async {
     SharedPreferences.setMockInitialValues({
       'user_setting_user-a_pending_sync': 'token',

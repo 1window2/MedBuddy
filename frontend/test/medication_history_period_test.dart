@@ -11,6 +11,14 @@ import 'medication_history_fixtures.dart';
 import 'support/fake_as_needed_pending_store.dart';
 
 // 고정 한국 날짜를 사용하는 제어 객체로 실제 실행 날짜·지역과 무관하게 검사한다.
+// 함수이름: controlWith
+// 함수역할:
+// - 고정 시계·메모리 필요시 대기 저장소를 사용해 기간 조회의 응답과 세션 교체를 제어한다.
+// 매개변수:
+// - client(http.Client): 기간별 응답을 제공할 가짜 클라이언트.
+// - session(String? Function()?): 현재 세션 키 공급자; 생략하면 고정 세션.
+// 반환값:
+// - MedicationHistoryControl: 테스트 환자 조회기; 호출자가 dispose해야 한다.
 MedicationHistoryControl controlWith(
   http.Client client, {
   String? Function()? session,
@@ -23,6 +31,13 @@ MedicationHistoryControl controlWith(
 );
 
 // 요청 범위를 그대로 돌려주는 빈 응답으로 실제 약·건강정보를 사용하지 않는다.
+// 함수이름: emptyResponse
+// 함수역할:
+// - 요청 시작·종료 날짜를 그대로 반영한 빈 이력 응답을 만든다.
+// 매개변수:
+// - request(http.Request): start_date/end_date 쿼리를 포함한 조회 요청.
+// 반환값:
+// - http.Response: 고정 약 목록과 빈 items를 가진 성공 응답; 날짜 쿼리 누락은 null 단언 실패.
 http.Response emptyResponse(http.Request request) => historyTestResponse(
   historyTestBody(
     start: request.url.queryParameters['start_date']!,
@@ -31,7 +46,21 @@ http.Response emptyResponse(http.Request request) => historyTestResponse(
   ),
 );
 
+// 함수이름: main
+// 함수역할:
+// - 정기/필요시 통계 분리와 90일 분할 조회의 실패·세션·중복 요청 경계를 검증한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - 없음; 등록한 테스트는 프레임워크가 실행한다.
 void main() {
+  // 함수이름: 정기 통계 분모와 필요시 기록
+  // 함수역할:
+  // - 정기 세 상태는 분모 3·복용률 33%로 계산하고 완료된 필요시 기록만 별도 횟수에 더하며 필요시만 있으면 복용률을 계산하지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test(
     'PRN taken is independent of scheduled denominator and cancelled PRN',
     () {
@@ -69,6 +98,13 @@ void main() {
     },
   );
 
+  // 함수이름: 90일 연속 구간 조회
+  // 함수역할:
+  // - 90일을 최신순 31·31·28일로 겹침 없이 조회하고 중간 결과를 노출하지 않으며 대기 중 중복 조회를 거부하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     '90 days load in bounded contiguous chunks, exposing only final snapshot',
     () async {
@@ -120,6 +156,13 @@ void main() {
     },
   );
 
+  // 함수이름: 후속 구간 실패의 부분 결과 제거
+  // 함수역할:
+  // - 두 번째 구간의 통신 실패를 전달하고 스냅샷 없이 오류를 기록하며 busy를 해제하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('failed later chunk never leaves partial statistics', () async {
     var requests = 0;
     final control = controlWith(
@@ -144,6 +187,13 @@ void main() {
     expect(control.busy, isFalse);
   });
 
+  // 함수이름: 구간 조회 중 세션 변경
+  // 함수역할:
+  // - 첫 응답 중 세션이 바뀌면 추가 요청을 중단하고 결과를 비운 채 세션 무효화 오류를 전달하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('session changes stop chunk reads and clear all results', () async {
     String? session = 'first';
     var requests = 0;
@@ -170,6 +220,13 @@ void main() {
     expect(control.sessionInvalidated, isTrue);
   });
 
+  // 함수이름: 잘못된 기간의 통신 전 거부
+  // 함수역할:
+  // - 보존 범위 초과·미래·역순 날짜는 네트워크 요청 없이 FormatException으로 거부하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'over-retention, future and reverse dates fail before network use',
     () async {

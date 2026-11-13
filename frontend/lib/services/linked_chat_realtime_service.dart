@@ -13,9 +13,9 @@ import 'auth_config.dart';
 import 'authenticated_api_client.dart';
 
 // 클래스명: LinkedChatEventSource
-// 역할: 채팅 이벤트 소비자가 사용할 연결 및 수신 계약이다.
-// 주요 책임:
-// - 구체 WebSocket 구현을 감추고 이벤트 스트림·시작·정리 수명을 함께 제공한다.
+// 역할: 연동 채팅 이벤트 구독과 연결 수명주기를 제공하는 계약이다.
+// 주요 책임: 구현체가 이벤트 스트림·시작·해제를 제공하도록 한다.
+// 속성: events (Stream<Map<String, dynamic>>): 서버 이벤트; 구현체별 연결 상태는 노출하지 않는다.
 abstract interface class LinkedChatEventSource {
   // 함수이름: events
   // 함수역할: 채팅 메시지와 읽음 등 서버의 구조화된 실시간 이벤트 스트림을 제공한다.
@@ -43,9 +43,9 @@ abstract interface class LinkedChatEventSource {
 }
 
 // 클래스명: LinkedChatConnectionState
-// 역할: 채팅 소켓의 연결 중·연결됨·재연결 중·연결 해제 상태를 구분한다.
-// 주요 책임:
-// - 화면이 메시지 스트림과 별도로 연결 진행 및 복구 상태를 표시하게 한다.
+// 역할: 연동 채팅 전송 계층의 연결 진행 상태를 구분한다.
+// 주요 책임: 최초 연결과 재연결을 화면에서 구별하게 한다.
+// 속성: connecting/connected/reconnecting/disconnected: 연결 상태.
 enum LinkedChatConnectionState {
   connecting,
   connected,
@@ -88,22 +88,10 @@ typedef LinkedChatSocketConnector =
 // - Future<void>: 갱신을 마치면 완료.
 typedef LinkedChatCredentialRefresher = Future<void> Function();
 
-// 클래스명: LinkedChatRealtimeService
-// 역할: 한 환자·보호자 연동의 인증 WebSocket 연결을 관리한다.
-// 주요 책임:
-// - 공유 인증 헤더로 연결하고 ping·재연결·세대 검증을 수행하며 JSON 이벤트와 연결 상태를 방송한다.
-// - 서버가 수락 직후 닫는 연결(한도 초과·권한 거부)에는 재연결 간격을 줄이지 않는다.
-// - 서버의 종료 코드를 읽어 연동 해제(4404)에는 재연결을 멈추고, 인증 실패(4401)에는 새 토큰으로 한 번만
-//   다시 시도한 뒤 세션 문제로 알리며, 연결 한도(4429)에는 서버가 알려 준 시간만큼 기다린다.
-//   핸드셰이크에서 거절하는 서버는 종료 코드를 전달하지 못하므로 그때는 간격만 늘려 다시 시도한다.
-// 속성:
-// - linkId (int): 조회·전송·감시 대상 연동 ID
-// - userHash (String): 현재 사용자 소유권·표시·저장 범위의 해시
-// - authenticationClient (AuthenticatedApiClient): REST와 소켓의 공통 인증 헤더 제공자
-// - _connector (LinkedChatSocketConnector): 소켓을 여는 연결 함수
-// - _refreshCredential (LinkedChatCredentialRefresher): 인증 실패·만료로 닫힌 뒤 새 토큰을 받는 함수
-// - _socket (WebSocket?): 현재 heartbeat와 수신에 사용할 WebSocket
-// - _generation (int): 이전 비동기 응답을 차단할 현재 작업 세대
+// Class Name: LinkedChatRealtimeService
+// Role: Maintain an authenticated linked-chat WebSocket session.
+// Responsibilities: Publish events and connection states, send heartbeats and apply close-code-specific reconnection policies.
+// Attributes: linkId/userHash/authenticationClient: session identity and authentication; _connector/_refreshCredential: injected boundaries; socket, timers, generation and retry fields: connection lifecycle.
 class LinkedChatRealtimeService implements LinkedChatSessionTransport {
   static const List<Duration> _reconnectDelays = [
     Duration(seconds: 1),
@@ -148,16 +136,10 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
   // 인증 실패로 닫힌 뒤 새 토큰으로 이미 한 번 다시 시도했는지 여부. chat_ready를 받으면 되돌린다.
   bool _retriedAfterAuthenticationFailure = false;
 
-  // 함수이름: LinkedChatRealtimeService
-  // 함수역할: 감시할 연동 ID와 현재 사용자 및 인증 헤더 제공 클라이언트를 연결한다.
-  // 매개변수:
-  // - linkId (int): 조회·전송·감시 대상 연동 ID
-  // - userHash (String): 현재 사용자 소유권·표시·저장 범위의 해시
-  // - authenticationClient (AuthenticatedApiClient): REST와 소켓의 공통 인증 헤더 제공자
-  // - connector (LinkedChatSocketConnector?): 소켓 연결 함수; 생략하면 WebSocket.connect
-  // - credentialRefresher (LinkedChatCredentialRefresher?): 새 인증 토큰을 받는 함수; 생략하면 Firebase ID 토큰을 강제로 갱신한다
-  // 반환값:
-  // - LinkedChatRealtimeService: 초기화된 인스턴스.
+  // Function Name: LinkedChatRealtimeService
+  // Description: Bind one link and user to authentication and replaceable socket/credential boundaries; do not connect yet.
+  // Parameters: linkId (int): link; userHash (String): user; authenticationClient (AuthenticatedApiClient): borrowed authentication; connector (LinkedChatSocketConnector?): socket opener; credentialRefresher (LinkedChatCredentialRefresher?): forced credential refresh.
+  // Returns: LinkedChatRealtimeService: inactive session transport.
   LinkedChatRealtimeService({
     required this.linkId,
     required this.userHash,
@@ -167,13 +149,10 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
   }) : _connector = connector ?? WebSocket.connect,
        _refreshCredential = credentialRefresher ?? _refreshFirebaseIdToken;
 
-  // 함수이름: _refreshFirebaseIdToken
-  // 함수역할: 인증을 쓰는 실행에서 현재 Firebase 사용자의 ID 토큰을 서버에서 새로 받아, 이어지는 연결의
-  //   인증 헤더가 새 토큰을 쓰게 한다. 인증을 끈 로컬 실행에서는 아무 일도 하지 않는다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>: 갱신을 마치면 완료.
+  // Function Name: _refreshFirebaseIdToken
+  // Description: Force-refresh the current Firebase user's ID token unless authentication is disabled.
+  // Parameters: None.
+  // Returns: Future<void>: refresh completion, or no-op without a current user; refresh errors propagate.
   static Future<void> _refreshFirebaseIdToken() async {
     if (AuthConfig.mode == AuthenticationMode.disabled) {
       return;
@@ -189,21 +168,17 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
   // - Stream<Map<String, dynamic>>: 채팅 메시지와 읽음 등 서버의 구조화된 실시간 이벤트 스트림을 제공한다.
   @override
   Stream<Map<String, dynamic>> get events => _eventController.stream;
-  // 함수이름: states
-  // 함수역할: 연결 시작·성공·재연결·종료 상태를 구독자에게 방송하는 스트림을 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Stream<LinkedChatConnectionState>: 연결 시작·성공·재연결·종료 상태를 구독자에게 방송하는 스트림을 제공한다.
+  // Function Name: states
+  // Description: Expose connection-state changes to subscribers.
+  // Parameters: None.
+  // Returns: Stream<LinkedChatConnectionState>: state events.
   @override
   Stream<LinkedChatConnectionState> get states => _stateController.stream;
 
-  // 함수이름: start
-  // 함수역할: 채팅 실시간 연결을 한 번 시작하고 끊기면 제한된 간격으로 재연결한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: start
+  // Description: Start once, reset retry counters and connect under a new generation.
+  // Parameters: None.
+  // Returns: Future<void>: initial connection attempt completion; repeated starts are ignored.
   @override
   Future<void> start() async {
     if (_started) {
@@ -216,13 +191,10 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
     await _connect(generation, reconnecting: false);
   }
 
-  // 함수이름: _connect
-  // 함수역할: 현재 세대의 인증 소켓을 연결하고 늦게 도착한 이전 연결은 닫으며 수신·heartbeat를 시작하고 실패 시 재연결을 예약한다.
-  // 매개변수:
-  // - generation (int): 이전 비동기 응답을 차단할 현재 작업 세대
-  // - reconnecting (bool): 최초 연결이 아닌 복구 연결인지 여부
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: _connect
+  // Description: Connect with current credentials under a generation guard, close late/stale sockets, and attach heartbeat/event handlers; report failures and schedule retry.
+  // Parameters: generation (int): active session revision; reconnecting (bool): state to announce.
+  // Returns: Future<void>: connection attempt settles; failures are reported through the service.
   Future<void> _connect(int generation, {required bool reconnecting}) async {
     if (!_started || generation != _generation) {
       return;
@@ -321,12 +293,10 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
     }
   }
 
-  // 함수이름: _closeLateSocket
-  // 함수역할: 연결 제한 시간이 지난 뒤에 완료된 연결을 닫고, 그 연결의 늦은 실패는 무시한다.
-  // 매개변수:
-  // - connecting (Future<WebSocket>): 제한 시간 안에 끝나지 않은 연결 시도
-  // 반환값:
-  // - Future<void>: 늦은 소켓을 닫았거나 연결이 실패하면 완료.
+  // Function Name: _closeLateSocket
+  // Description: Close a socket that completes after its connection attempt timed out; ignore connection or close failures.
+  // Parameters: connecting (Future<WebSocket>): timed-out pending connection.
+  // Returns: Future<void>: late cleanup completion.
   Future<void> _closeLateSocket(Future<WebSocket> connecting) async {
     try {
       final late = await connecting;
@@ -336,14 +306,10 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
     }
   }
 
-  // 함수이름: _handleSocketData
-  // 함수역할: 수신 문자열을 JSON 객체로 해석해 이벤트 스트림으로 전달하고 파싱 오류는 진단 로그에 남긴다.
-  //           현재 소켓의 chat_ready는 서버가 연결을 등록했다는 뜻이므로 재연결 간격을 처음으로 되돌린다.
-  // 매개변수:
-  // - socket (WebSocket): 데이터를 받은 소켓
-  // - rawData (dynamic): 해석 전 WebSocket 수신 데이터
-  // 반환값:
-  // - 없음.
+  // Function Name: _handleSocketData
+  // Description: Decode map-shaped socket events; chat_ready resets authentication retry state only for the current socket. Report malformed events.
+  // Parameters: socket (WebSocket): emitting connection; rawData (dynamic): wire event.
+  // Returns: void; publishes decoded maps or reports decoding errors.
   void _handleSocketData(WebSocket socket, dynamic rawData) {
     try {
       final decoded = jsonDecode(rawData.toString());
@@ -359,25 +325,20 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
     }
   }
 
-  // 함수이름: _emitState
-  // 함수역할: 해제로 스트림이 닫힌 뒤에 끝난 비동기 작업이 상태를 추가하지 않게 막고 연결 상태를 방송한다.
-  // 매개변수:
-  // - state (LinkedChatConnectionState): 구독자에게 알릴 연결 상태
-  // 반환값:
-  // - 없음.
+  // Function Name: _emitState
+  // Description: Publish a connection state only while the state stream is open.
+  // Parameters: state (LinkedChatConnectionState): new state.
+  // Returns: void.
   void _emitState(LinkedChatConnectionState state) {
     if (!_stateController.isClosed) {
       _stateController.add(state);
     }
   }
 
-  // 함수이름: _startHeartbeat
-  // 함수역할: 현재 연결과 세대가 유지되는 동안 20초 간격으로 ping을 보내도록 이전 heartbeat를 교체한다.
-  // 매개변수:
-  // - socket (WebSocket): 현재 heartbeat와 수신에 사용할 WebSocket
-  // - generation (int): 이전 비동기 응답을 차단할 현재 작업 세대
-  // 반환값:
-  // - 없음.
+  // Function Name: _startHeartbeat
+  // Description: Replace the heartbeat timer and send ping every 20 seconds only for the active socket generation.
+  // Parameters: socket (WebSocket): connected socket; generation (int): session revision.
+  // Returns: void.
   void _startHeartbeat(WebSocket socket, int generation) {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(
@@ -398,14 +359,10 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
     );
   }
 
-  // 함수이름: _handleDisconnected
-  // 함수역할: 현재 소켓의 끊김에만 반응해 참조와 heartbeat를 정리하고, 서버가 보낸 종료 코드에 따라
-  //           재연결을 멈추거나 새 토큰·대기 시간을 정해 같은 세대의 재연결을 예약한다.
-  // 매개변수:
-  // - socket (WebSocket): 현재 heartbeat와 수신에 사용할 WebSocket
-  // - generation (int): 이전 비동기 응답을 차단할 현재 작업 세대
-  // 반환값:
-  // - 없음.
+  // Function Name: _handleDisconnected
+  // Description: Handle current-socket closure: halt inactive links/repeated authentication failures, refresh expired credentials, and honor quota/refusal delays.
+  // Parameters: socket (WebSocket): disconnected socket; generation (int): originating session revision.
+  // Returns: void; stale socket notifications are ignored.
   void _handleDisconnected(WebSocket socket, int generation) {
     if (!identical(_socket, socket)) {
       return;
@@ -457,13 +414,10 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
     }
   }
 
-  // 함수이름: _haltReconnection
-  // 함수역할: 서버가 다시 연결해도 소용없다고 알린 뒤 재연결을 멈추고 연결 해제 상태를 알린다.
-  //           start()를 다시 호출하면(화면 재진입·앱 복귀) 한 번 더 연결을 시도한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음.
+  // Function Name: _haltReconnection
+  // Description: Stop retries, invalidate pending generations and publish disconnected state.
+  // Parameters: None.
+  // Returns: void.
   void _haltReconnection() {
     _started = false;
     _generation += 1;
@@ -472,13 +426,10 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
     _emitState(LinkedChatConnectionState.disconnected);
   }
 
-  // 함수이름: _scheduleReconnect
-  // 함수역할: 중복 예약과 이전 세대를 차단하고 1·2·5·10초로 늘어나는 지연 중 다음 연결 시도를 예약한다.
-  // 매개변수:
-  // - generation (int): 이전 비동기 응답을 차단할 현재 작업 세대
-  // - minimumDelay (Duration?): 서버가 요구했거나 거절 사유에 맞춘 최소 대기; 늘어나는 지연보다 길 때만 적용한다
-  // 반환값:
-  // - 없음.
+  // Function Name: _scheduleReconnect
+  // Description: Schedule one retry for the current generation using the backoff ladder and any larger server minimum.
+  // Parameters: generation (int): session revision; minimumDelay (Duration?): lower bound for retry wait.
+  // Returns: void; ignores stopped, stale or already scheduled requests.
   void _scheduleReconnect(int generation, {Duration? minimumDelay}) {
     if (!_started || generation != _generation || _reconnectTimer != null) {
       return;
@@ -502,13 +453,10 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
     });
   }
 
-  // 함수이름: stop
-  // 함수역할: 화면 종료 시 재연결과 heartbeat를 중지하고 소켓을 정상 종료한다.
-  //           소켓을 닫는 동안 start()가 다시 호출되었으면 새 연결의 상태를 연결 해제로 덮어쓰지 않는다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: stop
+  // Description: Stop an active session, invalidate pending connects, cancel timers and close its socket; publish disconnected only if no newer generation starts.
+  // Parameters: None.
+  // Returns: Future<void>: socket close completion; a stopped service is unchanged.
   @override
   Future<void> stop() async {
     if (!_started) {

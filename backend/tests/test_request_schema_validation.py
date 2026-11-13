@@ -20,11 +20,12 @@ from schemas.prescription_change import (
 )
 
 
-# Class Name: RequestSchemaValidationTest
-# Role: Request-boundary validation tests for link codes, preferences, medication text, images,
-#   and prescription dates.
-# Responsibilities:
-# - Rejects untrusted medication image URLs while accepting an official MFDS HTTPS image.
+# 클래스명: RequestSchemaValidationTest
+# 역할: 연동 코드, 사용자 설정, 약품 텍스트·이미지와 처방 날짜의 요청 검증을 확인한다.
+# 주요 책임:
+# - 잘못된 입력은 거부하고 허용된 공식 이미지 주소와 유효한 요청값은 수용하는지 검증한다.
+# 속성:
+# - 없음; 각 테스트에서 요청 모델을 직접 생성한다.
 class RequestSchemaValidationTest(unittest.TestCase):
     # 함수이름: test_patient_code_is_normalized_before_validation
     # 함수역할:

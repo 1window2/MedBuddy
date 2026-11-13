@@ -17,30 +17,19 @@ from services.background_loop_runner import BackgroundLoopRunner
 logger = logging.getLogger(__name__)
 
 
-# 클래스명: CaregiverAlertOutboxWorker
-# 역할:
-# - 처리 가능한 보호자 알림 요청을 백그라운드에서 반복 조회한다.
-# 주요 책임:
-# - 전송 대상 알림을 독립 세션에서 주기적으로 처리하고 종료 신호 및 실패 시 롤백을 관리한다.
-# - 한 주기의 어떤 실패도 반복 작업을 끝내지 못하게 하고, 미복용 큐 적재 실패가 전송을 막지 않게 한다.
-# 속성:
-# - session_factory (sessionmaker[Session]): 주기별 DB 세션 생성기.
-# - push_boundary_factory (Callable): 푸시 전송 경계 생성기.
-# - interval_seconds (int): 조회 간격(초).
-# - _task / _stop_event: 반복 작업과 종료 신호.
+# Class Name: CaregiverAlertOutboxWorker
+# Role: Periodically queues missed-dose alerts and processes durable caregiver deliveries.
+# Responsibilities: Gives each cycle its own session and keeps queueing failures from blocking previously queued deliveries.
+# Attributes: session_factory creates Sessions; push_boundary_factory creates delivery boundaries; interval_seconds is the polling delay.
+# Note: Task and stop-event lifecycle are inherited from BackgroundLoopRunner.
 class CaregiverAlertOutboxWorker(BackgroundLoopRunner):
     _cycle_logger = logger
     _cycle_failure_message = "Caregiver alert outbox worker cycle failed: %s"
 
-    # 함수이름: __init__
-    # 함수역할:
-    # - 주기별 세션과 푸시 경계 생성기를 보관하고 반복 작업의 종료 신호를 초기화한다.
-    # 매개변수:
-    # - session_factory (sessionmaker[Session]): 작업 주기마다 독립 SQLAlchemy 세션을 여는 팩터리.
-    # - push_boundary_factory (Callable[[], PushNotificationBoundary]): 작업마다 사용할 푸시 전송 경계를 만드는 팩터리.
-    # - interval_seconds (int): 아웃박스 처리 사이에 기다릴 시간(초).
-    # 반환값:
-    # - 없음; 반복 작업은 start에서 시작한다.
+    # Function Name: __init__
+    # Description: Stores per-cycle dependencies and initializes inherited lifecycle state without opening a session.
+    # Parameters: session_factory (sessionmaker[Session]) creates worker sessions; push_boundary_factory creates PushNotificationBoundary instances; interval_seconds (int) is the delay.
+    # Returns: None; work begins only on start.
     def __init__(
         self,
         session_factory: sessionmaker[Session],
@@ -52,24 +41,17 @@ class CaregiverAlertOutboxWorker(BackgroundLoopRunner):
         self.interval_seconds = interval_seconds
         super().__init__()
 
-    # 함수이름: _cycle_interval_seconds
-    # 함수역할:
-    # - 아웃박스 처리 주기 사이에 기다릴 설정 간격을 돌려준다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - interval_seconds에 저장된 대기 시간(초).
+    # Function Name: _cycle_interval_seconds
+    # Description: Supplies the configured delay after each outbox cycle.
+    # Parameters: None.
+    # Returns: interval_seconds as seconds; the value is not revalidated here.
     def _cycle_interval_seconds(self) -> float:
         return self.interval_seconds
 
-    # 함수이름: _run_once
-    # 함수역할:
-    # - 새 세션에서 전송 시점이 된 알림을 처리하고 실패 시 롤백하며 항상 세션을 닫는다.
-    # - 미복용 알림 적재와 전송을 따로 보호해 적재가 실패한 주기에도 이미 쌓인 알림은 전송한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음; 전송 결과나 처리 오류를 로그에 남긴다.
+    # Function Name: _run_once
+    # Description: Uses a fresh session to queue due misses and process deliveries, independently rolling back/logging each failure and always closing the session.
+    # Parameters: None; uses the configured session and push-boundary factories.
+    # Returns: None. Queue/delivery errors are logged; session creation, rollback or closure failures may propagate to the outer loop.
     def _run_once(self) -> None:
         db = self.session_factory()
         try:

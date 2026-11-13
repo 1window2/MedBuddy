@@ -388,14 +388,13 @@ class SetCaregiverNotificationTest(unittest.TestCase):
                 self.db.refresh(row)
                 self.assertEqual(row.slot_settings, columns["slot_settings"])
 
-    # 함수이름: test_legacy_missed_deadline_row_is_queued_like_the_screen_shows
-    # 함수역할:
-    # - 시간대 JSON 없이 기존 미복약 마감 열만 가진 행도 설정 화면에 보이는 마감 시각이 지나면
-    #   미복약 알림 큐에 들어가고, 마감 전에는 들어가지 않는지 검증한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음 (None).
+    # Function Name: test_legacy_missed_deadline_row_is_queued_like_the_screen_shows
+    # Description:
+    # - Queue legacy missed-dose settings without slot JSON only after the same deadline shown by the settings screen.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_legacy_missed_deadline_row_is_queued_like_the_screen_shows(self) -> None:
         self._link_caregiver()
         due_time = application_now().replace(hour=9, minute=5, second=0, microsecond=0)
@@ -441,14 +440,13 @@ class SetCaregiverNotificationTest(unittest.TestCase):
             ("caregiver-a", "patient-a", "morning"),
         )
 
-    # 함수이름: test_concurrent_create_conflict_updates_the_existing_row
-    # 함수역할:
-    # - 첫 조회가 행을 보지 못해 새 행 삽입이 고유 제약에 걸려도 롤백 후 기존 행에 요청한 시간대
-    #   설정을 적용하고, 이미 저장된 다른 시간대 설정과 단일 행을 유지하는지 검증한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음 (None).
+    # Function Name: test_concurrent_create_conflict_updates_the_existing_row
+    # Description:
+    # - Recover from a concurrent-create uniqueness conflict by updating the existing row while preserving its other slot preferences.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_concurrent_create_conflict_updates_the_existing_row(self) -> None:
         self._link_caregiver()
         self.control.saveCaregiverNotificationSetting(
@@ -462,14 +460,14 @@ class SetCaregiverNotificationTest(unittest.TestCase):
         find_setting = self.control._find_setting
         lookups: list[object] = []
 
-        # 함수이름: miss_first_lookup
-        # 함수역할:
-        # - 다른 요청이 같은 순간 행을 만든 상황처럼 첫 조회만 행이 없다고 답하고 이후 조회는 실제 행을 돌려준다.
-        # 매개변수:
-        # - caregiver_hash (str): 조회할 보호자 계정 식별자.
-        # - patient_hash (str): 조회할 환자 식별자.
-        # 반환값:
-        # - 첫 호출은 None, 이후 호출은 저장된 알림 설정 행.
+        # Function Name: miss_first_lookup
+        # Description:
+        # - Miss only the first settings lookup to simulate a concurrent insert, then return the real stored row.
+        # Parameters:
+        # - caregiver_hash: str; caregiver account identifier.
+        # - patient_hash: str; linked patient identifier.
+        # Returns:
+        # - _CaregiverNotification | None; no row initially, then the actual settings lookup result.
         def miss_first_lookup(
             caregiver_hash: str,
             patient_hash: str,

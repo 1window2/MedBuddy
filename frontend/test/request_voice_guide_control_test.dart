@@ -42,6 +42,13 @@ void main() {
       usageMethod: 'Take after meals',
       warning: '',
     );
+    // Function Name: guide
+    // Description:
+    // - Encodes supplied voice text in a successful backend-shaped response.
+    // Parameters:
+    // - text (String): Guide text to place under data.voice_guide_text.
+    // Returns:
+    // - http.Response with status 200 and a JSON body.
     http.Response guide(String text) => http.Response(
       jsonEncode({
         'data': {'voice_guide_text': text},
@@ -271,6 +278,14 @@ void main() {
   // 반환값:
   // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
   test('MedicationDetail keeps directions it cannot read as a daily count', () {
+    // Function Name: lines
+    // Description:
+    // - Builds an English compact dosage guide from frequency and duration text.
+    // Parameters:
+    // - dailyFrequency (String): Original frequency/directions.
+    // - totalDays (String): Original course-duration text.
+    // Returns:
+    // - List<String>: Formatted dosage guide lines for the fixture.
     List<String> lines(String dailyFrequency, String totalDays) =>
         MedicationDetail(
           itemName: 'Test tablet',

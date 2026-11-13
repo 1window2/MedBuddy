@@ -10,7 +10,7 @@ import time
 from collections.abc import AsyncIterator
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import cv2
 import httpx
@@ -119,6 +119,8 @@ class _FakeVisionAPI:
 # Responsibilities:
 # - Raises an upstream connection error containing private details to test public-error
 #   sanitization.
+# Attributes:
+# - None.
 class _FailingVisionAPI:
     # Function Name: requestVisualFeatures
     # Description:
@@ -138,6 +140,8 @@ class _FailingVisionAPI:
 # Responsibilities:
 # - Blocks briefly before returning the image unchanged so preprocessing exceeds a short
 #   deadline.
+# Attributes:
+# - None.
 class _SlowImageProcessingBoundary:
     # Function Name: preprocessPillImageWithAssessment
     # Description:
@@ -319,7 +323,7 @@ def _sample_image() -> bytes:
 # - None.
 def test_image_preprocessing_rejects_invalid_data() -> None:
     with pytest.raises(PillImageQualityError, match="valid image"):
-        PillImageProcessingBoundary().preprocessPillImage(b"not-an-image")
+        PillImageProcessingBoundary().preprocessPillImageWithAssessment(b"not-an-image")
 
 
 # Function Name: _progressive_jpeg
@@ -428,7 +432,7 @@ def test_image_preprocessing_rejects_oversized_dimensions_before_decode(
     monkeypatch.setattr(boundary_module.cv2, "imdecode", fail_decode)
 
     with pytest.raises(PillImageQualityError, match="too large"):
-        PillImageProcessingBoundary().preprocessPillImage(b"image-header")
+        PillImageProcessingBoundary().preprocessPillImageWithAssessment(b"image-header")
 
 
 # Function Name: test_image_preprocessing_returns_bounded_jpeg
@@ -440,7 +444,7 @@ def test_image_preprocessing_rejects_oversized_dimensions_before_decode(
 # Returns:
 # - None.
 def test_image_preprocessing_returns_bounded_jpeg() -> None:
-    processed = PillImageProcessingBoundary().preprocessPillImage(_sample_image())
+    processed = PillImageProcessingBoundary().preprocessPillImageWithAssessment(_sample_image()).image
 
     decoded = cv2.imdecode(np.frombuffer(processed, dtype=np.uint8), cv2.IMREAD_COLOR)
     assert decoded is not None
@@ -461,9 +465,9 @@ def test_image_preprocessing_downsamples_high_resolution_jpeg() -> None:
     success, encoded = cv2.imencode(".jpg", image)
     assert success
 
-    processed = PillImageProcessingBoundary().preprocessPillImage(
+    processed = PillImageProcessingBoundary().preprocessPillImageWithAssessment(
         encoded.tobytes()
-    )
+    ).image
     decoded = cv2.imdecode(
         np.frombuffer(processed, dtype=np.uint8),
         cv2.IMREAD_COLOR,
@@ -487,7 +491,7 @@ def test_image_preprocessing_preserves_ambiguous_multi_object_frame() -> None:
     success, encoded = cv2.imencode(".jpg", image)
     assert success
 
-    processed = PillImageProcessingBoundary().preprocessPillImage(encoded.tobytes())
+    processed = PillImageProcessingBoundary().preprocessPillImageWithAssessment(encoded.tobytes()).image
     decoded = cv2.imdecode(np.frombuffer(processed, dtype=np.uint8), cv2.IMREAD_COLOR)
 
     assert decoded is not None
@@ -514,7 +518,7 @@ def test_image_preprocessing_ignores_edge_clutter_when_cropping() -> None:
     success, encoded = cv2.imencode(".jpg", image)
     assert success
 
-    processed = PillImageProcessingBoundary().preprocessPillImage(encoded.tobytes())
+    processed = PillImageProcessingBoundary().preprocessPillImageWithAssessment(encoded.tobytes()).image
     decoded = cv2.imdecode(np.frombuffer(processed, dtype=np.uint8), cv2.IMREAD_COLOR)
 
     assert decoded is not None
@@ -548,7 +552,7 @@ def test_image_preprocessing_crops_high_contrast_pill_on_textured_frame() -> Non
     success, encoded = cv2.imencode(".jpg", image)
     assert success
 
-    processed = PillImageProcessingBoundary().preprocessPillImage(encoded.tobytes())
+    processed = PillImageProcessingBoundary().preprocessPillImageWithAssessment(encoded.tobytes()).image
     decoded = cv2.imdecode(np.frombuffer(processed, dtype=np.uint8), cv2.IMREAD_COLOR)
 
     assert decoded is not None
@@ -1513,9 +1517,23 @@ async def test_mfds_api_requires_every_advertised_raw_row() -> None:
 async def test_mfds_api_failure_does_not_expose_the_service_key() -> None:
     import traceback
 
+    # Function Name: handler
+    # Description:
+    # - Returns a provider failure to exercise request error handling without network access.
+    # Parameters:
+    # - _request: httpx.Request; intercepted request, unused.
+    # Returns:
+    # - httpx.Response; HTTP 500.
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, text="provider failure")
 
+    # Function Name: client_factory
+    # Description:
+    # - Creates a mock-transport client while retaining the requested timeout and connection limits.
+    # Parameters:
+    # - kwargs: dict[str, object]; client options, including timeout and limits.
+    # Returns:
+    # - httpx.AsyncClient; client bound to the failure handler.
     def client_factory(**kwargs: object) -> httpx.AsyncClient:
         return httpx.AsyncClient(
             transport=httpx.MockTransport(handler),
@@ -1557,6 +1575,8 @@ async def test_mfds_api_rejects_oversized_chunked_page_response(
     #   chunks.
     # Responsibilities:
     # - Yields two ten-byte chunks to test cumulative response-size enforcement.
+    # Attributes:
+    # - None.
     class _OversizedStream(httpx.AsyncByteStream):
         # Function Name: __aiter__
         # Description:
@@ -1930,3 +1950,71 @@ def test_mfds_catalog_boundary_rejects_invalid_configuration(
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+# Function Name: test_image_preprocessing_applies_the_scan_limit_to_mpo_images
+# Description:
+# - A JPEG with an MPF segment opens as format "MPO". It is still a JPEG to the decoder, so the
+#   scan limit applies to it too, while a normal MPO photo still decodes.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_image_preprocessing_applies_the_scan_limit_to_mpo_images() -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("L", (256, 256), 128).save(
+        buffer, format="MPO", save_all=True,
+        append_images=[Image.new("L", (256, 256), 90)], progressive=True, quality=90,
+    )
+    normal = buffer.getvalue()
+    first_end = normal.index(b"\xff\xd9")
+    empty_scan = bytes.fromhex("ffda0008010100013f10")
+    crafted = normal[:first_end] + empty_scan * 500 + normal[first_end:]
+    with Image.open(BytesIO(crafted), formats=("JPEG", "PNG", "WEBP")) as opened:
+        assert opened.format == "MPO"
+
+    boundary = PillImageProcessingBoundary()
+    assert boundary._decode_bounded_image(normal).shape[:2] == (256, 256)
+    with pytest.raises(PillImageQualityError, match="not a valid image"):
+        boundary._decode_bounded_image(crafted)
+
+
+# Function Name: test_image_preprocessing_turns_the_image_upright_without_rewriting_exif
+# Description:
+# - An image with EXIF orientation 6 is turned upright (its sides swap), and the EXIF block is
+#   not re-encoded: ImageOps.exif_transpose did that, and a large bogus tag made a 128 px image
+#   cost seconds of CPU.
+# Parameters:
+# - monkeypatch (pytest.MonkeyPatch): Makes any EXIF re-encoding fail the test.
+# Returns:
+# - None.
+def test_image_preprocessing_turns_the_image_upright_without_rewriting_exif(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    buffer = BytesIO()
+    Image.new("RGB", (300, 150), (200, 30, 30)).save(buffer, format="PNG", exif=exif)
+
+    # Function Name: refuse_reencoding
+    # Description:
+    # - Fails immediately if image processing attempts to re-encode EXIF metadata.
+    # Parameters:
+    # - offset: int; EXIF byte offset, unused.
+    # Returns:
+    # - Never returns; raises AssertionError.
+    def refuse_reencoding(self, offset: int = 8) -> NoReturn:
+        raise AssertionError("EXIF must not be re-encoded")
+
+    monkeypatch.setattr(Image.Exif, "tobytes", refuse_reencoding)
+    decoded = PillImageProcessingBoundary()._decode_bounded_image(buffer.getvalue())
+
+    assert decoded.shape[:2] == (300, 150)
