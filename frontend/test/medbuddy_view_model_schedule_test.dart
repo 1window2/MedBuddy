@@ -1503,6 +1503,102 @@ void main() {
     },
   );
 
+  // Function Name: dose-change reminder test
+  // Description: A slot recorded on this device moves today's reminder at once: Taken drops it and undoing
+  //   brings it back, without waiting for the next schedule refresh. With the course read failing, nothing
+  //   is rescheduled from today's schedule alone.
+  // Parameters: None.
+  // Returns: Future<void>: Checks the dates registered after each change.
+  test("a dose change on this device moves today's reminder", () async {
+    SharedPreferences.setMockInitialValues({});
+    final notificationService = RecordingNotificationService();
+    var morningTaken = false;
+    var windowAvailable = true;
+    Map<String, dynamic> course() => {
+      'medication_id': '11',
+      'drug_name': 'test-tablet',
+      'daily_frequency': '1 time',
+      'slot_statuses': {'morning': morningTaken},
+      'patient_hash': PatientHash.defaultPatientHash,
+    };
+    final client = MockClient((http.Request request) async {
+      final path = request.url.path;
+      if (path.endsWith('/notification/settings')) {
+        return _jsonResponse({
+          'success': true,
+          'data': [
+            {
+              'patient_hash': PatientHash.defaultPatientHash,
+              'slot_key': 'morning',
+              'hour': 23,
+              'minute': 59,
+              'is_enabled': true,
+            },
+          ],
+        });
+      }
+      if (path.endsWith('/schedule/today/info')) {
+        return _jsonResponse({
+          'success': true,
+          'data': {
+            'patient_hash': PatientHash.defaultPatientHash,
+            'schedules': [course()],
+          },
+        });
+      }
+      if (path.endsWith('/schedule/window')) {
+        return windowAvailable
+            ? _jsonResponse({
+                'success': true,
+                'data': [course()],
+              })
+            : http.Response('unavailable', 503);
+      }
+      if (request.method == 'PATCH' &&
+          path.endsWith('/schedule/slot/morning/status')) {
+        morningTaken = jsonDecode(request.body)['medication_status'] as bool;
+        return _jsonResponse({
+          'success': true,
+          'data': [course()],
+        });
+      }
+      return http.Response('Not found', 404);
+    });
+    final viewModel = MedBuddyViewModel(
+      apiClient: client,
+      notificationService: notificationService,
+    );
+    addTearDown(viewModel.dispose);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    await viewModel.refreshMedicationOverview();
+    expect(notificationService.registeredActiveDates.last.first, today);
+
+    expect(
+      await viewModel.requestMedicationSlotStatusUpdate('morning', true),
+      isTrue,
+    );
+    await pumpEventQueue();
+    expect(notificationService.registeredActiveDates.last.first, isNot(today));
+
+    expect(
+      await viewModel.requestMedicationSlotStatusUpdate('morning', false),
+      isTrue,
+    );
+    await pumpEventQueue();
+    expect(notificationService.registeredActiveDates.last.first, today);
+
+    windowAvailable = false;
+    final registered = notificationService.registrations.length;
+    expect(
+      await viewModel.requestMedicationSlotStatusUpdate('morning', true),
+      isTrue,
+    );
+    await pumpEventQueue();
+    expect(notificationService.registrations, hasLength(registered));
+  });
+
   // Dose days in the foreground: the server lists only medications due today, so on a rest day a
   // slot that holds only a weekly medication looks empty. The 14-day course read decides whether
   // the slot is really empty and on which dates it is reminded.

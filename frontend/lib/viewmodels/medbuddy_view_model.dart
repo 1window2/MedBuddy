@@ -672,10 +672,12 @@ class MedBuddyViewModel extends ChangeNotifier {
     String slotKey,
     MedicationSchedule schedule,
     bool medicationStatus,
-  ) => _schedules.requestMedicationDoseStatusUpdate(
-    slotKey,
-    schedule,
-    medicationStatus,
+  ) => _afterDoseChange(
+    _schedules.requestMedicationDoseStatusUpdate(
+      slotKey,
+      schedule,
+      medicationStatus,
+    ),
   );
   // Function Name: requestMedicationSlotStatusUpdate
   // Description: Requests a completion-state change for all medications in a slot.
@@ -685,10 +687,12 @@ class MedBuddyViewModel extends ChangeNotifier {
     String slotKey,
     bool medicationStatus, {
     String? expectedScheduleDate,
-  }) => _schedules.requestMedicationSlotStatusUpdate(
-    slotKey,
-    medicationStatus,
-    expectedScheduleDate: expectedScheduleDate,
+  }) => _afterDoseChange(
+    _schedules.requestMedicationSlotStatusUpdate(
+      slotKey,
+      medicationStatus,
+      expectedScheduleDate: expectedScheduleDate,
+    ),
   );
   // Function Name: requestMedicationStatusUpdate
   // Description: Delegates a medication completion change with an optional explicit slot.
@@ -698,11 +702,27 @@ class MedBuddyViewModel extends ChangeNotifier {
     MedicationSchedule medicationSchedule,
     bool medicationStatus, {
     String? slotKey,
-  }) => _schedules.requestMedicationStatusUpdate(
-    medicationSchedule,
-    medicationStatus,
-    slotKey: slotKey,
+  }) => _afterDoseChange(
+    _schedules.requestMedicationStatusUpdate(
+      medicationSchedule,
+      medicationStatus,
+      slotKey: slotKey,
+    ),
   );
+  // Function Name: _afterDoseChange
+  // Description: Starts reminder reconciliation once a dose change is accepted. Today's reminder is otherwise left as it
+  //   was until the next schedule refresh, so undoing an accidental Taken whose reminder was already cancelled would leave
+  //   the slot without its reminder today.
+  // Parameters: accepted: The schedule feature's pending acceptance result.
+  // Returns: The same acceptance result; reconciliation is not awaited.
+  Future<bool> _afterDoseChange(Future<bool> accepted) async {
+    final result = await accepted;
+    if (result && !_isDisposed) {
+      unawaited(_reminders.synchronizeAfterDoseChange());
+    }
+    return result;
+  }
+
   // Function Name: loadMedicationReminderSettings
   // Description: Loads reminder settings through their owning feature.
   // Parameters: notifyAfterLoad: Whether the feature should publish a change after loading.

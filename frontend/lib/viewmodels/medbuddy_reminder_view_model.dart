@@ -541,11 +541,12 @@ class MedBuddyReminderViewModel {
 
   // Function Name: _synchronizeMedicationReminderSchedules
   // Description: Reconciles reminders under a current-generation guard using present schedules and an optional future window.
-  // Parameters: isCurrent: Ownership predicate checked across asynchronous steps.
+  // Parameters: isCurrent: Ownership predicate checked across asynchronous steps; requireWindow: Change nothing when the future window cannot be read.
   // Returns: Completion; confirmed empty slots are disabled, unavailable future windows do not disable off-day courses, and errors propagate.
   Future<void> _synchronizeMedicationReminderSchedules(
-    bool Function() isCurrent,
-  ) async {
+    bool Function() isCurrent, {
+    bool requireWindow = false,
+  }) async {
     if (!isCurrent()) return;
     if (!userSetting.medicationNotificationsEnabled) {
       await notificationService.cancelAllScheduledMedicationReminders();
@@ -561,6 +562,12 @@ class MedBuddyReminderViewModel {
     // 켜진 알림이 있을 때만 한 번 읽는다. 읽지 못하면 null로 두고 오늘 일정만으로 판단한다.
     List<MedicationSchedule>? window;
     var windowRequested = false;
+    if (requireWindow && _loadScheduleWindow != null) {
+      // 오늘 일정만으로 다시 예약하면 오늘 쉬는 약만 있는 날의 알림이 빠진다. 그런 갱신은 다음 일정 조회에 맡긴다.
+      windowRequested = true;
+      window = await _loadScheduleWindowOrNull();
+      if (!isCurrent() || window == null) return;
+    }
     for (final slotKey in medicationScheduleSlotKeys) {
       if (!isCurrent()) return;
       final setting =
@@ -670,11 +677,23 @@ class MedBuddyReminderViewModel {
         .toList(growable: false);
   }
 
+  // Function Name: synchronizeAfterDoseChange
+  // Description: Reconciles reminders after a dose change on this device, so today's reminder follows the slot again: a
+  //   completed slot drops it and an undone one gets it back. A synchronization already running read the schedules
+  //   before the change, so this one starts after it.
+  // Parameters: None.
+  // Returns: Completion; nothing changes when the future window cannot be read.
+  Future<void> synchronizeAfterDoseChange() {
+    final running = _synchronization;
+    if (running == null) return synchronizeIfFresh(requireWindow: true);
+    return running.then((_) => synchronizeIfFresh(requireWindow: true));
+  }
+
   // Function Name: synchronizeIfFresh
   // Description: Synchronizes only after fresh schedule and reminder-setting loads, sharing work within a generation.
-  // Parameters: None.
+  // Parameters: requireWindow: Change nothing when the future window cannot be read.
   // Returns: Completion of the shared/queued synchronization; current-generation failures become reminder feedback without changing schedule-load success.
-  Future<void> synchronizeIfFresh() {
+  Future<void> synchronizeIfFresh({bool requireWindow = false}) {
     if (_disposed ||
         _writingSlots.isNotEmpty ||
         !_scheduleIsFresh() ||
@@ -695,7 +714,12 @@ class MedBuddyReminderViewModel {
     late final Future<void> synchronization;
     // 같은 세대는 합치되, 새 조회의 동기화는 이전 작업 뒤에서 다시 검사한다.
     synchronization = (pending ?? Future<void>.value())
-        .then((_) => _synchronizeMedicationReminderSchedules(isCurrent))
+        .then(
+          (_) => _synchronizeMedicationReminderSchedules(
+            isCurrent,
+            requireWindow: requireWindow,
+          ),
+        )
         .catchError((Object _) {
           if (!isCurrent()) return;
           _statusMessage = _isEnglishSetting

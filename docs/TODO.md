@@ -16,6 +16,11 @@ file lists open items only, sorted by priority. Finished items were removed on
 
 ## P0: blocking the 1.0.0 release
 
+On 2026-11-13 the owner decided that P0 items do not block the graduation exhibition
+demo (2026-11-26 to 27): the demo runs on the GitHub APK without App Check, a few
+demo searches stay far below the hospital API quota, and nothing is distributed to
+the public. They still block a public 1.0.0 release.
+
 - [ ] Google Play distribution with App Check (Play Integrity). The owner chose both
       Google Play and the GitHub APK on 2026-11-07, so the criteria below block 1.0.0;
       if distribution is narrowed to the GitHub APK, this item and the next leave P0.
@@ -65,38 +70,31 @@ file lists open items only, sorted by priority. Finished items were removed on
 
 ## P1: before 1.0.0
 
-Device checks on the release build. The last pass (2026-11-12) is summarised in the
-[1.0.0 notes](releases/v1.0.0.md#device-and-operations-checks-2026-11-12).
+Device checks on the release build. The last pass (2026-11-13) is summarised in the
+[1.0.0 notes](releases/v1.0.0.md#device-checks-2026-11-13).
 
-- [ ] With the next signed build on the phone: a reminder's Taken pressed while the
-      app is closed shows the new home count at once, and the server gets one record
-      (fixed on 2026-11-12, checked on the emulator).
-- [ ] Medication reminder actions on a locked screen, after a reboot and with
-      battery saver; an offline completion failure and its retry; correcting one dose
-      after an accidental Taken.
-- [ ] Turning medication notifications off removes pending alarms and medication
-      quick actions already shown, and keeps caregiver and chat alerts.
+- [ ] Medication reminder actions on a locked screen (needs the owner's PIN).
+- [ ] Undoing a dose from the home widget does not bring today's reminder back until
+      the app refreshes its schedule: the widget cancels a completed slot's reminder
+      for today, and only the app's own records reconcile reminders again (fixed for
+      in-app records on 2026-11-13; the widget case was seen on the emulator the same
+      day). The background reminder refresh reads completion
+      from the server, so starting it from the widget needs to wait for the undo's
+      upload.
 - [ ] A caregiver's slot-check request: Taken from a locked phone, a request arriving
       after midnight, and an offline tap updating the widget.
 - [ ] Around midnight: the first launch after the day changes, a dose tapped right
       after midnight, a snooze across midnight, the 12-hour reminder task and sign-out
       while it runs, and offline after midnight.
-- [ ] Without network at start: caregiver alerts after an offline start, and push
-      registration after a cold start. The Galaxy Note10 carries adb over its network,
-      so this needs a cable or the emulator.
-- [ ] After an update: reminders scheduled by an earlier build, and the periodic
-      WorkManager tasks before the first launch (only the widget path was exercised).
-- [ ] Caregiver alerts: the missed-dose alert withdrawn after a dose, and the server's
-      missed-deadline path with the patient or caregiver app force-stopped and with a
-      transient FCM failure.
+- [ ] Caregiver alerts: the server's missed-deadline path with the patient or
+      caregiver app force-stopped and with a transient FCM failure (checked with the
+      caregiver app killed after an offline start on 2026-11-13).
 - [ ] Prescription capture with the privacy filter on a real prescription, including
       a table whose name cell sits right of its label (fixed on 2026-11-11 and checked
       with a mock prescription), the clean-up of picked photo copies, and saving
       several identified pills.
-- [ ] Message deletion between two devices: reconnect, offline failure, delivered
-      previews and the 24-hour deadline.
-- [ ] Session: a network loss during a token refresh keeps the session; a 401 in chat
-      signs out; ending the session with a pushed screen open.
+- [ ] Message deletion between two devices: the 24-hour deadline.
+- [ ] Session: a 401 in chat signs out; ending the session with a pushed screen open.
 - [ ] Poster, and feedback gathered for the graduation exhibition (2026-11-26 to
       11-27).
 
@@ -135,6 +133,17 @@ Device checks on the release build. The last pass (2026-11-12) is summarised in 
       change what an undo after the deadline does.
 - [ ] A failed local reminder save turns the reminder off by design instead of
       restoring it.
+- [ ] A caregiver's missed-dose alert stays on the caregiver's phone after the
+      patient takes the dose. In the missed-deadline mode the server sends no
+      completion push, so the caregiver's device does not learn of the dose; removing
+      the alert needs a new server signal (seen on 2026-11-13).
+- [ ] The caregiver's missed-dose deadline dialog checks the time against the slot's
+      default reminder time (for example 18:00 for evening), because the caregiver API
+      does not return the patient's own reminder times. The server applies the
+      patient's real reminder time plus the grace period, so no early alert is sent,
+      but a caregiver cannot pick a time between an earlier patient reminder and the
+      default, and the dialog names the default time (seen on 2026-11-13 with a 14:24
+      patient reminder).
 - [ ] Ranking fuzzy catalogue candidates by matched fragments raised recall on a
       synthetic catalogue from 5 to 189 of 200, but every name it moves from
       `unverified` to `llm_catalog_candidate` (0.86–0.89) stops requiring user review,
