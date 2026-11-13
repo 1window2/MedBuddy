@@ -443,6 +443,16 @@ four-column header ("성명 | 홍길동 | 교부일자 | 2026-…") would then l
 date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again in
 `PrescriptionLocalOcrService.recognizeAndMask`.
 
+## 2026-11-13: 1.0.0 numbering for the release build
+
+- **Chosen:** the server reports `1.0.0` instead of `1.0.0-rc`, and the documents call
+  the line the 1.0.0 release (owner, for the graduation exhibition demo). The app keeps
+  `1.0.0+27`: the candidate builds with that number went only to test devices, and an
+  update with the same version code installs over them.
+- **Alternatives:** `1.0.0+28`, which would tell the release build apart from the
+  candidates in Android settings.
+- **To undo:** set `version` in `backend/main.py` back to `1.0.0-rc`.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the

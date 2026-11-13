@@ -84,7 +84,7 @@
 
 ## Roadmap
 
-1. **1.0.0 release candidate and carried-over verification:** v0.2.5-beta is published as a limited off-Play pre-release; the 1.0.0 line on `beta/v1.0.0` finishes the items left open by the beta lines. Remaining physical reboot/offline recovery, two-device caregiver/chat checks, and measured recognition validation are tracked in the [release TODO](docs/TODO.md).
+1. **1.0.0 release and carried-over verification:** v0.2.5-beta is published as a limited off-Play pre-release; 1.0.0 on `beta/v1.0.0` is versioned for release and finishes the items left open by the beta lines. Remaining physical reboot/offline recovery, two-device caregiver/chat checks, and measured recognition validation are tracked in the [release TODO](docs/TODO.md).
 2. **Android production verification:** Validate the dedicated
    FastAPI/PostgreSQL/Redis production host behind Cloudflare Tunnel, complete
    backup and restore rehearsal, and finish authenticated two-device, Wi-Fi,

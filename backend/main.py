@@ -315,7 +315,7 @@ def create_app() -> FastAPI:
     prepare_database_schema(engine, auto_create=settings.AUTO_CREATE_SCHEMA)
     app = FastAPI(
         title="MedBuddy API",
-        version="1.0.0-rc",
+        version="1.0.0",
         lifespan=application_lifespan,
         docs_url=None if settings.APP_ENV == "production" else "/docs",
         redoc_url=None if settings.APP_ENV == "production" else "/redoc",
