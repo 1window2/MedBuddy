@@ -14,6 +14,7 @@ import 'medication_schedule_entity.dart';
 enum ChatMessageKind {
   text,
   slotCheckRequest,
+  medicationCheckRequest,
   slotCompletion,
   medicationShortage,
   medicationDiscomfort,
@@ -31,6 +32,7 @@ enum ChatMessageKind {
   String get wireName => switch (this) {
     ChatMessageKind.text => 'text',
     ChatMessageKind.slotCheckRequest => 'slot_check_request',
+    ChatMessageKind.medicationCheckRequest => 'medication_check_request',
     ChatMessageKind.slotCompletion => 'slot_completion',
     ChatMessageKind.medicationShortage => 'medication_shortage',
     ChatMessageKind.medicationDiscomfort => 'medication_discomfort',
@@ -597,6 +599,7 @@ enum ChatDeletionScope { me, everyone }
 // - medicationContexts (List<ChatMedicationContext>): 메시지에 첨부한 여러 약의 맥락
 // - medicationReferences (List<ChatMedicationReference>): 메시지에 첨부한 저장하지 않은 검색약
 // - scheduleContext (ChatScheduleContext?): 메시지에 첨부한 시간대별 복약 진행 정보
+// - medicationCheckContexts (List<ChatScheduleContext>): 선택 약 확인 요청의 서버 검증 날짜·시간대 범위.
 // - pharmacyContext (ChatPharmacyContext?): 메시지에 첨부한 약국 연락처·위치 정보
 // - remainingDays (int?): 복약 맥락의 남은 복용 일수
 // - courseEndDate (DateTime?): 복약 맥락에서 계산된 복용 종료일
@@ -616,6 +619,7 @@ class ChatMessage {
   final List<ChatMedicationContext> medicationContexts;
   final List<ChatMedicationReference> medicationReferences;
   final ChatScheduleContext? scheduleContext;
+  final List<ChatScheduleContext> medicationCheckContexts;
   final ChatPharmacyContext? pharmacyContext;
   final ChatHospitalContext? hospitalContext;
   final ChatMedicationHistoryContext? historyContext;
@@ -639,6 +643,7 @@ class ChatMessage {
   // - medicationContext (ChatMedicationContext?): 구형 단일 약 첨부 맥락
   // - medicationContexts (List<ChatMedicationContext>): 메시지에 첨부한 여러 약의 맥락
   // - scheduleContext (ChatScheduleContext?): 메시지에 첨부한 시간대별 복약 진행 정보
+  // - medicationCheckContexts: 선택 약의 복용 완료 버튼이 사용할 시간대별 스냅샷.
   // - pharmacyContext (ChatPharmacyContext?): 메시지에 첨부한 약국 연락처·위치 정보
   // - remainingDays (int?): 복약 맥락의 남은 복용 일수
   // - courseEndDate (DateTime?): 복약 맥락에서 계산된 복용 종료일
@@ -662,6 +667,7 @@ class ChatMessage {
     this.medicationContexts = const [],
     this.medicationReferences = const [],
     this.scheduleContext,
+    this.medicationCheckContexts = const [],
     this.pharmacyContext,
     this.hospitalContext,
     this.historyContext,
@@ -740,6 +746,10 @@ class ChatMessage {
               Map<String, dynamic>.from(rawScheduleContext),
             )
           : null,
+      medicationCheckContexts:
+          json['hidden_for_me'] == true || json['deleted_for_everyone'] == true
+          ? const []
+          : _readMedicationCheckContexts(context['medication_check_contexts']),
       pharmacyContext: rawPharmacyContext is Map
           ? ChatPharmacyContext.fromJson(
               Map<String, dynamic>.from(rawPharmacyContext),
@@ -809,6 +819,7 @@ class ChatMessage {
       medicationContexts: redact ? const [] : medicationContexts,
       medicationReferences: redact ? const [] : medicationReferences,
       scheduleContext: redact ? null : scheduleContext,
+      medicationCheckContexts: redact ? const [] : medicationCheckContexts,
       pharmacyContext: redact ? null : pharmacyContext,
       hospitalContext: redact ? null : hospitalContext,
       historyContext: redact ? null : historyContext,
@@ -833,6 +844,27 @@ class ChatMessage {
     }
     final singleContext = medicationContext;
     return singleContext == null ? const [] : [singleContext];
+  }
+
+  // 함수이름: _readMedicationCheckContexts
+  // 함수역할: 서버가 확정한 선택 약의 시간대별 확인 범위를 읽고 손상된 요청은 동작을 숨긴다.
+  // 매개변수: value: 일정 스냅샷 배열. 반환값: 검증된 시간대 목록 또는 빈 목록.
+  static List<ChatScheduleContext> _readMedicationCheckContexts(Object? value) {
+    if (value is! List) return const [];
+    try {
+      return List.unmodifiable(
+        value.map((item) {
+          if (item is! Map) {
+            throw const FormatException('Invalid check context');
+          }
+          return ChatScheduleContext.fromJson(Map<String, dynamic>.from(item));
+        }),
+      );
+    } on FormatException {
+      return const [];
+    } on TypeError {
+      return const [];
+    }
   }
 
   // 함수이름: _readMedicationReferences

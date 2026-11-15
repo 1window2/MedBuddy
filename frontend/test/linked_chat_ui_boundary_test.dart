@@ -29,6 +29,7 @@ import 'package:medbuddy_frontend/services/api_response_parser.dart';
 import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
 import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
+import 'package:medbuddy_frontend/widgets/dose_sync_status.dart';
 import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -349,6 +350,7 @@ class _TakenChatControl extends _RetryChatControl {
     this.multiSlotMedication = false,
     this.saveGate,
     List<ChatScheduleContext>? contexts,
+    super.historyMessages,
   }) : super(
          failFirstSend: false,
          scheduleContexts:
@@ -489,6 +491,7 @@ Future<DoseSyncHarness> _attachChatDoseSync([
 // - control (ManageLinkedChat): chat request provider.
 // - realtime (LinkedChatRealtimeService): event and connection-state provider.
 // - mediaQuery (MediaQueryData?): optional screen and text-scaling configuration.
+// - userSetting (UserSetting): display language and accessibility settings.
 // Returns:
 // - Future<void>; completes when initial frames settle.
 Future<void> _pumpPatientChat(
@@ -497,6 +500,7 @@ Future<void> _pumpPatientChat(
   required ManageLinkedChat control,
   required LinkedChatRealtimeService realtime,
   MediaQueryData? mediaQuery,
+  UserSetting userSetting = const UserSetting(),
 }) async {
   final Widget chat = LinkedChatUI(
     linkId: 17,
@@ -504,6 +508,7 @@ Future<void> _pumpPatientChat(
     patientHash: 'patient-a',
     control: control,
     realtimeService: realtime,
+    userSetting: userSetting,
   );
   await tester.pumpWidget(
     ChangeNotifierProvider<MedBuddyViewModel>.value(
@@ -4531,6 +4536,8 @@ void main() {
       [91],
     ]);
     expect(find.text('환자 TEST님, 테스트정 복용하셨나요?'), findsOneWidget);
+    expect(control.messageKinds, [ChatMessageKind.medicationCheckRequest]);
+    expect(control.slotKeys, ['morning']);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -4538,6 +4545,307 @@ void main() {
     await realtimeService.dispose();
     control.dispose();
   });
+
+  for (final language in ['ko', 'en']) {
+    for (final (kind, targetCount) in [
+      (ChatMessageKind.medicationCheckRequest, 1),
+      (ChatMessageKind.slotCheckRequest, 1),
+      (ChatMessageKind.slotCheckRequest, 2),
+    ]) {
+      testWidgets('$language $kind/$targetCount: label and recording scope', (
+        tester,
+      ) async {
+        final isEnglish = language == 'en';
+        final individual = kind == ChatMessageKind.medicationCheckRequest;
+        final harness = await _attachChatDoseSync([
+          ..._cachedTwoSlotSchedule,
+          if (individual || targetCount == 2)
+            const MedicationSchedule(
+              medicationID: '93',
+              medicationName: '다른 아침 약',
+              scheduleSlotKeys: ['morning'],
+            ),
+        ]);
+        final slot = ChatScheduleContext(
+          scheduleDate: '2026-09-21',
+          slotKey: 'morning',
+          alarmTime: '08:00',
+          alarmEnabled: true,
+          completedCount: 0,
+          totalCount: targetCount,
+          medications: [
+            const ChatMedicationContext(
+              medicationId: 91,
+              medicationName: '테스트정',
+              dosagePerTime: '1정',
+              scheduleSlotKeys: ['morning', 'evening'],
+            ),
+            if (targetCount == 2)
+              const ChatMedicationContext(
+                medicationId: 93,
+                medicationName: '다른 아침 약',
+                dosagePerTime: '1정',
+                scheduleSlotKeys: ['morning'],
+              ),
+          ],
+        );
+        final control = _TakenChatControl(
+          historyMessages: [
+            ChatMessage(
+              messageId: 70,
+              linkId: 17,
+              senderHash: 'caregiver-a',
+              clientMessageId: 'incoming-dose-request',
+              // Identical body and medication count must not override request kind.
+              body: '복용하셨나요?',
+              createdAt: _doseNow,
+              messageKind: kind,
+              scheduleContext: individual ? null : slot,
+              medicationCheckContexts: individual ? [slot] : const [],
+            ),
+          ],
+        );
+        final realtime = _FakeRealtimeService();
+        await _pumpPatientChat(
+          tester,
+          harness,
+          control: control,
+          realtime: realtime,
+          userSetting: UserSetting(language: language),
+        );
+        final button = find.byKey(
+          const ValueKey('chat-confirm-dose-70-morning'),
+        );
+        final actionLabel = individual
+            ? (isEnglish ? 'Mark medication taken' : '약 복용하기')
+            : (isEnglish ? 'Morning Taken' : '아침 복용 완료');
+        expect(
+          find.descendant(of: button, matching: find.text(actionLabel)),
+          findsOneWidget,
+        );
+        expect(tester.widget<FilledButton>(button).onPressed, isNotNull);
+        await tester.enterText(find.byType(TextField), '작성 중인 대화');
+        await tester.ensureVisible(button);
+        await tester.tap(button);
+        await tester.tap(button, warnIfMissed: false);
+        await tester.pumpAndSettle();
+        final recorded = harness.service.schedules.firstWhere(
+          (item) => item.medicationID == '91',
+        );
+        expect(recorded.isSlotCompleted('morning'), isTrue);
+        expect(recorded.isSlotCompleted('evening'), isFalse);
+        if (individual || targetCount == 2) {
+          final other = harness.service.schedules.firstWhere(
+            (item) => item.medicationID == '93',
+          );
+          expect(other.isSlotCompleted('morning'), !individual);
+        }
+        expect(harness.queued, hasLength(1));
+        expect(harness.queued.single['medication_ids'], [
+          91,
+          if (targetCount == 2) 93,
+        ]);
+        expect(harness.queued.single['slot_key'], 'morning');
+        expect(harness.queued.single['schedule_date'], '2026-09-21');
+        expect(harness.queued.single['link_id'], 17);
+        expect(harness.service.operations, hasLength(1));
+        expect(control.takenRequestIds, isEmpty);
+        expect(tester.widget<FilledButton>(button).onPressed, isNull);
+        final completedLabel = individual
+            ? (isEnglish ? 'Medication taken' : '약 복용 완료')
+            : (isEnglish ? 'Morning recorded' : '아침 기록 완료');
+        expect(
+          find.descendant(of: button, matching: find.text(completedLabel)),
+          findsOneWidget,
+        );
+        expect(find.text(actionLabel), findsNothing);
+        if (individual) {
+          expect(
+            find.text(isEnglish ? 'Morning recorded' : '아침 기록 완료'),
+            findsNothing,
+          );
+        }
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          '작성 중인 대화',
+        );
+        expect(tester.takeException(), isNull);
+        await _closeChat(tester, harness, control: control, realtime: realtime);
+      });
+    }
+
+    testWidgets(
+      '$language: individual requests keep multiple dose times distinct',
+      (tester) async {
+        final harness = await _attachChatDoseSync();
+        final control = _TakenChatControl(
+          historyMessages: [
+            ChatMessage(
+              messageId: 71,
+              linkId: 17,
+              senderHash: 'caregiver-a',
+              clientMessageId: 'incoming-multiple-dose-times',
+              body: '복용하셨나요?',
+              createdAt: _doseNow,
+              messageKind: ChatMessageKind.medicationCheckRequest,
+              medicationCheckContexts: [
+                for (final slotKey in ['morning', 'evening'])
+                  ChatScheduleContext(
+                    scheduleDate: '2026-09-21',
+                    slotKey: slotKey,
+                    alarmTime: slotKey == 'morning' ? '08:00' : '18:00',
+                    alarmEnabled: true,
+                    completedCount: 0,
+                    totalCount: 1,
+                    medications: const [
+                      ChatMedicationContext(
+                        medicationId: 91,
+                        medicationName: '테스트정',
+                        dosagePerTime: '1정',
+                        scheduleSlotKeys: ['morning', 'evening'],
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ],
+        );
+        final realtime = _FakeRealtimeService();
+        await _pumpPatientChat(
+          tester,
+          harness,
+          control: control,
+          realtime: realtime,
+          userSetting: UserSetting(language: language),
+        );
+        final morning = find.byKey(
+          const ValueKey('chat-confirm-dose-71-morning'),
+        );
+        final evening = find.byKey(
+          const ValueKey('chat-confirm-dose-71-evening'),
+        );
+        final morningLabel = language == 'en'
+            ? 'Morning: Mark medication taken'
+            : '아침: 약 복용하기';
+        expect(
+          find.descendant(of: morning, matching: find.text(morningLabel)),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: evening,
+            matching: find.text(
+              language == 'en'
+                  ? 'Evening: Mark medication taken'
+                  : '저녁: 약 복용하기',
+            ),
+          ),
+          findsOneWidget,
+        );
+        await tester.ensureVisible(evening);
+        await tester.tap(evening);
+        await tester.pumpAndSettle();
+        expect(harness.queued.single['medication_ids'], [91]);
+        expect(harness.queued.single['slot_key'], 'evening');
+        expect(
+          harness.service.schedules.single.isSlotCompleted('evening'),
+          isTrue,
+        );
+        expect(
+          harness.service.schedules.single.isSlotCompleted('morning'),
+          isFalse,
+        );
+        expect(tester.widget<FilledButton>(evening).onPressed, isNull);
+        expect(tester.widget<FilledButton>(morning).onPressed, isNotNull);
+        expect(
+          find.descendant(of: morning, matching: find.text(morningLabel)),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: evening,
+            matching: find.text(
+              language == 'en' ? 'Evening: Medication taken' : '저녁: 약 복용 완료',
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+        await _closeChat(tester, harness, control: control, realtime: realtime);
+      },
+    );
+
+    testWidgets('$language: dose status gap exists only while visible', (
+      tester,
+    ) async {
+      final harness = await _attachChatDoseSync();
+      final control = _TakenChatControl();
+      final realtime = _FakeRealtimeService();
+      await _pumpPatientChat(
+        tester,
+        harness,
+        control: control,
+        realtime: realtime,
+        userSetting: UserSetting(language: language),
+      );
+      final status = find.byType(DoseSyncStatus);
+      final statusSpacing = find.byKey(const ValueKey('chat-dose-sync-status'));
+      final composerRow = find
+          .ancestor(
+            of: find.byKey(const ValueKey('chatActions')),
+            matching: find.byType(Row),
+          )
+          .first;
+      final composerColumn = find
+          .ancestor(of: composerRow, matching: find.byType(Column))
+          .first;
+      final emptyHeight = tester.getSize(composerColumn).height;
+      expect(status, findsNothing);
+      expect(statusSpacing, findsNothing);
+      expect(emptyHeight, tester.getSize(composerRow).height);
+
+      expect(
+        await harness.service.record(
+          medicationIds: [91],
+          slotKey: 'morning',
+          completed: true,
+          medicationNames: ['테스트정'],
+        ),
+        isTrue,
+      );
+      await harness.service.drain();
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          language == 'en'
+              ? '1 dose records waiting to sync'
+              : '복용 기록 1건 전송 대기',
+        ),
+        findsOneWidget,
+      );
+      expect(statusSpacing, findsOneWidget);
+      expect(
+        tester.getTopLeft(composerRow).dy - tester.getBottomLeft(status).dy,
+        closeTo(10, 0.01),
+      );
+      expect(
+        tester.getSize(composerColumn).height,
+        closeTo(emptyHeight + tester.getSize(status).height + 10, 0.01),
+      );
+
+      final savedSchedules = harness.service.schedules;
+      harness.respond = (request) async =>
+          doseSyncReceipt(request, savedSchedules);
+      await harness.service.retryNow();
+      await tester.pumpAndSettle();
+      expect(harness.service.pendingCount, 0);
+      expect(status, findsNothing);
+      expect(statusSpacing, findsNothing);
+      expect(tester.getSize(composerColumn).height, closeTo(emptyHeight, 0.01));
+      expect(tester.takeException(), isNull);
+      await _closeChat(tester, harness, control: control, realtime: realtime);
+    });
+  }
 
   for (final (currentUser, kind) in [
     ('patient-a', ChatMessageKind.slotCompletion),

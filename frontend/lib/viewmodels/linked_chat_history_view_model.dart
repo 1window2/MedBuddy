@@ -439,6 +439,7 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
         addMessage(message);
         onScrollRequested(false);
         if (message.messageKind == ChatMessageKind.slotCheckRequest ||
+            message.messageKind == ChatMessageKind.medicationCheckRequest ||
             message.messageKind == ChatMessageKind.slotCompletion) {
           onScheduleChanged();
         }

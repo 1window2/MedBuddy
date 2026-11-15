@@ -258,6 +258,64 @@ class _FailsAfterStoringSyncService extends DoseSyncService {
 // Returns:
 // - void; no return value.
 void main() {
+  group('incoming confirmation scope', () {
+    final slot = LinkedChatDoseRecorder.contextsFromDoseCache(const [
+      _twoSlotMedication,
+    ], _day).first;
+    final request = ChatMessage(
+      messageId: 10,
+      linkId: 17,
+      senderHash: 'caregiver-a',
+      clientMessageId: 'check-request',
+      body: '복용하셨나요?',
+      createdAt: _now,
+      messageKind: ChatMessageKind.medicationCheckRequest,
+      medicationCheckContexts: [slot],
+    );
+    List<ChatScheduleContext> offered(
+      ChatMessage message, {
+      String user = _owner,
+      String patient = _owner,
+      String day = _day,
+    }) => LinkedChatDoseRecorder.confirmationContexts(
+      message,
+      userHash: user,
+      patientHash: patient,
+      day: day,
+    );
+    test('only the recipient patient and exact dose day get actions', () {
+      expect(offered(request), [slot]);
+      expect(offered(request, user: 'caregiver-a'), isEmpty);
+      expect(offered(request, patient: 'different-patient'), isEmpty);
+      expect(offered(request, patient: ''), isEmpty);
+      expect(offered(request, day: '2026-09-22'), isEmpty);
+      expect(offered(request.copyWith(hiddenForMe: true)), isEmpty);
+      expect(offered(request.copyWith(deletedForEveryone: true)), isEmpty);
+    });
+    test('ordinary text cannot become a dose action by its wording', () {
+      expect(
+        offered(
+          ChatMessage(
+            messageId: 11,
+            linkId: 17,
+            senderHash: 'caregiver-a',
+            clientMessageId: 'plain-message',
+            body: '복용하셨나요?',
+            createdAt: _now,
+            medicationCheckContexts: [slot],
+          ),
+        ),
+        isEmpty,
+      );
+    });
+    test('cached completed counts retain the recorded slot only', () {
+      final contexts = LinkedChatDoseRecorder.contextsFromDoseCache([
+        _twoSlotMedication.copyWith(slotStatuses: {'morning': true}),
+      ], _day);
+      expect(contexts.first.completedCount, 1);
+      expect(contexts[2].completedCount, 0);
+    });
+  });
   // Function Name: plan
   // Description:
   // - Build a four-slot context fixture from cached medications and register selection-validation tests, including local nonnumeric IDs.
@@ -486,29 +544,32 @@ void main() {
     // - None.
     // Returns:
     // - Future<void>; completes after the asynchronous assertions.
-    test('a failed store write queues nothing and the retry queues once', () async {
-      final viewModel = _viewModel();
-      final harness = await attachTestDoseSync(viewModel, clock: () => _now);
-      await harness.seedSchedules(const [_twoSlotMedication]);
-      final recorder = _recorder(_ChatControl());
-      await harness.store.db.execute(
-        'CREATE TRIGGER reject_insert BEFORE INSERT ON operations '
-        "BEGIN SELECT RAISE(ABORT, 'disk full'); END",
-      );
+    test(
+      'a failed store write queues nothing and the retry queues once',
+      () async {
+        final viewModel = _viewModel();
+        final harness = await attachTestDoseSync(viewModel, clock: () => _now);
+        await harness.seedSchedules(const [_twoSlotMedication]);
+        final recorder = _recorder(_ChatControl());
+        await harness.store.db.execute(
+          'CREATE TRIGGER reject_insert BEFORE INSERT ON operations '
+          "BEGIN SELECT RAISE(ABORT, 'disk full'); END",
+        );
 
-      await expectLater(
-        recorder.record(_morningRequest, viewModel: viewModel),
-        throwsA(anything),
-      );
-      expect(harness.queued, isEmpty);
-      expect(await harness.pending(), isEmpty);
+        await expectLater(
+          recorder.record(_morningRequest, viewModel: viewModel),
+          throwsA(anything),
+        );
+        expect(harness.queued, isEmpty);
+        expect(await harness.pending(), isEmpty);
 
-      await harness.store.db.execute('DROP TRIGGER reject_insert');
-      await recorder.record(_morningRequest, viewModel: viewModel);
-      expect(harness.queued, hasLength(1));
-      expect(await harness.pending(), hasLength(1));
-      await harness.close();
-    });
+        await harness.store.db.execute('DROP TRIGGER reject_insert');
+        await recorder.record(_morningRequest, viewModel: viewModel);
+        expect(harness.queued, hasLength(1));
+        expect(await harness.pending(), hasLength(1));
+        await harness.close();
+      },
+    );
 
     // Function Name: a failure after the insert counts as stored
     // Description:
@@ -611,10 +672,7 @@ void main() {
       };
       expect(harness.uploads.length, greaterThanOrEqualTo(2));
       expect(uploadedIds, {harness.queued.single['operation_id']});
-      expect(
-        (jsonDecode(harness.uploads.last.body) as Map)['link_id'],
-        17,
-      );
+      expect((jsonDecode(harness.uploads.last.body) as Map)['link_id'], 17);
       await harness.close();
     });
 
@@ -667,10 +725,7 @@ void main() {
       final recorder = _recorder(control);
 
       for (var attempt = 0; attempt < 2; attempt++) {
-        await expectLater(
-          recorder.record(_morningRequest),
-          throwsStateError,
-        );
+        await expectLater(recorder.record(_morningRequest), throwsStateError);
       }
       final message = await recorder.record(_morningRequest);
       expect(message!.clientMessageId, 'request_1');
@@ -688,22 +743,25 @@ void main() {
     // - None.
     // Returns:
     // - Future<void>; completes after the asynchronous assertions.
-    test('confirmed schedules reach only the same account\'s view model', () async {
-      final control = _ChatControl();
-      final own = _viewModel();
-      addTearDown(own.dispose);
-      final other = _viewModel('other-account');
-      addTearDown(other.dispose);
+    test(
+      'confirmed schedules reach only the same account\'s view model',
+      () async {
+        final control = _ChatControl();
+        final own = _viewModel();
+        addTearDown(own.dispose);
+        final other = _viewModel('other-account');
+        addTearDown(other.dispose);
 
-      await _recorder(control).record(_morningRequest, viewModel: other);
-      expect(other.todayMedicationScheduleList, isEmpty);
+        await _recorder(control).record(_morningRequest, viewModel: other);
+        expect(other.todayMedicationScheduleList, isEmpty);
 
-      await _recorder(control).record(_morningRequest, viewModel: own);
-      expect(
-        own.todayMedicationScheduleList.single.isSlotCompleted('morning'),
-        isTrue,
-      );
-    });
+        await _recorder(control).record(_morningRequest, viewModel: own);
+        expect(
+          own.todayMedicationScheduleList.single.isSlotCompleted('morning'),
+          isTrue,
+        );
+      },
+    );
 
     // Function Name: the server contexts name the selection day
     // Description:

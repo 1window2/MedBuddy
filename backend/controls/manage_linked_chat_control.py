@@ -26,6 +26,7 @@ from entities.chat_message_entity import (
     CHAT_MEDICATION_DOSAGE_MAX_LENGTH,
     CHAT_MEDICATION_NAME_MAX_LENGTH,
     CHAT_MESSAGE_KIND_HOSPITAL_SHARE,
+    CHAT_MESSAGE_KIND_MEDICATION_CHECK_REQUEST,
     CHAT_MESSAGE_KIND_MEDICATION_DISCOMFORT,
     CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE,
     CHAT_MESSAGE_KIND_MEDICATION_SHORTAGE,
@@ -324,7 +325,7 @@ class ManageLinkedChat:
     # 함수이름: find_sent_message
     # 함수역할: 외부 장소 조회 전에 활성 연동과 중복 전송을 확인하고 성공·실패 모두 읽기 트랜잭션을 반환한다.
     # 매개변수: link_id (int)는 연동, sender_hash·client_message_id (str)는 발신자·요청 ID, message_kind (str)는 재시도 유형이다.
-    # 반환값: 기존 ChatSendResult 또는 없으면 None. 권한·이력 공유 재사용 검증 오류는 전달한다.
+    # 반환값: 기존 ChatSendResult 또는 없으면 None. 권한·구조화 요청 재사용 검증 오류는 전달한다.
     def find_sent_message(
         self, *, link_id: int, sender_hash: str, client_message_id: str,
         message_kind: str = CHAT_MESSAGE_KIND_TEXT,
@@ -338,6 +339,7 @@ class ManageLinkedChat:
             if existing is None:
                 return None
             self._validate_history_retry(existing, message_kind=message_kind)
+            self._validate_medication_check_retry(existing, message_kind=message_kind)
             return ChatSendResult(
                 message=self._message_for_user(existing, link, sender_hash),
                 recipient_hash=self._other_participant(link, sender_hash), created=False,
@@ -425,6 +427,31 @@ class ManageLinkedChat:
         ):
             raise HTTPException(409, "The request ID was already used for another medication reference.")
 
+    # 함수이름: _validate_medication_check_retry
+    # 함수역할: 약 확인 요청의 본문·선택 약·원본 시간대가 달라진 재전송을 거절한다.
+    # 매개변수: existing은 저장 메시지, 나머지는 원본과 비교할 요청 값이다. 장소 사전 조회는 유형만 전달한다.
+    # 반환값: None. 변경·전체 삭제·다른 유형으로의 재사용은 HTTP 409다.
+    @staticmethod
+    def _validate_medication_check_retry(
+        existing: _ChatMessage, *, message_kind: str, body: str | None = None,
+        medication_ids: list[int] | None = None, slot_key: str | None = None,
+    ) -> None:
+        """Reuse the original snapshot only for the same medication-check request."""
+        if CHAT_MESSAGE_KIND_MEDICATION_CHECK_REQUEST not in (existing.message_kind, message_kind):
+            return
+        original_ids = [
+            item["medication_id"]
+            for item in (existing.context_payload or {}).get("medication_contexts", [])
+        ]
+        if (
+            existing.deleted_for_everyone_at is not None
+            or existing.message_kind != message_kind
+            or existing.body != body
+            or set(original_ids) != set(medication_ids or [])
+            or (existing.context_payload or {}).get("medication_check_slot_key") != slot_key
+        ):
+            raise HTTPException(409, "The request ID was already used for a different or deleted medication check.")
+
     # 함수이름: _lock_history_share_link
     # 함수역할: 기존 읽기 잠금을 해제하고 양쪽 계정을 일정한 순서로 잠근 뒤 삭제·연동 상태를 다시 검증한다.
     # 매개변수: link_id (int)는 공유 연동, sender_hash (str)는 발신 계정이다. 세션에 미저장 변경이 없어야 한다.
@@ -486,6 +513,22 @@ class ManageLinkedChat:
             else self.require_active_link(link_id=link_id, user_hash=sender_hash)
         )
         recipient_hash = self._other_participant(link, sender_hash)
+        selected_medication_ids: list[int] = []
+        for selected_id in [medication_id, *(medication_ids or [])]:
+            if selected_id is not None and selected_id not in selected_medication_ids:
+                selected_medication_ids.append(selected_id)
+        if message_kind == CHAT_MESSAGE_KIND_MEDICATION_CHECK_REQUEST:
+            if sender_hash != str(link.caregiver_hash):
+                raise HTTPException(403, "Only the linked caregiver can request a medication check.")
+            if not selected_medication_ids:
+                raise HTTPException(400, "Medication checks require selected saved medications.")
+            if slot_key is not None and slot_key not in MEDICATION_SCHEDULE_SLOT_KEYS:
+                raise HTTPException(400, "Invalid schedule slot.")
+            if medication_references or any(value is not None for value in (
+                pharmacy_id, hospital_context, source_alert_id,
+                pharmacy_operating_snapshot, history_start_date, history_end_date,
+            )):
+                raise HTTPException(400, "Medication checks cannot be combined with other contexts.")
         # 내부 호출도 저장 약과 검색 참조를 분리하고 표시 스냅샷만 허용한다.
         try:
             references = [ChatMedicationReference.model_validate(item).model_dump()
@@ -534,6 +577,10 @@ class ManageLinkedChat:
                 history_start_date=history_start_date, history_end_date=history_end_date,
             )
             self._validate_reference_retry(existing, references, body, message_kind)
+            self._validate_medication_check_retry(
+                existing, message_kind=message_kind, body=body,
+                medication_ids=selected_medication_ids, slot_key=slot_key,
+            )
             return ChatSendResult(
                 message=self._message_for_user(existing, link, sender_hash),
                 recipient_hash=recipient_hash,
@@ -542,10 +589,6 @@ class ManageLinkedChat:
 
         if alert is not None:
             alert_control.requireActionable(alert)
-        selected_medication_ids: list[int] = []
-        for selected_id in [medication_id, *(medication_ids or [])]:
-            if selected_id is not None and selected_id not in selected_medication_ids:
-                selected_medication_ids.append(selected_id)
         if len(selected_medication_ids) + len(references) > MAX_CHAT_MEDICATION_CONTEXTS:
             raise HTTPException(
                 status_code=400,
@@ -554,16 +597,27 @@ class ManageLinkedChat:
                     f"{MAX_CHAT_MEDICATION_CONTEXTS} medications."
                 ),
             )
-        medications = [
-            self._resolve_active_medication(link, selected_id)
-            for selected_id in selected_medication_ids
-        ]
+        if message_kind == CHAT_MESSAGE_KIND_MEDICATION_CHECK_REQUEST:
+            # Resolve the entire selection in one owner-scoped read, including PRN/rest-day attachments.
+            active_by_id = {
+                int(item.id): item
+                for item in self._active_medications(str(link.patient_hash), application_today())
+            }
+            if any(selected_id not in active_by_id for selected_id in selected_medication_ids):
+                raise HTTPException(400, "Selected medication is not active for this patient.")
+            medications = [active_by_id[selected_id] for selected_id in selected_medication_ids]
+        else:
+            medications = [
+                self._resolve_active_medication(link, selected_id)
+                for selected_id in selected_medication_ids
+            ]
         medication = medications[0] if medications else None
         context_payload = self._build_message_context(
             link=link,
             sender_hash=sender_hash,
             message_kind=message_kind,
             medication=medication,
+            medication_ids=selected_medication_ids,
             slot_key=slot_key,
             pharmacy_id=pharmacy_id,
             allow_internal=allow_internal,
@@ -641,6 +695,10 @@ class ManageLinkedChat:
                 history_start_date=history_start_date, history_end_date=history_end_date,
             )
             self._validate_reference_retry(existing, references, body, message_kind)
+            self._validate_medication_check_retry(
+                existing, message_kind=message_kind, body=body,
+                medication_ids=selected_medication_ids, slot_key=slot_key,
+            )
             return ChatSendResult(
                 message=self._message_for_user(existing, link, sender_hash),
                 recipient_hash=recipient_hash,
@@ -969,6 +1027,7 @@ class ManageLinkedChat:
     # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
     # - schedule_date (date | None): 묶을 날짜; 없으면 서비스 기준 오늘.
     # - due_only (bool): 그날 복용일인 약만 넣을지 여부. 복용일 기능을 알리지 않은 앱의 기록은 False로 부른다.
+    # - selected_medication_ids: Optional subset applied before aggregating completion counts.
     # 반환값:
     # - 시간대별 약 목록, 완료 수, 전체 수와 알람 시각·활성 상태.
     def _schedule_contexts_for_patient(
@@ -977,6 +1036,7 @@ class ManageLinkedChat:
         schedule_date: date | None = None,
         *,
         due_only: bool = True,
+        selected_medication_ids: set[int] | None = None,
     ) -> list[dict[str, object]]:
         """활성 약, 완료 기록과 알림 설정을 한 번씩 조회해 시간대별로 묶는다."""
         today = schedule_date or application_today()
@@ -984,6 +1044,7 @@ class ManageLinkedChat:
         medications = [
             medication
             for medication in self._active_medications(patient_hash, today)
+            if selected_medication_ids is None or int(medication.id) in selected_medication_ids
             if medication_dosing_mode(medication) == "scheduled" and (not due_only or self.course_policy.is_due_on(medication, today))
         ]
         medication_ids = [int(item.id) for item in medications if item.id is not None]
@@ -1023,7 +1084,10 @@ class ManageLinkedChat:
             for slot_key in medication_context["schedule_slot_keys"]:
                 if slot_key not in grouped:
                     continue
-                grouped[slot_key].append(medication_context)
+                grouped[slot_key].append(
+                    {**medication_context, "schedule_slot_keys": [slot_key]}
+                    if selected_medication_ids is not None else medication_context
+                )
                 is_completed = completion_by_key.get(
                     (int(medication.id), slot_key),
                     legacy_completed,
@@ -1075,6 +1139,7 @@ class ManageLinkedChat:
     # - sender_hash (str): 채팅 메시지를 작성한 계정 식별자.
     # - message_kind (str): 텍스트 또는 구조화 문맥 메시지 유형.
     # - medication (_SavedMedication | None): 환자 소유로 저장된 약품 스냅샷과 복용 기간 정보.
+    # - medication_ids (list[int] | None): 약 확인 요청에 사용할 소유권이 확인된 선택 약 목록.
     # - slot_key (str | None): morning, lunch, evening, bedtime 중 복용 시간대 키.
     # - pharmacy_id (str | None): 공공 약국 식별자.
     # - allow_internal (bool): 신뢰된 서버 코드가 내부 전용 구조화 메시지를 생성할 수 있는지 여부.
@@ -1093,6 +1158,7 @@ class ManageLinkedChat:
         slot_key: str | None,
         pharmacy_id: str | None,
         allow_internal: bool,
+        medication_ids: list[int] | None = None,
         hospital_context: dict[str, object] | None = None,
         pharmacy_operating_snapshot: dict[str, object] | None = None,
         history_start_date: date | None = None,
@@ -1101,6 +1167,17 @@ class ManageLinkedChat:
         """메시지 유형별 입력을 검증하고 서버가 신뢰할 스냅샷만 생성한다."""
         if message_kind == CHAT_MESSAGE_KIND_TEXT:
             return None
+        if message_kind == CHAT_MESSAGE_KIND_MEDICATION_CHECK_REQUEST:
+            return {
+                "medication_check_slot_key": slot_key,
+                "medication_check_contexts": [
+                    context for context in self._schedule_contexts_for_patient(
+                        str(link.patient_hash),
+                        selected_medication_ids=set(medication_ids or []),
+                    )
+                    if slot_key is None or context["slot_key"] == slot_key
+                ],
+            }
         if message_kind == CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE:
             return {"history_context": ManageMedicationCare(self.db).history_share_context(
                 str(link.patient_hash), history_start_date, history_end_date,
