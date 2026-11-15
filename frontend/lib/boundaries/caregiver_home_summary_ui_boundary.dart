@@ -22,11 +22,14 @@ class CaregiverHomeSummaryUI extends StatefulWidget {
   final bool hasLinkError;
   final String Function(PatientCaregiverLink) patientLabel;
   final ValueChanged<PatientCaregiverLink> onPatientRequested;
+  final PatientCaregiverLink? selectedPatient;
+  final ValueChanged<PatientCaregiverLink>? onPatientSelected;
 
   // 함수이름: CaregiverHomeSummaryUI
   // 함수역할: 보호자 현황 조회기와 환자 이름·상세 진입 함수를 연결한다.
   // 매개변수: key (Key?): 키; control (CheckCaregiverHome): 조회기; isEnglish/isLoadingLinks/hasLinkError (bool): 상태; patientLabel: 별칭 함수; onPatientRequested: 상세 함수; onLinkRequested/onRefreshRequested (VoidCallback?): 선택 명령.
   // 반환값: 새 CaregiverHomeSummaryUI.
+  // selectedPatient/onPatientSelected optionally delegate selection to the shared navigation owner.
   const CaregiverHomeSummaryUI({
     super.key,
     required this.control,
@@ -37,6 +40,8 @@ class CaregiverHomeSummaryUI extends StatefulWidget {
     this.hasLinkError = false,
     required this.patientLabel,
     required this.onPatientRequested,
+    this.selectedPatient,
+    this.onPatientSelected,
   });
 
   // 함수이름: createState
@@ -111,7 +116,10 @@ class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
   // 반환값: 선택 위치; 찾지 못하면 0.
   int get _index {
     final found = control.links.indexWhere(
-      (link) => link.linkId == _selectedLinkId,
+      (link) => widget.onPatientSelected == null
+          ? link.linkId == _selectedLinkId
+          : link.linkId == widget.selectedPatient?.linkId &&
+                link.patientHash == widget.selectedPatient?.patientHash,
     );
     return found < 0 ? 0 : found;
   }
@@ -122,6 +130,10 @@ class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
   // 반환값: 없음. 범위 밖 또는 같은 선택은 무시한다.
   void _select(int index) {
     if (index < 0 || index >= control.links.length || index == _index) return;
+    if (widget.onPatientSelected != null) {
+      widget.onPatientSelected!(control.links[index]);
+      return;
+    }
     setState(() {
       _selectedLinkId = control.links[index].linkId;
     });

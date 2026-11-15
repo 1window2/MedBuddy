@@ -58,6 +58,7 @@ class MedicationHistoryControl extends ChangeNotifier {
     DateTime Function()? now,
     String? Function()? sessionKeyProvider,
     Stream<String?>? sessionChanges,
+    this.isScopeCurrent,
     this.requestTimeout = const Duration(seconds: 25),
     AsNeededPendingStore? pendingStore,
   }) : patientHash = patientHash.trim(),
@@ -101,6 +102,8 @@ class MedicationHistoryControl extends ChangeNotifier {
 
   final String patientHash;
   final bool readOnly;
+  // Navigation can revoke access without changing the authentication session.
+  final bool Function()? isScopeCurrent;
   final String baseUrl;
   final Duration requestTimeout;
   late final http.Client _client;
@@ -244,6 +247,7 @@ class MedicationHistoryControl extends ChangeNotifier {
   void ensureSession() {
     if (_disposed ||
         _invalidated ||
+        isScopeCurrent?.call() == false ||
         _sessionKey == null ||
         _sessionKeyProvider() != _sessionKey) {
       invalidateSession();
@@ -284,7 +288,9 @@ class MedicationHistoryControl extends ChangeNotifier {
     loading = true;
     notifyListeners();
     try {
-      snapshot = await _readPeriod(range);
+      final result = await _readPeriod(range);
+      ensureSession();
+      snapshot = result;
     } catch (failure) {
       snapshot = null;
       if (!_disposed && !_invalidated) error = failure;
@@ -347,7 +353,9 @@ class MedicationHistoryControl extends ChangeNotifier {
     loading = true;
     notifyListeners();
     try {
-      return await _readPeriod(range);
+      final result = await _readPeriod(range);
+      ensureSession();
+      return result;
     } catch (failure) {
       if (!_disposed && !_invalidated && snapshot == null) error = failure;
       rethrow;

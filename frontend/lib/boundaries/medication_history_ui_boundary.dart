@@ -56,9 +56,11 @@ class MedicationHistoryUI extends StatefulWidget {
     this.recordChanges,
     this.chatLinkId,
     this.onChatShared,
+    this.patientSelector,
   });
 
   final String patientHash;
+  final Widget? patientSelector;
   final bool readOnly;
   final bool isEnglish;
   final FutureOr<void> Function()? onChanged;
@@ -1014,8 +1016,17 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
             icon: const Icon(Icons.ios_share_outlined),
           ),
         ],
-        bottom: widget.sharedRange != null && snapshot != null
-            ? _progress(snapshot)
+        bottom:
+            widget.patientSelector != null ||
+                (widget.sharedRange != null && snapshot != null)
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.patientSelector != null) widget.patientSelector!,
+                  if (widget.sharedRange != null && snapshot != null)
+                    _progress(snapshot),
+                ],
+              )
             : null,
       );
       return ScaffoldMessenger(
