@@ -59,8 +59,15 @@ class DoseOutboxStore {
     return openWith(
       readKey: () => secure.read(key: _keyName),
       writeKey: (value) => secure.write(key: _keyName, value: value),
-      openDatabase: () =>
-          openDatabase(path, version: 1, onCreate: createSchema),
+      openDatabase: () => databaseFactory.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 1,
+          onCreate: createSchema,
+          // Another live Flutter engine may own the shared transaction.
+          rollbackActiveTransactionOnOpen: false,
+        ),
+      ),
     );
   }
 
