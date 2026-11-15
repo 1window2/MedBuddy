@@ -1111,15 +1111,15 @@ void main() {
   test(
     'date label follows the medication timezone and language at midnight',
     () async {
-      expect((await state()).view['date_label'], '9월 21일 (월)');
+      expect((await state()).view['date_label'], '2026.09.21 (월)');
       final english = await state(config: {'language': 'en'});
-      expect(english.view['date_label'], '9/21 (Mon)');
+      expect(english.view['date_label'], '2026.09.21 (Mon)');
       final tomorrow = await state(
         at: DateTime.utc(2026, 9, 21, 15),
         config: {'language': 'ko'},
       );
       expect(tomorrow.view['date'], '2026-09-22');
-      expect(tomorrow.view['date_label'], '9월 22일 (화)');
+      expect(tomorrow.view['date_label'], '2026.09.22 (화)');
       expect(tomorrow.view['utc_offset_minutes'], doseWidgetUtcOffset);
     },
   );

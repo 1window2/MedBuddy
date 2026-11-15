@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.view.ContextThemeWrapper
 import android.view.View
+import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.RemoteViews
@@ -81,9 +82,10 @@ class DoseWidgetLayoutTest {
                             assertTrue("$label status hidden", listOf(R.id.widget_status, R.id.widget_tiny_status)
                                 .any { shown(root, it) })
                         }
-                        // 본문을 숨긴 낮은 배치에서도 놓친 약 안내가 보여야 하고, 기본 4열 폭의 본인 위젯은
-                        // 보통·큰 글씨에서 말줄임 없이 다 보여야 한다(가로 화면 1칸의 큰 글씨는 한 줄로 줄인다).
-                        if (known && overdue && height < 180) {
+                        // 한 줄 위젯은 시간대 영역을 유지하고, 더 높은 배치에서만 안내를 표시한다.
+                        if (height < DoseWidgetLayout.ROW_LIMIT) {
+                            assertEquals("$label compact warning", false, shown(root, R.id.widget_tiny_warning))
+                        } else if (known && overdue && height < 180) {
                             assertTrue("$label missed-dose note hidden", shown(root, R.id.widget_tiny_warning))
                             val note = root.findViewById<TextView>(R.id.widget_tiny_warning)
                             if (state == "patient" && width >= 360 && (scale <= 1f || (scale < 2f && height >= 60)))
@@ -113,6 +115,102 @@ class DoseWidgetLayoutTest {
         assertTrue(failures.joinToString("\n\n"), failures.isEmpty())
     }
 
+    @Test fun compactSlotArrowsFitAndReapplyAcrossNavigationStates() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val failures = mutableListOf<String>()
+        instrumentation.runOnMainSync {
+            for (width in listOf(250, 360)) for (scale in listOf(1f, 1.3f, 2f)) {
+                for (height in listOf(48, 51, 60, 80, 109)) for (overdue in listOf(false, true)) {
+                    val config = Configuration(instrumentation.targetContext.resources.configuration)
+                    config.fontScale = scale
+                    val context = ContextThemeWrapper(instrumentation.targetContext.createConfigurationContext(config),
+                        android.R.style.Theme_Material_Light_NoActionBar)
+                    val density = context.resources.displayMetrics.density
+                    var root: View? = null
+                    // Reapply to the same root, including transitions through hidden and disabled arrows.
+                    for (state in listOf("first", "middle", "last", "completed-last", "completed-first",
+                        "pending", "read-only", "single", "expired", "signed-out", "middle")) {
+                        val hasPager = state !in listOf("single", "expired", "signed-out")
+                        val first = state in listOf("first", "completed-first")
+                        val last = state in listOf("last", "completed-last")
+                        val pending = state == "pending"
+                        val previous = if (!hasPager) View.GONE else if (first) View.INVISIBLE else View.VISIBLE
+                        val next = if (!hasPager) View.GONE else if (last) View.INVISIBLE else View.VISIBLE
+                        val known = state != "signed-out"
+                        val completed = state.startsWith("completed")
+                        val base = sampleViews(context, if (state == "read-only") "caregiver" else
+                            if (known) "patient" else "signed-out", completed, R.layout.dose_home_widget_row)
+                        base.setTextViewText(R.id.widget_tiny_heading, when {
+                            !known -> "로그인이 필요해요"
+                            state == "expired" -> "일정을 새로고침해주세요"
+                            last -> "저녁 18:00"
+                            else -> "아침 08:00"
+                        })
+                        base.setTextViewText(R.id.widget_tiny_status, if (pending) "기기에 저장 중" else "서버 저장 완료")
+                        if (pending || state == "expired")
+                            base.setTextViewText(R.id.widget_take, if (pending) "저장 중" else "새로고침")
+                        base.setBoolean(R.id.widget_take, "setEnabled", !pending)
+                        for ((id, visibility) in listOf(R.id.widget_previous to previous, R.id.widget_next to next)) {
+                            base.setViewVisibility(id, visibility)
+                            base.setBoolean(id, "setEnabled", !pending && visibility == View.VISIBLE)
+                        }
+                        val missed = overdue && state in listOf("first", "middle", "last")
+                        val views = DoseWidgetLayout.row(context, base, height, known, missed)
+                        val current = root?.also { views.reapply(context, it) }
+                            ?: views.apply(context, FrameLayout(context)).also { root = it }
+                        current.measure(View.MeasureSpec.makeMeasureSpec((width * density).roundToInt(), View.MeasureSpec.EXACTLY),
+                            View.MeasureSpec.makeMeasureSpec((height * density).roundToInt(), View.MeasureSpec.EXACTLY))
+                        current.layout(0, 0, current.measuredWidth, current.measuredHeight)
+                        val label = "compact $state ${width}x$height font=$scale overdue=$missed"
+                        try {
+                            assertVisibleContentFits(current, label)
+                            val take = current.findViewById<TextView>(R.id.widget_take)
+                            val before = current.findViewById<View>(R.id.widget_previous)
+                            val after = current.findViewById<View>(R.id.widget_next)
+                            val heading = current.findViewById<TextView>(R.id.widget_tiny_heading)
+                            val status = current.findViewById<TextView>(R.id.widget_tiny_status)
+                            val summary = status.parent as View
+                            assertEquals("$label centered heading", Gravity.CENTER_HORIZONTAL,
+                                heading.gravity and Gravity.HORIZONTAL_GRAVITY_MASK)
+                            assertEquals("$label centered status", Gravity.CENTER_HORIZONTAL,
+                                status.gravity and Gravity.HORIZONTAL_GRAVITY_MASK)
+                            assertEquals("$label previous", previous, before.visibility)
+                            assertEquals("$label next", next, after.visibility)
+                            assertEquals("$label previous enabled", !pending && previous == View.VISIBLE, before.isEnabled)
+                            assertEquals("$label next enabled", !pending && next == View.VISIBLE, after.isEnabled)
+                            assertEquals("$label take enabled", !pending, take.isEnabled)
+                            assertTrue("$label heading missing", heading.width > 0 && shown(current, heading.id))
+                            assertTrue("$label status missing", status.width > 0 && shown(current, status.id))
+                            val note = current.findViewById<TextView>(R.id.widget_tiny_warning)
+                            assertEquals("$label missed-dose note", false, shown(current, note.id))
+                            assertTrue("$label take text ellipsized", take.layout != null &&
+                                (0 until take.layout.lineCount).all { take.layout.getEllipsisCount(it) == 0 })
+                            if (completed) assertEquals("복용 완료 취소", take.text.toString())
+                            if (hasPager) {
+                                assertEquals("$label slot center between arrows",
+                                    (before.right + after.left) / 2f,
+                                    summary.left + (heading.left + heading.right) / 2f, 1f)
+                                assertTrue("$label previous must be left of text", before.right <= summary.left)
+                                assertTrue("$label next must be right of text", summary.right <= after.left)
+                                assertTrue("$label take must stay on right", after.right <= take.left)
+                                if (width >= 360) assertTrue("$label next arrow too far from slot",
+                                    (after.left + after.right) / 2f < current.width * .55f)
+                            }
+                            assertTrue("$label right inset missing",
+                                current.width - take.right >= (12 * density).toInt())
+                            for (button in listOf(before, after, take)) {
+                                if (button.visibility == View.GONE) continue
+                                assertTrue("$label target width ${button.id}", button.width >= (48 * density).toInt())
+                                assertTrue("$label target height ${button.id}", button.height >= (48 * density).toInt())
+                            }
+                        } catch (failure: AssertionError) { failures.add("${failure.message}\n${describe(current)}") }
+                    }
+                }
+            }
+        }
+        assertTrue(failures.joinToString("\n\n"), failures.isEmpty())
+    }
+
     // Function Name: shown
     // Description: Treats a view absent from a compact layout as hidden.
     // Parameters: root (View) is the measured widget; id (Int) identifies the child.
@@ -133,7 +231,7 @@ class DoseWidgetLayoutTest {
         val known = state != "signed-out"
         return RemoteViews(context.packageName, layout).apply {
             setTextViewText(R.id.widget_title, if (state == "caregiver") "환자 테스트 이름" else "나의 복약 일정")
-            setTextViewText(R.id.widget_date, "9월 23일 (수)")
+            setTextViewText(R.id.widget_date, "2026.09.23 (수)")
             setTextViewText(R.id.widget_heading, if (known) "아침 · 미복용" else "로그인이 필요해요")
             setTextViewText(R.id.widget_compact_heading, "아침 08:00")
             setTextViewText(R.id.widget_details, if (known) "08:00 · 이름이 긴 아침약 외 2개" else "로그인하면 복약 일정을 볼 수 있어요.")

@@ -225,7 +225,7 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                         target.optString("patient_key"), rootState.optString("navigation_key")))
                 }
                 // 갱신이 지연돼도 날짜는 앱의 복약 기준 시간대로 오늘을 표시한다.
-                val dateFormat = SimpleDateFormat(if (english) "M/d (EEE)" else "M월 d일 (EEE)",
+                val dateFormat = SimpleDateFormat("yyyy.MM.dd (EEE)",
                     if (english) Locale.ENGLISH else Locale.KOREAN)
                 dateFormat.timeZone = SimpleTimeZone(state.optInt("utc_offset_minutes", 540) * 60000, "dose")
                 views.setTextViewText(R.id.widget_date, if (!expired && state.has("date_label"))
@@ -290,7 +290,9 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                 }
                 for ((button, targetIndex) in listOf(R.id.widget_previous to index - 1, R.id.widget_next to index + 1)) {
                     val target = pages.getOrNull(targetIndex)
-                    views.setViewVisibility(button, if (target != null) View.VISIBLE else View.INVISIBLE)
+                    // The row has no pager wrapper to hide both arrows for a single or unavailable slot.
+                    views.setViewVisibility(button, if (layout == R.layout.dose_home_widget_row && pages.size <= 1)
+                        View.GONE else if (target != null) View.VISIBLE else View.INVISIBLE)
                     views.setBoolean(button, "setEnabled", !pending && target != null)
                     views.setContentDescription(button, if (button == R.id.widget_previous)
                         tr("이전 복약 일정", "Previous medication slot") else tr("다음 복약 일정", "Next medication slot"))
