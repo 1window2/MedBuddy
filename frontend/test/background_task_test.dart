@@ -140,6 +140,15 @@ class _RecordingDeps extends BackgroundTaskDeps {
     widgetClients.add(client);
   }
 
+  @override
+  Future<void> refreshCaregiverWidget({
+    required String owner,
+    required http.Client client,
+  }) async {
+    calls.add('refreshCaregiverWidget:$owner');
+    expect(client, same(this.client));
+  }
+
   // Function Name: initializeNotifications
   // Description:
   // - Records notification initialization without loading a platform plugin.
@@ -544,9 +553,10 @@ void main() {
     // Returns:
     // - Future<void>: Completes the checks; an unexpected result fails the test.
     test('caregiver check runs with the caregiver scope and returns its result', () async {
+      await store.activate('caregiver-a');
       for (final outcome in [true, false]) {
         final taskClient = _ClosingClient(MockClient((_) async => http.Response('{}', 200)));
-        final deps = _RecordingDeps(client: taskClient)..caregiverResult = outcome;
+        final deps = _RecordingDeps(store: store, client: taskClient)..caregiverResult = outcome;
 
         final result = await runBackgroundTask(
           caregiverNotificationBackgroundTask,
@@ -556,12 +566,25 @@ void main() {
 
         expect(result, outcome);
         expect(deps.calls, [
+          'openDoseStore',
           'openClient',
+          'refreshCaregiverWidget:caregiver-a',
           'initializeNotifications',
           'checkCaregiverAlerts:caregiver-a:${ApiConfig.baseUrl}',
         ]);
         expect(taskClient.closed, isTrue);
       }
+    });
+
+    test('an old caregiver task does not open a client or refresh another account', () async {
+      await store.activate(owner);
+      final deps = _RecordingDeps(store: store, client: client);
+
+      expect(await runBackgroundTask(caregiverNotificationBackgroundTask,
+          {'caregiver_hash': 'previous-caregiver'}, deps), isTrue);
+
+      expect(deps.calls, ['openDoseStore']);
+      expect(client.closed, isFalse);
     });
 
     // Function Name: missing caregiver scope and unknown task names do nothing

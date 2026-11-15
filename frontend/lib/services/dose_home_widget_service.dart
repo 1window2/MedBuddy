@@ -55,6 +55,8 @@ class DoseHomeWidgetPlatform {
   // Returns: True only on supported native Android.
   bool get supported => !kIsWeb && Platform.isAndroid;
 
+  DateTime get now => DateTime.now();
+
   // Function Name: readJournal
   // Description: Reads the action journal Android persisted before requesting Dart processing.
   // Parameters: None.
@@ -210,7 +212,7 @@ class DoseHomeWidget {
     await DoseSyncService.prepareOfflineCache(
       store,
       owner: owner,
-      now: DateTime.now(),
+      now: platform.now,
     );
     final actions = await _journalActions();
     final handled = <String>[];
@@ -219,7 +221,7 @@ class DoseHomeWidget {
       if (token == null) continue;
       await store.updateWidget(
         owner: owner,
-        now: DateTime.now(),
+        now: platform.now,
         action: entry['action']?.toString(),
         actionToken: token,
         configuration: configuration,
@@ -228,7 +230,7 @@ class DoseHomeWidget {
     }
     final state = await store.updateWidget(
       owner: owner,
-      now: DateTime.now(),
+      now: platform.now,
       configuration: configuration,
       patientCache: patientCache,
       expectedPatientRevision: expectedPatientRevision,
@@ -261,7 +263,7 @@ class DoseHomeWidget {
   static Future<void> _cancelCompletedReminders(DoseWidgetState state) async {
     final owner = state.data['owner'] as String;
     final date = state.view['date'] as String;
-    final completed = state.completedReminderSlots(DateTime.now()).toList();
+    final completed = state.completedReminderSlots(platform.now).toList();
     final key = '$owner|$date';
     _cancelledReminderSlots.removeWhere((other, _) => other != key);
     final cancelled = _cancelledReminderSlots.putIfAbsent(key, () => {});
@@ -292,16 +294,22 @@ class DoseHomeWidget {
   // Function Name: needsNetworkRefresh
   // Description: Checks local upload eligibility, widget actions, and projection freshness before preparing authentication/network work.
   // Parameters: owner (String): Account attached to the scheduled job.
-  // Returns: True for eligible uploads, journal actions, stale owned widget snapshots, or inspection failure; otherwise false.
+  // Returns: True for uploads, actions, stale snapshots, installed patient views, or inspection failure.
   static Future<bool> needsNetworkRefresh(String owner) async {
     try {
       final store = await platform.openStore();
+      if (!await store.isActive(owner)) return false;
       if (await store.hasUploadableOperation(owner)) return true;
       if (!supported) return false;
       if ((await _journalActions()).isNotEmpty) return true;
       if (!await _hasInstalledWidget()) return false;
-      final need = await store.widgetRefreshNeed(now: DateTime.now());
-      return need != null && need.owner == owner && !need.snapshotCurrent;
+      final need = await store.widgetRefreshNeed(now: platform.now);
+      if (need == null || need.owner != owner) return false;
+      if (!need.snapshotCurrent) return true;
+      // Today's patient cache is usable offline, but another device can change
+      // it at any time, including undoing a dose without sending a push.
+      final state = await store.updateWidget(owner: owner, now: platform.now);
+      return state?.view['source'] == 'patients';
     } catch (_) {
       return true;
     }
@@ -315,13 +323,41 @@ class DoseHomeWidget {
     if (!supported) return;
     try {
       final store = await platform.openStore();
-      final need = await store.widgetRefreshNeed(now: DateTime.now());
+      final need = await store.widgetRefreshNeed(now: platform.now);
       if (need == null) return;
       if (await needsNetworkRefresh(need.owner)) {
         await platform.registerSync(need.owner);
       }
     } catch (_) {
       /* 다음 위젯 갱신이나 앱 시작에서 다시 확인한다. */
+    }
+  }
+
+  // Push data is only a wake-up hint. The worker reads authorized schedules,
+  // independent of alert settings, and never applies a completion from a push.
+  static Future<void> refreshFromCaregiverPush(Map<String, dynamic> data) async {
+    if (!supported ||
+        !const {
+          'caregiver_slot_completed',
+          'caregiver_dose_completed',
+          'caregiver_slot_missed',
+        }.contains(data['type'])) {
+      return;
+    }
+    final owner = data['recipient_hash']?.toString().trim() ?? '';
+    final patient = data['patient_hash']?.toString().trim() ?? '';
+    if (owner.isEmpty || patient.isEmpty || patient == owner) return;
+    final date = data['schedule_date'];
+    if (date != null && date != doseWidgetDay(platform.now)) return;
+    try {
+      final store = await platform.openStore();
+      if (!await store.isActive(owner) || !await _hasInstalledWidget()) return;
+      final state = await store.updateWidget(owner: owner, now: platform.now);
+      if (state?.view['source'] != 'patients') return;
+      await platform.registerSync(owner);
+    } catch (_) {
+      // Widget refresh must not prevent notification delivery. Periodic work
+      // and the next app/widget refresh remain available after a failed hint.
     }
   }
 
@@ -336,17 +372,22 @@ class DoseHomeWidget {
     DoseSyncService? sync,
     http.Client? client,
     bool requestedByWidget = false,
+    String? expectedOwner,
+    bool patientsOnly = false,
   }) async {
     if (!supported) return;
     http.Client? ownClient;
     DoseSyncService? ownSync;
     try {
       final store = await platform.openStore();
+      expectedOwner ??= sync?.owner;
+      if (expectedOwner != null && !await store.isActive(expectedOwner)) return;
       final tapped = (await _journalActions()).isNotEmpty;
       final installed = await _hasInstalledWidget();
+      if (patientsOnly && !installed) return;
       if (!tapped && !installed && !requestedByWidget) {
         // 표시할 위젯도 기록할 클릭도 없다. 직접 보낼 기록까지 없으면 아무 일도 하지 않는다.
-        final active = await store.widgetRefreshNeed(now: DateTime.now());
+        final active = await store.widgetRefreshNeed(now: platform.now);
         if (sync != null ||
             active == null ||
             !await store.hasUploadableOperation(active.owner)) {
@@ -354,17 +395,19 @@ class DoseHomeWidget {
         }
       }
       // Local persistence does not require connectivity or an ID-token refresh.
-      final state = await publish();
+      final state = await publish(owner: expectedOwner);
       if (state == null) return;
       final owner = state.data['owner'] as String;
+      final patientView = state.view['source'] == 'patients';
+      if (patientsOnly && !patientView) return;
       if (sync != null && sync.owner != owner) return;
       // 호출자가 넘긴 서비스는 이미 전송을 마쳤다. 방금 기록한 위젯 클릭이 있을 때만 다시 보낸다.
       final upload =
           (sync == null || tapped) && await store.hasUploadableOperation(owner);
-      var need = await store.widgetRefreshNeed(now: DateTime.now());
+      var need = await store.widgetRefreshNeed(now: platform.now);
       if (need == null) return;
       // 클릭으로 깨어난 경우가 아니면 위젯의 새로고침 요청은 항상 서버에서 다시 읽는다.
-      final forced = requestedByWidget && !tapped;
+      final forced = (requestedByWidget && !tapped) || (installed && patientView);
       if (!upload && !forced && (!installed || need.snapshotCurrent)) return;
 
       client ??= sync?.client ?? (ownClient = await platform.openClient());
@@ -381,12 +424,12 @@ class DoseHomeWidget {
         await sync.drain();
         changed = true;
         // 전송 확인 응답에는 오늘 일정이 들어 있으므로 성공하면 다시 조회하지 않는다.
-        need = await store.widgetRefreshNeed(now: DateTime.now());
+        need = await store.widgetRefreshNeed(now: platform.now);
         if (need == null) return;
       }
       if (forced || (installed && !need.snapshotCurrent)) {
         if ((state.data['config'] as Map?)?['source'] == 'patients') {
-          final day = doseWidgetDay(DateTime.now());
+          final day = doseWidgetDay(platform.now);
           final revision = state.data['patient_revision'] as String?;
           try {
             final readSnapshots = readPatientSnapshots;
@@ -394,7 +437,7 @@ class DoseHomeWidget {
               throw StateError('Patient snapshot reader is not installed.');
             }
             final snapshots = await readSnapshots(owner, client);
-            if (day == doseWidgetDay(DateTime.now())) {
+            if (day == doseWidgetDay(platform.now)) {
               await publish(
                 owner: owner,
                 expectedPatientRevision: revision,
@@ -430,14 +473,14 @@ class DoseHomeWidget {
         }
         try {
           final revision = await sync.cacheRevision();
-          final day = doseWidgetDay(DateTime.now());
+          final day = doseWidgetDay(platform.now);
           final readSchedules = readTodaySchedules;
           if (readSchedules == null) {
             throw StateError('Today schedule reader is not installed.');
           }
           final schedules = await readSchedules(owner, client);
           // A request crossing midnight must not relabel yesterday's response.
-          if (day == doseWidgetDay(DateTime.now())) {
+          if (day == doseWidgetDay(platform.now)) {
             await sync.cacheSchedules(
               schedules,
               scheduleDate: day,

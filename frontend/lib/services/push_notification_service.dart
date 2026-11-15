@@ -18,6 +18,7 @@ import '../entities/user_setting_entity.dart';
 import 'caregiver_alert_delivery_service.dart';
 import 'api_config.dart';
 import 'auth_config.dart';
+import 'dose_home_widget_service.dart';
 import 'notification_service.dart';
 import 'medication_notification_payload_codec.dart';
 import 'notification_inbox_store.dart';
@@ -175,6 +176,7 @@ Future<void> recordPushNotificationHistory(
 // 매개변수: message. 반환값: 기록 완료. Firebase API는 사용하지 않는다.
 @pragma('vm:entry-point')
 Future<void> medBuddyPushBackgroundHandler(RemoteMessage message) async {
+  await DoseHomeWidget.refreshFromCaregiverPush(message.data);
   if (SlotCheckNotificationContext.fromData(message.data) != null) {
     await recordPushNotificationHistory(message);
     await SlotCheckNotificationService.display(message.data);
@@ -768,6 +770,7 @@ class PushNotificationService {
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> _showForegroundMessage(RemoteMessage message) async {
     if (message.data['recipient_hash'] != userHash) return;
+    await DoseHomeWidget.refreshFromCaregiverPush(message.data);
     if (SlotCheckNotificationContext.fromData(message.data) != null) {
       await recordPushNotificationHistory(
         message,

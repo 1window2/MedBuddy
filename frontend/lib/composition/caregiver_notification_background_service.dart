@@ -114,7 +114,7 @@ class BackgroundTaskDeps {
   }
 
   // Function Name: finishDoseRun
-  // Description: Keeps the account's 15-minute retry only while records wait or the widget still lacks today's data, and removes it otherwise.
+  // Description: Keeps the account's retry while records wait, data is stale, or an installed patient widget needs ongoing polling.
   // Parameters: owner: Account that scheduled the task; periodicRun: Whether this run is the periodic job.
   // Returns: Completion; a periodic run that removes itself may be stopped by the platform right after.
   Future<void> finishDoseRun(String owner, {required bool periodicRun}) =>
@@ -130,6 +130,16 @@ class BackgroundTaskDeps {
   // Returns: Completion of widget refresh; errors propagate to the task dispatcher.
   Future<void> refreshDoseWidget({DoseSyncService? sync, http.Client? client}) =>
       DoseHomeWidget.refreshInBackground(sync: sync, client: client);
+
+  // Refreshes only the active caregiver's installed patient widget from authorized schedules.
+  Future<void> refreshCaregiverWidget({
+    required String owner,
+    required http.Client client,
+  }) => DoseHomeWidget.refreshInBackground(
+    expectedOwner: owner,
+    patientsOnly: true,
+    client: client,
+  );
 
   // Function Name: initializeNotifications
   // Description: Initializes the local notification service before reminder or caregiver work.
@@ -259,9 +269,18 @@ Future<bool> runBackgroundTask(
     if (scopeHash.trim().isEmpty) {
       return true;
     }
+    if (!isReminderTask) {
+      final store = await deps.openDoseStore();
+      if (!await store.isActive(scopeHash)) return true;
+    }
     client = await deps.openClient();
     if (client == null) {
       return false;
+    }
+    if (!isReminderTask) {
+      // Monitoring may omit schedules for patients with alerts disabled.
+      // Widgets always use the separate, complete schedules endpoint.
+      await deps.refreshCaregiverWidget(owner: scopeHash, client: client);
     }
     await deps.initializeNotifications();
     if (isReminderTask) {

@@ -2,10 +2,12 @@
 // Role: Verifies durable widget actions, single-upload background refresh, idle-work skipping and account cleanup.
 // Real SQLite/crypto and the production DoseSyncService; the widget plugin, WorkManager and the
 //   notification plugin are replaced by recording substitutes. No production accounts or records.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -18,6 +20,8 @@ import 'package:medbuddy_frontend/services/dose_home_widget_service.dart';
 import 'package:medbuddy_frontend/services/dose_outbox_store.dart';
 import 'package:medbuddy_frontend/services/dose_sync_background_service.dart';
 import 'package:medbuddy_frontend/services/dose_sync_service.dart';
+import 'package:medbuddy_frontend/services/push_notification_service.dart';
+import 'package:medbuddy_frontend/services/user_setting_preference_keys.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -51,6 +55,11 @@ class _RecordingWidgetPlatform extends DoseHomeWidgetPlatform {
   final List<String> registered = [];
   int openedClients = 0;
   int cancelledScheduledUpdates = 0;
+  DateTime? clock;
+  Completer<void>? registration;
+
+  @override
+  DateTime get now => clock ?? super.now;
 
   // Function Name: supported
   // Description:
@@ -170,7 +179,10 @@ class _RecordingWidgetPlatform extends DoseHomeWidgetPlatform {
   // Returns:
   // - Future<void>: Completes after appending owner.
   @override
-  Future<void> registerSync(String owner) async => registered.add(owner);
+  Future<void> registerSync(String owner) async {
+    registered.add(owner);
+    if (registration?.isCompleted == false) registration!.complete();
+  }
 
   // Function Name: openClient
   // Description:
@@ -298,7 +310,28 @@ class _WorkerDeps extends BackgroundTaskDeps {
   Future<http.Client?> openClient() async => client;
 }
 
+class _ForegroundPushPlatform extends PushMessagingPlatform {
+  final messages = StreamController<RemoteMessage>.broadcast();
+  @override
+  bool get enabled => true;
+  @override
+  void registerBackgroundHandler() {}
+  @override
+  Future<void> requestPermission() async {}
+  @override
+  Future<String?> getToken() async => 'test-token';
+  @override
+  Stream<String> get onTokenRefresh => const Stream.empty();
+  @override
+  Stream<RemoteMessage> get onMessage => messages.stream;
+  @override
+  Stream<RemoteMessage> get onMessageOpenedApp => const Stream.empty();
+  @override
+  Future<RemoteMessage?> getInitialMessage() async => null;
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
   const owner = 'patient-a';
   late Database db;
@@ -312,6 +345,7 @@ void main() {
   late bool online;
   late int uploadStatus;
   late int snapshotStatus;
+  late bool patientTaken;
   late Duration uploadDelay;
 
   // Function Name: today
@@ -397,6 +431,7 @@ void main() {
   // Returns:
   // - Future<void>: Completes fixture setup; unexpected HTTP routes return 500.
   setUp(() async {
+    SharedPreferences.setMockInitialValues({});
     // Production installs the server readers at every entry point; the tests use the same wiring.
     installDoseHomeWidgetReaders();
     directory = await Directory.systemTemp.createTemp('dose-widget-service-');
@@ -414,6 +449,7 @@ void main() {
     online = true;
     uploadStatus = 200;
     snapshotStatus = 200;
+    patientTaken = false;
     uploadDelay = Duration.zero;
     client = MockClient((request) async {
       if (!online) throw const SocketException('offline');
@@ -455,7 +491,7 @@ void main() {
                   'patient_alias': '어머니',
                   'link_status': true,
                 },
-                'today_medication_info': [medication().toJson()],
+                'today_medication_info': [medication(taken: patientTaken).toJson()],
               },
             ],
           },
@@ -893,14 +929,7 @@ void main() {
   group('환자 조회 위젯', () {
     const patients = {'source': 'patients'};
 
-    // Function Name: patient snapshots are read once per day by the periodic worker
-    // Description:
-    // - Reads linked-patient data once for periodic refreshes on the cached day, preserves the alias, and rereads on an explicit widget request.
-    // Parameters:
-    // - None.
-    // Returns:
-    // - Future<void>: Completes the checks; an unexpected result fails the test.
-    test('patient snapshots are read once per day by the periodic worker', () async {
+    test('patient snapshots refresh same-day completions and cancellations', () async {
       await prepare(config: patients);
       expect(await DoseHomeWidget.needsNetworkRefresh(owner), isTrue);
 
@@ -912,12 +941,126 @@ void main() {
       final shown = platform.savedStates.last['patients'] as List;
       expect((shown.single as Map)['title'], '어머니');
 
+      patientTaken = true;
       await DoseHomeWidget.refreshInBackground();
-      expect(snapshotReads, 1);
-      expect(await DoseHomeWidget.needsNetworkRefresh(owner), isFalse);
-
-      await DoseHomeWidget.refreshInBackground(requestedByWidget: true);
       expect(snapshotReads, 2);
+      expect(await DoseHomeWidget.needsNetworkRefresh(owner), isTrue);
+      final completed = (await store.updateWidget(now: DateTime.now()))!;
+      final cache = completed.data['patient_cache'] as Map;
+      final schedules = (cache['patients'] as List).single['schedules'] as List;
+      expect(MedicationSchedule.fromScheduleJsonList(schedules).single
+          .isSlotCompleted('morning'), isTrue);
+
+      patientTaken = false;
+      await DoseHomeWidget.refreshInBackground();
+      expect(snapshotReads, 3);
+      final cancelled = (await store.updateWidget(now: DateTime.now()))!;
+      final cancelledCache = cancelled.data['patient_cache'] as Map;
+      final cancelledSchedules = (cancelledCache['patients'] as List).single['schedules'] as List;
+      expect(MedicationSchedule.fromScheduleJsonList(cancelledSchedules).single
+          .isSlotCompleted('morning'), isFalse);
+      expect(uploads, isEmpty);
+    });
+
+    test('caregiver monitoring refresh uses schedules even with alerts disabled', () async {
+      SharedPreferences.setMockInitialValues({
+        UserSettingPreference.caregiverNotificationsEnabled.keyFor(owner): false,
+      });
+      await prepare(config: patients);
+      await DoseHomeWidget.refreshInBackground();
+      patientTaken = true;
+
+      await const BackgroundTaskDeps().refreshCaregiverWidget(owner: owner, client: client);
+
+      expect(snapshotReads, 2);
+      expect(platform.openedClients, 1); // Reuses the monitoring worker's client.
+      expect(platform.savedStates.last['patients'], hasLength(1));
+      expect(uploads, isEmpty);
+    });
+
+    test('background patient reads reject account and source switches', () async {
+      await prepare(config: patients);
+      final read = DoseHomeWidget.readPatientSnapshots!;
+      DoseHomeWidget.readPatientSnapshots = (account, transport) async {
+        final snapshots = await read(account, transport);
+        await DoseHomeWidget.publish(owner: owner, configuration: {'source': 'self'});
+        return snapshots;
+      };
+      await DoseHomeWidget.refreshInBackground();
+      expect(platform.savedStates.last['source'], isNot('patients'));
+      expect((await store.updateWidget(now: platform.now))!.data['patient_cache'], isNull);
+
+      await prepare(config: patients);
+      DoseHomeWidget.readPatientSnapshots = (account, transport) async {
+        final snapshots = await read(account, transport);
+        await store.activate('next-account');
+        await DoseHomeWidget.publish(owner: 'next-account', configuration: patients);
+        return snapshots;
+      };
+      await DoseHomeWidget.refreshInBackground();
+      expect((await store.updateWidget(now: platform.now))!.data['owner'], 'next-account');
+      expect(platform.savedStates.last['patients'], isEmpty);
+    });
+
+    test('a newer unlink response wins over an older in-flight read', () async {
+      await prepare(config: patients);
+      final read = DoseHomeWidget.readPatientSnapshots!;
+      DoseHomeWidget.readPatientSnapshots = (account, transport) async {
+        final snapshots = await read(account, transport);
+        await DoseHomeWidget.publish(owner: owner, patientCache: {
+          'date': today(), 'patients': [],
+        });
+        return snapshots;
+      };
+
+      await DoseHomeWidget.refreshInBackground();
+
+      expect(platform.savedStates.last['patients'], isEmpty);
+      expect(await DoseHomeWidget.needsNetworkRefresh(owner), isTrue);
+    });
+
+    test('a read crossing midnight cannot publish yesterday as today', () async {
+      await prepare(config: patients);
+      final started = DateTime.now();
+      platform.clock = started;
+      final read = DoseHomeWidget.readPatientSnapshots!;
+      DoseHomeWidget.readPatientSnapshots = (account, transport) async {
+        final snapshots = await read(account, transport);
+        platform.clock = started.add(const Duration(days: 1));
+        return snapshots;
+      };
+
+      await DoseHomeWidget.refreshInBackground();
+
+      expect(snapshotReads, 1);
+      expect((await store.updateWidget(now: platform.now))!.data['patient_cache'], isNull);
+      expect(await DoseHomeWidget.needsNetworkRefresh(owner), isTrue);
+    });
+
+    test('a scoped caregiver refresh skips self, missing widget and old owner', () async {
+      await prepare();
+      await const BackgroundTaskDeps().refreshCaregiverWidget(owner: owner, client: client);
+      await prepare(config: patients);
+      platform.installed = false;
+      await const BackgroundTaskDeps().refreshCaregiverWidget(owner: owner, client: client);
+      platform.installed = true;
+      await const BackgroundTaskDeps().refreshCaregiverWidget(owner: 'previous', client: client);
+      expect(snapshotReads, 0);
+      expect(scheduleReads, 0);
+      expect(uploads, isEmpty);
+    });
+
+    test('a same-day read failure preserves last known rows and retries', () async {
+      await prepare(config: patients);
+      await DoseHomeWidget.refreshInBackground();
+      snapshotStatus = 503;
+
+      await DoseHomeWidget.refreshInBackground();
+
+      expect(snapshotReads, 2);
+      expect(platform.savedStates.last['patients'], hasLength(1));
+      expect((await store.updateWidget(now: platform.now))!.data['patient_cache']['failed'], isTrue);
+      expect(await DoseHomeWidget.needsNetworkRefresh(owner), isTrue);
     });
 
     // Function Name: a failed patient read is shown and retried next period
@@ -941,6 +1084,72 @@ void main() {
       await DoseHomeWidget.refreshInBackground();
       expect(snapshotReads, 2);
       expect(platform.savedStates.last['patients'], hasLength(1));
+    });
+  });
+
+  group('caregiver push refresh hints', () {
+    const data = {
+      'type': 'caregiver_slot_completed',
+      'recipient_hash': owner,
+      'patient_hash': 'patient-b',
+      'slot_key': 'morning',
+    };
+
+    test('background delivery schedules a scoped read without changing dose state', () async {
+      await prepare(config: {'source': 'patients'});
+      await medBuddyPushBackgroundHandler(const RemoteMessage(data: data));
+
+      expect(platform.registered, [owner]);
+      expect(snapshotReads, 0);
+      expect(platform.savedStates, isEmpty);
+      expect(await store.pending(owner), isEmpty);
+    });
+
+    test('foreground delivery schedules the same scoped read', () async {
+      await prepare(config: {'source': 'patients'});
+      final messaging = _ForegroundPushPlatform();
+      final transport = MockClient((_) async => http.Response('{}', 200));
+      final push = PushNotificationService(userHash: owner, client: transport, platform: messaging);
+      addTearDown(() async {
+        await push.stop();
+        await messaging.messages.close();
+        transport.close();
+      });
+      platform.registration = Completer<void>();
+      await push.start();
+      messaging.messages.add(const RemoteMessage(data: data));
+      await platform.registration!.future.timeout(const Duration(seconds: 5));
+
+      expect(platform.registered, [owner]);
+      expect(snapshotReads, 0);
+      expect(await store.pending(owner), isEmpty);
+    });
+
+    test('irrelevant, other-account and old-date hints do not schedule work', () async {
+      await prepare(config: {'source': 'patients'});
+      for (final invalid in [
+        {...data, 'recipient_hash': 'previous-account'},
+        {...data, 'recipient_hash': ''},
+        {...data, 'patient_hash': ''},
+        {...data, 'patient_hash': owner},
+        {...data, 'type': 'linked_chat_message'},
+        {...data, 'schedule_date': '2000-01-01'},
+      ]) {
+        await DoseHomeWidget.refreshFromCaregiverPush(invalid);
+      }
+      expect(platform.registered, isEmpty);
+    });
+
+    test('self-view, missing widgets and signed-out users ignore push hints', () async {
+      await prepare();
+      await DoseHomeWidget.refreshFromCaregiverPush(data);
+      await prepare(config: {'source': 'patients'});
+      platform.installed = false;
+      await DoseHomeWidget.refreshFromCaregiverPush(data);
+      platform.installed = true;
+      await store.activate(null);
+      await DoseHomeWidget.refreshFromCaregiverPush(data);
+      expect(platform.registered, isEmpty);
     });
   });
 
@@ -1120,6 +1329,34 @@ void main() {
       expect(uploads, isEmpty);
     });
 
+    test('a current caregiver widget keeps polling after a successful read', () async {
+      await prepare(config: patients);
+      await DoseHomeWidget.refreshInBackground();
+      patientTaken = true;
+
+      expect(await runBackgroundTask(doseSyncBackgroundTask, periodicRun, deps), isTrue);
+
+      expect(snapshotReads, 2);
+      expect(work.calls, ['periodic:$owner']);
+      expect(uploads, isEmpty);
+    });
+
+    test('patient polling stops after widget removal or switching to self', () async {
+      await prepare(config: patients);
+      await DoseHomeWidget.refreshInBackground();
+      platform.installed = false;
+      await runBackgroundTask(doseSyncBackgroundTask, periodicRun, deps);
+      expect(snapshotReads, 1);
+      expect(work.calls, ['cancel-periodic:$owner']);
+
+      platform.installed = true;
+      work.calls.clear();
+      await DoseHomeWidget.publish(owner: owner, configuration: {'source': 'self'});
+      await runBackgroundTask(doseSyncBackgroundTask, periodicRun, deps);
+      expect(snapshotReads, 1);
+      expect(work.calls, ['cancel-periodic:$owner']);
+    });
+
     // Risk 1: a record that could not be sent keeps both the retrying one-off run and the periodic retry.
     for (final (label, input) in [('one-off', oneOffRun), ('periodic', periodicRun)]) {
       test('a failed upload keeps the record and the periodic retry ($label run)', () async {
@@ -1292,7 +1529,7 @@ void main() {
       expect(platform.registered, isEmpty);
     });
 
-    test('a failed patient snapshot keeps the retry until it succeeds', () async {
+    test('a recovered patient snapshot keeps polling for later remote changes', () async {
       await prepare(config: patients);
       snapshotStatus = 503;
 
@@ -1307,7 +1544,7 @@ void main() {
 
       expect(snapshotReads, 2);
       expect(platform.savedStates.last['patients'], hasLength(1));
-      expect(work.calls, ['cancel-periodic:$owner']);
+      expect(work.calls, ['periodic:$owner']);
     });
 
     test('an account that is not signed in removes its retry', () async {
