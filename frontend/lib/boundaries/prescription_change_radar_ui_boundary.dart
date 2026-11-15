@@ -44,14 +44,20 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
     final text = _PrescriptionChangeText(userSetting.language);
 
     return Container(
+      key: const Key('prescription-radar-card'),
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.all(1),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: MedBuddyRadii.largeCard,
-        border: Border.all(color: MedBuddyColors.successBorder),
         boxShadow: MedBuddyShadows.card,
+      ),
+      // 펼침 상태와 관계없이 머리글 채움 위로 둥근 외곽선을 유지한다.
+      foregroundDecoration: BoxDecoration(
+        borderRadius: MedBuddyRadii.largeCard,
+        border: Border.all(color: MedBuddyColors.successBorder),
       ),
       child: ExpandableMedicationSection(
         initiallyExpanded: false,
