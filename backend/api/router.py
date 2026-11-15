@@ -551,6 +551,7 @@ def check_prescription_change(
 @router.post("/save")
 def save_medication(
     medication: SavedMedicationCreate,
+    background_tasks: BackgroundTasks,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
@@ -562,7 +563,14 @@ def save_medication(
     trusted_medication = medication.model_copy(
         update={"patient_hash": patient_hash},
     )
-    return check_saved_medication.saveMedicationDetail(trusted_medication)
+    response = check_saved_medication.saveMedicationDetail(trusted_medication)
+    from services.saved_medication_enrichment import queue_saved_medication_enrichment
+
+    queue_saved_medication_enrichment(
+        background_tasks, check_saved_medication.db, response,
+        patient_hash, trusted_medication.item_seq,
+    )
+    return response
 
 
 # Function Name: get_saved_medications

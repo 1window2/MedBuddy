@@ -96,6 +96,7 @@ EXPECTED_API_ROUTES = frozenset({
     ("GET", "/api/v1/medication/caregiver/medications/{patient_hash}"),
     ("GET", "/api/v1/medication/caregiver/monitoring"),
     ("GET", "/api/v1/medication/caregiver/schedules"),
+    ("GET", "/api/v1/medication/catalog/{item_seq}"),
     ("DELETE", "/api/v1/medication/delete/{drug_id}"),
     ("GET", "/api/v1/medication/guardian-alert/settings/{patient_hash}"),
     ("PUT", "/api/v1/medication/guardian-alert/settings/{patient_hash}"),
