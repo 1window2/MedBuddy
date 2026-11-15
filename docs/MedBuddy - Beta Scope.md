@@ -3,9 +3,9 @@
 ## Status
 
 - Scope review: 2026-09-30
-- Stable functional baseline: `v0.2.5-beta`
-- Active development branch: `beta/v1.0.0` (1.0.0 release)
-- Target release tag: `v1.0.0`
+- Stable functional baseline: `v1.0.0`
+- Active development branch: `v1.0.1`
+- Target release tag: `v1.0.1`
 - Target platform: Android
 - iOS: deferred until after the Android public-release decision, no earlier than
   October 2026. The repository has no iOS project yet; the lone
