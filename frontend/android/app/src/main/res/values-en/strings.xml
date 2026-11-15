@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="dose_widget_label">MedBuddy medication schedule</string>
+    <string name="dose_widget_large_label">MedBuddy medication schedule 4 x 3</string>
     <string name="dose_widget_preview_title">My medication</string>
+    <string name="dose_widget_preview_heading">Morning --:--</string>
+    <string name="dose_widget_preview_details">Morning medication · Not taken</string>
     <string name="dose_widget_taken">Taken</string>
     <string name="dose_widget_sign_in_title">Please sign in</string>
     <string name="dose_widget_sign_in_body">Sign in to view your medication schedule.</string>

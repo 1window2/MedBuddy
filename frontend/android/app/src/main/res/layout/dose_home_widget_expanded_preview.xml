@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 파일명: dose_home_widget_expanded_preview.xml
+     역할: 런처의 4 x 3 추가 창에 확장 위젯의 배치를 개인정보 없는 예시로 표시한다.
+     실제 위젯은 기존 공통 레이아웃을 사용하며 이 파일은 추가 전 미리보기 전용이다. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="12dp"
+    android:background="@drawable/dose_widget_background">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="vertical">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:includeFontPadding="false" android:text="@string/dose_widget_preview_title"
+                android:textColor="#007E5E" android:textSize="14sp" android:textStyle="bold"
+                android:maxLines="1" android:ellipsize="end" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:includeFontPadding="false" android:text="20XX.XX.XX"
+                android:textColor="#595D65" android:textSize="12sp" android:maxLines="1" />
+        </LinearLayout>
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="0/3" android:textColor="#007E5E" android:textSize="14sp"
+            android:textStyle="bold" android:paddingHorizontal="8dp" />
+        <ImageView android:layout_width="32dp" android:layout_height="32dp"
+            android:src="@android:drawable/ic_popup_sync" android:tint="#007E5E"
+            android:contentDescription="@string/dose_widget_refresh" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1" android:gravity="center_vertical" android:orientation="vertical">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:includeFontPadding="false" android:text="@string/dose_widget_preview_heading"
+            android:textColor="#25272B" android:textSize="18sp" android:textStyle="bold"
+            android:maxLines="1" android:ellipsize="end" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:includeFontPadding="false" android:text="@string/dose_widget_preview_details"
+            android:textColor="#595D65" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="32dp"
+        android:orientation="horizontal" android:gravity="center">
+        <ImageView android:layout_width="32dp" android:layout_height="32dp"
+            android:src="@drawable/dose_widget_previous" android:alpha="0.35" android:padding="6dp" />
+        <ImageView android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+            android:src="@drawable/dose_widget_dot_active" android:scaleType="center" />
+        <ImageView android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+            android:src="@drawable/dose_widget_dot" android:scaleType="center" />
+        <ImageView android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+            android:src="@drawable/dose_widget_dot" android:scaleType="center" />
+        <ImageView android:layout_width="32dp" android:layout_height="32dp"
+            android:src="@drawable/dose_widget_next" android:padding="6dp" />
+    </LinearLayout>
+    <Button android:layout_width="match_parent" android:layout_height="48dp"
+        android:includeFontPadding="false" android:background="@drawable/dose_widget_button"
+        android:text="@string/dose_widget_taken" android:textColor="#FFFFFF" android:textSize="15sp"
+        android:textStyle="bold" android:textAllCaps="false" android:maxLines="1" android:padding="4dp" />
+</LinearLayout>

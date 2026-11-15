@@ -40,6 +40,9 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 try {
                     when (call.method) {
+                        "renderDoseWidgetPreviews" -> result.success(
+                            DoseWidgetPreview.render(this, call.argument<String>("language") ?: "ko")
+                        )
                         "openNotificationSettings" -> {
                             openNotificationSettings()
                             result.success(null)

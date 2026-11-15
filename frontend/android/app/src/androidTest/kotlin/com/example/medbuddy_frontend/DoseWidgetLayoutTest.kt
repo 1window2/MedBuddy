@@ -46,6 +46,84 @@ class DoseWidgetLayoutTest {
         }
     }
 
+    // Function Name: largeProviderHasIndependentMetadata
+    // Description: Checks the 4x3 starting size, 4x1 resize minimum and size-matched launcher preview.
+    // Parameters: None. Returns: Unit; does not bind a widget or touch the shared dose store.
+    @Test fun largeProviderHasIndependentMetadata() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        context.resources.getXml(R.xml.dose_home_widget_large_info).use { parser ->
+            while (parser.next() != org.xmlpull.v1.XmlPullParser.START_TAG) { }
+            val values = context.obtainStyledAttributes(parser, intArrayOf(
+                android.R.attr.minHeight, android.R.attr.minResizeHeight,
+                android.R.attr.targetCellWidth, android.R.attr.targetCellHeight,
+            ))
+            try {
+                val density = context.resources.displayMetrics.density
+                assertEquals((180 * density).roundToInt(), values.getDimensionPixelSize(0, -1))
+                assertEquals((48 * density).roundToInt(), values.getDimensionPixelSize(1, -1))
+                assertEquals(4, values.getInt(2, -1))
+                assertEquals(3, values.getInt(3, -1))
+            } finally { values.recycle() }
+            val namespace = "http://schemas.android.com/apk/res/android"
+            assertEquals(R.layout.dose_home_widget,
+                parser.getAttributeResourceValue(namespace, "initialLayout", -1))
+            assertEquals(R.layout.dose_home_widget_expanded_preview,
+                parser.getAttributeResourceValue(namespace, "previewLayout", -1))
+        }
+    }
+
+    // Function Name: reapplyRestoresHeadersAcrossSizes
+    // Description: Reuses one root across tiny, expanded and tiny sizes, as a launcher may do.
+    // Parameters: None. Returns: Unit; checks display-only fixtures without touching device data.
+    @Test fun reapplyRestoresHeadersAcrossSizes() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val failures = mutableListOf<String>()
+        instrumentation.runOnMainSync {
+            for (width in listOf(250, 360)) for (scale in listOf(1f, 1.3f, 2f)) {
+                for (state in listOf("patient", "caregiver", "signed-out")) {
+                    for (hasPager in listOf(false, true)) for (overdue in listOf(false, true)) {
+                        val known = state != "signed-out"
+                        if (!known && hasPager) continue
+                        val config = Configuration(instrumentation.targetContext.resources.configuration)
+                        config.fontScale = scale
+                        val context = ContextThemeWrapper(instrumentation.targetContext.createConfigurationContext(config),
+                            android.R.style.Theme_Material_Light_NoActionBar)
+                        val base = sampleViews(context, state, overdue, R.layout.dose_home_widget)
+                        val root = DoseWidgetLayout.sized(context, base, 150, known, known && overdue, hasPager)
+                            .apply(context, FrameLayout(context))
+                        val density = context.resources.displayMetrics.density
+                        for (height in listOf(150, 180, 150, 230, 150, 280, 150, 300, 150, 340, 150, 420, 150)) {
+                            DoseWidgetLayout.sized(context, base, height, known, known && overdue, hasPager)
+                                .reapply(context, root)
+                            root.measure(View.MeasureSpec.makeMeasureSpec((width * density).roundToInt(), View.MeasureSpec.EXACTLY),
+                                View.MeasureSpec.makeMeasureSpec((height * density).roundToInt(), View.MeasureSpec.EXACTLY))
+                            root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+                            val label = "reapply $state ${width}x$height font=$scale pager=$hasPager overdue=$overdue"
+                            val tiny = height < 180
+                            try {
+                                for (id in listOf(R.id.widget_title, R.id.widget_date))
+                                    assertEquals("$label header $id", !tiny || !known, shown(root, id))
+                                for (id in listOf(R.id.widget_tiny_heading, R.id.widget_tiny_status))
+                                    assertEquals("$label tiny header $id", tiny && known, shown(root, id))
+                                assertEquals("$label tiny warning", tiny && known && overdue, shown(root, R.id.widget_tiny_warning))
+                                assertEquals("$label pager", !tiny && hasPager, shown(root, R.id.widget_pager))
+                                assertEquals("$label status", !tiny && known, shown(root, R.id.widget_status))
+                                assertEquals("$label content", !tiny && !(height < 230 && hasPager), shown(root, R.id.widget_content))
+                                assertEquals("$label compact heading", !tiny && height < 230 && hasPager, shown(root, R.id.widget_compact_heading))
+                                assertEquals("$label progress", known && height >= 300 && !(height < 340 && scale > 1.15f),
+                                    shown(root, R.id.widget_progress))
+                                assertEquals("2026.09.23 (수)", root.findViewById<TextView>(R.id.widget_date).text.toString())
+                                assertVisibleContentFits(root, label)
+                                assertTrue("$label take hidden", shown(root, R.id.widget_take))
+                            } catch (failure: AssertionError) { failures.add("${failure.message}\n${describe(root)}") }
+                        }
+                    }
+                }
+            }
+        }
+        assertTrue(failures.joinToString("\n\n"), failures.isEmpty())
+    }
+
     // Function Name: resizedContentFitsWithoutShrinkingActionTargets
     // Description: Measures layouts across heights, widths, font scales and account states without recording doses.
     // Parameters: None; creates display-only widgets on Android's UI thread.

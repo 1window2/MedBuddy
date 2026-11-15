@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:cryptography/cryptography.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/widgets.dart' show AppLifecycleState;
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -516,6 +517,73 @@ void main() {
     client.close();
     await db.close();
     await directory.delete(recursive: true);
+  });
+
+  group('widget sizes', () {
+    const channel = MethodChannel('home_widget');
+    final calls = <MethodCall>[];
+    var pinSupported = true;
+
+    // Function Name: setUp callback
+    // Description: Records only widget plugin calls; all state publication uses the encrypted fixture above.
+    // Parameters: None. Returns: No value; no launcher or real device is touched.
+    setUp(() {
+      calls.clear();
+      pinSupported = true;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            calls.add(call);
+            return call.method == 'isRequestPinWidgetSupported' ? pinSupported : true;
+          });
+    });
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    // Function Name: test callback
+    // Description: Pins 4x1 by default and 4x3 only when explicitly requested, after publishing shared state.
+    // Parameters: None. Returns: Completion after provider and encrypted-state identity checks.
+    test('pin defaults to 4x1 and explicitly selects 4x3', () async {
+      await prepare();
+      expect(await DoseHomeWidget.pin(), isTrue);
+      expect(await DoseHomeWidget.pin(size: DoseHomeWidgetSize.expanded), isTrue);
+      final pins = calls.where((call) => call.method == 'requestPinWidget');
+      expect(pins.map((call) => (call.arguments as Map)['qualifiedAndroidName']), DoseHomeWidget.providers);
+      expect(platform.savedStates, hasLength(2));
+      expect(platform.savedStates.first['token'], platform.savedStates.last['token']);
+      expect(await store.pending(owner), isEmpty);
+    });
+
+    // Function Name: test callback
+    // Description: Leaves state untouched when the launcher cannot pin either size.
+    // Parameters: None. Returns: Completion after verifying the unsupported result and no pin request.
+    test('unsupported launcher does not publish or request either size', () async {
+      pinSupported = false;
+      for (final size in DoseHomeWidgetSize.values) {
+        expect(await DoseHomeWidget.pin(size: size), isFalse);
+      }
+      expect(calls.every((call) => call.method == 'isRequestPinWidgetSupported'), isTrue);
+      expect(platform.savedStates, isEmpty);
+    });
+
+    // Function Name: test callback
+    // Description: Sends repaint, expiration scheduling and cancellation to both registered components.
+    // Parameters: None. Returns: Completion after verifying method arguments without Android side effects.
+    test('native adapter refreshes and schedules both providers', () async {
+      const native = DoseHomeWidgetPlatform();
+      final at = DateTime.utc(2026, 11, 15);
+      await native.updateWidget();
+      await native.scheduleUpdate(at);
+      await native.cancelScheduledUpdates();
+      for (final method in ['updateWidget', 'scheduleWidgetUpdates', 'cancelScheduledWidgetUpdates']) {
+        final matching = calls.where((call) => call.method == method);
+        expect(matching.map((call) => (call.arguments as Map)['qualifiedAndroidName']), DoseHomeWidget.providers);
+      }
+      for (final call in calls.where((call) => call.method == 'scheduleWidgetUpdates')) {
+        expect((call.arguments as Map)['updateTimes'], [at.millisecondsSinceEpoch]);
+      }
+    });
   });
 
   group('주기 작업의 건너뛰기 조건', () {

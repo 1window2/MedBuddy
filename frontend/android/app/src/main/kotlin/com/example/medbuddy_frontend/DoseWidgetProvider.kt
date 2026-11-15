@@ -31,7 +31,7 @@ import java.util.SimpleTimeZone
 // 복약 소유권과 중복 요청 검증은 암호화된 Dart 저장소의 트랜잭션에서 처리한다.
 // 주요 책임: 위젯별 환자·시간대 선택을 유지하고 저장된 클릭 요청을 백그라운드로 전달한다.
 // 속성: companion object의 lock(Any)은 선택 상태와 클릭 대기열 갱신을 직렬화한다.
-class DoseWidgetProvider : HomeWidgetProvider() {
+open class DoseWidgetProvider : HomeWidgetProvider() {
     // 함수이름: onReceive
     // 함수역할: 조회는 즉시 전환하고 복용·취소 요청은 토큰 검증 후 백그라운드 처리한다.
     // 매개변수: context 위젯 실행 환경, intent 버튼 요청. 반환값: 없음.
@@ -80,6 +80,8 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             if (kind != "take" && kind != "cancel") return
             val token = intent.data?.getQueryParameter("token") ?: return
             synchronized(lock) {
+                val id = intent.data?.getQueryParameter("widget")?.toIntOrNull() ?: return
+                if (id !in widgetIds(context)) return
                 val state = json(data.getString(STATE, "{}"))
                 if (state.optString("source") == "patients") return
                 val page = (pages(state) + state).firstOrNull {
@@ -90,11 +92,10 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                 val queue = queue(data)
                 if (queue.length() != 0) return
                 queue.put(JSONObject().put("action", kind).put("token", token)
-                    .put("widget", intent.data?.getQueryParameter("widget")?.toIntOrNull()))
+                    .put("widget", id))
                 val edit = data.edit().putString(JOURNAL, queue.toString())
                 // 취소 후에는 같은 시간대를 유지하여 다시 복용 기록할 수 있게 한다.
                 if (kind == "cancel") {
-                    val id = intent.data?.getQueryParameter("widget")?.toIntOrNull() ?: -1
                     edit.putString(pageKey(id), JSONObject()
                         .put("context", state.optString("navigation_key"))
                         .put("slot", page.optString("slot")).toString())
@@ -193,9 +194,9 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                     .appendQueryParameter("context", rootState.optString("navigation_key"))
                     .appendQueryParameter("slot", page.optString("slot")).build())
             // Function Name: build
-            // Description: Populates either layout with identical state, accessibility labels and actions.
-            // Parameters: layout (Int) identifies the standard or single-row RemoteViews resource.
-            // Returns: RemoteViews. Missing view IDs in the single-row layout ignore those assignments.
+            // Description: Populates each size with identical state, accessibility labels and validated actions.
+            // Parameters: layout (Int) identifies the standard or single-row resource shared by both providers.
+            // Returns: RemoteViews. Assignments to IDs absent from a layout are ignored.
             fun build(layout: Int): RemoteViews {
                 val views = RemoteViews(context.packageName, layout)
                 views.setOnClickPendingIntent(R.id.widget_content, open)
@@ -432,18 +433,21 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             DoseWidgetRefreshScheduler.enqueue(WorkManager.getInstance(context))
         }
         // Function Name: widgetIds
-        // Description: Lists installed widget instances belonging to this provider.
+        // Description: Lists installed widget instances of both sizes for shared navigation and repainting.
         // Parameters: context (Context) supplies the app's widget manager.
         // Returns: IntArray, empty when no widgets are installed.
-        private fun widgetIds(context: Context) = AppWidgetManager.getInstance(context).getAppWidgetIds(
-            ComponentName(context, DoseWidgetProvider::class.java))
+        private fun widgetIds(context: Context): IntArray {
+            val manager = AppWidgetManager.getInstance(context)
+            return manager.getAppWidgetIds(ComponentName(context, DoseWidgetProvider::class.java)) +
+                manager.getAppWidgetIds(ComponentName(context, DoseWidgetLargeProvider::class.java))
+        }
         // 함수이름: renderAll
         // 함수역할: 설치된 모든 위젯에 최신 공유 상태와 런처 크기를 반영한다.
         // 매개변수: context(Context)는 실행 환경이다.
         // 반환값: Unit. onUpdate가 만료·미처리 상태의 갱신을 예약할 수 있다.
         private fun renderAll(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
-            val ids = manager.getAppWidgetIds(ComponentName(context, DoseWidgetProvider::class.java))
+            val ids = widgetIds(context)
             DoseWidgetProvider().onUpdate(context, manager, ids, HomeWidgetPlugin.getData(context))
         }
     }

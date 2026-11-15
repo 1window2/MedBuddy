@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -37,6 +38,10 @@ typedef DoseWidgetPatientSnapshotReader =
       String owner,
       http.Client client,
     );
+
+// Enum Name: DoseHomeWidgetSize
+// Role: Selects a launcher component without changing account or dose-action scope.
+enum DoseHomeWidgetSize { compact, expanded }
 
 // Class Name: DoseHomeWidgetPlatform
 // Role: Adapts the native home-widget, outbox, reminder, and upload scheduling services.
@@ -74,28 +79,38 @@ class DoseHomeWidgetPlatform {
       HomeWidget.saveWidgetData<String>(DoseHomeWidget.stateKey, state);
 
   // Function Name: updateWidget
-  // Description: Asks the Android provider to redraw from the saved display state.
+  // Description: Asks both Android providers to redraw from the shared display state.
   // Parameters: None.
   // Returns: Refresh-request completion, not confirmation that the launcher has painted it.
-  Future<void> updateWidget() =>
-      HomeWidget.updateWidget(qualifiedAndroidName: DoseHomeWidget.provider);
+  Future<void> updateWidget() async {
+    for (final provider in DoseHomeWidget.providers) {
+      await HomeWidget.updateWidget(qualifiedAndroidName: provider);
+    }
+  }
 
   // Function Name: scheduleUpdate
   // Description: Requests a provider refresh at the projection's expiration time.
   // Parameters: at (DateTime): Next refresh instant, typically the next dose-day boundary.
   // Returns: Platform scheduling completion; Android controls actual delivery.
-  Future<void> scheduleUpdate(DateTime at) => HomeWidget.scheduleWidgetUpdates([
-    at,
-  ], qualifiedAndroidName: DoseHomeWidget.provider);
+  Future<void> scheduleUpdate(DateTime at) async {
+    for (final provider in DoseHomeWidget.providers) {
+      await HomeWidget.scheduleWidgetUpdates([
+        at,
+      ], qualifiedAndroidName: provider);
+    }
+  }
 
   // Function Name: cancelScheduledUpdates
-  // Description: Removes scheduled refreshes for the dose widget provider.
+  // Description: Removes scheduled refreshes for both dose widget providers.
   // Parameters: None.
   // Returns: Cancellation completion; existing widget state and queued dose operations are unchanged.
-  Future<void> cancelScheduledUpdates() =>
-      HomeWidget.cancelScheduledWidgetUpdates(
-        qualifiedAndroidName: DoseHomeWidget.provider,
+  Future<void> cancelScheduledUpdates() async {
+    for (final provider in DoseHomeWidget.providers) {
+      await HomeWidget.cancelScheduledWidgetUpdates(
+        qualifiedAndroidName: provider,
       );
+    }
+  }
 
   // Function Name: hasInstalledWidget
   // Description: Checks whether the plugin reports any installed home-widget instances.
@@ -149,6 +164,9 @@ class DoseHomeWidgetPlatform {
 // Attributes: platform: Replaceable adapter; provider/stateKey/journalKey: Native identifiers; readTodaySchedules/readScheduleWindow/readPatientSnapshots: Composition loaders; _cancelledReminderSlots: Per-day cancellation memory.
 class DoseHomeWidget {
   static const provider = 'com.example.medbuddy_frontend.DoseWidgetProvider';
+  static const expandedProvider =
+      'com.example.medbuddy_frontend.DoseWidgetLargeProvider';
+  static const providers = [provider, expandedProvider];
   static const stateKey = 'dose_widget_state';
   static const journalKey = 'dose_widget_actions';
   // 테스트에서만 교체한다.
@@ -529,16 +547,39 @@ class DoseHomeWidget {
     await platform.updateWidget();
   }
 
+  // 함수역할: 개인 정보와 동작이 없는 기본·확장 위젯의 실제 Android 미리보기를 받는다.
+  // 매개변수: language는 표시 언어. 반환값: 크기별 PNG이며 실패는 선택창에서 재시도한다.
+  static Future<Map<String, Uint8List>> previewImages(String language) async {
+    final images = await const MethodChannel('com.medbuddy.app/settings')
+        .invokeMapMethod<String, Uint8List>('renderDoseWidgetPreviews', {
+          'language': language,
+        })
+        .timeout(const Duration(seconds: 5));
+    if (images == null ||
+        DoseHomeWidgetSize.values.any(
+          (size) => images[size.name]?.isNotEmpty != true,
+        )) {
+      throw const FormatException('Missing widget previews');
+    }
+    return images;
+  }
+
   // 함수이름: pin
   // 함수역할: 현재 상태를 발행한 뒤 지원되는 런처에 위젯 고정 요청을 보낸다.
-  // 매개변수: 없음.
+  // 매개변수: size - 추가할 크기. 생략하면 기존 4 x 1을 유지한다.
   // 반환값: 미지원이면 false, 요청까지 마치면 true. 실제 사용자 배치 완료를 뜻하지 않으며 플러그인 오류는 전파한다.
-  static Future<bool> pin() async {
+  static Future<bool> pin({
+    DoseHomeWidgetSize size = DoseHomeWidgetSize.compact,
+  }) async {
     if (!supported || await HomeWidget.isRequestPinWidgetSupported() != true) {
       return false;
     }
     await publish();
-    await HomeWidget.requestPinWidget(qualifiedAndroidName: provider);
+    await HomeWidget.requestPinWidget(
+      qualifiedAndroidName: size == DoseHomeWidgetSize.expanded
+          ? expandedProvider
+          : provider,
+    );
     return true;
   }
 }
