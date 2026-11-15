@@ -16,6 +16,7 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
 )
 from pydantic import BaseModel, Field, ValidationError
@@ -1238,6 +1239,22 @@ def create_patient_link_code(
 ) -> dict[str, object]:
     patient_hash = authorization.resolveOwnUserHash(principal, request.patient_hash)
     return link_patient_caregiver_control.generatePatientHash(patient_hash)
+
+
+@router.get("/link/code/status")
+def get_patient_link_code_status(
+    patient_code: str,
+    response: Response,
+    user_hash: str = DEFAULT_PATIENT_HASH,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    link_patient_caregiver_control: LinkPatientCaregiver = Depends(
+        get_link_patient_caregiver_control
+    ),
+) -> dict[str, object]:
+    response.headers["Cache-Control"] = "no-store"
+    owner = authorization.resolveOwnUserHash(principal, user_hash)
+    return link_patient_caregiver_control.requestPatientCodeStatus(owner, patient_code)
 
 
 # Function Name: register_patient_link_code

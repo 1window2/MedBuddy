@@ -90,14 +90,15 @@ class LinkPatientCaregiverUI extends StatefulWidget {
 // - 빈 코드를 거절하고 연동 등록 후 목록·별칭·채팅 맥락을 갱신한다.
 // - 등록·해제·별칭 저장은 서버 결과를 먼저 화면에 반영하고 상위 화면에 알린 뒤, 이어지는 재조회가 실패해도 성공 결과를 유지한다.
 // 속성:
-// - _patientCodeController (TextEditingController): 환자 연결 코드를 입력·검증할 텍스트 컨트롤러.
+// - _registrationDialogRoute (DialogRoute<void>?): 계정 변경·화면 종료 시 정리할 등록 창.
 // - _control (LinkPatientCaregiver): 화면의 조회·변경 요청을 처리할 컨트롤러.
 // - _links (List<PatientCaregiverLink>): 표시하거나 관련 정보를 조회할 연동 목록.
 // - _patientLabels (Map<String, String>): 환자 해시별 저장된 표시 별칭.
 class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   static const ManageCaregiverPatientLocalState _localStateControl =
       ManageCaregiverPatientLocalState();
-  late final TextEditingController _patientCodeController;
+  DialogRoute<void>? _registrationDialogRoute;
+  DialogRoute<bool>? _patientCodeDialogRoute;
   late String _committedUserHash;
   late LinkPatientCaregiver _control;
   late ManageLinkedChat _chatControl;
@@ -111,7 +112,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   int _requestGeneration = 0;
 
   // 함수이름: initState
-  // 함수역할: 사용자 해시를 정규화하고 연동·채팅 컨트롤러와 코드 입력을 준비해 초기 조회를 예약한다.
+  // 함수역할: 사용자 해시를 정규화하고 연동·채팅 컨트롤러를 준비해 초기 조회를 예약한다.
   // 매개변수:
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
@@ -119,7 +120,6 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   void initState() {
     super.initState();
     _statusMessage = _text.loadingLinks;
-    _patientCodeController = TextEditingController();
     _committedUserHash = PatientHash.normalizePatientHash(
       widget.initialUserHash,
     );
@@ -156,16 +156,17 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   }
 
   // 함수이름: dispose
-  // 함수역할: _control, _chatControl, _patientCodeController 관련 자원을 정리하고 화면 수명 종료 처리를 수행한다.
+  // 함수역할: 요청을 무효화하고 등록 창과 연동·채팅 컨트롤러를 정리한다.
   // 매개변수:
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   @override
   void dispose() {
     _requestGeneration += 1;
+    _dismissRegistrationDialog();
+    _dismissPatientCodeDialog();
     _control.dispose();
     _chatControl.dispose();
-    _patientCodeController.dispose();
     super.dispose();
   }
 
@@ -179,6 +180,14 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     final textScale = mediaQuery.textScaler.scale(16) / 16;
     final usesScrollableLayout =
         mediaQuery.size.height < 700 || textScale > 1.3;
+    final header = MedBuddyPageHeader(
+      title: _text.screenTitle,
+      subtitle: _text.isEnglish
+          ? 'Link patient and caregiver accounts.'
+          : '환자와 보호자 계정을 연동합니다.',
+      backTooltip: _text.close,
+      onBackRequested: () => Navigator.pop(context),
+    );
 
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,
@@ -186,14 +195,16 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
         top: false,
         child: Column(
           children: [
-            MedBuddyPageHeader(
-              title: _text.screenTitle,
-              subtitle: _text.isEnglish
-                  ? 'Link patient and caregiver accounts.'
-                  : '환자와 보호자 계정을 연동합니다.',
-              backTooltip: _text.close,
-              onBackRequested: () => Navigator.pop(context),
-            ),
+            // 큰 글씨의 긴 제목이 등록 버튼을 누를 공간까지 차지하지 않게 한다.
+            if (usesScrollableLayout)
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: mediaQuery.size.height * .4,
+                ),
+                child: SingleChildScrollView(child: header),
+              )
+            else
+              header,
             Expanded(
               child: usesScrollableLayout
                   ? SingleChildScrollView(
@@ -306,10 +317,11 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   }
 
   // Function Name: _generatePatientHash
-  // Description: Generates a temporary patient code, displays it and refreshes links after the dialog closes.
+  // Description: Generates a code, watches its registration in the dialog, and refreshes links on close.
   // Parameters: None.
   // Returns: Future completing after code presentation and refresh.
   Future<void> _generatePatientHash() async {
+    if (_patientCodeDialogRoute != null) return;
     PatientLinkCode? patientCode;
     // 함수이름: _generatePatientHash._runLinkAction callback
     // 함수역할: 환자 코드 발급·등록과 연동 목록의 입력·요청 상태를 `patientCode = generatedCode`로 갱신한다.
@@ -350,17 +362,16 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     }
   }
 
-  // Function Name: _requestPatientCaregiverLink
-  // Description: Rejects an empty code, applies successful registration before reloading context and does not misreport reload failure as registration failure for the single-use code.
-  // Parameters: None.
-  // Returns: Future<bool> indicating registration success.
-  Future<bool> _requestPatientCaregiverLink() async {
+  // 함수이름: _requestPatientCaregiverLink
+  // 함수역할: 서버 등록을 먼저 반영하고 재조회 실패와 무효화된 요청을 등록 실패와 구분한다.
+  // 매개변수: patientCode (String): 입력 창에서 검증한 환자 코드.
+  // 반환값: 성공 true, 실패 false, 생략·계정 변경·화면 종료 시 null.
+  Future<bool?> _requestPatientCaregiverLink(String patientCode) async {
     if (_isLoading || !mounted) {
-      return false;
+      return null;
     }
 
-    final patientCode = _patientCodeController.text.trim();
-    if (patientCode.isEmpty) {
+    if (patientCode.trim().isEmpty) {
       // 함수이름: _requestPatientCaregiverLink.setState callback
       // 함수역할: 환자 코드 발급·등록과 연동 목록의 입력·요청 상태를 `_statusMessage = _text.enterPatientCode`로 갱신한다.
       // 매개변수:
@@ -373,6 +384,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     }
 
     var registered = false;
+    _LinkRequest? registrationRequest;
     // 함수이름: _requestPatientCaregiverLink._runLinkAction callback
     // 함수역할: 환자 코드를 등록하고 서버가 돌려준 연동을 목록에 반영한다.
     // 매개변수:
@@ -380,19 +392,19 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
     await _runLinkAction(
       (request) async {
+        registrationRequest = request;
         final registeredLink = await request.control
-            .requestPatientCaregiverLink(patientCode);
+            .requestPatientCaregiverLink(patientCode.trim());
         if (!_isCurrentRequest(request)) {
           return;
         }
         // 함수이름: _requestPatientCaregiverLink.setState callback
-        // 함수역할: 환자 코드 발급·등록과 연동 목록의 입력·요청 상태를 `_links = _linksWith(registeredLink); _statusMessage = _text.linkRegistered; registered = true`로 갱신한다.
+        // 함수역할: 서버가 수락한 연동과 성공 문구를 저장한다.
         // 매개변수:
         // - 없음.
         // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
         setState(() {
           _links = _linksWith(registeredLink);
-          _patientCodeController.clear();
           _statusMessage = _text.linkRegistered;
           registered = true;
         });
@@ -400,7 +412,8 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       notifyLinksChanged: true,
       reloadLinksAfterward: true,
     );
-    return registered;
+    final request = registrationRequest;
+    return request != null && _isCurrentRequest(request) ? registered : null;
   }
 
   // Function Name: _linksWith
@@ -449,13 +462,17 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     );
     final text = _text;
     final isCaregiver = link.caregiverHash == _committedUserHash;
-    final peerHash = (isCaregiver ? link.patientHash : link.caregiverHash).trim();
+    final peerHash = (isCaregiver ? link.patientHash : link.caregiverHash)
+        .trim();
     final suffix = peerHash.length > 4
         ? peerHash.substring(peerHash.length - 4)
         : peerHash;
     final peerName = isCaregiver
         ? (_patientLabels[link.patientHash] ??
-              _localStateControl.fallbackLabel(peerHash, isEnglish: text.isEnglish))
+              _localStateControl.fallbackLabel(
+                peerHash,
+                isEnglish: text.isEnglish,
+              ))
         : (link.caregiverAlias?.trim().isNotEmpty == true
               ? link.caregiverAlias!.trim()
               : '${text.caregiverPeer} ${suffix.toUpperCase()}'.trim());
@@ -697,7 +714,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   }
 
   // 함수이름: _replaceControl
-  // 함수역할: 사용자가 바뀌면 이전 요청을 무효화하고 연동·채팅 컨트롤러를 새 계정으로 교체한다.
+  // 함수역할: 사용자가 바뀌면 이전 요청·등록 창을 정리하고 연동·채팅 컨트롤러를 교체한다.
   // 매개변수:
   // - userHash (String): 현재 작업의 계정 범위를 정하는 사용자 해시.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
@@ -707,6 +724,8 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     final nextControl = _createControl(userHash);
     final nextChatControl = _createChatControl(userHash);
     _requestGeneration += 1;
+    _dismissRegistrationDialog();
+    _dismissPatientCodeDialog();
     _committedUserHash = userHash;
     _control = nextControl;
     _chatControl = nextChatControl;
@@ -1029,28 +1048,90 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   // Description: Displays a generated patient code with expiry and regeneration actions.
   // Parameters: patientCode (PatientLinkCode): code and expiry.
   // Returns: Future resolving to true for regeneration after expiry, otherwise null when closed.
-  Future<bool?> _showPatientCodeDialog(PatientLinkCode patientCode) {
-    return showDialog<bool>(
+  Future<bool?> _showPatientCodeDialog(PatientLinkCode patientCode) async {
+    final userHash = _committedUserHash;
+    final control = _control;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    bool isCurrentScope() =>
+        mounted &&
+        userHash == _committedUserHash &&
+        identical(control, _control);
+    final route = DialogRoute<bool>(
       context: context,
+      themes: InheritedTheme.capture(from: context, to: navigator.context),
       barrierColor: Colors.black.withValues(alpha: 0.5),
       // 함수이름: _showPatientCodeDialog.builder callback
       // 함수역할: 환자 코드 발급·등록과 연동 목록에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
       // 매개변수:
       // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
       // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-      builder: (context) =>
-          _PatientCodeDialog(patientCode: patientCode, text: _text),
+      builder: (context) => _PatientCodeDialog(
+        patientCode: patientCode,
+        text: _text,
+        control: control,
+        isCurrentScope: isCurrentScope,
+        onLinked: (link) {
+          if (!isCurrentScope()) return;
+          unawaited(
+            _runLinkAction(
+              (_) async {
+                setState(() {
+                  _links = _linksWith(link);
+                  _statusMessage = _text.linkRegistered;
+                });
+              },
+              notifyLinksChanged: true,
+              reloadLinksAfterward: true,
+            ),
+          );
+        },
+      ),
     );
+    _patientCodeDialogRoute = route;
+    try {
+      return await navigator.push(route);
+    } finally {
+      if (identical(_patientCodeDialogRoute, route)) {
+        _patientCodeDialogRoute = null;
+      }
+    }
+  }
+
+  void _dismissPatientCodeDialog() {
+    final route = _patientCodeDialogRoute;
+    _patientCodeDialogRoute = null;
+    if (route == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final navigator = route.navigator;
+      if (navigator != null && navigator.mounted && route.isActive) {
+        navigator.removeRoute(route);
+      }
+    });
   }
 
   // 함수이름: _showRegisterPatientDialog
-  // 함수역할: 공유 코드 입력·등록 요청·상태 문구를 연결한 환자 등록 창을 연다.
+  // 함수역할: 같은 계정에서만 제출·결과 표시가 가능한 등록 창을 하나만 연다.
   // 매개변수:
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _showRegisterPatientDialog() {
-    return showDialog<void>(
+  Future<void> _showRegisterPatientDialog() async {
+    if (!mounted || _isLoading || _registrationDialogRoute != null) {
+      return;
+    }
+    final userHash = _committedUserHash;
+    final control = _control;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    // 함수이름: isCurrentScope
+    // 함수역할: 등록 창을 연 계정과 컨트롤러가 여전히 유효한지 확인한다.
+    // 매개변수: 없음. 반환값: 화면과 계정 범위가 유지되면 true.
+    bool isCurrentScope() =>
+        mounted &&
+        userHash == _committedUserHash &&
+        identical(control, _control);
+
+    final route = DialogRoute<void>(
       context: context,
+      themes: InheritedTheme.capture(from: context, to: navigator.context),
       barrierColor: Colors.black.withValues(alpha: 0.5),
       // 함수이름: _showRegisterPatientDialog.builder callback
       // 함수역할: 환자 코드 발급·등록과 연동 목록에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
@@ -1058,17 +1139,45 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
       // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
       builder: (context) => _RegisterPatientDialog(
-        patientCodeController: _patientCodeController,
-        onRegisterRequested: _requestPatientCaregiverLink,
-        // Function Name: _showRegisterPatientDialog.statusMessageProvider callback
-        // Description: Supplies `_statusMessage` from the captured state of patient-code generation, registration, and linked-user lists.
-        // Parameters:
-        // - None.
-        // Returns: The value of `_statusMessage`.
+        isCurrentScope: isCurrentScope,
+        // 함수이름: onRegisterRequested 콜백
+        // 함수역할: 계정이 유지된 등록 창의 코드만 서버에 보낸다.
+        // 매개변수: code (String): 검증된 코드. 반환값: 등록 결과, 무효 시 null.
+        onRegisterRequested: (code) async =>
+            isCurrentScope() ? await _requestPatientCaregiverLink(code) : null,
+        // 함수이름: statusMessageProvider 콜백
+        // 함수역할: 유효한 요청의 오류 안내를 읽는다.
+        // 매개변수: 없음. 반환값: 현재 상태 문구.
         statusMessageProvider: () => _statusMessage,
         text: _text,
       ),
     );
+    _registrationDialogRoute = route;
+    try {
+      await navigator.push(route);
+    } finally {
+      if (identical(_registrationDialogRoute, route)) {
+        _registrationDialogRoute = null;
+      }
+    }
+  }
+
+  // 함수이름: _dismissRegistrationDialog
+  // 함수역할: 계정 변경·화면 종료 시 등록 창만 다음 프레임에 제거한다.
+  // 매개변수: 없음. 반환값: 없음. 다른 경로는 닫지 않는다.
+  void _dismissRegistrationDialog() {
+    final route = _registrationDialogRoute;
+    _registrationDialogRoute = null;
+    if (route == null) return;
+    // 함수이름: addPostFrameCallback 콜백
+    // 함수역할: 위젯 갱신 중 탐색 상태를 변경하지 않고 남은 등록 창을 정리한다.
+    // 매개변수: _ (Duration): 프레임 시각. 반환값: 없음.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final navigator = route.navigator;
+      if (navigator != null && navigator.mounted && route.isActive) {
+        navigator.removeRoute(route);
+      }
+    });
   }
 }
 
@@ -1317,26 +1426,26 @@ class _StatusCard extends StatelessWidget {
 // 주요 책임:
 // - 환자 코드 입력과 연결 등록의 State가 사용할 화면 설정과 외부 의존성을 보관한다.
 // 속성:
-// - patientCodeController (TextEditingController): 환자 연결 코드를 입력·검증할 텍스트 컨트롤러.
-// - onRegisterRequested (Future<bool> Function()): 입력한 환자 코드를 등록할 콜백.
+// - onRegisterRequested (Future<bool?> Function(String)): 코드 등록 결과 또는 무효화된 null을 받는 콜백.
+// - isCurrentScope (bool Function()): 등록 창의 계정 범위가 유지되는지 확인하는 함수.
 // - statusMessageProvider (String Function()): 작업 후 최신 상태 안내를 읽는 함수.
 class _RegisterPatientDialog extends StatefulWidget {
-  final TextEditingController patientCodeController;
-  final Future<bool> Function() onRegisterRequested;
+  final Future<bool?> Function(String) onRegisterRequested;
+  final bool Function() isCurrentScope;
   final String Function() statusMessageProvider;
   final _LinkPatientCaregiverText text;
 
   // 함수이름: _RegisterPatientDialog
   // 함수역할: 환자 코드 입력과 연결 등록에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
-  // - patientCodeController (TextEditingController): 환자 연결 코드를 입력·검증할 텍스트 컨트롤러.
-  // - onRegisterRequested (Future<bool> Function()): 입력한 환자 코드를 등록할 콜백.
+  // - onRegisterRequested (Future<bool?> Function(String)): 검증된 코드의 등록 결과를 받는 콜백.
+  // - isCurrentScope (bool Function()): 등록 창의 계정 범위 검사.
   // - statusMessageProvider (String Function()): 작업 후 최신 상태 안내를 읽는 함수.
   // - text (_LinkPatientCaregiverText): 해당 화면 구역의 언어별 표시 문구.
   // 반환값: 입력 설정이 반영된 _RegisterPatientDialog 인스턴스.
   const _RegisterPatientDialog({
-    required this.patientCodeController,
     required this.onRegisterRequested,
+    required this.isCurrentScope,
     required this.statusMessageProvider,
     required this.text,
   });
@@ -1350,20 +1459,37 @@ class _RegisterPatientDialog extends StatefulWidget {
   State<_RegisterPatientDialog> createState() => _RegisterPatientDialogState();
 }
 
-// Class Name: _RegisterPatientDialogState
-// Role: Patient-code validation and link-registration state.
-// Responsibilities: Validates the form, prevents duplicate registration and reports the result in the dialog.
-// Attributes: _formKey (GlobalKey<FormState>): input validation; _isRegistering (bool): request lock.
+// 클래스명: _RegisterPatientDialogState
+// 역할: 코드 검증·중복 제출 방지와 중앙 결과 안내를 담당한다.
+// 주요 책임: 유효한 응답만 같은 창에 표시하고 실패 후 입력값을 보존한다.
+// 속성: _formKey: 입력 검증; _patientCodeController: 창 소유 입력; _isRegistering: 요청 잠금;
+// - _registrationSucceeded/_resultMessage: 결과 안내; _isClosing: 중복 닫기 방지.
 class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final TextEditingController _patientCodeController = TextEditingController();
   bool _isRegistering = false;
+  bool _isClosing = false;
+  bool? _registrationSucceeded;
+  String? _resultMessage;
 
-  // Function Name: build
-  // Description: Displays patient-code input, validation and the registration action.
-  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
-  // Returns: The described widget tree.
+  // 함수이름: dispose
+  // 함수역할: 등록 창 소유의 코드 입력을 정리한다.
+  // 매개변수: 없음. 반환값: 없음.
+  @override
+  void dispose() {
+    _patientCodeController.dispose();
+    super.dispose();
+  }
+
+  // 함수이름: build
+  // 함수역할: 코드 입력 또는 등록 성공·실패 안내를 같은 경로에 표시한다.
+  // 매개변수: context (BuildContext): 화면 테마와 탐색 범위.
+  // 반환값: 입력 창 또는 중앙 결과 창.
   @override
   Widget build(BuildContext context) {
+    if (_registrationSucceeded != null) {
+      return _buildRegistrationResult();
+    }
     return Dialog(
       backgroundColor: Colors.white,
       clipBehavior: Clip.antiAlias,
@@ -1389,14 +1515,7 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
                         width: 48,
                         height: 48,
                       ),
-                      onPressed: _isRegistering
-                          ? null
-                          // 함수이름: build.onPressed callback
-                          // 함수역할: `Navigator.pop(context)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-                          // 매개변수:
-                          // - 없음.
-                          // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                          : () => Navigator.pop(context),
+                      onPressed: _isRegistering ? null : _closeDialog,
                       icon: const Icon(
                         Icons.close,
                         color: MedBuddyColors.textMuted,
@@ -1421,7 +1540,7 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
                 const SizedBox(height: 20),
                 TextFormField(
                   key: const Key('patient-link-code'),
-                  controller: widget.patientCodeController,
+                  controller: _patientCodeController,
                   enabled: !_isRegistering,
                   autofocus: true,
                   textCapitalization: TextCapitalization.characters,
@@ -1478,6 +1597,49 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
     );
   }
 
+  // 함수이름: _buildRegistrationResult
+  // 함수역할: 기존 MedBuddy 색상·모서리를 사용해 스크롤 가능한 중앙 결과 창을 만든다.
+  // 매개변수: 없음. 반환값: 성공·실패 제목, 안내, 확인 버튼을 갖는 대화상자.
+  Widget _buildRegistrationResult() {
+    return _PatientLinkResultDialog(
+      succeeded: _registrationSucceeded == true,
+      message: _resultMessage!,
+      text: widget.text,
+      onConfirm: _acknowledgeResult,
+    );
+  }
+
+  // 함수이름: _closeDialog
+  // 함수역할: 빠른 연속 탭이나 이미 닫힌 창의 콜백이 아래 화면까지 닫지 않게 한다.
+  // 매개변수: 없음. 반환값: 없음. 현재 등록 창만 한 번 닫는다.
+  void _closeDialog() {
+    if (_isClosing || !mounted || ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
+    _isClosing = true;
+    Navigator.pop(context);
+  }
+
+  // 함수이름: _acknowledgeResult
+  // 함수역할: 성공 확인은 창을 닫고 실패 확인은 입력값을 보존한 채 입력으로 돌아간다.
+  // 매개변수: 없음. 반환값: 없음.
+  void _acknowledgeResult() {
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
+    if (!widget.isCurrentScope() || _registrationSucceeded == true) {
+      _closeDialog();
+      return;
+    }
+    // 함수이름: setState 콜백
+    // 함수역할: 실패 안내만 지워 코드 재입력을 허용한다.
+    // 매개변수: 없음. 반환값: 없음.
+    setState(() {
+      _registrationSucceeded = null;
+      _resultMessage = null;
+    });
+  }
+
   // 함수이름: _validatePatientCode
   // 함수역할: 환자 연동 코드가 서버 규칙과 동일한 8자리 영문·숫자인지 검증한다.
   // 매개변수:
@@ -1491,47 +1653,97 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
     return null;
   }
 
-  // Function Name: _handleRegisterRequested
-  // Description: Validates the code and prevents duplicate registration submissions while awaiting the callback.
-  // Parameters: None.
-  // Returns: Future completing after validation and any registration request.
+  // 함수이름: _handleRegisterRequested
+  // 함수역할: 코드를 검증하고 중복 요청·계정 변경·종료된 창의 결과 안내를 차단한다.
+  // 매개변수: 없음. 반환값: 유효한 등록 결과를 표시하면 완료되는 Future<void>.
   Future<void> _handleRegisterRequested() async {
-    if (_isRegistering || !(_formKey.currentState?.validate() ?? false)) {
+    if (!mounted ||
+        ModalRoute.of(context)?.isCurrent != true ||
+        _isRegistering ||
+        _isClosing ||
+        _registrationSucceeded != null ||
+        !widget.isCurrentScope() ||
+        !(_formKey.currentState?.validate() ?? false)) {
       return;
     }
 
     FocusScope.of(context).unfocus();
-    // Function Name: _handleRegisterRequested.setState callback
-    // Description: Updates the local input or request state for patient-code entry and link registration: `_isRegistering = true`.
-    // Parameters:
-    // - None.
-    // Returns: No payload; applies the captured state changes.
+    // 함수이름: setState 콜백
+    // 함수역할: 등록 중 버튼·키보드의 중복 제출을 막는다.
+    // 매개변수: 없음. 반환값: 없음.
     setState(() => _isRegistering = true);
-    var success = false;
+    bool? success;
+    String? message;
     try {
-      success = await widget.onRegisterRequested();
-    } catch (_) {
+      success = await widget.onRegisterRequested(_patientCodeController.text);
+    } catch (error) {
       success = false;
+      message = UserFacingErrorMessage.resolve(
+        error,
+        isEnglish: widget.text.isEnglish,
+      );
     }
-    if (!mounted) {
+    if (!mounted ||
+        !widget.isCurrentScope() ||
+        ModalRoute.of(context)?.isCurrent != true) {
       return;
     }
-    if (success) {
-      // 요청 중에 대화상자가 이미 닫혔다면 아래의 연동 화면까지 닫지 않는다.
-      if (ModalRoute.of(context)?.isCurrent ?? false) {
-        Navigator.pop(context);
+    // 함수이름: setState 콜백
+    // 함수역할: 무효 응답은 안내하지 않고 유효한 결과만 같은 창에 표시한다.
+    // 매개변수: 없음. 반환값: 없음.
+    setState(() {
+      _isRegistering = false;
+      _registrationSucceeded = success;
+      if (success != null) {
+        _resultMessage = success == true
+            ? widget.text.linkRegistered
+            : message ?? widget.statusMessageProvider();
       }
-      return;
-    }
-    // Function Name: _handleRegisterRequested.setState callback
-    // Description: Updates the local input or request state for patient-code entry and link registration: `_isRegistering = false`.
-    // Parameters:
-    // - None.
-    // Returns: No payload; applies the captured state changes.
-    setState(() => _isRegistering = false);
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: KeepWordsText(widget.statusMessageProvider())));
+    });
+  }
+}
+
+class _PatientLinkResultDialog extends StatelessWidget {
+  final bool succeeded;
+  final String message;
+  final _LinkPatientCaregiverText text;
+  final VoidCallback onConfirm;
+
+  const _PatientLinkResultDialog({
+    required this.succeeded,
+    required this.message,
+    required this.text,
+    required this.onConfirm,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: const Key('patient-link-result-dialog'),
+      backgroundColor: MedBuddyColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.card),
+      insetPadding: const EdgeInsets.all(24),
+      constraints: const BoxConstraints(maxWidth: 328),
+      scrollable: true,
+      icon: Icon(
+        succeeded ? Icons.check_circle_outline : Icons.error_outline,
+        color: succeeded ? MedBuddyColors.primary : MedBuddyColors.danger,
+        size: 40,
+      ),
+      title: KeepWordsText(
+        succeeded ? text.linkSuccessTitle : text.linkFailureTitle,
+        textAlign: TextAlign.center,
+      ),
+      content: KeepWordsText(message, textAlign: TextAlign.center),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [
+        FilledButton(
+          key: const Key('patient-link-result-confirm'),
+          onPressed: onConfirm,
+          child: KeepWordsText(text.confirm),
+        ),
+      ],
+    );
   }
 }
 
@@ -1571,6 +1783,9 @@ class _UpperCaseTextFormatter extends TextInputFormatter {
 class _PatientCodeDialog extends StatefulWidget {
   final PatientLinkCode patientCode;
   final _LinkPatientCaregiverText text;
+  final LinkPatientCaregiver control;
+  final bool Function() isCurrentScope;
+  final ValueChanged<PatientCaregiverLink> onLinked;
 
   // 함수이름: _PatientCodeDialog
   // 함수역할: 환자 코드와 만료 시간·재발급·복사 명령에 필요한 입력값과 표시 설정을 초기화한다.
@@ -1578,7 +1793,13 @@ class _PatientCodeDialog extends StatefulWidget {
   // - patientCode (PatientLinkCode): 발급된 임시 연결 코드와 만료 정보.
   // - text (_LinkPatientCaregiverText): 해당 화면 구역의 언어별 표시 문구.
   // 반환값: 입력 설정이 반영된 _PatientCodeDialog 인스턴스.
-  const _PatientCodeDialog({required this.patientCode, required this.text});
+  const _PatientCodeDialog({
+    required this.patientCode,
+    required this.text,
+    required this.control,
+    required this.isCurrentScope,
+    required this.onLinked,
+  });
 
   // Function Name: createState
   // Description: Creates the state object that coordinates a patient code, expiry time, regeneration, and copy actions.
@@ -1591,48 +1812,178 @@ class _PatientCodeDialog extends StatefulWidget {
 
 // Class Name: _PatientCodeDialogState
 // Role: Expiry-aware patient linking-code dialog state.
-// Responsibilities: Updates validity while displayed and supports regeneration/copy actions.
-// Attributes: _countdownTimer (Timer?): one-second expiry refresh.
-class _PatientCodeDialogState extends State<_PatientCodeDialog> {
+// Responsibilities: Polls only the open foreground code, cancels stale work, and reuses the registration result dialog.
+// Attributes: Timers bound polling/countdown to the code lifetime; _pollGeneration rejects pre-background responses.
+class _PatientCodeDialogState extends State<_PatientCodeDialog>
+    with WidgetsBindingObserver {
   Timer? _countdownTimer;
+  Timer? _pollTimer;
+  Timer? _expiryTimer;
+  Completer<void>? _abortPoll;
+  bool _inFlight = false;
+  bool _foreground = true;
+  bool _closed = false;
+  bool _unavailable = false;
+  bool _linked = false;
+  int _pollGeneration = 0;
+
+  bool get _canPoll =>
+      mounted &&
+      !_closed &&
+      !_linked &&
+      !_unavailable &&
+      _foreground &&
+      widget.isCurrentScope() &&
+      !widget.patientCode.isExpired() &&
+      ModalRoute.of(context)?.isCurrent == true;
 
   // Function Name: initState
-  // Description: Refreshes the remaining validity each second and stops the timer when the code expires.
+  // Description: Observes app lifecycle and bounds this dialog's status checks to the code lifetime.
   // Parameters:
   // - None.
   // Returns: None; updates state or performs the documented action.
   @override
   void initState() {
     super.initState();
-    // Function Name: initState.periodic callback
-    // Description: Connects a patient code, expiry time, regeneration, and copy actions to the captured operation `widget.patientCode.isExpired(); _countdownTimer?.cancel()`.
-    // Parameters:
-    // - _ (inferred by callback contract): Argument required by the callback contract but unused by the body.
-    // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) {
-        return;
-      }
-      if (widget.patientCode.isExpired()) {
-        _countdownTimer?.cancel();
-      }
-      // Function Name: initState.setState callback
-      // Description: Intentionally leaves captured values unchanged; the caller controls rebuilding or disables this interaction.
-      // Parameters:
-      // - None.
-      // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
-      setState(() {});
+    WidgetsBinding.instance.addObserver(this);
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    final remaining = widget.patientCode.remaining();
+    _unavailable = remaining == Duration.zero;
+    // Bound the session even if the device clock changes or the server sends a bad TTL.
+    _expiryTimer = Timer(
+      remaining > const Duration(minutes: 15)
+          ? const Duration(minutes: 15)
+          : remaining,
+      _expire,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ModalRoute.of(context)?.popped.then((_) {
+        _closed = true;
+        _stopWatching();
+        _expiryTimer?.cancel();
+      });
+      _startWatching();
     });
   }
 
+  void _stopWatching() {
+    _pollGeneration++;
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+    final abort = _abortPoll;
+    if (abort != null && !abort.isCompleted) abort.complete();
+  }
+
+  void _expire() {
+    _stopWatching();
+    _expiryTimer?.cancel();
+    if (mounted && !_closed && !_linked) {
+      setState(() => _unavailable = true);
+    }
+  }
+
+  void _startWatching() {
+    if (widget.patientCode.isExpired()) {
+      _expire();
+      return;
+    }
+    if (!_canPoll) return;
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (widget.patientCode.isExpired()) {
+        _expire();
+        return;
+      }
+      if (_canPoll) setState(() {});
+    });
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    unawaited(_pollStatus());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    _stopWatching();
+    if (_foreground) _startWatching();
+  }
+
+  Future<void> _pollStatus() async {
+    if (!_canPoll || _inFlight) return;
+    _inFlight = true;
+    final generation = _pollGeneration;
+    final abort = Completer<void>();
+    _abortPoll = abort;
+    try {
+      final status = await widget.control.requestPatientCodeStatus(
+        widget.patientCode.code,
+        abortTrigger: abort.future,
+      );
+      if (!_canPoll || generation != _pollGeneration) return;
+      if (status.patientCode.code != widget.patientCode.code ||
+          status.patientCode.patientHash != widget.patientCode.patientHash) {
+        return;
+      }
+      switch (status.state) {
+        case PatientLinkCodeState.linked:
+          final link = status.link;
+          if (link == null ||
+              !link.linkStatus ||
+              link.patientHash != widget.patientCode.patientHash) {
+            return;
+          }
+          _stopWatching();
+          _expiryTimer?.cancel();
+          setState(() => _linked = true);
+          widget.onLinked(link);
+        case PatientLinkCodeState.expired:
+        case PatientLinkCodeState.revoked:
+          _expire();
+        case PatientLinkCodeState.pending:
+          break;
+      }
+    } catch (_) {
+      // A network/auth error is never evidence that this code was consumed.
+    } finally {
+      _inFlight = false;
+      if (identical(_abortPoll, abort)) _abortPoll = null;
+      if (_canPoll) {
+        // Resume must recheck after the cancelled request settles, without overlap.
+        _pollTimer = Timer(
+          generation == _pollGeneration
+              ? const Duration(seconds: 2)
+              : Duration.zero,
+          () => unawaited(_pollStatus()),
+        );
+      }
+    }
+  }
+
+  void _close([bool? regenerate]) {
+    if (_closed || !mounted || ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
+    _closed = true;
+    _stopWatching();
+    _expiryTimer?.cancel();
+    Navigator.pop(context, regenerate);
+  }
+
   // Function Name: dispose
-  // Description: Releases _countdownTimer and detaches this screen from active updates.
+  // Description: Cancels timers and requests, removes the lifecycle observer, and ignores late responses.
   // Parameters:
   // - None.
   // Returns: None; updates state or performs the documented action.
   @override
   void dispose() {
-    _countdownTimer?.cancel();
+    _closed = true;
+    WidgetsBinding.instance.removeObserver(this);
+    _stopWatching();
+    _expiryTimer?.cancel();
     super.dispose();
   }
 
@@ -1642,7 +1993,15 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
   // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
-    final expired = widget.patientCode.isExpired();
+    if (_linked) {
+      return _PatientLinkResultDialog(
+        succeeded: true,
+        message: widget.text.linkRegistered,
+        text: widget.text,
+        onConfirm: _close,
+      );
+    }
+    final expired = _unavailable || widget.patientCode.isExpired();
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
@@ -1676,7 +2035,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                       // Parameters:
                       // - None.
                       // Returns: No callback payload; any selection is delivered through the route result.
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: _close,
                       icon: const Icon(
                         Icons.close,
                         color: MedBuddyColors.textBody,
@@ -1717,7 +2076,9 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                               ClipboardData(text: widget.patientCode.code),
                             );
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: KeepWordsText(widget.text.codeCopied)),
+                              SnackBar(
+                                content: KeepWordsText(widget.text.codeCopied),
+                              ),
                             );
                           },
                     child: Container(
@@ -1798,7 +2159,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                       // 함수역할: 창을 닫으며 상위 화면에 새 코드 발급을 요청한다.
                       // 매개변수: 없음.
                       // 반환값: 없음. 화면 종료 결과로 true를 전달한다.
-                      onPressed: () => Navigator.pop(context, true),
+                      onPressed: () => _close(true),
                       icon: const Icon(Icons.refresh),
                       label: KeepWordsText(widget.text.createNewCode),
                     ),
@@ -2405,6 +2766,18 @@ class _LinkPatientCaregiverText {
   String get linkRegistered => isEnglish
       ? 'Patient and caregiver are now linked.'
       : '환자-보호자 연동을 등록했습니다.';
+  // 함수이름: linkSuccessTitle
+  // 함수역할: 연결 성공 안내 제목을 제공한다.
+  // 매개변수: 없음. 반환값: 현재 언어의 제목.
+  String get linkSuccessTitle => isEnglish ? 'Link complete' : '연동 완료';
+  // 함수이름: linkFailureTitle
+  // 함수역할: 연결 실패 안내 제목을 제공한다.
+  // 매개변수: 없음. 반환값: 현재 언어의 제목.
+  String get linkFailureTitle => isEnglish ? 'Unable to link' : '연동 실패';
+  // 함수이름: confirm
+  // 함수역할: 결과 안내의 확인 버튼 문구를 제공한다.
+  // 매개변수: 없음. 반환값: 현재 언어의 버튼 문구.
+  String get confirm => isEnglish ? 'OK' : '확인';
   // 함수이름: missingLinkId
   // 함수역할: 현재 언어와 입력값에 맞춰 "연동 식별자가 없어 해제할 수 없습니다." 문구를 제공한다.
   // 매개변수:
