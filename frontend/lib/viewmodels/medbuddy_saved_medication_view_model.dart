@@ -293,7 +293,11 @@ class MedBuddySavedMedicationViewModel {
         medicationInfo,
         medicationSchedule: medicationSchedule,
       ),
-      applied: (result) => result.status != MedicationSaveStatus.failed,
+      // Only the explicit capacity rejection proves that no save was applied.
+      // Network failures and unclassified replies can hide a committed save.
+      applied: (result) =>
+          result.status != MedicationSaveStatus.failed ||
+          result.failureKind != MedicationSaveFailureKind.limitReached,
       isRequestCurrent: isCurrent,
     );
     // 서버가 이미 저장한 결과는 유지하되 종료된 계정의 사진·일정 작업은 시작하지 않는다.
@@ -679,7 +683,7 @@ class MedBuddySavedMedicationViewModel {
   // Function Name: _changingRegimen
   // Description: Suspends schedule caches while a regimen mutation is uncertain, restoring them only after a definite non-applied result.
   // Parameters: action: Mutation; applied: Whether the returned result means schedules must be invalidated; isRequestCurrent: Optional result-flow lifetime guard.
-  // Returns: The action result; exceptions keep caches invalidated, account changes before the action throw, and restoration/invalidation errors propagate.
+  // Returns: The action result; pre-send cancellation restores the revision-guarded backup for the same account, while uncertain mutations remain invalidated.
   Future<T> _changingRegimen<T>(
     Future<T> Function() action, {
     required bool Function(T result) applied,
@@ -698,16 +702,18 @@ class MedBuddySavedMedicationViewModel {
     } else if (invalidate != null) {
       await invalidate();
     }
-    if (!isCurrent()) throw StateError('Medication request canceled.');
-    var changed = true;
+    var changed = false;
     try {
+      if (!isCurrent()) throw StateError('Medication request canceled.');
+      changed = true;
       final result = await action();
       changed = applied(result);
       return result;
     } finally {
       final restore = restoreSchedule;
-      // 취소된 화면의 늦은 응답은 새 화면의 일정이나 상태를 덮어쓰지 않는다.
-      if (isCurrent()) {
+      // Screen cancellation stops UI work, not account-owned cache recovery.
+      // The restore callback rejects backups from an older schedule revision.
+      if (_isCurrentSave(generation)) {
         if (!changed && restore != null) {
           await restore(backup);
         } else {
