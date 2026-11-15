@@ -14,6 +14,7 @@ import '../entities/prescription_flow_entity.dart';
 import '../entities/prescription_change_entity.dart';
 import '../entities/recognized_text_region_entity.dart';
 import '../services/user_facing_error_message.dart';
+import '../services/app_temp_file.dart';
 import 'medbuddy_saved_medication_view_model.dart';
 
 // 파일명: medbuddy_prescription_view_model.dart
@@ -24,6 +25,12 @@ import 'medbuddy_saved_medication_view_model.dart';
 // Responsibilities: Preserve OCR/user edits, reject obsolete operation results and coordinate candidate review and partial saves.
 // Attributes: Flow/progress fields select screens; source rows/regions retain OCR; index maps retain lookup results; injected controls and callbacks perform persistence and refreshes.
 class MedBuddyPrescriptionViewModel {
+  MedicationResultSource _resultSource = MedicationResultSource.prescription;
+  MedicationResultSource get resultSource => _resultSource;
+  Future<MedicationSaveResult> Function(int, bool Function())?
+  _registrationSaveRequested;
+  Map<int, String> _registrationImagePaths = {};
+  final Set<String> _registrationImagesInUse = {};
   PrescriptionFlowState _prescriptionFlowState = PrescriptionFlowState.idle;
   // Function Name: prescriptionFlowState
   // Description: Exposes the current input, recognition, review, analysis or result screen state.
@@ -307,6 +314,80 @@ class MedBuddyPrescriptionViewModel {
   void dispose() {
     _disposed = true;
     _cancelPrescriptionOperation();
+    _clearRegistrationImages();
+  }
+
+  // 함수역할: 확인한 알약·직접 입력을 공통 결과 단계로 넘긴다. 여기서는 저장 요청을 보내지 않는다.
+  // 매개변수: medications: 확인한 일정; source: 입력 경로; save: 항목별 저장; localImagePaths: 인계받은 임시 사진.
+  // 반환값: 결과 단계가 입력과 사진의 소유권을 받았으면 true.
+  bool showMedicationRegistrationResults({
+    required List<AnalyzedMedication> medications,
+    required MedicationResultSource source,
+    required Future<MedicationSaveResult> Function(int, bool Function()) save,
+    Map<int, String> localImagePaths = const {},
+  }) {
+    if (_disposed ||
+        isMedicationSaving ||
+        isAllMedicationSaving ||
+        medications.isEmpty ||
+        _prescriptionFlowState != PrescriptionFlowState.idle) {
+      return false;
+    }
+    _beginPrescriptionOperation();
+    _resetPrescriptionRecognitionState();
+    _resultSource = source;
+    _registrationSaveRequested = save;
+    _registrationImagePaths = Map.of(localImagePaths);
+    _analyzedMedicationList = List.unmodifiable(medications);
+    _prescriptionFlowState = PrescriptionFlowState.resultReady;
+    _statusMessage = '';
+    // 사진 후보·직접 입력은 전체 처방전이 아니므로 누락 약 비교를 추정하지 않는다.
+    _notifyViewModelListeners();
+    return true;
+  }
+
+  // 결과 단계를 떠날 때 사용하지 않는 임시 사본만 정리한다. 저장 중인 사진은 요청 종료 후 정리한다.
+  void _clearRegistrationImages() {
+    for (final path in _registrationImagePaths.values.toSet()) {
+      if (path.isNotEmpty && !_registrationImagesInUse.contains(path)) {
+        unawaited(deleteAppTempFile(path));
+      }
+    }
+    _registrationImagePaths = {};
+  }
+
+  // 확인된 품목과 일정은 각 입력 경로의 기존 저장 서비스를 사용하고 완료 상태는 공통 결과 화면에서 관리한다.
+  Future<MedicationSaveResult> _saveResultMedication(
+    AnalyzedMedication medication,
+    int index,
+    int operationId,
+  ) async {
+    final save = _registrationSaveRequested;
+    bool isCurrent() => _isCurrentPrescriptionOperation(operationId);
+    final path = _registrationImagePaths[index] ?? '';
+    if (path.isNotEmpty) _registrationImagesInUse.add(path);
+    try {
+      return save != null
+          ? await save(index, isCurrent)
+          : await savedMedications.saveMedicationInfo(
+              medication.detail,
+              medicationSchedule: medication.schedule,
+              refreshAfterSave: false,
+              isRequestCurrent: isCurrent,
+            );
+    } catch (_) {
+      return MedicationSaveResult(
+        status: MedicationSaveStatus.failed,
+        message: _isEnglishSetting
+            ? 'Could not save medication information. Please try again.'
+            : '복약 정보를 저장하지 못했습니다. 다시 시도해 주세요.',
+      );
+    } finally {
+      _registrationImagesInUse.remove(path);
+      if (path.isNotEmpty && !_isCurrentPrescriptionOperation(operationId)) {
+        unawaited(deleteAppTempFile(path));
+      }
+    }
   }
 
   // Function Name: clearAnalysisResult
@@ -925,12 +1006,20 @@ class MedBuddyPrescriptionViewModel {
   // Function Name: requestMedicationSave
   // Description: Saves one analyzed medication while preventing overlapping individual or batch saves.
   // Parameters: analyzedMedication: Detail and schedule pair; medicationIndex: Display/result index.
-  // Returns: True for saved or duplicate outcomes, false when busy/disposed; errors propagate and only the current operation clears its loading marker.
+  // Returns: True for saved or duplicate outcomes; stale/busy/failed work returns false. Refresh failure never causes a completed row to be saved twice.
   Future<bool> requestMedicationSave(
     AnalyzedMedication analyzedMedication,
     int medicationIndex,
   ) async {
-    if (_disposed) return false;
+    if (_disposed ||
+        medicationIndex < 0 ||
+        medicationIndex >= _analyzedMedicationList.length ||
+        !identical(
+          _analyzedMedicationList[medicationIndex],
+          analyzedMedication,
+        )) {
+      return false;
+    }
     final operationId = _prescriptionOperationId;
     if (_savingMedicationIndex != null || _isAllMedicationSaving) {
       _statusMessage = _isEnglishSetting
@@ -953,19 +1042,21 @@ class MedBuddyPrescriptionViewModel {
     _setSavingMedicationIndex(medicationIndex);
 
     try {
-      final result = await savedMedications.saveMedicationInfo(
-        analyzedMedication.detail,
-        medicationSchedule: analyzedMedication.schedule,
+      final result = await _saveResultMedication(
+        analyzedMedication,
+        medicationIndex,
+        operationId,
       );
       if (!_isCurrentPrescriptionOperation(operationId)) {
-        return result.isCompleted;
+        return false;
       }
-      _statusMessage = savedMedications.statusMessage;
+      _statusMessage = result.message;
       if (result.isCompleted) {
         _completedMedicationSaveIndexes.add(medicationIndex);
         _notifyViewModelListeners();
+        await _refreshSavedResults(operationId);
       }
-      return result.isCompleted;
+      return _isCurrentPrescriptionOperation(operationId) && result.isCompleted;
     } finally {
       if (_isCurrentPrescriptionOperation(operationId)) {
         _setSavingMedicationIndex(null);
@@ -976,7 +1067,7 @@ class MedBuddyPrescriptionViewModel {
   // Function Name: requestAllAnalyzedMedicationSave
   // Description: Saves unfinished analysis rows sequentially and refreshes dependent state once after the batch.
   // Parameters: None.
-  // Returns: True when no result failed; false for empty/busy/disposed or invalidated work. Exceptions propagate, with current-operation progress cleared in finally.
+  // Returns: True when no save failed; false for empty/busy/disposed or invalidated work. Per-item failures remain retryable while completed rows stay locked.
   Future<bool> requestAllAnalyzedMedicationSave() async {
     if (_disposed) return false;
     final operationId = _prescriptionOperationId;
@@ -1016,10 +1107,10 @@ class MedBuddyPrescriptionViewModel {
         _notifyViewModelListeners();
 
         final analyzedMedication = _analyzedMedicationList[index];
-        final result = await savedMedications.saveMedicationInfo(
-          analyzedMedication.detail,
-          medicationSchedule: analyzedMedication.schedule,
-          refreshAfterSave: false,
+        final result = await _saveResultMedication(
+          analyzedMedication,
+          index,
+          operationId,
         );
         if (!_isCurrentPrescriptionOperation(operationId)) return false;
         if (result.status == MedicationSaveStatus.saved) {
@@ -1033,15 +1124,15 @@ class MedBuddyPrescriptionViewModel {
         }
       }
 
-      await savedMedications.fetchSavedMedicationInfo();
-      await fetchTodayMedicationSchedule();
-      await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
+      final refreshed = await _refreshSavedResults(operationId);
       if (!_isCurrentPrescriptionOperation(operationId)) return false;
-      _statusMessage = _buildBulkSaveMessage(
-        savedCount: savedCount,
-        duplicateCount: duplicateCount,
-        failedCount: failedCount,
-      );
+      if (refreshed) {
+        _statusMessage = _buildBulkSaveMessage(
+          savedCount: savedCount,
+          duplicateCount: duplicateCount,
+          failedCount: failedCount,
+        );
+      }
       return failedCount == 0;
     } finally {
       if (_isCurrentPrescriptionOperation(operationId)) {
@@ -1049,6 +1140,26 @@ class MedBuddyPrescriptionViewModel {
         _isAllMedicationSaving = false;
         _notifyViewModelListeners();
       }
+    }
+  }
+
+  // 저장 응답을 먼저 보존한다. 후속 조회 실패를 저장 실패로 바꾸어 같은 약을 재전송하지 않는다.
+  Future<bool> _refreshSavedResults(int operationId) async {
+    if (!_isCurrentPrescriptionOperation(operationId)) return false;
+    try {
+      await savedMedications.fetchSavedMedicationInfo();
+      if (!_isCurrentPrescriptionOperation(operationId)) return false;
+      await fetchTodayMedicationSchedule();
+      if (!_isCurrentPrescriptionOperation(operationId)) return false;
+      await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
+      return _isCurrentPrescriptionOperation(operationId);
+    } catch (_) {
+      if (_isCurrentPrescriptionOperation(operationId)) {
+        _statusMessage = _isEnglishSetting
+            ? 'Saved medications are kept. Refresh the list to see the latest changes.'
+            : '저장한 약은 유지됩니다. 목록을 새로고침해 최신 내용을 확인해 주세요.';
+      }
+      return false;
     }
   }
 
@@ -1181,6 +1292,9 @@ class MedBuddyPrescriptionViewModel {
   // Parameters: None.
   // Returns: None; this reset does not independently cancel network work or notify listeners.
   void _resetPrescriptionRecognitionState() {
+    _clearRegistrationImages();
+    _registrationSaveRequested = null;
+    _resultSource = MedicationResultSource.prescription;
     _recognitionStage = PrescriptionRecognitionStage.recognizingText;
     _medicationLookupStatuses.clear();
     _recognizedMedicationScheduleList = [];

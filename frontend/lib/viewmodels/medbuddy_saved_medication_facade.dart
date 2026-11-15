@@ -8,6 +8,103 @@ part of 'medbuddy_view_model.dart';
 // Responsibilities: Forward public saved-medication operations without duplicating feature state.
 // Attributes: No extension-owned fields; _savedMedications belongs to the host MedBuddyViewModel.
 extension MedBuddySavedMedicationFacade on MedBuddyViewModel {
+  // 확인한 직접 입력은 저장하지 않고 공통 결과 화면으로 넘긴다. 임시 사진도 결과 단계가 인계받는다.
+  bool showManualMedicationRegistrationResults(
+    List<ManualMedicationEntry> entries,
+  ) {
+    final items = List<ManualMedicationEntry>.unmodifiable([
+      for (final entry in entries)
+        ManualMedicationEntry(
+          medicationName: entry.medicationName,
+          dosageAmount: entry.dosageAmount,
+          dosageUnit: entry.dosageUnit,
+          startDate: entry.startDate,
+          endDate: entry.endDate,
+          scheduleSlotKeys: List.unmodifiable(entry.scheduleSlotKeys),
+          doseDays: entry.doseDays,
+          localImagePath: entry.localImagePath,
+          dosingMode: entry.dosingMode,
+          catalogMedication: entry.catalogMedication,
+        ),
+    ]);
+    return _prescriptions.showMedicationRegistrationResults(
+      source: MedicationResultSource.manual,
+      medications: [
+        for (final entry in items)
+          AnalyzedMedication(
+            schedule: entry.toMedicationSchedule(),
+            detail:
+                (entry.catalogMedication?.itemName.trim() ==
+                        entry.medicationName.trim()
+                    ? entry.catalogMedication
+                    : null) ??
+                MedicationDetail(
+                  itemName: entry.medicationName.trim(),
+                  efficacy: '',
+                  usageMethod: '',
+                  warning: '',
+                ),
+          ),
+      ],
+      localImagePaths: {
+        for (var index = 0; index < items.length; index++)
+          if (items[index].localImagePath.isNotEmpty)
+            index: items[index].localImagePath,
+      },
+      save: (index, isCurrent) => _savedMedications.saveManualMedication(
+        items[index],
+        refreshAfterSave: false,
+        isRequestCurrent: isCurrent,
+      ),
+    );
+  }
+
+  // 후보 선택·중복 정리가 끝난 알약을 결과 화면에 표시하고, 실제 저장은 사용자의 개별·전체 저장 명령까지 미룬다.
+  bool showPillMedicationRegistrationResults(
+    List<IdentifiedPillSaveRequest> requests,
+  ) {
+    final items = List<IdentifiedPillSaveRequest>.unmodifiable([
+      for (final request in requests)
+        IdentifiedPillSaveRequest(
+          candidate: request.candidate,
+          medicationSchedule: request.medicationSchedule.copyWith(
+            scheduleSlotKeys: List.unmodifiable(
+              request.medicationSchedule.scheduleSlotKeys,
+            ),
+            slotStatuses: Map.unmodifiable(
+              request.medicationSchedule.slotStatuses,
+            ),
+            doseCycleOffsets: List.unmodifiable(
+              request.medicationSchedule.doseCycleOffsets,
+            ),
+          ),
+        ),
+    ]);
+    return _prescriptions.showMedicationRegistrationResults(
+      source: MedicationResultSource.pillPhoto,
+      medications: [
+        for (final request in items)
+          AnalyzedMedication(
+            schedule: request.medicationSchedule,
+            detail: MedicationDetail(
+              itemName: request.medicationSchedule.medicationName,
+              itemSeq: request.candidate.itemSeq,
+              imageUrl: request.candidate.imageUrl,
+              efficacy: '',
+              usageMethod: '',
+              warning: '',
+            ),
+          ),
+      ],
+      save: (index, isCurrent) => _savedMedications.saveIdentifiedPill(
+        items[index].candidate,
+        items[index].medicationSchedule,
+        refreshAfterSave: false,
+        isRequestCurrent: isCurrent,
+      ),
+    );
+  }
+
   // 함수이름: changeMedicationRegimen
   // 함수역할: 저장 약의 적용일 기반 변경을 기존 일정·알림 갱신 경로와 함께 실행하도록 위임한다.
   // 매개변수: medicationId: 변경할 저장 약 ID; change: 재시도 시 유지할 변경 요청.

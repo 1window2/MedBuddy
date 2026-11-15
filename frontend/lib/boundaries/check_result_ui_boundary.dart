@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../entities/analyzed_medication_entity.dart';
 import '../entities/json_value_reader.dart';
 import '../entities/prescription_change_entity.dart';
+import '../entities/prescription_flow_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/expandable_medication_section.dart';
@@ -23,13 +24,14 @@ import '../widgets/keep_words_text.dart';
 // Responsibilities:
 // - Displays the analyzed medication count and each schedule.
 // - Shows per-item saving, bulk save, and disabled controls for saved items.
-// - Reports save outcomes through a Snackbar.
+// - Opens completion navigation or reports partial/failed saves through a Snackbar.
 // Attributes:
 // - analyzedMedicationList (List<AnalyzedMedication>): Prescription analysis results containing medication details and schedules.
 // - prescriptionChangeRadar (PrescriptionChangeRadar?): Comparison status and changes against a previous prescription.
 // - isPrescriptionChangeLoading (bool): Whether the associated save, analysis, or medication update is in progress.
 // - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
 class CheckResultUI extends StatelessWidget {
+  final MedicationResultSource source;
   final List<AnalyzedMedication> analyzedMedicationList;
   final PrescriptionChangeRadar? prescriptionChangeRadar;
   final bool isPrescriptionChangeLoading;
@@ -55,6 +57,7 @@ class CheckResultUI extends StatelessWidget {
   // Returns: A configured CheckResultUI.
   const CheckResultUI({
     super.key,
+    this.source = MedicationResultSource.prescription,
     required this.analyzedMedicationList,
     this.prescriptionChangeRadar,
     this.isPrescriptionChangeLoading = false,
@@ -78,7 +81,7 @@ class CheckResultUI extends StatelessWidget {
   // Returns: Widget tree for analyzed medications and individual or bulk save state.
   @override
   Widget build(BuildContext context) {
-    final text = _ResultText(userSetting.language);
+    final text = _ResultText(userSetting.language, source);
     final hasRadarSlot =
         prescriptionChangeRadar != null || isPrescriptionChangeLoading;
 
@@ -162,7 +165,7 @@ class CheckResultUI extends StatelessWidget {
                                   isAllMedicationSaving ||
                                   savingMedicationIndex != null,
                               // 함수이름: build.onMedicationSaveRequested callback
-                              // 함수역할: 저장 완료 시트를 열고 선택한 목적지로 이동하기 전에 시트를 닫는다.
+                              // 함수역할: 저장 완료 대화상자를 열고 선택한 목적지로 이동하기 전에 닫는다.
                               // 매개변수:
                               // - 없음.
                               // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
@@ -182,7 +185,7 @@ class CheckResultUI extends StatelessWidget {
                                     }.length >=
                                     analyzedMedicationList.length;
                                 if (success && allSaved) {
-                                  await _showSaveCompletedSheet(context, text);
+                                  await _showSaveCompletedDialog(context, text);
                                   return;
                                 }
                                 _showSaveResultMessage(context, success);
@@ -201,7 +204,7 @@ class CheckResultUI extends StatelessWidget {
                           completedMedicationSaveIndexes.length >=
                           analyzedMedicationList.length,
                       // 함수이름: build.onPressed callback
-                      // 함수역할: 저장 완료 시트를 열고 선택한 목적지로 이동하기 전에 시트를 닫는다.
+                      // 함수역할: 저장 완료 대화상자를 열고 선택한 목적지로 이동하기 전에 닫는다.
                       // 매개변수:
                       // - 없음.
                       // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
@@ -211,7 +214,7 @@ class CheckResultUI extends StatelessWidget {
                           return;
                         }
                         if (success) {
-                          await _showSaveCompletedSheet(context, text);
+                          await _showSaveCompletedDialog(context, text);
                           return;
                         }
                         _showSaveResultMessage(context, false);
@@ -243,55 +246,56 @@ class CheckResultUI extends StatelessWidget {
     );
   }
 
-  // 함수이름: _showSaveCompletedSheet
-  // 함수역할: 저장 완료 시트를 열고 선택한 목적지로 이동하기 전에 시트를 닫는다.
+  // 함수이름: _showSaveCompletedDialog
+  // 함수역할: 저장 완료 대화상자를 열고 선택한 목적지로 이동하기 전에 닫는다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
   // - text (_ResultText): 해당 화면 구역의 언어별 표시 문구.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _showSaveCompletedSheet(BuildContext context, _ResultText text) {
-    return showModalBottomSheet<void>(
+  Future<void> _showSaveCompletedDialog(
+    BuildContext context,
+    _ResultText text,
+  ) {
+    return showDialog<void>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      // 함수이름: _showSaveCompletedSheet.builder callback
+      // 함수이름: _showSaveCompletedDialog.builder callback
       // 함수역할: 분석 약 목록과 개별·전체 저장 상태에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
       // 매개변수:
-      // - sheetContext (BuildContext): 현재 대화상자·하단 시트의 화면 종료와 테마 참조 위치.
+      // - dialogContext (BuildContext): 현재 대화상자의 화면 종료와 테마 참조 위치.
       // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-      builder: (sheetContext) => _SaveCompletedSheet(
+      builder: (dialogContext) => _SaveCompletedDialog(
         text: text,
         onTodayScheduleRequested: onTodayScheduleRequested == null
             ? null
-            // 함수이름: _showSaveCompletedSheet.onTodayScheduleRequested callback
-            // 함수역할: `Navigator.pop(sheetContext)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
+            // 함수이름: _showSaveCompletedDialog.onTodayScheduleRequested callback
+            // 함수역할: 대화상자를 닫은 뒤 오늘 일정 화면을 연다.
             // 매개변수:
             // - 없음.
             // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
             : () {
-                Navigator.pop(sheetContext);
+                Navigator.pop(dialogContext);
                 onTodayScheduleRequested!.call();
               },
         onSavedMedicationRequested: onSavedMedicationRequested == null
             ? null
-            // 함수이름: _showSaveCompletedSheet.onSavedMedicationRequested callback
-            // 함수역할: `Navigator.pop(sheetContext)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
+            // 함수이름: _showSaveCompletedDialog.onSavedMedicationRequested callback
+            // 함수역할: 대화상자를 닫은 뒤 복약함을 연다.
             // 매개변수:
             // - 없음.
             // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
             : () {
-                Navigator.pop(sheetContext);
+                Navigator.pop(dialogContext);
                 onSavedMedicationRequested!.call();
               },
         onHomeRequested: onHomeRequested == null
             ? null
-            // 함수이름: _showSaveCompletedSheet.onHomeRequested callback
-            // 함수역할: `Navigator.pop(sheetContext)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
+            // 함수이름: _showSaveCompletedDialog.onHomeRequested callback
+            // 함수역할: 대화상자를 닫은 뒤 홈으로 이동한다.
             // 매개변수:
             // - 없음.
             // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
             : () {
-                Navigator.pop(sheetContext);
+                Navigator.pop(dialogContext);
                 onHomeRequested!.call();
               },
       ),
@@ -299,7 +303,7 @@ class CheckResultUI extends StatelessWidget {
   }
 }
 
-// 클래스명: _SaveCompletedSheet
+// 클래스명: _SaveCompletedDialog
 // 역할: 저장 완료 후 오늘 일정·복약함·홈 이동을 담당한다.
 // 주요 책임:
 // - 부모가 전달한 표시값과 동작을 반영해 저장 완료 후 오늘 일정·복약함·홈 이동 위젯을 구성한다.
@@ -307,21 +311,21 @@ class CheckResultUI extends StatelessWidget {
 // - onTodayScheduleRequested (VoidCallback?): 오늘 복약 일정 화면을 여는 콜백.
 // - onSavedMedicationRequested (VoidCallback?): 저장 복약함 화면을 여는 콜백.
 // - onHomeRequested (VoidCallback?): 홈 화면으로 이동할 콜백.
-class _SaveCompletedSheet extends StatelessWidget {
+class _SaveCompletedDialog extends StatelessWidget {
   final _ResultText text;
   final VoidCallback? onTodayScheduleRequested;
   final VoidCallback? onSavedMedicationRequested;
   final VoidCallback? onHomeRequested;
 
-  // 함수이름: _SaveCompletedSheet
+  // 함수이름: _SaveCompletedDialog
   // 함수역할: 저장 완료 후 오늘 일정·복약함·홈 이동에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - text (_ResultText): 해당 화면 구역의 언어별 표시 문구.
   // - onTodayScheduleRequested (VoidCallback?): 오늘 복약 일정 화면을 여는 콜백.
   // - onSavedMedicationRequested (VoidCallback?): 저장 복약함 화면을 여는 콜백.
   // - onHomeRequested (VoidCallback?): 홈 화면으로 이동할 콜백.
-  // 반환값: 입력 설정이 반영된 _SaveCompletedSheet 인스턴스.
-  const _SaveCompletedSheet({
+  // 반환값: 입력 설정이 반영된 _SaveCompletedDialog 인스턴스.
+  const _SaveCompletedDialog({
     required this.text,
     required this.onTodayScheduleRequested,
     required this.onSavedMedicationRequested,
@@ -329,77 +333,87 @@ class _SaveCompletedSheet extends StatelessWidget {
   });
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 저장 완료 후 오늘 일정·복약함·홈 이동 화면을 구성한다.
+  // 함수역할: 제목·체크·설명과 세 이동 명령을 중앙 대화상자로 표시하고 큰 글씨에서는 전체 내용을 스크롤한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
   // 반환값: 저장 완료 후 오늘 일정·복약함·홈 이동에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(
-        24,
-        26,
-        24,
-        MediaQuery.paddingOf(context).bottom + 24,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.check_circle_rounded,
-            color: MedBuddyColors.primary,
-            size: 58,
-          ),
-          const SizedBox(height: 12),
-          KeepWordsText(
-            text.saveCompletedTitle,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: MedBuddyColors.textStrong,
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
+    return Dialog(
+      key: const Key('prescription-save-completed-dialog'),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      constraints: const BoxConstraints(maxWidth: 440),
+      child: SingleChildScrollView(
+        key: const Key('prescription-save-completed-content'),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            KeepWordsText(
+              text.saveCompletedTitle,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).dialogTheme.titleTextStyle,
             ),
-          ),
-          const SizedBox(height: 8),
-          KeepWordsText(
-            text.saveCompletedDescription,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: MedBuddyColors.textMuted,
-              fontSize: 14,
-              height: 1.4,
+            const SizedBox(height: 16),
+            const Icon(
+              Icons.check_circle_rounded,
+              key: Key('prescription-save-completed-icon'),
+              color: MedBuddyColors.primary,
+              size: 58,
             ),
-          ),
-          const SizedBox(height: 22),
-          if (onTodayScheduleRequested != null)
-            FilledButton.icon(
-              onPressed: onTodayScheduleRequested,
-              icon: const Icon(Icons.event_available_outlined),
-              label: KeepWordsText(text.openTodaySchedule),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(58),
-                backgroundColor: MedBuddyColors.primary,
+            const SizedBox(height: 12),
+            KeepWordsText(
+              text.saveCompletedDescription,
+              key: const Key('prescription-save-completed-description'),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).dialogTheme.contentTextStyle,
+            ),
+            const SizedBox(height: 22),
+            if (onTodayScheduleRequested != null)
+              FilledButton.icon(
+                key: const Key('prescription-save-open-today'),
+                onPressed: onTodayScheduleRequested,
+                icon: const Icon(Icons.event_available_outlined),
+                label: KeepWordsText(
+                  text.openTodaySchedule,
+                  textAlign: TextAlign.center,
+                ),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(58),
+                  backgroundColor: MedBuddyColors.primary,
+                ),
               ),
-            ),
-          if (onSavedMedicationRequested != null) ...[
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: onSavedMedicationRequested,
-              icon: const Icon(Icons.inventory_2_outlined),
-              label: KeepWordsText(text.openSavedMedication),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(58),
+            if (onSavedMedicationRequested != null) ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                key: const Key('prescription-save-open-pillbox'),
+                onPressed: onSavedMedicationRequested,
+                icon: const Icon(Icons.inventory_2_outlined),
+                label: KeepWordsText(
+                  text.openSavedMedication,
+                  textAlign: TextAlign.center,
+                ),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(58),
+                ),
               ),
-            ),
+            ],
+            if (onHomeRequested != null) ...[
+              const SizedBox(height: 8),
+              TextButton(
+                key: const Key('prescription-save-open-home'),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
+                onPressed: onHomeRequested,
+                child: KeepWordsText(
+                  text.returnHome,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
           ],
-          if (onHomeRequested != null) ...[
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: onHomeRequested,
-              child: KeepWordsText(text.returnHome),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
@@ -476,7 +490,7 @@ class _AnalysisSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(top: 8, bottom: 16),
+      margin: const EdgeInsets.only(top: 20, bottom: 16),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -660,9 +674,14 @@ class _MedicationResultCard extends StatelessWidget {
     return Container(
       key: Key('result-medication-card-$medicationIndex'),
       margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(1),
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.white,
+        borderRadius: MedBuddyRadii.small,
+      ),
+      // 머리글의 사각 채움 위에 테두리를 그려 접힌 모서리까지 온전히 표시한다.
+      foregroundDecoration: BoxDecoration(
         borderRadius: MedBuddyRadii.small,
         border: Border.all(color: MedBuddyColors.outline),
       ),
@@ -925,13 +944,14 @@ class _DoseInfoCell extends StatelessWidget {
 // - language (String): 화면 문구를 선택할 언어 코드.
 class _ResultText {
   final String language;
+  final MedicationResultSource source;
 
   // 함수이름: _ResultText
   // 함수역할: 처방 분석 결과 확인과 개별·전체 복약 일정 저장에 쓰는 한국어·영어 문구 선택에 사용할 언어를 보관한다.
   // 매개변수:
   // - language (String): 화면 문구를 선택할 언어 코드.
   // 반환값: 입력 설정이 반영된 _ResultText 인스턴스.
-  const _ResultText(this.language);
+  const _ResultText(this.language, this.source);
 
   // Function Name: isEnglish
   // Description: Uses the shared language-code rule for result messages.
@@ -944,14 +964,23 @@ class _ResultText {
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get title => isEnglish ? 'Prescription Analysis Result' : '처방전 분석 결과';
+  String get title => switch (source) {
+    MedicationResultSource.prescription =>
+      isEnglish ? 'Prescription Analysis Result' : '처방전 분석 결과',
+    MedicationResultSource.pillPhoto =>
+      isEnglish ? 'Pill Registration Review' : '알약 등록 결과',
+    MedicationResultSource.manual =>
+      isEnglish ? 'Medication Registration Review' : '직접 등록 결과',
+  };
   // 함수이름: subtitle
   // 함수역할: 분석한 약과 복용 일정을 확인하고 저장하도록 안내한다.
   // 매개변수: 없음.
   // 반환값: 현재 언어의 결과 화면 부제목.
   String get subtitle => isEnglish
       ? 'Review and save your medication schedules.'
-      : '분석한 약과 복용 일정을 확인하고 저장합니다.';
+      : source == MedicationResultSource.prescription
+      ? '분석한 약과 복용 일정을 확인하고 저장합니다.'
+      : '확인한 약과 복용 일정을 저장합니다.';
   // 함수이름: back
   // 함수역할: 현재 언어와 입력값에 맞춰 "뒤로가기" 문구를 제공한다.
   // 매개변수:
@@ -963,7 +992,9 @@ class _ResultText {
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get complete => isEnglish ? 'Analysis Complete' : '분석 완료';
+  String get complete => source == MedicationResultSource.prescription
+      ? (isEnglish ? 'Analysis Complete' : '분석 완료')
+      : (isEnglish ? 'Review Complete' : '검토 완료');
   // 함수이름: summary
   // 함수역할: 현재 언어와 입력값에 맞춰 "$count개의 복약 일정을 저장할 수 있습니다" 문구를 제공한다.
   // 매개변수:

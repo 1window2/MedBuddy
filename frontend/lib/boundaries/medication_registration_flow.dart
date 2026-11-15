@@ -11,6 +11,16 @@ import 'manual_medication_entry_ui_boundary.dart';
 import 'medication_capture_options_ui_boundary.dart';
 import 'pill_identification_ui_boundary.dart';
 
+// 검토한 입력을 결과 상태가 받은 경우에만 등록 경로를 닫고 홈이 소유한 공통 결과 화면을 드러낸다.
+bool completeMedicationRegistrationReview(
+  BuildContext context,
+  bool Function() acceptReview,
+) {
+  if (!context.mounted || !acceptReview()) return false;
+  Navigator.of(context).popUntil((route) => route.isFirst);
+  return true;
+}
+
 // Function Name: openPillIdentification
 // Description: Opens pill recognition with the selected capture mode and the current account save callbacks.
 // Parameters: context (BuildContext): Navigator location; viewModel (MedBuddyViewModel): account and save owner; mode (PillCaptureMode): capture workflow.
@@ -24,6 +34,10 @@ Future<void> openPillIdentification(
     builder: (_) => PillIdentificationUI(
       userSetting: viewModel.userSetting,
       captureMode: mode,
+      onReviewRequested: (requests) => completeMedicationRegistrationReview(
+        context,
+        () => viewModel.showPillMedicationRegistrationResults(requests),
+      ),
       onSaveRequested: viewModel.saveIdentifiedPill,
       onBatchSaveRequested: viewModel.saveIdentifiedPills,
     ),
@@ -46,9 +60,18 @@ Future<void> openMedicationRegistration(BuildContext context) async {
             // 선택한 계정의 저장 작업을 직접 등록 화면에 연결한다.
             builder: (_) => ManualMedicationEntryUI(
               userSetting: viewModel.userSetting,
+              onReviewRequested: (entries) =>
+                  completeMedicationRegistrationReview(
+                    pageContext,
+                    () => viewModel.showManualMedicationRegistrationResults(
+                      entries,
+                    ),
+                  ),
               // 여러 약을 저장해도 목록·일정·알림은 마지막에 한 번만 갱신한다.
-              onSaveRequested: (entry) =>
-                  viewModel.saveManualMedication(entry, refreshAfterSave: false),
+              onSaveRequested: (entry) => viewModel.saveManualMedication(
+                entry,
+                refreshAfterSave: false,
+              ),
               onSavesFinished: viewModel.refreshAfterMedicationSaves,
             ),
           ),

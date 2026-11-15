@@ -1137,16 +1137,11 @@ void main() {
         checkMedicationDetail: _FakeCheckMedicationDetail(),
       );
       addTearDown(model.dispose);
-      const medication = AnalyzedMedication(
-        schedule: MedicationSchedule(medicationName: 'test'),
-        detail: MedicationDetail(
-          itemName: 'test',
-          efficacy: '',
-          usageMethod: '',
-          warning: '',
-        ),
-      );
+      await model.requestPrescriptionImageFromGallery();
+      final medication = model.analyzedMedicationList.single;
       final save = model.requestMedicationSave(medication, 0);
+      await Future<void>.delayed(Duration.zero);
+      expect(saveControl.requestCount, 1);
       expect(model.savingMedicationIndex, 0);
 
       await model.requestPrescriptionImageFromGallery();
@@ -1301,18 +1296,19 @@ void main() {
   // Parameters: None. Returns: Test completion.
   test('reset prescription ignores an older save completion', () async {
     final control = _DeferredCheckSavedMedication();
-    final model = MedBuddyViewModel(checkSavedMedication: control);
-    addTearDown(model.dispose);
-    const medication = AnalyzedMedication(
-      schedule: MedicationSchedule(medicationName: 'test'),
-      detail: MedicationDetail(
-        itemName: 'test',
-        efficacy: '',
-        usageMethod: '',
-        warning: '',
-      ),
+    final model = MedBuddyViewModel(
+      checkSavedMedication: control,
+      inputPrescription: _FakeInputPrescription(const [
+        MedicationSchedule(medicationName: 'test'),
+      ]),
+      checkMedicationDetail: _FakeCheckMedicationDetail(),
     );
+    addTearDown(model.dispose);
+    await model.requestPrescriptionImageFromGallery();
+    final medication = model.analyzedMedicationList.single;
     final save = model.requestMedicationSave(medication, 0);
+    await Future<void>.delayed(Duration.zero);
+    expect(control.requestCount, 1);
     model.clearAnalysisResult();
     final resetMessage = model.prescriptionStatusMessage;
     control.completer.complete(
@@ -1829,26 +1825,18 @@ void main() {
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
   test('overlapping per-card medication saves are rejected', () async {
     final saveControl = _DeferredCheckSavedMedication();
-    final viewModel = MedBuddyViewModel(checkSavedMedication: saveControl);
+    final viewModel = MedBuddyViewModel(
+      checkSavedMedication: saveControl,
+      inputPrescription: _FakeInputPrescription(const [
+        MedicationSchedule(medicationName: 'first-tablet'),
+        MedicationSchedule(medicationName: 'second-tablet'),
+      ]),
+      checkMedicationDetail: _FakeCheckMedicationDetail(),
+    );
     addTearDown(viewModel.dispose);
-    const firstMedication = AnalyzedMedication(
-      schedule: MedicationSchedule(medicationName: 'first-tablet'),
-      detail: MedicationDetail(
-        itemName: 'first-tablet',
-        efficacy: 'effect',
-        usageMethod: 'usage',
-        warning: 'warning',
-      ),
-    );
-    const secondMedication = AnalyzedMedication(
-      schedule: MedicationSchedule(medicationName: 'second-tablet'),
-      detail: MedicationDetail(
-        itemName: 'second-tablet',
-        efficacy: 'effect',
-        usageMethod: 'usage',
-        warning: 'warning',
-      ),
-    );
+    await viewModel.requestPrescriptionImageFromGallery();
+    final firstMedication = viewModel.analyzedMedicationList.first;
+    final secondMedication = viewModel.analyzedMedicationList.last;
 
     final firstSave = viewModel.requestMedicationSave(firstMedication, 0);
     await Future<void>.delayed(Duration.zero);

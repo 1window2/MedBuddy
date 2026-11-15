@@ -611,6 +611,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onHomeRequested: viewModel.clearAnalysisResult,
       ),
       PrescriptionFlowState.resultReady => CheckResultUI(
+        source: viewModel.medicationResultSource,
         analyzedMedicationList: viewModel.analyzedMedicationList,
         prescriptionChangeRadar: viewModel.prescriptionChangeRadar,
         isPrescriptionChangeLoading: viewModel.isPrescriptionChangeLoading,
@@ -707,13 +708,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _prescriptionExitDialogOpen = true;
     final initialFlow = viewModel.prescriptionFlowState;
     final english = viewModel.userSetting.isEnglish;
+    final isRegistration =
+        viewModel.medicationResultSource != MedicationResultSource.prescription;
     try {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: KeepWordsText(english ? 'Leave analysis?' : '분석 결과를 나갈까요?'),
+          title: KeepWordsText(
+            isRegistration
+                ? (english ? 'Leave registration?' : '등록 결과를 나갈까요?')
+                : (english ? 'Leave analysis?' : '분석 결과를 나갈까요?'),
+          ),
           content: KeepWordsText(
-            english
+            isRegistration
+                ? (english
+                      ? 'Saved medications will remain. Unsaved entries will be discarded.'
+                      : '이미 저장한 약은 유지됩니다. 저장하지 않은 입력은 사라집니다.')
+                : english
                 ? 'You will return to the home screen. Unsaved results will be lost, and you will need to take or select the photo again.'
                 : '메인 화면으로 이동합니다. 저장하지 않은 결과는 사라지며 사진을 다시 촬영하거나 선택해야 합니다.',
           ),
@@ -1857,6 +1868,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // 반환값: 약 직접 입력 화면 위젯.
         builder: (context) => ManualMedicationEntryUI(
           userSetting: viewModel.userSetting,
+          onReviewRequested: (entries) => completeMedicationRegistrationReview(
+            context,
+            () => viewModel.showManualMedicationRegistrationResults(entries),
+          ),
           // 여러 약을 저장해도 목록·일정·알림은 마지막에 한 번만 갱신한다.
           onSaveRequested: (entry) =>
               viewModel.saveManualMedication(entry, refreshAfterSave: false),
