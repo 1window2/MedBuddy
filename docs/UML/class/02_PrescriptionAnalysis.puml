@@ -40,6 +40,12 @@ package "Flutter Frontend" #E8F4FF {
   class PrescriptionAnalysisPreviewUI <<UI>>
   class MedicationCandidateDialog <<UI>>
   class CheckResultUI <<UI>>
+  class PillIdentificationUI <<UI>>
+  class ManualMedicationEntryUI <<UI>>
+  class MedicationScheduleReviewUI <<UI>>
+  class MedicationReviewImageGallery <<UI>>
+  class MedicationResultSource <<Enum>>
+  class MedBuddySavedMedicationViewModel <<Control>>
   class PrescriptionChangeRadarUI <<UI>>
   class "CheckPrescriptionChange" as FCheckPrescriptionChange <<Control>>
   class MedBuddyPrescriptionViewModel <<Control>>
@@ -56,6 +62,9 @@ package "FastAPI Backend" #EAF8F0 {
   class "PrescriptionMedicationNameVerifier" as MedicationNameVerifier <<Service>>
   class "MedicationSchedule" as BMedicationSchedule <<Entity>>
   class "CheckMedicationDetail" as BCheckMedicationDetail <<Control>>
+  class CheckCatalogMedicationDetail <<Control>>
+  class EnrichmentDispatcher <<Service>>
+  note "saved_medication_enrichment.py\nqueue_saved_medication_enrichment()\n저장 후 누락 정보 보완 예약" as EnrichmentModule
   class "CheckPrescriptionChange" as BCheckPrescriptionChange <<Control>>
   class "medication_match_safety" as MatchSafety <<Module>> {
     + match_conflict(original, candidate)
@@ -94,8 +103,19 @@ FCheckMedicationDetail --> MedicationMatchReview : confirmation-only candidates
 FCheckMedicationDetail --> MedicationLookupBusy : known account-busy 503 + retryAt
 BCheckMedicationDetail --> MatchSafety : original strength / dosage form; exact name only
 PrescriptionAnalysisPreviewUI --> CheckResultUI : 저장 단계
+PillIdentificationUI --> MedicationScheduleReviewUI : 선택한 미저장 후보만
+MedicationScheduleReviewUI --> MedicationReviewImageGallery : 앞/뒷면·관찰 사진
+PillIdentificationUI --> MedBuddyPrescriptionViewModel : 검토한 요청 인계 (저장 아님)
+ManualMedicationEntryUI --> MedBuddyPrescriptionViewModel : 검증한 입력·임시 사진 인계
+MedBuddyPrescriptionViewModel --> MedicationResultSource : prescription / pillPhoto / manual
+CheckResultUI --> MedBuddyPrescriptionViewModel : 개별·전체 저장 / 완료 상태
+MedBuddyPrescriptionViewModel --> MedBuddySavedMedicationViewModel : 경로별 저장 / 요청 세대 검사
+MedBuddySavedMedicationViewModel --> FCheckMedicationDetail : 알약은 정확한 품목 조회
+FCheckMedicationDetail --> CheckCatalogMedicationDetail : GET /catalog/{item_seq}; 앱 5초 제한
+EnrichmentModule --> EnrichmentDispatcher : 저장·중복 응답 확정 후
+EnrichmentDispatcher --> CheckCatalogMedicationDetail : 같은 품목 로컬 읽기
 CheckResultUI *-- PrescriptionChangeRadarUI : 결과 목록 첫 칸 (기본 접힘)
-MedBuddyPrescriptionViewModel --> FCheckPrescriptionChange : 결과 화면 진입 뒤 비교 조회
+MedBuddyPrescriptionViewModel --> FCheckPrescriptionChange : 처방 결과만 비교 조회
 FCheckPrescriptionChange --> BCheckPrescriptionChange : POST /prescription/change-radar
 
 note bottom of PrescriptionOcrReadingOrder
@@ -108,6 +128,19 @@ note bottom of CheckResultUI
   약별 결과 카드는 접고 펼치며 Radar 조회 실패로
   목록 위치가 바뀌어도 펼친 상태를 같은 약에 유지한다.
   Radar(기본 접힘)는 일정 변경·새로 확인·이번에 없음 등 간단한 분류로 묶는다.
+  알약·직접 등록도 결과 화면을 쓰지만 Radar는 조회하지 않는다.
+  저장·중복 완료 행은 후속 조회 실패로 다시 저장하지 않는다.
+  전체 완료 시 중앙 대화상자에서 일정·복약함·홈을 선택한다.
+end note
+
+note bottom of CheckCatalogMedicationDetail
+  정확한 로컬 품목만 읽고 네트워크·AI 생성·DB 쓰기는 하지 않는다.
+  누락/실패 시 후보와 사용자 일정으로 저장할 수 있다.
+end note
+note bottom of EnrichmentDispatcher
+  영속 큐가 아닌 최선 노력 보완: 동시 2개, 최대 32개 작업, 조회 40초 제한.
+  별도 세션에서 같은 계정·품목·revision·원래 누락 값만 보완한다.
+  중단·교체·삭제·사용자 편집 후 덮어쓰지 않으며 완료를 보장하지 않는다.
 end note
 
 note right of MedicationNameVerifier

@@ -1,0 +1,71 @@
+@startuml
+skinparam defaultFontName Nanum Gothic
+skinparam shadowing false
+title 약 등록 검토, 정확 품목 저장과 지연 보완
+actor User
+boundary "PillIdentificationUI / ManualMedicationEntryUI" as Input
+boundary "MedicationScheduleReviewUI" as Review
+control "MedBuddyPrescriptionViewModel" as Results
+boundary "CheckResultUI" as UI
+control "MedBuddySavedMedicationViewModel" as Save
+control "CheckCatalogMedicationDetail" as Catalog
+boundary "Medication API" as API
+control "CheckSavedMedication" as Persist
+participant "EnrichmentDispatcher" as Enrich
+participant "Local/cache/public detail sources" as Sources
+database "Application DB" as DB
+
+User -> Input: Select only desired pill candidates / validate manual entries
+opt Pill candidates
+Input -> User: Keep duplicates or merge matching schedules?
+Input -> Review: Selected unsaved candidates and photos
+User -> Review: Confirm dose, period, date, mode, slots and cycle
+Review --> Input: Reviewed schedules (no save)
+Input -> Input: Resolve duplicates using reviewed identities and schedules
+end
+Input -> Results: showMedicationRegistrationResults(source, items, save callback, photos)
+alt Current idle flow accepts handoff
+Results --> Input: true; own immutable review and temporary photos
+Input -> UI: Close registration routes; reveal home-owned result
+else Busy/disposed/stale flow
+Results --> Input: false; keep input route
+end
+note over Results,UI: Pill/manual results do not request prescription-change radar.\nReview acceptance and candidate selection are not writes.
+
+User -> UI: Save one / save all
+loop Requested unfinished rows, sequentially for save all
+UI -> Results: Request save; guard account and result operation
+Results -> Save: Source-specific save(index, isCurrent)
+opt Pill-photo registration
+Save -> API: GET /catalog/{item_seq}; client timeout 5s
+API -> Catalog: Exact local basic / approval lookup
+Catalog -> DB: Read only; no autoflush, network or AI generation
+Catalog --> Save: Same-ID detail or null/error
+Save -> Save: Missing/failure/mismatch: retain selected candidate and reviewed schedule
+end
+Save -> API: POST /save after current-scope check
+API -> Persist: saveMedicationDetail
+Persist -> DB: Save/duplicate transaction
+Persist --> API: Committed result
+API -> Enrich: Queue best-effort enrichment target after commit
+API --> Save: Saved / duplicate / failed
+Save --> Results: Preserve completion before dependent refreshes
+Results --> UI: Completed row locked; failed row retryable
+end
+Results -> Results: Refresh list, schedule, reminders in current scope
+note right of Results: Refresh failure does not undo saved rows.\nNo atomic batch or durable registration-resume queue.\nTemporary photo cleanup waits for in-use saves.
+opt Every row saved or duplicate
+UI -> User: Centered completion dialog
+User -> UI: Today schedule / pillbox / Home
+UI -> UI: Close dialog, then navigate
+end
+
+group Independent best-effort detail work
+Enrich -> DB: New session; check account, identity and regimen snapshot
+Enrich -> Sources: Exact-ID local detail; only unique exact-ID cache/public match
+Sources --> Enrich: Bounded readable source text / optional summary / failure
+Enrich -> DB: Account lock; recheck identity, revision, unchanged blank fields
+DB --> Enrich: Fill still-missing detail only, or skip changed/deleted/stopped target
+end
+note over Enrich,DB: Per-loop max 32 jobs, 2 concurrent; 40s lookup budget includes waiting.\nNot durable: overload, timeout or restart may leave fields missing.\nNever change dose/schedule or reverse the accepted save.
+@enduml
