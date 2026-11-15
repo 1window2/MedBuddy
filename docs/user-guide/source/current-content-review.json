@@ -206,7 +206,7 @@
       "source": "frontend/lib/boundaries/medication_registration_flow.dart"
     },
     {
-      "feature": "Prescription scroll-content header/add control, photo modal, borders/error surface",
+      "feature": "Prescription fixed header/add control (up to a quarter of the height), photo modal, borders/error surface",
       "sections": [
         "2.3",
         "2.4",

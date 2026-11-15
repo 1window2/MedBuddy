@@ -208,11 +208,11 @@ extension DoseWidgetStore on DoseOutboxStore {
   // Function Name: widgetRefreshNeed
   // Description: Inspects display-source freshness without writing widget state or issuing new action tokens.
   // Parameters: now (DateTime) - clock used to determine the dose day.
-  // Returns: Active owner and whether its selected self/patient snapshot is current; null without an active initialized widget.
+  // Returns: Active owner, whether its selected self/patient snapshot is current, and whether the widget shows linked
+  //   patients; null without an active initialized widget.
   // - A failed patient snapshot is stale even on today's date; storage/decryption errors propagate.
-  Future<({String owner, bool snapshotCurrent})?> widgetRefreshNeed({
-    required DateTime now,
-  }) async {
+  Future<({String owner, bool snapshotCurrent, bool patientView})?>
+  widgetRefreshNeed({required DateTime now}) async {
     // Function Name: read
     // Description: Decodes one account-scoped metadata value without mutating the stored projection.
     // Parameters: name (String) - complete metadata key; token (String) - owner hash for authenticated decryption.
@@ -239,10 +239,15 @@ extension DoseWidgetStore on DoseOutboxStore {
       return (
         owner: owner,
         snapshotCurrent: cache?['date'] == day && cache?['failed'] != true,
+        patientView: true,
       );
     }
     final cache = await read('cache:$token', token);
-    return (owner: owner, snapshotCurrent: cache?['date'] == day);
+    return (
+      owner: owner,
+      snapshotCurrent: cache?['date'] == day,
+      patientView: false,
+    );
   }
 
   // Resolve only current, active-account patient keys, never hashes from intents.

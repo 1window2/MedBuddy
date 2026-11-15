@@ -196,6 +196,31 @@ async def test_multiple_visual_boundary_orders_and_parses_pills() -> None:
     assert observations[1][1].front_imprint == "SJ"
 
 
+# Function Name: test_multiple_visual_boundary_reports_transport_timeout_as_timeout
+# Description:
+# - A provider transport deadline is a timeout, as on the single-pill path, not an outage.
+# Parameters:
+# - error (Exception): Deadline raised by the provider call.
+# Returns:
+# - None.
+@pytest.mark.parametrize("error", [TimeoutError("deadline"), httpx.ReadTimeout("deadline")])
+@pytest.mark.anyio
+async def test_multiple_visual_boundary_reports_transport_timeout_as_timeout(error: Exception) -> None:
+    class _TimingOutVisionAPI:
+        async def requestMultipleVisualFeatures(self, **_kwargs: object) -> str:
+            raise error
+
+    boundary = PillVisionBoundary(
+        client=object(),  # type: ignore[arg-type]
+        image_processing_boundary=_CompositionProcessor(),  # type: ignore[arg-type]
+        vision_api=_TimingOutVisionAPI(),  # type: ignore[arg-type]
+        timeout_seconds=1,
+    )
+
+    with pytest.raises(TimeoutError, match="Multiple-pill visual analysis timed out"):
+        await boundary.extractMultipleVisualFeatures(b"photo")
+
+
 # Function Name: test_multiple_visual_boundary_rejects_overlapping_duplicate_boxes
 # Description:
 # - Rejects overlapping duplicate pill boxes with a vision-response error.

@@ -18,6 +18,7 @@ from core.database import get_db
 from core.request_database_work import run_request_database_work
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from schemas.medication_care import DoseHistoryUpdate, RegimenChangeRequest
+from services.saved_medication_enrichment import queue_changed_medication_enrichment
 
 router = APIRouter(tags=["Medication care"])
 
@@ -40,15 +41,19 @@ async def get_catalog_detail(
 
 # 함수이름: change_medication
 # 함수역할: 약 수정·중단·교체를 요청한다. 상위 라우터의 계정 잠금·App Check를 유지한다.
-# 매개변수: medication_id: 기존 약, request: 본문, principal: 주체, db: 공유 세션.
+#   새 과정의 상세 정보가 아직 비어 있으면 응답 뒤 보강을 다시 예약한다.
+# 매개변수: medication_id: 기존 약, request: 본문, background_tasks: 응답 후 작업, principal: 주체, db: 공유 세션.
 # 반환값: 새 약 또는 중단한 약의 버전 응답.
 @router.post("/care/medications/{medication_id}/change")
 def change_medication(
     medication_id: int, request: RegimenChangeRequest,
+    background_tasks: BackgroundTasks,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
-    return ManageMedicationCare(db).change_medication(principal, medication_id, request)
+    response = ManageMedicationCare(db).change_medication(principal, medication_id, request)
+    queue_changed_medication_enrichment(background_tasks, db, response)
+    return response
 
 
 # 함수이름: get_history

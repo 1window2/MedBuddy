@@ -977,7 +977,8 @@ class PillVisionBoundary:
                         response_schema=self._MULTI_RESPONSE_SCHEMA,
                     )
                     return self._parse_multiple_visual_features(response_text)
-        except TimeoutError as exc:
+        except (TimeoutError, httpx.TimeoutException) as exc:
+            # Like the single-pill path: a transport deadline is a timeout, not an outage.
             raise TimeoutError("Multiple-pill visual analysis timed out.") from exc
         except (PillImageQualityError, PillVisionResponseError):
             raise

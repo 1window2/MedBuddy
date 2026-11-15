@@ -337,6 +337,7 @@ void main() {
     expect(result.detail.itemSeq, _firstId);
     expect(result.detail.warning, 'warning for $_firstId');
     expect(await flow.model.requestMedicationSave(result, 0), isTrue);
+    expect(flow.model.prescriptionStatusMessage, '복약 정보가 성공적으로 저장되었습니다.');
     expect(flow.count('/identify'), 0);
     final row = flow.rows.single;
     expect(row['item_seq'], _firstId);
@@ -734,7 +735,12 @@ class _Flow {
         loseAcknowledgement = false;
         throw const SocketException('Simulated lost save acknowledgement');
       }
-      return _json({'success': true, 'id': row['id']});
+      // The server's own message is English whatever the app language.
+      return _json({
+        'success': true,
+        'id': row['id'],
+        'message': "'$name' saved to pillbox.",
+      });
     }
     if (path.endsWith('/list') || path.endsWith('/schedule/today')) {
       expect(request.url.queryParameters['patient_hash'], _patient);

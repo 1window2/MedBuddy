@@ -349,3 +349,23 @@ async def test_real_account_guard_releases_before_slow_enrichment_and_second_sav
         assert listed.status_code == 200
         with pipeline.factory() as db:
             assert all(row.efficacy == VALUES["efficacy"] for row in db.query(_SavedMedication).all())
+
+
+def test_regimen_change_queues_the_new_course_still_missing_details(factory):
+    from controls.manage_medication_care_control import ManageMedicationCare
+    from test_medication_care import change, medication, principal
+
+    with factory() as db:
+        old_id = medication(db, item_seq=SEQ, **{field: "" for field in enrichment.DETAIL_FIELDS}).id
+        response = ManageMedicationCare(db).change_medication(principal(), old_id, change())
+        tasks = BackgroundTasks()
+        enrichment.queue_changed_medication_enrichment(tasks, db, response)
+        target = tasks.tasks[0].args[1]
+        # The save's job targets old_id and stops at the superseded row; the new course needs its own.
+        assert target.medication_id == response["id"] != old_id
+        assert (target.owner, target.item_seq) == ("patient-a", SEQ)
+        assert set(target.missing) == set(enrichment.DETAIL_FIELDS)
+
+        refused = BackgroundTasks()
+        enrichment.queue_changed_medication_enrichment(refused, db, {"success": False, "id": response["id"]})
+        assert not refused.tasks

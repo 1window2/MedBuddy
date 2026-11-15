@@ -21,7 +21,6 @@ import '../boundaries/health_recommendation_ui_boundary.dart';
 import '../boundaries/guided_prescription_camera_ui_boundary.dart';
 import '../boundaries/input_prescription_ui_boundary.dart';
 import '../boundaries/link_patient_caregiver_ui_boundary.dart';
-import '../boundaries/manual_medication_entry_ui_boundary.dart';
 import '../boundaries/manage_user_hub_ui_boundary.dart';
 import '../boundaries/medbuddy_bottom_navigation_ui_boundary.dart';
 import '../boundaries/manage_user_setting_ui_boundary.dart';
@@ -982,10 +981,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // Role: Retains selection by relationship and patient, falling back to the first valid link.
   // Parameters: none. Returns: selected link, or null without verified patient access.
   PatientCaregiverLink? _syncSelectedPatient() {
-    final links =
-        _homeScheduleSource == 'patients' &&
-            _chatList?.hasResolvedLinks == true &&
-            _chatList?.hasError == false
+    final linksKnown =
+        _chatList?.hasResolvedLinks == true && _chatList?.hasError == false;
+    // A failed or pending link read shows no patient but keeps the choice: the next
+    // successful read restores it instead of falling back to the first link.
+    // Access is still refused meanwhile by _patientScopeIsCurrent.
+    if (_homeScheduleSource == 'patients' && !linksKnown) return null;
+    final links = _homeScheduleSource == 'patients'
         ? _caregiverHome?.links ?? const <PatientCaregiverLink>[]
         : const <PatientCaregiverLink>[];
     final selected =
@@ -1297,12 +1299,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onPillIdentificationRequested: (mode) =>
           openPillIdentification(context, viewModel, mode),
       // 함수이름: _buildHomeInput.onManualMedicationRequested callback
-      // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에서 캡처된 작업 `_openManualMedicationEntry(context, viewModel)`을 실행한다.
+      // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에서 캡처된 작업 `openManualMedicationEntry(context, viewModel)`을 실행한다.
       // 매개변수:
       // - 없음.
       // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
       onManualMedicationRequested: () =>
-          _openManualMedicationEntry(context, viewModel),
+          unawaited(openManualMedicationEntry(context, viewModel)),
       // Function Name: _buildHomeInput.onTodayScheduleRequested callback
       // Description: Refreshes revisited Schedule or Pillbox destinations and records a newly selected destination as visited.
       // Parameters:
@@ -1461,7 +1463,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     switch (feature) {
       case AppFeature.manualMedication:
-        _openManualMedicationEntry(context, viewModel);
+        unawaited(openManualMedicationEntry(context, viewModel));
       case AppFeature.medicationSearch:
         await Navigator.push<void>(
           searchContext,
@@ -1493,7 +1495,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               patientHash: owner,
               currentUserHash: owner,
               isEnglish: viewModel.userSetting.isEnglish,
-              initiallyShowExport: feature == AppFeature.historySharing,
+              initiallyShowExport: true,
               onChanged: () async {
                 if (!mounted || !_sameSession(viewModel, owner)) return;
                 await viewModel.refreshMedicationSchedule();
@@ -1848,37 +1850,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     return success;
-  }
-
-  // Function Name: _openManualMedicationEntry
-  // Description: Opens manual medication entry with deferred per-save refresh and one final batch refresh.
-  // Parameters: context: Navigator location; viewModel: Settings and save-action owner.
-  // Returns: None; does not wait for route closure.
-  void _openManualMedicationEntry(
-    BuildContext context,
-    MedBuddyViewModel viewModel,
-  ) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        // 함수이름: _openManualMedicationEntry.builder callback
-        // 함수역할: 화면을 만들 때의 사용자 설정으로 약 직접 입력 화면을 구성한다.
-        // 매개변수:
-        // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-        // 반환값: 약 직접 입력 화면 위젯.
-        builder: (context) => ManualMedicationEntryUI(
-          userSetting: viewModel.userSetting,
-          onReviewRequested: (entries) => completeMedicationRegistrationReview(
-            context,
-            () => viewModel.showManualMedicationRegistrationResults(entries),
-          ),
-          // 여러 약을 저장해도 목록·일정·알림은 마지막에 한 번만 갱신한다.
-          onSaveRequested: (entry) =>
-              viewModel.saveManualMedication(entry, refreshAfterSave: false),
-          onSavesFinished: viewModel.refreshAfterMedicationSaves,
-        ),
-      ),
-    );
   }
 
   // 함수이름: _openPatientCaregiverLink

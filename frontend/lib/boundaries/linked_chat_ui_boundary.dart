@@ -946,6 +946,14 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     );
   }
 
+  // 함수이름: _chatDoseKey
+  // 함수역할: 이 화면에서 기록을 확인한 요청 약 하나를 날짜·시간대·약 ID로 구분한다.
+  // 매개변수: slot: 원본 요청, medication: 그 요청의 약. 반환값: 확인 기록 키.
+  static String _chatDoseKey(
+    ChatScheduleContext slot,
+    ChatMedicationContext medication,
+  ) => '${slot.scheduleDate}:${slot.slotKey}:${medication.medicationId}';
+
   // 함수이름: _chatDoseCompleted
   // 함수역할: 현재 기기 기록을 우선 사용해 같은 복용 요청의 중복 처리를 막는다.
   // 매개변수: slot: 원본 요청의 약과 날짜. 반환값: 모든 요청 약의 해당 시간대 완료 여부.
@@ -963,9 +971,8 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       );
     }
     return slot.medications.every(
-          (medication) => _confirmedChatDoses.contains(
-            '${slot.scheduleDate}:${slot.slotKey}:${medication.medicationId}',
-          ),
+          (medication) =>
+              _confirmedChatDoses.contains(_chatDoseKey(slot, medication)),
         ) ||
         _scheduleContexts.any(
           (current) =>
@@ -1030,9 +1037,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       if (response != null) _history.addMessage(response);
       setState(() {
         for (final medication in slot.medications) {
-          _confirmedChatDoses.add(
-            '${slot.scheduleDate}:${slot.slotKey}:${medication.medicationId}',
-          );
+          _confirmedChatDoses.add(_chatDoseKey(slot, medication));
         }
       });
       await _refreshScheduleContexts();

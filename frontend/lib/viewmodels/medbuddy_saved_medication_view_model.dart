@@ -121,6 +121,16 @@ class MedBuddySavedMedicationViewModel {
     clear();
   }
 
+  // Function Name: _saveGuard
+  // Description: Combines the save generation with the caller's own lifetime check.
+  // Parameters: generation: Save generation captured at the start; isRequestCurrent: Optional caller guard.
+  // Returns: A check that stays true only while both are current.
+  bool Function() _saveGuard(
+    int generation,
+    bool Function()? isRequestCurrent,
+  ) =>
+      () => _isCurrentSave(generation) && (isRequestCurrent?.call() ?? true);
+
   // 함수이름: _isCurrentSave
   // 함수역할: 목록 재조회와 별개로 저장 작업의 계정 세대가 여전히 유효한지 확인한다.
   // 매개변수: generation: 저장 시작 시 기록한 세대 번호.
@@ -268,6 +278,26 @@ class MedBuddySavedMedicationViewModel {
     return result;
   }
 
+  // Function Name: saveResultMessage
+  // Description: Turns a save result into feedback in the app language. The server and control messages are
+  //   Korean or English regardless of the setting, so only Korean failure text is passed through.
+  // Parameters: result: Save outcome. Returns: The feedback text.
+  String saveResultMessage(MedicationSaveResult result) =>
+      switch (result.status) {
+        MedicationSaveStatus.saved =>
+          _isEnglishSetting
+              ? 'Medication information saved.'
+              : '복약 정보가 성공적으로 저장되었습니다.',
+        MedicationSaveStatus.duplicate =>
+          _isEnglishSetting
+              ? 'This medication is already saved.'
+              : '이미 추가된 약입니다.',
+        MedicationSaveStatus.failed =>
+          _isEnglishSetting
+              ? 'Could not save medication information.'
+              : result.message,
+      };
+
   // Function Name: saveMedicationInfo
   // Description: Saves medication details and optional schedule/photo, then conditionally refreshes dependent state.
   // Parameters: medicationInfo: Detail data; medicationSchedule: Optional OCR/manual schedule; localImagePath: Device-only photo; refreshAfterSave: Whether to refresh immediately; isRequestCurrent: Optional result-flow lifetime guard.
@@ -280,8 +310,7 @@ class MedBuddySavedMedicationViewModel {
     bool Function()? isRequestCurrent,
   }) async {
     final generation = _saveGeneration;
-    bool isCurrent() =>
-        _isCurrentSave(generation) && (isRequestCurrent?.call() ?? true);
+    final isCurrent = _saveGuard(generation, isRequestCurrent);
     if (!isCurrent()) return _cancelledSaveResult();
     _statusMessage = _isEnglishSetting
         ? 'Saving ${medicationInfo.itemName}...'
@@ -293,19 +322,19 @@ class MedBuddySavedMedicationViewModel {
         medicationInfo,
         medicationSchedule: medicationSchedule,
       ),
-      // Only the explicit capacity rejection proves that no save was applied.
-      // Network failures and unclassified replies can hide a committed save.
+      // Only the capacity rejection and a refusal before saving (the app's schedule
+      // check, a validation reply) prove that no save was applied. Network failures
+      // and unclassified replies can hide a committed save.
       applied: (result) =>
           result.status != MedicationSaveStatus.failed ||
-          result.failureKind != MedicationSaveFailureKind.limitReached,
+          (result.failureKind != MedicationSaveFailureKind.limitReached &&
+              result.failureKind != MedicationSaveFailureKind.rejected),
       isRequestCurrent: isCurrent,
     );
     // 서버가 이미 저장한 결과는 유지하되 종료된 계정의 사진·일정 작업은 시작하지 않는다.
     if (!isCurrent()) return result;
     if (result.status == MedicationSaveStatus.failed) {
-      _statusMessage = _isEnglishSetting
-          ? 'Could not save medication information.'
-          : result.message;
+      _statusMessage = saveResultMessage(result);
       _notifyViewModelListeners();
       return result;
     }
@@ -328,13 +357,7 @@ class MedBuddySavedMedicationViewModel {
 
     if (!isCurrent()) return result;
 
-    _statusMessage = result.status == MedicationSaveStatus.duplicate
-        ? (_isEnglishSetting
-              ? 'This medication is already saved.'
-              : '이미 추가된 약입니다.')
-        : (_isEnglishSetting
-              ? 'Medication information saved.'
-              : '복약 정보가 성공적으로 저장되었습니다.');
+    _statusMessage = saveResultMessage(result);
     if (refreshAfterSave) {
       await _refreshAfterSaves(generation, isRequestCurrent: isCurrent);
     }
@@ -351,8 +374,7 @@ class MedBuddySavedMedicationViewModel {
     int generation, {
     bool Function()? isRequestCurrent,
   }) async {
-    bool isCurrent() =>
-        _isCurrentSave(generation) && (isRequestCurrent?.call() ?? true);
+    final isCurrent = _saveGuard(generation, isRequestCurrent);
     if (!isCurrent()) return;
     await fetchSavedMedicationInfo();
     if (!isCurrent()) return;
@@ -383,16 +405,10 @@ class MedBuddySavedMedicationViewModel {
     bool Function()? isRequestCurrent,
   }) async {
     final generation = _saveGeneration;
-    bool isCurrent() =>
-        _isCurrentSave(generation) && (isRequestCurrent?.call() ?? true);
+    final isCurrent = _saveGuard(generation, isRequestCurrent);
     if (!isCurrent()) return _cancelledSaveResult();
     final schedule = entry.toMedicationSchedule();
-    final selected = entry.catalogMedication;
-    MedicationDetail? medicationDetail =
-        selected != null &&
-            selected.itemName.trim() == entry.medicationName.trim()
-        ? selected
-        : null;
+    MedicationDetail? medicationDetail = entry.selectedCatalogDetail;
     // 사용자가 선택한 품목은 다시 이름 검색으로 다른 약에 연결하지 않는다.
     if (medicationDetail == null) {
       try {
@@ -428,7 +444,7 @@ class MedBuddySavedMedicationViewModel {
   // - refreshAfterSave (bool): 저장 후 목록·일정·알림을 즉시 갱신할지 여부
   // - isRequestCurrent (bool Function()?): 결과 화면을 나간 요청의 후속 저장·갱신을 막는 선택적 수명 검사
   // 반환값:
-  // - Future<MedicationSaveResult>: 사용자가 고른 낱알약 후보와 확인한 복약 일정을 공공데이터 상세 정보로 보완한다. 상세 조회가 실패해도 후보 정보와 사용자 입력 일정으로 기존 저장 흐름을 계속 진행한다.
+  // - Future<MedicationSaveResult>: 저장 결과. 상세 정보는 품목번호로 서버의 로컬 카탈로그만 정확히 조회하며, 조회가 실패해도 후보 정보와 확인한 일정으로 저장한다. 빈 상세는 서버가 저장 뒤 따로 보강한다.
   Future<MedicationSaveResult> saveIdentifiedPill(
     PillIdentificationCandidate candidate,
     MedicationSchedule medicationSchedule, {
@@ -436,8 +452,7 @@ class MedBuddySavedMedicationViewModel {
     bool Function()? isRequestCurrent,
   }) async {
     final generation = _saveGeneration;
-    bool isCurrent() =>
-        _isCurrentSave(generation) && (isRequestCurrent?.call() ?? true);
+    final isCurrent = _saveGuard(generation, isRequestCurrent);
     if (!isCurrent()) return _cancelledSaveResult();
     MedicationDetail? medicationDetail;
     try {
@@ -690,8 +705,7 @@ class MedBuddySavedMedicationViewModel {
     bool Function()? isRequestCurrent,
   }) async {
     final generation = _saveGeneration;
-    bool isCurrent() =>
-        _isCurrentSave(generation) && (isRequestCurrent?.call() ?? true);
+    final isCurrent = _saveGuard(generation, isRequestCurrent);
     if (!isCurrent()) throw StateError('Medication request canceled.');
     final suspend = suspendSchedule;
     final invalidate = invalidateSchedule;

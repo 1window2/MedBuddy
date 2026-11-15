@@ -1049,13 +1049,9 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   // Parameters: patientCode (PatientLinkCode): code and expiry.
   // Returns: Future resolving to true for regeneration after expiry, otherwise null when closed.
   Future<bool?> _showPatientCodeDialog(PatientLinkCode patientCode) async {
-    final userHash = _committedUserHash;
     final control = _control;
     final navigator = Navigator.of(context, rootNavigator: true);
-    bool isCurrentScope() =>
-        mounted &&
-        userHash == _committedUserHash &&
-        identical(control, _control);
+    final isCurrentScope = _currentScopeCheck();
     final route = DialogRoute<bool>(
       context: context,
       themes: InheritedTheme.capture(from: context, to: navigator.context),
@@ -1100,6 +1096,25 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   void _dismissPatientCodeDialog() {
     final route = _patientCodeDialogRoute;
     _patientCodeDialogRoute = null;
+    _removeRouteAfterFrame(route);
+  }
+
+  // 함수이름: _currentScopeCheck
+  // 함수역할: 창을 연 계정과 컨트롤러가 여전히 유효한지 확인하는 검사를 만든다.
+  // 매개변수: 없음. 반환값: 화면과 계정 범위가 유지되면 true를 돌려주는 검사.
+  bool Function() _currentScopeCheck() {
+    final userHash = _committedUserHash;
+    final control = _control;
+    return () =>
+        mounted &&
+        userHash == _committedUserHash &&
+        identical(control, _control);
+  }
+
+  // 함수이름: _removeRouteAfterFrame
+  // 함수역할: 위젯 갱신 중 탐색 상태를 바꾸지 않고, 다음 프레임에 아직 열린 창을 닫는다.
+  // 매개변수: route: 닫을 창, 없으면 아무것도 하지 않는다. 반환값: 없음.
+  static void _removeRouteAfterFrame(Route<Object?>? route) {
     if (route == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final navigator = route.navigator;
@@ -1118,16 +1133,8 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     if (!mounted || _isLoading || _registrationDialogRoute != null) {
       return;
     }
-    final userHash = _committedUserHash;
-    final control = _control;
     final navigator = Navigator.of(context, rootNavigator: true);
-    // 함수이름: isCurrentScope
-    // 함수역할: 등록 창을 연 계정과 컨트롤러가 여전히 유효한지 확인한다.
-    // 매개변수: 없음. 반환값: 화면과 계정 범위가 유지되면 true.
-    bool isCurrentScope() =>
-        mounted &&
-        userHash == _committedUserHash &&
-        identical(control, _control);
+    final isCurrentScope = _currentScopeCheck();
 
     final route = DialogRoute<void>(
       context: context,
@@ -1168,16 +1175,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   void _dismissRegistrationDialog() {
     final route = _registrationDialogRoute;
     _registrationDialogRoute = null;
-    if (route == null) return;
-    // 함수이름: addPostFrameCallback 콜백
-    // 함수역할: 위젯 갱신 중 탐색 상태를 변경하지 않고 남은 등록 창을 정리한다.
-    // 매개변수: _ (Duration): 프레임 시각. 반환값: 없음.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final navigator = route.navigator;
-      if (navigator != null && navigator.mounted && route.isActive) {
-        navigator.removeRoute(route);
-      }
-    });
+    _removeRouteAfterFrame(route);
   }
 }
 

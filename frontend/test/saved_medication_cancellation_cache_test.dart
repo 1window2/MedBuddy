@@ -128,6 +128,32 @@ void main() {
     );
   }
 
+  // A refusal before anything was saved proves nothing was applied, like the 409.
+  for (final refusal in ['schedule check', 'validation reply']) {
+    test('a $refusal restores populated caches', () async {
+      final cache = await fixture.store.readCache(_owner);
+      final window = await fixture.store.readOfflineScheduleWindow(_owner);
+      fixture.respond = () async => _json({'detail': 'invalid'}, status: 422);
+
+      final result = refusal == 'schedule check'
+          ? await fixture.model.saveMedicationInfo(
+              _detail,
+              medicationSchedule: _schedule(
+                23,
+              ).copyWith(intakeTime: '1일 3회 후 감량'),
+              refreshAfterSave: false,
+            )
+          : await fixture.save();
+
+      expect(result.failureKind, MedicationSaveFailureKind.rejected);
+      expect(fixture.saveCalls, refusal == 'schedule check' ? 0 : 1);
+      expect(fixture.restoreCalls, 1);
+      expect(fixture.invalidateCalls, 0);
+      expect(await fixture.store.readCache(_owner), cache);
+      expect(await fixture.store.readOfflineScheduleWindow(_owner), window);
+    });
+  }
+
   for (final outcome in [
     'saved',
     'duplicate',

@@ -34,10 +34,7 @@ extension MedBuddySavedMedicationFacade on MedBuddyViewModel {
           AnalyzedMedication(
             schedule: entry.toMedicationSchedule(),
             detail:
-                (entry.catalogMedication?.itemName.trim() ==
-                        entry.medicationName.trim()
-                    ? entry.catalogMedication
-                    : null) ??
+                entry.selectedCatalogDetail ??
                 MedicationDetail(
                   itemName: entry.medicationName.trim(),
                   efficacy: '',

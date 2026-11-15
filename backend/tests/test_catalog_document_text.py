@@ -73,3 +73,12 @@ def test_plain_text_and_inline_comparisons_are_not_rewritten() -> None:
         "First source line.\n\nSecond source line."
     )
     assert read_catalog_document("Source says < 5 and > 1.") == "Source says < 5 and > 1."
+
+
+def test_korean_bracket_labels_stay_source_text() -> None:
+    # Approval documents mark age groups and notes as "<소아>" or "<주의>"; tag names are ASCII.
+    assert read_catalog_document("<주의> 임부는 복용하지 마십시오.") == "<주의> 임부는 복용하지 마십시오."
+    assert read_catalog_document("1일 3회 복용. <소아> 1회 1정") == "1일 3회 복용. <소아> 1회 1정"
+    assert read_catalog_document(
+        "<DOC><PARAGRAPH><![CDATA[&lt;소아&gt; 1회 1정]]></PARAGRAPH></DOC>"
+    ) == "<소아> 1회 1정"

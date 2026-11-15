@@ -632,4 +632,22 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     });
   }
+
+  testWidgets('a failed link read keeps the chosen patient', (tester) async {
+    final h = harness(tester);
+    h.links.result = [_link(1), _link(2)];
+    await h.pump(tester);
+    await tester.pumpAndSettle();
+    await _tab(tester, 'schedule');
+    await tester.tap(find.byKey(const Key('schedule-patient-next')));
+    await tester.pumpAndSettle();
+    expect(_schedule(tester).patientHash, 'patient-2');
+    h.links.fail = true;
+    await h.refresh(tester);
+    expect(find.byType(CheckCaregiverMedicationUI), findsNothing);
+    h.links.fail = false;
+    await h.refresh(tester);
+    expect(_schedule(tester).patientHash, 'patient-2');
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }

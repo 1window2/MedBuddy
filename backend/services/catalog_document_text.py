@@ -163,9 +163,11 @@ def read_catalog_document(value: str | None) -> str:
                 lines.append(line)
         result = "\n".join(lines).strip()
         # Incomplete/escaped tags can arrive in separate HTML data callbacks. Inspect
-        # the assembled text; numeric comparisons such as "< 5" remain source text.
+        # the assembled text; numeric comparisons such as "< 5" and Korean labels such
+        # as "<소아>" remain source text, because tag names are ASCII.
         if any(
-            part[:1].isalpha() or part.startswith(("/", "!", "?"))
+            (part[:1].isascii() and part[:1].isalpha())
+            or part.startswith(("/", "!", "?"))
             for part in result.split("<")[1:]
         ):
             return ""

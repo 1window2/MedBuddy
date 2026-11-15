@@ -269,15 +269,27 @@ Future<bool> runBackgroundTask(
     if (scopeHash.trim().isEmpty) {
       return true;
     }
+    // The caregiver widget needs the dose store; missed-dose alerts do not. A store that
+    // cannot be opened skips only the widget refresh.
+    var refreshWidget = false;
     if (!isReminderTask) {
-      final store = await deps.openDoseStore();
-      if (!await store.isActive(scopeHash)) return true;
+      try {
+        final store = await deps.openDoseStore();
+        if (!await store.isActive(scopeHash)) return true;
+        refreshWidget = true;
+      } catch (error) {
+        developer.log(
+          '보호자 위젯 갱신을 건너뜁니다: 복약 저장소를 열지 못했습니다.',
+          name: 'CaregiverNotificationMonitorService',
+          error: error,
+        );
+      }
     }
     client = await deps.openClient();
     if (client == null) {
       return false;
     }
-    if (!isReminderTask) {
+    if (refreshWidget) {
       // Monitoring may omit schedules for patients with alerts disabled.
       // Widgets always use the separate, complete schedules endpoint.
       await deps.refreshCaregiverWidget(owner: scopeHash, client: client);

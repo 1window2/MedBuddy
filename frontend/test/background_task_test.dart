@@ -587,6 +587,31 @@ void main() {
       expect(client.closed, isFalse);
     });
 
+    // Function Name: unreadable dose store test
+    // Description: A dose store that cannot be opened skips only the caregiver widget; the missed-dose check still runs.
+    // Parameters: None. Returns: Future<void>; fails when the alert check is skipped.
+    test('an unreadable dose store skips only the caregiver widget', () async {
+      final taskClient = _ClosingClient(
+        MockClient((_) async => http.Response('{}', 200)),
+      );
+      final deps = _RecordingDeps(client: taskClient);
+
+      final result = await runBackgroundTask(
+        caregiverNotificationBackgroundTask,
+        {'caregiver_hash': 'caregiver-a'},
+        deps,
+      );
+
+      expect(result, isTrue);
+      expect(deps.calls, [
+        'openDoseStore',
+        'openClient',
+        'initializeNotifications',
+        'checkCaregiverAlerts:caregiver-a:${ApiConfig.baseUrl}',
+      ]);
+      expect(taskClient.closed, isTrue);
+    });
+
     // Function Name: missing caregiver scope and unknown task names do nothing
     // Description:
     // - Treats missing caregiver scope and an unknown task name as successful no-ops without opening or closing the client.

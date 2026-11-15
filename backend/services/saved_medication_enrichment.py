@@ -55,15 +55,19 @@ class EnrichmentTarget:
     missing: dict[str, str | None]
 
 
+def _identity(target: EnrichmentTarget) -> dict[str, Any]:
+    # The saved course as it was queued: same row, owner and product, still active and unedited.
+    return dict(
+        id=target.medication_id, patient_hash=target.owner, item_seq=target.item_seq,
+        stopped_on=None, superseded_by_id=None, **target.protected,
+    )
+
+
 def _target(db: Session, target: EnrichmentTarget) -> _SavedMedication | None:
     account = db.get(_UserAccount, target.owner)
     if account is None or account.deletion_requested_at or account.identity_deleted_at:
         return None
-    row = db.query(_SavedMedication).filter_by(
-        id=target.medication_id, patient_hash=target.owner, item_seq=target.item_seq,
-        stopped_on=None, superseded_by_id=None, **target.protected,
-    ).first()
-    return row
+    return db.query(_SavedMedication).filter_by(**_identity(target)).first()
 
 
 def _preflight(factory: sessionmaker, target: EnrichmentTarget) -> tuple[bool, MedicationDetail | None]:
@@ -141,9 +145,7 @@ def _apply(factory: sessionmaker, target: EnrichmentTarget, values: dict[str, st
             # Compare the original blank values as well as identity/revision. A user edit
             # wins even if another writer does not participate in account locking.
             db.query(_SavedMedication).filter_by(
-                id=target.medication_id, patient_hash=target.owner, item_seq=target.item_seq,
-                stopped_on=None, superseded_by_id=None, **target.protected,
-                **{field: target.missing[field] for field in updates},
+                **_identity(target), **{field: target.missing[field] for field in updates},
             ).update(updates, synchronize_session=False)
             db.commit()
 
@@ -235,3 +237,21 @@ def queue_saved_medication_enrichment(
             db.rollback()
         except Exception as exc:
             logger.warning("Enrichment session release failed: %s", type(exc).__name__)
+
+
+def queue_changed_medication_enrichment(
+    background_tasks: BackgroundTasks, db: Session, response: dict[str, object],
+) -> None:
+    # A regimen change copies the details of the course it replaces. A course saved moments
+    # earlier may still be waiting for its details, and that job stops at the superseded row,
+    # so the new course is queued on its own. Stopped courses and failed changes queue nothing.
+    if not response.get("success"):
+        return
+    try:
+        row = db.get(_SavedMedication, response.get("id"))
+        owner, item_seq = (row.patient_hash, row.item_seq) if row is not None else (None, None)
+    except Exception as exc:
+        logger.warning("Medication enrichment could not be queued: %s", type(exc).__name__)
+        return
+    if owner:
+        queue_saved_medication_enrichment(background_tasks, db, response, owner, item_seq)

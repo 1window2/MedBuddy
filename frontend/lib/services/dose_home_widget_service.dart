@@ -326,8 +326,7 @@ class DoseHomeWidget {
       if (!need.snapshotCurrent) return true;
       // Today's patient cache is usable offline, but another device can change
       // it at any time, including undoing a dose without sending a push.
-      final state = await store.updateWidget(owner: owner, now: platform.now);
-      return state?.view['source'] == 'patients';
+      return need.patientView;
     } catch (_) {
       return true;
     }
@@ -370,8 +369,8 @@ class DoseHomeWidget {
     try {
       final store = await platform.openStore();
       if (!await store.isActive(owner) || !await _hasInstalledWidget()) return;
-      final state = await store.updateWidget(owner: owner, now: platform.now);
-      if (state?.view['source'] != 'patients') return;
+      final need = await store.widgetRefreshNeed(now: platform.now);
+      if (need == null || need.owner != owner || !need.patientView) return;
       await platform.registerSync(owner);
     } catch (_) {
       // Widget refresh must not prevent notification delivery. Periodic work

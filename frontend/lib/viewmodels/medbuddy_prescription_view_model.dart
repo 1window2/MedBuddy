@@ -1050,7 +1050,7 @@ class MedBuddyPrescriptionViewModel {
       if (!_isCurrentPrescriptionOperation(operationId)) {
         return false;
       }
-      _statusMessage = result.message;
+      _statusMessage = savedMedications.saveResultMessage(result);
       if (result.isCompleted) {
         _completedMedicationSaveIndexes.add(medicationIndex);
         _notifyViewModelListeners();
