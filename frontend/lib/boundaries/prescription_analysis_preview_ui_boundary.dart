@@ -22,6 +22,7 @@ import '../widgets/expandable_medication_section.dart';
 import '../widgets/medbuddy_notice.dart';
 import '../widgets/medication_dosing_mode_selector.dart';
 import '../widgets/medication_entry_fields.dart';
+import '../widgets/medication_review_image_gallery.dart';
 import '../widgets/pinned_analysis_summary.dart';
 import '../widgets/responsive_card_header.dart';
 import '../theme/medbuddy_theme.dart';

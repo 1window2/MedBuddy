@@ -176,7 +176,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
 
-    expect(find.byKey(const Key('ocr-expanded-image-viewer')), findsOneWidget);
+    expect(
+      find.byKey(const Key('medication-review-viewer-photo')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const Key('ocr-expanded-sensitive-region-1')),
       findsOneWidget,
@@ -185,9 +188,35 @@ void main() {
     expect(find.textContaining('개인정보 마스킹 영역'), findsOneWidget);
     expect(find.textContaining('원본 이미지는 이 기기에만 남습니다'), findsOneWidget);
     final interactiveViewer = tester.widget<InteractiveViewer>(
-      find.byKey(const Key('ocr-expanded-image-viewer')),
+      find.byKey(const Key('medication-review-viewer-photo')),
     );
     expect(interactiveViewer.maxScale, 5);
+    expect(find.byKey(const Key('ocr-expanded-region-0')), findsOneWidget);
+    expect(find.byKey(const Key('ocr-expanded-region-2')), findsNothing);
+    final headingRect = tester.getRect(
+      find.byKey(const Key('medication-review-viewer-heading')),
+    );
+    final photoRect = tester.getRect(
+      find.byKey(const Key('medication-review-viewer-photo')),
+    );
+    expect(photoRect.top, closeTo(headingRect.bottom, .1));
+    expect(
+      tester.getTopLeft(find.byKey(const Key('ocr-expanded-explanation'))).dy,
+      greaterThanOrEqualTo(photoRect.bottom),
+    );
+    final dialog = tester.getRect(
+      find.byKey(const Key('medication-review-viewer-content')),
+    );
+    expect(dialog.left, greaterThan(0));
+    expect(dialog.top, greaterThan(0));
+    expect(dialog.bottom, lessThan(856));
+    final barrier = tester.widget<ModalBarrier>(find.byType(ModalBarrier).last);
+    expect(barrier.dismissible, isTrue);
+    expect(barrier.color!.a, lessThan(.9));
+    expect(
+      find.byKey(const Key('medication-review-viewer-thumbnails')),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
 
     // 가로 화면과 큰 글씨에서도 안내가 이미지와 닫기 버튼을 밀어내지 않는다.
@@ -197,22 +226,38 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(
-      tester.getSize(find.byKey(const Key('ocr-expanded-image-viewer'))).height,
+      tester
+          .getSize(find.byKey(const Key('medication-review-viewer-photo')))
+          .height,
       greaterThan(100),
     );
     expect(
-      find.byKey(const Key('ocr-expanded-close')).hitTestable(),
+      find.byKey(const Key('medication-review-viewer-close')).hitTestable(),
       findsOneWidget,
     );
     tester.view.physicalSize = const Size(376, 856);
     tester.platformDispatcher.clearTextScaleFactorTestValue();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('ocr-expanded-close')));
+    await tester.tap(find.byKey(const Key('medication-review-viewer-close')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
-    expect(find.byKey(const Key('ocr-expanded-image-viewer')), findsNothing);
+    expect(
+      find.byKey(const Key('medication-review-viewer-photo')),
+      findsNothing,
+    );
     expect(find.textContaining('개인정보 마스킹 영역'), findsNothing);
+
+    // 사진 밖의 반투명 영역을 눌러도 검토 화면 상태를 유지하며 닫는다.
+    await tester.tap(find.byKey(const Key('ocr-preview-image')));
+    await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(4, 4));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('medication-review-viewer-photo')),
+      findsNothing,
+    );
+    expect(find.byKey(const Key('ocr-region-0')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('prescription-analyze-button')));
     await tester.pumpAndSettle();

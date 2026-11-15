@@ -93,7 +93,7 @@ class _RecognitionNoticeBanner extends StatelessWidget {
 // 주요 책임:
 // - 0~1000 정규화 좌표를 화면 크기에 맞는 사각형으로 변환한다.
 // - 복약 정보 인식 영역은 초록색으로, 민감정보 영역은 불투명하게 보여준다.
-// - 사용자가 사진을 눌러 전체 화면에서 확대해 확인하게 한다.
+// - 사용자가 사진을 눌러 중앙 모달에서 확대해 확인하게 한다.
 // 속성:
 // - imagePath (String): 사진 미리보기 또는 확대에 사용할 로컬 파일 경로.
 // - regions (List<RecognizedTextRegion>): 이미지 좌표에 표시할 정규화 OCR 영역.
@@ -177,42 +177,34 @@ class _RecognizedTextRegionPreview extends StatelessWidget {
   }
 
   // 함수이름: _showExpandedPreview
-  // 함수역할: OCR 영역과 개인정보 마스킹이 유지된 원본 이미지를 전체 화면으로 연다.
+  // 함수역할: OCR 영역과 개인정보 마스킹이 유지된 사진을 공용 확대 모달로 연다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _showExpandedPreview(BuildContext context) {
-    return showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: previewText.close,
-      barrierColor: Colors.black.withValues(alpha: 0.92),
-      transitionDuration: const Duration(milliseconds: 180),
-      // 함수이름: _showExpandedPreview.pageBuilder callback
-      // 함수역할: OCR 사용 영역과 개인정보 마스킹을 표시한 사진에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
-      // 매개변수:
-      // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-      // - animation (Animation<double>): 대화상자 전환의 주 또는 보조 애니메이션.
-      // - secondaryAnimation (Animation<double>): 대화상자 전환의 주 또는 보조 애니메이션.
-      // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-      pageBuilder: (context, animation, secondaryAnimation) {
-        return _ExpandedRecognizedImageView(
-          imagePath: imagePath,
-          regions: regions,
-          previewText: previewText,
-        );
-      },
-      // 함수이름: _showExpandedPreview.transitionBuilder callback
-      // 함수역할: 확대 이미지 콘텐츠에 화면 전환 애니메이션의 투명도를 적용한다.
-      // 매개변수:
-      // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-      // - animation (Animation<double>): 대화상자 전환의 주 또는 보조 애니메이션.
-      // - secondaryAnimation (Animation<double>): 대화상자 전환의 주 또는 보조 애니메이션.
-      // - child (콜백 계약에서 추론): 해당 레이아웃 안에 배치할 콘텐츠 위젯.
-      // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
+    // 미리보기에서 이미 해석한 실제 사진 비율을 확대 모달에서도 그대로 사용한다.
+    final size = context.size;
+    final aspectRatio = size != null && size.height > 0
+        ? size.width / size.height
+        : _RecognizedImageCanvas._fallbackPrescriptionAspectRatio;
+    return showMedicationReviewPhotos(
+      context,
+      language: previewText.isEnglish ? 'en' : 'ko',
+      photos: [
+        MedicationReviewPhoto(
+          title: previewText.expandedImageTitle,
+          aspectRatio: aspectRatio,
+          imageBuilder: (context) => Center(
+            child: _RecognizedImageCanvas(
+              imagePath: imagePath,
+              regions: regions,
+              previewText: previewText,
+              keyPrefix: 'ocr-expanded',
+            ),
+          ),
+          footer: _RecognizedImageFooter(previewText: previewText),
+        ),
+      ],
     );
   }
 }
@@ -519,142 +511,55 @@ class _RecognizedImageCanvasState extends State<_RecognizedImageCanvas> {
   }
 }
 
-// 클래스명: _ExpandedRecognizedImageView
-// 역할: 최대 5배 확대 가능한 OCR 처리 처방전 사진을 담당한다.
-// 주요 책임:
-// - 공통 이미지 캔버스를 최대 5배까지 확대할 수 있게 한다.
-// - 닫기 동작으로 분석 예비 화면의 상태를 유지한 채 돌아간다.
-// 속성:
-// - imagePath (String): 사진 미리보기 또는 확대에 사용할 로컬 파일 경로.
-// - regions (List<RecognizedTextRegion>): 이미지 좌표에 표시할 정규화 OCR 영역.
-class _ExpandedRecognizedImageView extends StatelessWidget {
-  final String imagePath;
-  final List<RecognizedTextRegion> regions;
+// 클래스명: _RecognizedImageFooter
+// 역할: 확대 사진 바로 아래 OCR 색상과 실제 개인정보 처리 범위를 설명한다.
+// 주요 책임: 사진 확대·이동과 분리된 설명을 공용 모달의 스크롤 영역에 제공한다.
+// 속성: previewText (_PreviewText): 언어별 OCR·개인정보 설명.
+class _RecognizedImageFooter extends StatelessWidget {
   final _PreviewText previewText;
 
-  // 함수이름: _ExpandedRecognizedImageView
-  // 함수역할: 최대 5배 확대 가능한 OCR 처리 처방전 사진에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - imagePath (String): 사진 미리보기 또는 확대에 사용할 로컬 파일 경로.
-  // - regions (List<RecognizedTextRegion>): 이미지 좌표에 표시할 정규화 OCR 영역.
-  // - previewText (_PreviewText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 입력 설정이 반영된 _ExpandedRecognizedImageView 인스턴스.
-  const _ExpandedRecognizedImageView({
-    required this.imagePath,
-    required this.regions,
-    required this.previewText,
-  });
+  // 함수이름: _RecognizedImageFooter
+  // 함수역할: 현재 언어의 OCR 설명과 개인정보 안내를 받는다.
+  // 매개변수: previewText (_PreviewText): 표시 문구.
+  // 반환값: 확대 사진의 설명 영역.
+  const _RecognizedImageFooter({required this.previewText});
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 최대 5배 확대 가능한 OCR 처리 처방전 사진 화면을 구성한다.
+  // 함수역할: OCR 영역 설명과 기기 내 OCR·개인정보 제거 후 텍스트 전송 안내를 구성한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 최대 5배 확대 가능한 OCR 처리 처방전 사진에 쓰는 위젯 트리.
+  // 반환값: 사진 아래에 배치할 설명 위젯.
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Column(
+    return Column(
+      key: const Key('ocr-expanded-explanation'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 56),
-              child: Row(
-                children: [
-                  IconButton(
-                    key: const Key('ocr-expanded-close'),
-                    tooltip: previewText.close,
-                    // 함수이름: build.onPressed callback
-                    // 함수역할: `Navigator.of(context).pop()`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-                    // 매개변수:
-                    // - 없음.
-                    // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close, color: Colors.white),
-                  ),
-                  Expanded(
-                    child: KeepWordsText(
-                      previewText.expandedImageTitle,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 48),
-                ],
-              ),
+            const Icon(
+              Icons.document_scanner_outlined,
+              size: 17,
+              color: MedBuddyColors.successSurface,
             ),
+            const SizedBox(width: 7),
             Expanded(
-              child: LayoutBuilder(
-                // 함수이름: build.builder callback
-                // 함수역할: 최대 5배 확대 가능한 OCR 처리 처방전 사진에 Key, EdgeInsets.all을 적용해 현재 배치를 구성한다.
-                // 매개변수:
-                // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-                // - constraints (BoxConstraints): 부모 레이아웃이 허용한 너비·높이 범위.
-                // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-                builder: (context, constraints) {
-                  return InteractiveViewer(
-                    key: const Key('ocr-expanded-image-viewer'),
-                    constrained: false,
-                    minScale: 1,
-                    maxScale: 5,
-                    boundaryMargin: const EdgeInsets.all(120),
-                    child: SizedBox(
-                      width: constraints.maxWidth,
-                      child: _RecognizedImageCanvas(
-                        imagePath: imagePath,
-                        regions: regions,
-                        previewText: previewText,
-                        keyPrefix: 'ocr-expanded',
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(context).height * 0.35,
-              ),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(
-                          Icons.document_scanner_outlined,
-                          size: 17,
-                          color: MedBuddyColors.successSurface,
-                        ),
-                        const SizedBox(width: 7),
-                        Expanded(
-                          child: KeepWordsText(
-                            previewText.recognizedRegionGuide,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              height: 1.35,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    _PrivacyNoticeBanner(message: previewText.privacyNotice),
-                  ],
+              child: KeepWordsText(
+                previewText.recognizedRegionGuide,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  height: 1.35,
                 ),
               ),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 10),
+        _PrivacyNoticeBanner(message: previewText.privacyNotice),
+      ],
     );
   }
 }

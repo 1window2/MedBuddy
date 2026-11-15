@@ -45,7 +45,7 @@ class MedicationImageViewer {
     await showDialog<void>(
       context: context,
       useSafeArea: false,
-      barrierColor: Colors.black,
+      barrierColor: Colors.black.withValues(alpha: 0.78),
       // 함수이름: show.builder callback
       // 함수역할: 사용 가능한 약품 사진의 확대 보기 진입에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
       // 매개변수:
@@ -96,62 +96,123 @@ class _MedicationImageViewerDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.black,
-      child: SafeArea(
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: Semantics(
-                image: true,
-                label: imageLabel,
-                child: InteractiveViewer(
-                  minScale: 0.8,
-                  maxScale: 5,
-                  boundaryMargin: const EdgeInsets.all(80),
-                  child: Center(child: source.buildImage()),
-                ),
-              ),
+      type: MaterialType.transparency,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              key: const Key('medication-image-viewer-backdrop'),
+              behavior: HitTestBehavior.opaque,
+              excludeFromSemantics: true,
+              onTap: () => Navigator.pop(context),
             ),
-            Positioned(
-              left: 16,
-              right: 16,
-              top: 8,
-              child: Row(
-                children: [
-                  IconButton(
-                    key: const Key('medication-image-viewer-close'),
-                    tooltip: closeLabel,
-                    // 함수이름: build.onPressed callback
-                    // 함수역할: `Navigator.pop(context)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-                    // 매개변수:
-                    // - 없음.
-                    // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(
-                      Icons.close,
-                      color: Colors.white,
-                      size: 30,
-                    ),
+          ),
+          SafeArea(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Padding(
+                  // Keep the title and photo centered together, including large text.
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: MedBuddySpacing.pageHorizontal,
+                    vertical: 64,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: KeepWordsText(
-                      medicationName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) => Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxWidth: MedBuddySpacing.contentMaxWidth,
+                        ),
+                        child: Column(
+                          key: const Key('medication-image-viewer-content'),
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              excludeFromSemantics: true,
+                              onTap: () {},
+                              child: ColoredBox(
+                                key: const Key(
+                                  'medication-image-viewer-heading',
+                                ),
+                                color: const Color(0xFF202322),
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    12,
+                                    8,
+                                    4,
+                                    8,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: ConstrainedBox(
+                                          constraints: BoxConstraints(
+                                            maxHeight:
+                                                constraints.maxHeight * 0.35,
+                                          ),
+                                          child: SingleChildScrollView(
+                                            key: const Key(
+                                              'medication-image-viewer-title',
+                                            ),
+                                            child: Semantics(
+                                              header: true,
+                                              child: KeepWordsText(
+                                                medicationName,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 20,
+                                                  fontWeight: FontWeight.w700,
+                                                  letterSpacing: 0,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        key: const Key(
+                                          'medication-image-viewer-close',
+                                        ),
+                                        tooltip: closeLabel,
+                                        onPressed: () => Navigator.pop(context),
+                                        icon: const Icon(
+                                          Icons.close,
+                                          color: Colors.white,
+                                          size: 30,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Flexible(
+                              child: Semantics(
+                                image: true,
+                                label: imageLabel,
+                                child: InteractiveViewer(
+                                  key: const Key(
+                                    'medication-image-viewer-photo',
+                                  ),
+                                  minScale: 0.8,
+                                  maxScale: 5,
+                                  boundaryMargin: const EdgeInsets.all(80),
+                                  child: source.buildImage(),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -235,12 +296,10 @@ class _MedicationImageSource {
     Object error,
     StackTrace? stackTrace,
   ) {
-    return const Center(
-      child: Icon(
-        Icons.image_not_supported_outlined,
-        color: MedBuddyColors.textLight,
-        size: 64,
-      ),
+    return const Icon(
+      Icons.image_not_supported_outlined,
+      color: MedBuddyColors.textLight,
+      size: 64,
     );
   }
 }
