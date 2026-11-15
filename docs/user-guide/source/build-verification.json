@@ -1,88 +1,153 @@
 {
-  "reviewed_on": "2026-11-11",
-  "app_version": "1.0.0 development branch",
+  "reviewed_on": "2026-11-16",
+  "app_version": "v1.0.1 development branch",
+  "baseline": "bbbdef53",
+  "code_reference": "8fd45298",
   "edition": "portrait-and-landscape",
   "default_edition": "landscape",
-  "pdf_file": "MedBuddy_User_Guide_ko.pdf",
+  "publication_status": "Validated artifacts promoted locally after parent approval; no external publishing or Git writes.",
   "chapters": 10,
   "subsections": 92,
-  "steps": 328,
-  "pages": 138,
-  "pdf_internal_links_verified": 102,
-  "pdf_bookmarks_verified": 102,
-  "all_step_text_verified": true,
-  "all_source_note_text_verified": true,
+  "steps": 342,
   "preservation_checks": {
     "previous_steps": 328,
     "existing_step_ids_preserved_exactly_once": true,
-    "step_order": "Unchanged.",
-    "image_crop_and_annotation_geometry_preserved": false,
-    "added_step_ids": [],
-    "refreshed_assets": [
-      "ASM-P016:2",
-      "ASM-P020:10",
-      "CURRENT-2.10:saved-demo",
-      "ASM-P058:5"
+    "existing_step_order_preserved": true,
+    "added_step_ids": [
+      "UG-20261116-2.7:14",
+      "UG-20261116-2.7:15",
+      "UG-20261116-2.9:5",
+      "UG-20261116-2.11:7",
+      "UG-20261116-2.12:9",
+      "UG-20261116-3.4:3",
+      "UG-20261116-5.2:4",
+      "UG-20261116-6.1:4",
+      "UG-20261116-6.4:6",
+      "UG-20261116-6.9:3",
+      "UG-20261116-6.9:4",
+      "UG-20261116-6.9:5",
+      "UG-20261116-6.9:6",
+      "UG-20261116-6.9:7"
     ],
-    "added_assets": [
-      "assets/prescription-image-card-1.0.0-2026-11-11.png",
-      "assets/pill-saved-1.0.0-2026-11-11.png",
-      "assets/schedule-alarm-save-1.0.0-2026-11-11.png"
-    ],
-    "all_manifest_hashes_verified": true,
-    "all_captions_below_photos": true,
-    "portrait_pages": 147,
-    "landscape_pages": 138
+    "refreshed_existing_steps": 70,
+    "all_manifest_hashes_verified": true
   },
   "visual_review": {
     "portrait": {
-      "pages": 147,
-      "rendered_pages": 147,
-      "contact_sheets_reviewed": 10,
-      "glyphs_checked": 49126,
+      "pages": 151,
+      "rendered_pages": 151,
+      "pdf_sha256": "feec1ffc3311417816228740aabc2d6eacdc1873b78aceaef14c38a49c9fc97e",
+      "glyphs_checked": 51746,
       "out_of_page_glyphs": [],
-      "pdf_sha256": "adb24b5913714509010cdc5734a8fc8b16b28ea767f2368e89b01cb399c86552",
       "visual_review": "reviewed",
       "observed_layout_defects": [],
-      "changed_pages_reviewed": [
+      "contact_sheets_reviewed": 10,
+      "expanded_pages_reviewed": [
+        1,
         19,
-        21,
-        37,
-        97
-      ]
+        22,
+        23,
+        26,
+        28,
+        30,
+        31,
+        33,
+        34,
+        35,
+        36,
+        38,
+        39,
+        40,
+        69,
+        75,
+        78,
+        79,
+        84,
+        85,
+        107,
+        108,
+        109,
+        110,
+        145,
+        146,
+        148
+      ],
+      "final_composer_correction_pages": [
+        84
+      ],
+      "remaining_pages_pixel_identical_to_preceding_review": true
     },
     "landscape": {
-      "pages": 138,
-      "rendered_pages": 138,
-      "contact_sheets_reviewed": 9,
-      "glyphs_checked": 47885,
+      "pages": 142,
+      "rendered_pages": 142,
+      "pdf_sha256": "e74d331d692778550d60bb23f88e277c338a881ee8e30e54d953ca06d53f0199",
+      "glyphs_checked": 50458,
       "out_of_page_glyphs": [],
-      "pdf_sha256": "bcf81a549880424a6332cafe7281a6427618c011217a311fa78f12de2d807dc1",
       "visual_review": "reviewed",
       "observed_layout_defects": [],
-      "changed_pages_reviewed": [
+      "contact_sheets_reviewed": 9,
+      "expanded_pages_reviewed": [
+        1,
         18,
         20,
+        21,
+        24,
+        28,
+        29,
+        32,
+        33,
+        34,
         36,
-        92
-      ]
+        37,
+        38,
+        64,
+        70,
+        73,
+        74,
+        79,
+        80,
+        102,
+        103,
+        104,
+        105,
+        137,
+        138,
+        140
+      ],
+      "final_composer_correction_pages": [
+        79
+      ],
+      "remaining_pages_pixel_identical_to_preceding_review": true
     }
   },
-  "revision": {
-    "captures": "Replace the screenshots of 2.3-4 and 2.3-9 (photo card and 'add a missing medication' below it), 2.12-8 (pill saved) and 7.5-5 (reminder dialog) with captures of the 1.0.0 app; the previous images showed the removed review table, a debug ribbon and the earlier bottom tabs.",
-    "text": "README text unchanged; the four steps still describe the captured screens.",
-    "removed_assets": [
-      "assets/prescription-review-legacy.png",
-      "assets/guide-pill-saved-demo.png",
-      "source/assets/2816052dd74eb97b30d2236c806e568710c05e1a3a8cacc3eb0f47441130e877.png"
-    ],
-    "provenance": "SOURCE_NOTES.md records this revision and earlier capture methods."
+  "portrait": {
+    "pdf_file": "MedBuddy_User_Guide_ko_portrait.pdf",
+    "candidate_file": ".build/MedBuddy_User_Guide_ko_portrait.pdf",
+    "pages": 151,
+    "steps": 342,
+    "pdf_sha256": "feec1ffc3311417816228740aabc2d6eacdc1873b78aceaef14c38a49c9fc97e",
+    "internal_links_verified": 211,
+    "bookmarks_verified": 102,
+    "all_step_text_verified": true,
+    "all_notes_verified": true
   },
-  "pdf_sha256": "bcf81a549880424a6332cafe7281a6427618c011217a311fa78f12de2d807dc1",
-  "markdown_sha256": "f9e0b2f7857f6d12e56d63452e1eb251192a8dd409b6df31f6a474e4fa0094cd",
-  "content_sha256": "76dc19df6cc8cb3d2af5fc0a87c68096a3d61bbd03f26b9932164b7591c7cb82",
-  "layout_sha256": "69f73887fac8d074f463d9710318611222bd0c5aa870d83c1e9c4916d0f38699",
-  "asset_manifest_sha256": "41d825e9dca473f2eae24468043315311b10bfdd1618f251d1502d428c88794e",
+  "landscape": {
+    "pdf_file": "MedBuddy_User_Guide_ko.pdf",
+    "candidate_file": ".build/MedBuddy_User_Guide_ko.pdf",
+    "pages": 142,
+    "steps": 342,
+    "pdf_sha256": "e74d331d692778550d60bb23f88e277c338a881ee8e30e54d953ca06d53f0199",
+    "internal_links_verified": 102,
+    "bookmarks_verified": 102,
+    "all_step_text_verified": true,
+    "all_notes_verified": true
+  },
+  "candidate_markdown": ".build/README.md",
+  "markdown_sha256": "17413a2c07c2a119ce93efe20561ae36c49fe3527feec79230621fa2eeb0ca92",
+  "source_markdown_sha256": "17413a2c07c2a119ce93efe20561ae36c49fe3527feec79230621fa2eeb0ca92",
+  "content_sha256": "4f366de557ac2a067fdcbaca5d065d0fa5705901ed77ba61dc729f25b7fb74e9",
+  "layout_sha256": "251820e7878347eadee2918b7b0cee68911493e9806e8a3f225f2a473b997673",
+  "asset_manifest_sha256": "889214ef321afaea041eb8377ff6f54e8fbb13e813ece07d86bfc833cdc62a4d",
   "fonts_sha256": {
     "NanumBarunGothic.ttf": "9b872773134e2e4d8c0b17021266786576db06c843ede0d0b523b214a450756c",
     "NanumBarunGothicBold.ttf": "39bba4cd9bd2986143825c8654abbb62443914ab33b346c0c929a916f5d98bf2"
@@ -91,72 +156,37 @@
     "reportlab": "4.4.9",
     "pypdf": "6.21.4",
     "Pillow": "13.0.0",
-    "pypdfium2": "5.14.0"
+    "pypdfium2": "5.13.0"
   },
+  "markdown_links_verified": 429,
+  "markdown_anchors_verified": 249,
   "review_scope": {
-    "method": "All 285 pages of both editions rendered and compared with the previous publication; only portrait pages 19, 21, 37 and 97 and landscape pages 18, 20, 36 and 92 differ, and those were inspected at full size.",
-    "full_page_images_inspected": {
-      "portrait": [
-        19,
-        21,
-        37,
-        97
-      ],
-      "landscape": [
-        18,
-        20,
-        36,
-        92
-      ]
-    },
-    "runtime_changes": "Captured from the 1.0.0 debug build on beta/v1.0.0 (includes the 2026-11-11 word-wrap and privacy-mask changes).",
+    "method": "All 293 pages rendered; 19 contact sheets reviewed; 54 pages enlarged. Final composer correction rerendered, only portrait 84 and landscape 79 changed.",
     "source_paths": "Only repository-relative paths recorded."
   },
-  "portrait": {
-    "pdf_file": "MedBuddy_User_Guide_ko_portrait.pdf",
-    "pages": 147,
-    "steps": 328,
-    "pdf_sha256": "adb24b5913714509010cdc5734a8fc8b16b28ea767f2368e89b01cb399c86552",
-    "internal_links_verified": 211,
-    "bookmarks_verified": 102,
-    "all_step_text_verified": true,
-    "all_notes_verified": true
-  },
-  "landscape": {
-    "pdf_file": "MedBuddy_User_Guide_ko.pdf",
-    "pages": 138,
-    "steps": 328,
-    "pdf_sha256": "bcf81a549880424a6332cafe7281a6427618c011217a311fa78f12de2d807dc1",
-    "internal_links_verified": 102,
-    "bookmarks_verified": 102,
-    "all_step_text_verified": true,
-    "all_notes_verified": true,
-    "continuation_columns": 0,
-    "screenshots_aligned_to_step_numbers": true
+  "capture_environment": {
+    "selected_images": 50,
+    "isolated_widget_fixtures": 44,
+    "supplied_android_images": 6,
+    "provenance": "source/current-captures.json",
+    "content_review": "source/current-content-review.json"
   },
   "review_evidence": [
     {
       "report": ".build/audit.json",
-      "sha256": "3bd32da5a39b39ba1fb4d073f4be136d241910632e4c73ae78a4e59e2bf01ee2"
+      "sha256": "a7130c2c86e9d61c6653b545dcf5bfff377c92c8800ec209abd9bcdda4e292ef"
     },
     {
       "report": ".build/landscape-audit.json",
-      "sha256": "8eb4d56d06713b16b06d1017441805bf0abc98ff7a48bd881924f497abe95498"
+      "sha256": "d19db2ce6dc37a9949008c23cd17fb4e8eff43f26d938f5042d9ff9c8e50e6e8"
+    },
+    {
+      "report": ".build/review-portrait-delivery/review.json",
+      "sha256": "ef9bc344905796058ab136d8cf3faa460674befe73679362f14c076c5012395f"
+    },
+    {
+      "report": ".build/review-landscape-delivery/review.json",
+      "sha256": "47ccee3302a073b2a3dca81fb5fba275193c5865e58d30dd8981e3b796f0edfe"
     }
-  ],
-  "previous_revision_capture_environment": {
-    "refreshed_images": 0,
-    "added_images": 0,
-    "kind": "Reuse existing reviewed captures; no new captures for the chapter reorganization.",
-    "limitations": "No application behavior or live service was exercised for this document-only revision."
-  },
-  "capture_environment": {
-    "refreshed_images": 4,
-    "added_images": 3,
-    "kind": "medbuddy_rc emulator (Android 14, 1080x2400), debug build 1.0.0+27 against a local backend whose AI and public-data services were offline fakes; demo prescription and pill photos drawn for the guide",
-    "app_text_size": "medium",
-    "text_scale": 1.0,
-    "device_system_bars": "cropped",
-    "limitations": "No production account, server or live AI/public-data lookup was used; medication names and results are demo data."
-  }
+  ]
 }

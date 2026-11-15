@@ -1,0 +1,587 @@
+{
+  "date": "2026-11-16",
+  "version": "v1.0.1 development branch",
+  "baseline": "bbbdef53",
+  "fixture_viewport": "412x915 logical, 2x PNG; manual helper 412x900",
+  "font_override": "Noto Sans KR in isolated .build/capture-app source snapshot only; production source unchanged.",
+  "sources": [
+    {
+      "image": "assets/current-2026-11-16/prescription-review.png",
+      "sha256": "0040efccb43f078ce64c1129f835ed74d17bd50f4bb50d9a389f581de7001662",
+      "steps": [
+        "2.3:2",
+        "2.3:3",
+        "2.3:9",
+        "2.4:2",
+        "2.4:7"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/prescription-photo-dialog.png",
+      "sha256": "07220d027813829c83203fab2a2662521977da11e023312a3932f65b472d167c",
+      "steps": [
+        "2.3:4"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/prescription-candidate-action.png",
+      "sha256": "163a255ddea1c421442d970723e5faacf08edf58015af15cf14450f142ef14f0",
+      "steps": [
+        "2.4:1",
+        "2.4:3"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/prescription-candidate-dialog.png",
+      "sha256": "fa03309d20b19b49e91708185a4c3b1b078a16612bbb2463212cc726708707f8",
+      "steps": [
+        "2.4:4"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/prescription-candidate-selected.png",
+      "sha256": "42c4c729d63fb4c6c3ce7ccc71b62729975f87fc41d235f4dc511ab319277c9f",
+      "steps": [
+        "2.4:5"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/prescription-confirmed.png",
+      "sha256": "d574e5cb352ecbf3c9a05364fec309f7204877a90a836fa0acf17a10e23e7be9",
+      "steps": [
+        "2.4:6"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/prescription-result.png",
+      "sha256": "7335bbaee79cc3659b55f7cf74cbdcc3bf9311a5b78c9b882dcef031ff85f94b",
+      "steps": [
+        "2.5:1",
+        "2.6:1",
+        "2.6:3",
+        "2.6:4"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/prescription-radar.png",
+      "sha256": "8157d548ae9c868542e0bc244b16792c4b88e5a284010e784e90c77e7c30338f",
+      "steps": [
+        "2.5:2"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/prescription-result-expanded.png",
+      "sha256": "60e017591ff36f34bc4693cad58a60fe2685ccce0ad912cd62b5ae594c91fe65",
+      "steps": [
+        "2.6:2"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/prescription-save-complete.png",
+      "sha256": "2fa8273955ca47010b1c3f1254a857f9d6eb800325ef975a0a750b55dbb28cc9",
+      "steps": [
+        "2.6:5"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/manual-entry.png",
+      "sha256": "79e9c35624073d6932079abb8bac85ca7e76f29dbcf56ff0a1c6b449421af916",
+      "steps": [
+        "2.7:1"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/manual-multiple.png",
+      "sha256": "46b6d37478a78e6a6941ac3e9dc1b4249650afded7489b68c1ab6880ddb63512",
+      "steps": [
+        "2.7:4"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/manual-review-action.png",
+      "sha256": "93b4ed793cfceb8b31b6ec261595bb0f9da62f284e390c004ba69ac7571e2717",
+      "steps": [
+        "2.7:9"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/manual-result.png",
+      "sha256": "845faad3400a2fef87116d6eaeba793e3a83addcd2b406babf7665569e597c6f",
+      "steps": [
+        "2.7:14"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/manual-save-complete.png",
+      "sha256": "916686ba1806e79edd6387c406e31533317bdcf87797af8acc860a92d351ade4",
+      "steps": [
+        "2.7:15"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/manual-as-needed.png",
+      "sha256": "6e3258f9858e2cd702b00852269e35af5f880db454a6e51108105d43d7a38d7d",
+      "steps": [
+        "2.8:2"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/pill-upload-placeholder.png",
+      "sha256": "64cacb2683f67bc775e5df6c7587a128e212f9cc502a184bccbd29b69a8ef966",
+      "steps": [
+        "2.9:2"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/pill-header.png",
+      "sha256": "65f6ade229b1945f579ecd5f9b9711c78d316dd54748c11ad904cdceeb96a51e",
+      "steps": [
+        "2.9:3",
+        "2.9:4",
+        "2.11:1",
+        "2.11:4",
+        "2.11:5",
+        "10.3:2"
+      ],
+      "kind": "supplied_android_capture",
+      "origin": "work/pill-header-aligned-final-20261115.png",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/pill-upload-notice.png",
+      "sha256": "cce413e9c6e242ace7912d0783726cb9dced8b774a465a24f56f0984f3ec9510",
+      "steps": [
+        "2.9:5"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/pill-individual-empty.png",
+      "sha256": "e5b47122225816cceebafdbb199c04c65be60ee0fc83b9d7ad13a45aa362c604",
+      "steps": [
+        "2.10:1"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/pill-individual-paired.png",
+      "sha256": "5a4a9e14ce8de44e964986b0c078c0e458aee2370da67fe349993bd7e24d0b3b",
+      "steps": [
+        "2.10:2",
+        "2.10:4"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/pill-individual-added.png",
+      "sha256": "b8c0063ec31f8df66e5a0ea43c99eb9a0ce29dded13ad9df629488e9890fc093",
+      "steps": [
+        "2.10:3"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/pill-partial-selected.png",
+      "sha256": "494c3ff44c9bd7efee053e10b4777681bccfdbc622e4d27524a604b9da87764e",
+      "steps": [
+        "2.11:2",
+        "2.12:1"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/pill-candidates.png",
+      "sha256": "c5060faf2b63f28dcfff22b312aae1f181f085ca5abc74deb13283cf61981710",
+      "steps": [
+        "2.11:3"
+      ],
+      "kind": "supplied_android_capture",
+      "origin": "work/pill-candidates-final-20261115.png",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/pill-candidate-modal.png",
+      "sha256": "6a1e343784fbe43a3ced8df82aec3e2eee4d1981b76c60bdc9dd9ef281c82f77",
+      "steps": [
+        "2.11:7",
+        "3.4:3"
+      ],
+      "kind": "supplied_android_capture",
+      "origin": "work/pill-image-heading-final-20261115.png",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/pill-partial-review.png",
+      "sha256": "10bc748d5210dd14c1fae60946772a43409410cdd63bb596b3f22fb89c8c08bf",
+      "steps": [
+        "2.12:2"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/pill-partial-edit.png",
+      "sha256": "e8b1916cbaf66f39b58d3abd247ccc60179d004474a1a24f2af1569b02305d5e",
+      "steps": [
+        "2.12:3"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/pill-review-edit.png",
+      "sha256": "2070e4e428889ff3ee8056ed27756ccf8cb5ff8558652f2df30cbaca346f819c",
+      "steps": [
+        "2.12:4",
+        "2.12:5"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/pill-photo-dialog.png",
+      "sha256": "59389049fc087f54d78dbd38a136d0b8da9ef7013ea126ffdbe15aa3a9c483ee",
+      "steps": [
+        "2.12:6"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/pill-review.png",
+      "sha256": "c905bfd65d50d6491475302079f9552f2dd25992fe4e353a72ba220adf528e8f",
+      "steps": [
+        "2.12:7"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/pillPhoto-result.png",
+      "sha256": "cca9875d2d7097f0fe05224f2aa51dd40f9efbfbade475c27f02cf9c17fecf73",
+      "steps": [
+        "2.12:8"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/pillPhoto-save-complete.png",
+      "sha256": "d23db06cccda14afd396b8ba08ddc22fba2a0a82df90ef7ae4eba506a0feb269",
+      "steps": [
+        "2.12:9"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/patient-history.png",
+      "sha256": "74f7e4543d30c1af1e7318dd5ce36093b7baca3239405bd867f43ec881787a34",
+      "steps": [
+        "5.2:3"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/patient-history-first.png",
+      "sha256": "a1d66e0a064269077c5b6582ff7f089f218420c4fa3cfb7392f86a4384046de0",
+      "steps": [
+        "5.2:4"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/patient-link-home.png",
+      "sha256": "cc12946d8d0d4454f254b07f001b10520680afe2ff221e396551099739a3a2f5",
+      "steps": [
+        "6.1:1"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/patient-code-waiting.png",
+      "sha256": "71c344c40cca9940a56e3df1be8b55d436f260ec758943634f65dc6c0fe667c2",
+      "steps": [
+        "6.1:2"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/patient-code-auto-success.png",
+      "sha256": "a9f96d308acfb44aeeab37687aa316e364c8edc0185fb1edd9d0f6a18f46cfec",
+      "steps": [
+        "6.1:4"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/patient-linked-list.png",
+      "sha256": "3bb09e51e06d818722031f7af136a131c3de2268fdc75314c07fd476886d0377",
+      "steps": [
+        "6.3:1"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/patient-schedule.png",
+      "sha256": "7ce5c771d320114d8f5621290988a78043e43f5bd4404b8db8a19a1c21ae9ac4",
+      "steps": [
+        "6.4:2",
+        "6.4:4"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/patient-schedule-second.png",
+      "sha256": "9e47a44e3c1593c189b7a04ced68ba0395bd2c6197f9d1a6deecdb2492d6b43f",
+      "steps": [
+        "6.4:3"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/patient-link-error.png",
+      "sha256": "da427cb4084c6050c3716eb9cbc15b33e821dad55646faa850e789ed1a773f7b",
+      "steps": [
+        "6.4:6"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/chat-medication-request.png",
+      "sha256": "6911f1145ddc6dc15ebaede7a371726fb8054007f1e73ecbe48cfaed1482f8c7",
+      "steps": [
+        "6.9:1",
+        "6.9:3",
+        "6.9:4"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/chat-medication-completed.png",
+      "sha256": "c82d7b95c35af2293b70a375eabce892aeb488a1a73e586f0e17db6777c761cf",
+      "steps": [
+        "6.9:5"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/chat-slot-request.png",
+      "sha256": "8ab56529f57c393875d2d82d3060a0fa4c72549f97b518c89f04418b25f525cf",
+      "steps": [
+        "6.9:6"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/chat-slot-completed.png",
+      "sha256": "a25def4cb72c7c86274dae8b550b3db0c873362cc2d781db965ee46a21ccf111",
+      "steps": [
+        "6.9:7"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/widget-chooser.png",
+      "sha256": "420507f53bb97eb36d02ad5e02a3521ba9b822555a8baf57a209974ab10e41bc",
+      "steps": [
+        "7.11:2",
+        "7.11:3"
+      ],
+      "kind": "supplied_android_capture",
+      "origin": "work/widget-placeholder-preview-final-20261115.png",
+      "synthetic_data": true,
+      "notes": "Previously supplied November 15 capture; current native layouts confirmed unchanged by parent. Chooser date/time are intentional native preview placeholders, not missing data."
+    },
+    {
+      "image": "assets/current-2026-11-16/widget-sizes.png",
+      "sha256": "273512f1d017b4608692b9b559fe5f1a8bafb6ea7f9963b2bf086bf505e11c64",
+      "steps": [
+        "7.11:4",
+        "7.11:5",
+        "7.11:6",
+        "7.11:8"
+      ],
+      "kind": "supplied_android_capture",
+      "origin": "work/widget-time-centered-final-20261115.png",
+      "synthetic_data": true,
+      "notes": "Previously supplied November 15 capture; current native layouts confirmed unchanged by parent. Chooser date/time are intentional native preview placeholders, not missing data."
+    },
+    {
+      "image": "assets/current-2026-11-16/widget-caregiver.png",
+      "sha256": "08ef877b0a7144ce80caa324cbc8623c280b09e5a235c22671bd28ee5536f92f",
+      "steps": [
+        "7.12:1",
+        "7.12:2",
+        "7.12:3",
+        "7.12:4",
+        "10.5:1"
+      ],
+      "kind": "supplied_android_capture",
+      "origin": "work/caregiver-background-final-20261115.png",
+      "synthetic_data": true,
+      "notes": "Previously supplied November 15 capture; current native layouts confirmed unchanged by parent. Chooser date/time are intentional native preview placeholders, not missing data."
+    },
+    {
+      "image": "assets/current-2026-11-16/analysis-failure.png",
+      "sha256": "f57c7a3a1f89aa3be498eb4bc6413328f15edf3a3909fdecafd58ec8c9d9bd7d",
+      "steps": [
+        "10.2:1"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    },
+    {
+      "image": "assets/current-2026-11-16/pill-partial-unselected.png",
+      "sha256": "d6617f72dbf132f11e3aef6fe520ff0f023ae2a5f71e2f55f5815bde00131e13",
+      "steps": [
+        "10.3:1"
+      ],
+      "kind": "isolated_product_widget_fixture",
+      "origin": "tools/captures",
+      "synthetic_data": true,
+      "notes": "Example data only; not evidence of real AI identification, account linking, chat delivery or server save."
+    }
+  ]
+}

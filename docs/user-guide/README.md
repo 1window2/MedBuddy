@@ -2,7 +2,7 @@
 
 # MedBuddy 사용설명서
 
-1.0.0 개발 브랜치 · 2026-11-08
+v1.0.1 개발 브랜치 · 2026-11-16
 
 약 등록과 복용 체크, 기록 확인, 가족 연결과 채팅 등 MedBuddy 이용 방법을 안내합니다.
 목차에서 원하는 기능을 선택하고 사진 아래의 순서대로 진행하세요.
@@ -434,7 +434,7 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 #### 4. 원본 사진 확대
 
-원본 사진을 눌러 확대하세요. 초록색 인식 영역과 회색으로 가려진 영역을 살펴보고, 민감한 정보가 남아 있지 않은지 확인하세요.
+원본 사진을 누르면 화면 가운데 확대창이 열립니다. 두 손가락으로 확대해 초록색 인식 영역과 가림 영역을 확인하고, X나 바깥 영역을 눌러 검토 화면으로 돌아오세요.
 
 <a id="manual_page_20"></a>
 
@@ -448,6 +448,10 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 주 1회·격일 등 매일 복용하지 않는 지시를 원본과 대조하세요. 주 1회는 매일 1회와 다르며, 시간대만 바꿔서는 복용일이 바뀌지 않습니다.
 
+<a id="manual_page_21"></a>
+
+[화면 예시: PDF 21쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=21)
+
 #### 7. 조제일자 선택
 
 조제일자 달력에서 날짜를 고르고 ‘확인’을 누르세요. 수정창으로 돌아온 뒤 ‘적용’까지 눌러야 선택한 날짜가 약 카드에 반영됩니다.
@@ -459,23 +463,23 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 입력값·시간대·복용일을 확인하고 ‘적용’을 누른 뒤 바뀐 약은 ‘미확인 약 다시 조회’로 확인하세요. 취소하면 변경을 버리며, 적용만으로 저장되지는 않습니다.
 
-<a id="manual_page_21"></a>
+<a id="manual_page_22"></a>
 
-[화면 예시: PDF 21쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=21)
+[화면 예시: PDF 22쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=22)
 
 #### 9. 누락된 약 추가
 
-원본에만 있는 약은 사진 아래 ‘누락된 약 추가’로 입력하고 ‘다시 조회 필요’를 확인하세요. 같은 제품이 여러 카드에 있으면 중복인지 별도 일정인지 대조하세요.
+원본에만 있는 약은 목록 위쪽 제목 옆 ‘누락된 약 추가’로 입력하고 ‘다시 조회 필요’를 확인하세요. 같은 제품의 중복·별도 일정을 대조하세요.
 
 <a id="section-2-4"></a>
 
 ### 2.4 미확인 약과 후보 확인하기
 
-[소섹션: PDF 22쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=22)
+[소섹션: PDF 23쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=23)
 
-<a id="manual_page_22"></a>
+<a id="manual_page_23"></a>
 
-[화면 예시: PDF 22쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=22)
+[화면 예시: PDF 23쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=23)
 
 #### 1. 미확인 약 찾기
 
@@ -496,9 +500,9 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 1. 처방전에서 읽은 약 이름
 2. 후보 제품의 전체 이름과 제조사
 
-<a id="manual_page_23"></a>
+<a id="manual_page_24"></a>
 
-[화면 예시: PDF 23쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=23)
+[화면 예시: PDF 24쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=24)
 
 #### 5. 일치하는 후보 확정
 
@@ -519,11 +523,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 2.5 이전 처방과 비교하기
 
-[소섹션: PDF 24쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=24)
+[소섹션: PDF 25쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=25)
 
-<a id="manual_page_24"></a>
+<a id="manual_page_25"></a>
 
-[화면 예시: PDF 24쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=24)
+[화면 예시: PDF 25쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=25)
 
 #### 1. 이전 처방 비교 열기
 
@@ -537,15 +541,15 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 2.6 분석한 약 저장하기
 
-[소섹션: PDF 25쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=25)
+[소섹션: PDF 26쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=26)
 
-<a id="manual_page_25"></a>
+<a id="manual_page_26"></a>
 
-[화면 예시: PDF 25쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=25)
+[화면 예시: PDF 26쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=26)
 
 #### 1. 분석 결과 열기
 
-‘결과 보기’ 또는 ‘확인된 약만으로 계속’을 눌러 분석 결과를 여세요. 고정 요약에서 저장할 일정 수를 확인하며, 약 카드는 접힌 상태이고 아직 저장 전입니다.
+‘결과 보기’ 또는 ‘확인된 약만으로 계속’을 눌러 처방전 분석 결과를 여세요. 위쪽 요약에서 저장할 일정 수를 확인하며, 접힌 약 카드를 펼쳐 대조하세요. 아직 저장 전입니다.
 
 #### 2. 제품과 일정 대조
 
@@ -553,15 +557,15 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 #### 3. 전체 저장
 
-모든 약의 정보가 처방과 맞는지 확인하세요. 화면 맨 아래의 ‘전체 저장하기’를 누르면 검토한 약을 한꺼번에 저장할 수 있습니다.
+모든 약의 정보가 처방과 맞는지 확인하고 아래에 고정된 ‘전체 저장하기’를 누르세요. 목록을 내려도 저장 버튼은 남으며, 검토한 약을 한꺼번에 저장합니다.
 
 #### 4. 한 약만 저장
 
 한 약만 저장하려면 해당 카드의 이름·일정을 확인하고 화살표 왼쪽 저장 아이콘을 누르세요. 카드를 펼치지 않아도 저장할 수 있습니다.
 
-<a id="manual_page_26"></a>
+<a id="manual_page_27"></a>
 
-[화면 예시: PDF 26쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=26)
+[화면 예시: PDF 27쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=27)
 
 #### 5. 저장 완료 확인
 
@@ -571,11 +575,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 2.7 약 정보 직접 입력하기
 
-[소섹션: PDF 27쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=27)
+[소섹션: PDF 28쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=28)
 
-<a id="manual_page_27"></a>
+<a id="manual_page_28"></a>
 
-[화면 예시: PDF 27쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=27)
+[화면 예시: PDF 28쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=28)
 
 #### 1. 약 이름과 복용량 입력
 
@@ -593,9 +597,9 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 약별 시작일·종료일·총 기간을 확인하고 다른 약은 ‘약 추가’로 입력하세요. 최대 10개까지 추가하며, 상자가 여러 개면 불필요한 미저장 상자는 X로 빼세요.
 
-<a id="manual_page_28"></a>
+<a id="manual_page_29"></a>
 
-[화면 예시: PDF 28쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=28)
+[화면 예시: PDF 29쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=29)
 
 #### 5. 시작일·종료일 선택
 
@@ -613,17 +617,17 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 아침·점심·저녁·취침 전 중 처방에 맞는 시간대를 모두 고르세요. 매일 먹지 않는 약은 복용일에만 일정이 생기며, 필요시 약에는 정기 주기·시간대를 설정하지 않습니다.
 
-<a id="manual_page_29"></a>
+<a id="manual_page_30"></a>
 
-[화면 예시: PDF 29쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=29)
+[화면 예시: PDF 30쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=30)
 
-#### 9. 복약 정보 저장
+#### 9. 입력한 복약 정보 검토
 
-약별 이름·1회량·기간·유형·주기·시간대를 확인하고 저장하세요. 여러 약이면 ‘전체 복약 정보 저장’을 누르고 완료·미완료 항목을 구분해 확인하세요.
+약별 이름·1회량·기간·유형·주기·시간대를 확인하고 ‘복약 정보 확인’을 누르세요. 여러 약을 입력했다면 함께 검토한 뒤 결과 화면으로 넘깁니다. 이 단계에서는 저장되지 않습니다.
 
 #### 10. 입력 오류 수정
 
-오류가 난 상자의 이름·수량·간격·시간대를 고치세요. 일부만 저장됐다면 ‘저장 완료’ 상자는 두고 나머지를 다시 저장하며, 화면을 나갔다면 복약함부터 확인하세요.
+오류가 난 상자의 이름·수량·간격·시간대를 고친 뒤 다시 검토하세요. 입력 확인을 통과해야 결과 화면으로 이동하며, 검토 버튼을 누르기만 해서는 복약함에 저장되지 않습니다.
 
 #### 11. 약 이름 검색
 
@@ -633,23 +637,31 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 결과의 전체 이름·함량·제형·제조사를 가지고 있는 약과 대조하고 제품을 누르세요. 결과가 없으면 약 이름을 바꿔 다시 검색하세요.
 
-<a id="manual_page_30"></a>
+<a id="manual_page_31"></a>
 
-[화면 예시: PDF 30쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=30)
+[화면 예시: PDF 31쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=31)
 
 #### 13. 제품 선택 후 정보 확인
 
-‘약품 정보 확인’에서 제품을 대조하고 ‘선택’을 누르세요. 약 이름이 채워지면 1회량·기간·주기·시간대는 처방대로 직접 확인한 뒤 9단계에서 저장하세요.
+‘약품 정보 확인’에서 제품을 대조하고 ‘선택’을 누르세요. 약 이름이 채워지면 1회량·기간·주기·시간대는 처방대로 직접 확인한 뒤 9단계에서 검토하세요.
+
+#### 14. 직접 등록 결과 저장
+
+‘직접 등록 결과’에서 검토한 약과 일정 수를 확인하세요. 모두 맞으면 아래 ‘전체 저장하기’를 누르고, 한 약만 저장하려면 해당 카드의 저장 아이콘을 누르세요.
+
+#### 15. 저장 완료 후 이동
+
+‘복약 일정 저장 완료’ 창에서 ‘오늘 일정 확인’·‘복약함 보기’·‘홈으로 돌아가기’를 선택하세요. 일부만 저장되거나 실패했다면 완료 항목과 안내를 확인하고 남은 약만 다시 저장하세요.
 
 <a id="section-2-8"></a>
 
 ### 2.8 필요할 때 복용하는 약 등록하기
 
-[소섹션: PDF 31쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=31)
+[소섹션: PDF 32쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=32)
 
-<a id="manual_page_31"></a>
+<a id="manual_page_32"></a>
 
-[화면 예시: PDF 31쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=31)
+[화면 예시: PDF 32쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=32)
 
 #### 1. 필요시 복용 선택
 
@@ -657,7 +669,7 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 #### 2. 유형 확인 후 저장
 
-필요시 복용에는 정기 주기·시간대를 설정하지 않으며 정기 복약·미복약 알림에서 제외됩니다. 필요시 약으로 등록한 것이 맞는지 확인하고 저장하세요.
+필요시 복용에는 정기 주기·시간대를 설정하지 않으며 정기 복약·미복약 알림에서 제외됩니다. ‘복약 정보 확인’으로 결과를 확인한 뒤 저장하세요.
 
 #### 3. 복약함에서 확인
 
@@ -667,11 +679,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 2.9 한 장에 찍힌 여러 알약 찾기
 
-[소섹션: PDF 32쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=32)
+[소섹션: PDF 33쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=33)
 
-<a id="manual_page_32"></a>
+<a id="manual_page_33"></a>
 
-[화면 예시: PDF 32쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=32)
+[화면 예시: PDF 33쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=33)
 
 #### 1. 여러 알약 모드 선택
 
@@ -679,7 +691,7 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 #### 2. 알약 사진 추가
 
-‘사진 추가’에서 촬영하거나 갤러리 사진을 고르세요. 한 사진에 알약을 최대 10개까지 겹치지 않게 놓고 글자와 각인이 선명하게 보이도록 찍으세요.
+가운데 사진 추가 영역을 눌러 촬영하거나 갤러리 사진을 고르세요. 한 사진에 최대 10개까지 겹치지 않게 놓고 글자와 각인이 선명하게 보이도록 찍으세요.
 
 #### 3. 번호별 후보 대조
 
@@ -689,15 +701,23 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 잘못된 사진은 ‘사진 변경’으로 바꾸세요. 특정 알약만 다시 확인하려면 해당 번호의 ‘영역 다시 분석’ 또는 ‘뒷면 추가’를 이용하세요.
 
+<a id="manual_page_34"></a>
+
+[화면 예시: PDF 34쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=34)
+
+#### 5. 사진 분석 안내 확인
+
+화면을 열면 사진의 외부 AI 분석과 후보 대조 안내가 약 5초 동안 표시됩니다. 안내가 사라져도 후보는 확정 정보가 아니며, 처방·포장·약사 확인 없이 복용하지 마세요.
+
 <a id="section-2-10"></a>
 
 ### 2.10 알약마다 앞뒷면 사진 넣기
 
-[소섹션: PDF 33쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=33)
+[소섹션: PDF 35쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=35)
 
-<a id="manual_page_33"></a>
+<a id="manual_page_35"></a>
 
-[화면 예시: PDF 33쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=33)
+[화면 예시: PDF 35쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=35)
 
 #### 1. 앞뒷면 사진 추가
 
@@ -719,11 +739,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 2.11 알약 후보를 비교하고 다시 확인하기
 
-[소섹션: PDF 34쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=34)
+[소섹션: PDF 36쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=36)
 
-<a id="manual_page_34"></a>
+<a id="manual_page_36"></a>
 
-[화면 예시: PDF 34쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=34)
+[화면 예시: PDF 36쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=36)
 
 #### 1. 일치도와 경고 확인
 
@@ -731,7 +751,7 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 #### 2. 대조한 후보 선택
 
-제품명·함량·각인·사진을 대조하고 맞는 후보의 원을 누르세요. 초록 테두리와 선택 표시는 선택 상태를 뜻하며 식별이 정확하다는 보장은 아닙니다.
+사진 옆 제품명·함량·각인을 대조하고 맞는 후보의 원이나 정보 영역을 누르세요. 선택 표시는 선택 상태일 뿐 식별 정확성의 보장이 아니며, 같은 후보를 다시 누르면 해제됩니다.
 
 #### 3. 다른 후보 보기
 
@@ -739,11 +759,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 #### 4. 제품 정보 비교
 
-후보의 전체 이름·제조사·각인을 실제 약과 비교하세요. 이름이나 숫자가 비슷하다는 이유만으로 고르지 말고, 목록은 식별 후보임을 기억하세요.
+가로로 배치된 사진과 제품명·제조사·각인을 함께 비교하세요. 사진만 누르면 확대창이 열리고 후보 선택은 바뀌지 않습니다. 이미지가 없으면 대체 표시가 나올 수 있습니다.
 
-<a id="manual_page_35"></a>
+<a id="manual_page_37"></a>
 
-[화면 예시: PDF 35쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=35)
+[화면 예시: PDF 37쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=37)
 
 #### 5. 해당 알약 재확인
 
@@ -753,23 +773,27 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ‘카메라로 촬영’ 또는 ‘갤러리에서 선택’을 고르세요. 앞면·뒷면 중 어느 사진칸에서 열었는지 확인한 뒤 해당 면의 사진을 넣으세요.
 
+#### 7. 후보 사진 확대
+
+후보 사진을 눌러 가운데 확대창에서 전체 사진과 제목을 확인하세요. 두 손가락으로 확대하고, X나 창 바깥을 눌러 후보 목록으로 돌아오세요. 확대는 제품 확정이나 저장이 아닙니다.
+
 <a id="section-2-12"></a>
 
 ### 2.12 선택한 알약 저장하기
 
-[소섹션: PDF 36쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=36)
+[소섹션: PDF 38쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=38)
 
-<a id="manual_page_36"></a>
+<a id="manual_page_38"></a>
 
-[화면 예시: PDF 36쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=36)
+[화면 예시: PDF 38쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=38)
 
 #### 1. 선택한 후보 검토
 
-모든 후보를 대조한 뒤 ‘선택한 후보 확인’을 누르세요. 다음 화면에서 각 약의 실제 복용 일정을 확인해야 하며 아직 저장 전입니다.
+확실히 대조한 후보만 선택하고 아래의 ‘선택한 알약 N개 검토 후 저장’을 누르세요. 후보가 없거나 선택하지 않은 알약은 제외됩니다. 선택이 0개면 버튼이 꺼집니다.
 
 #### 2. 기본값 확인과 수정
 
-사진으로 복용량과 기간을 알 수 없으므로 미리 채워진 1정·1회·1일·아침을 그대로 사용하지 마세요. 처방전·약 봉투와 대조하며 연필 모양 ‘복약 정보 수정’을 누르세요.
+‘복약 정보 확인’에서 선택한 약과 원본 사진을 확인하세요. 사진으로 복용량·기간을 알 수 없으므로 임시 기본값을 그대로 쓰지 말고, 연필을 눌러 처방전·약 봉투와 대조하세요.
 
 #### 3. 이름과 복용 정보 입력
 
@@ -779,9 +803,9 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 수정창에서 처방에 맞는 복용 주기를 고르세요. 주 1회·격일 등 매일 먹지 않는 약은 총 기간과 그 안의 실제 복용일 수를 구분해 확인하세요.
 
-<a id="manual_page_37"></a>
+<a id="manual_page_39"></a>
 
-[화면 예시: PDF 37쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=37)
+[화면 예시: PDF 39쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=39)
 
 #### 5. 일정 수정 적용
 
@@ -789,31 +813,39 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 #### 6. 저장 전 일정 확인
 
-각 약의 시작일·1회량·횟수·주기·기간·시간대가 수정한 내용과 맞는지 다시 확인하세요. 바꿀 내용이 있으면 해당 약의 연필을 누르세요.
+사진을 좌우로 넘기거나 아래 작은 사진을 눌러 대조하세요. 사진을 누르면 가운데 확대창이 열리며, 앞뒷면 사진과 현재 장수를 확인하고 닫은 뒤 각 약의 일정을 다시 확인하세요.
 
-#### 7. 확인한 정보 저장
+#### 7. 검토한 결과 열기
 
-모든 정보가 처방·복약 안내와 맞으면 ‘확인하고 저장하기’를 누르세요. 처리 결과에서 저장된 항목·기존 정보·실패 항목을 구분해 확인하세요.
+모든 정보가 처방·복약 안내와 맞으면 아래에 고정된 ‘확인하고 계속하기’를 누르세요. ‘알약 등록 결과’로 이동하며, 검토 완료만으로 저장되지는 않습니다.
 
-#### 8. 저장 결과 확인
+#### 8. 알약 등록 결과 저장
 
-처리가 끝나면 ‘저장 완료’ 표시를 확인하세요. 복약함을 열어 선택한 약과 확인한 복용 일정이 등록 내용에 반영됐는지 살펴보세요.
+결과 화면에서 선택한 약과 일정 수를 확인하고 ‘전체 저장하기’ 또는 약별 저장 아이콘을 누르세요. 제외한 알약은 결과·복약함·일정에 추가되지 않습니다.
+
+<a id="manual_page_40"></a>
+
+[화면 예시: PDF 40쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=40)
+
+#### 9. 저장 완료 확인
+
+‘복약 일정 저장 완료’ 창에서 오늘 일정이나 복약함을 열어 등록 내용을 확인하세요. 부분 실패 안내가 나오면 이미 저장된 약을 중복 등록하지 말고 남은 항목을 확인하세요.
 
 <a id="section-2-13"></a>
 
 ### 2.13 약품 검색 방식 설정하기
 
-[소섹션: PDF 38쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=38)
+[소섹션: PDF 41쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=41)
 
-<a id="manual_page_38"></a>
+<a id="manual_page_41"></a>
 
-[화면 예시: PDF 38쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=38)
+[화면 예시: PDF 41쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=41)
 
 #### 1. 약품 검색 방식
 
 환경설정의 ‘복약 및 알림 → 약품 검색’에서 속도 우선·보통·정확도 우선 중 고르고 저장하세요. 기본은 ‘보통’이며, 정확도 우선은 더 오래 걸릴 수 있습니다.
 
-<a id="manual_page_39"></a>
+<a id="manual_page_42"></a>
 
 ### 참고
 
@@ -831,21 +863,23 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 필요시 복용은 자동으로 판단하지 않으므로 수정창에서 유형을 확인하세요. 필요시 약은 정기 일정·미복약 알림에서 제외됩니다. 이 화면에는 약 카드 삭제 버튼이 없으므로 처방에 없는 약이 인식되면 결과 화면에서 그 약을 저장하지 마세요.
 
-**[2.4 - 22페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=22)**
+**[2.4 - 23페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=23)**
 
 일부 정보 조회가 실패하면 확인 가능한 후보만 보일 수 있습니다. 맞는 후보가 없으면 취소하고 이름을 고쳐 다시 조회하세요. ‘환경설정 → 복약 및 알림 → 약품 검색’을 ‘정확도 우선’으로 저장하면 더 많은 검색어로 조회하므로 시간이 더 걸릴 수 있습니다. 하루 사용 횟수를 모두 썼다면 반복 요청하지 말고 안내된 다음 날 다시 시도하세요.
 
-**[2.5 - 24페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=24)**
+**[2.5 - 25페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=25)**
 
 관련 이전 처방이 없거나 일부 약을 제외하면 비교가 제공되지 않을 수 있습니다. 레이더 조회에 실패해도 펼친 약 카드는 유지됩니다. 2주와 14일처럼 뜻이 같은 표기는 변경으로 표시되지 않을 수 있지만, 식전·식후·필요시 지시가 추가되면 확인할 변화입니다. 비교 결과가 없어도 원본의 모든 복용 지시를 직접 대조하세요.
 
-**[2.6 - 25페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=25)**
+**[2.6 - 26페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=26)**
 
-저장 완료 후 일정 조회가 실패하면 연결을 확인해 복약함을 다시 여세요. 저장 실패로 단정해 같은 약을 중복 등록하지 마세요. 저장 가능한 약 개수에 도달하면 등록 목록을 먼저 확인하세요. 불필요한 약을 정리할 때는 기록 삭제 범위를 확인하고, 진행 중인 약을 한도 때문에 임의로 지우지 마세요.
+저장은 확인한 약과 복약 일정을 먼저 반영합니다. 부족한 제품 상세정보는 저장 뒤에 보완될 수 있으므로 상세 안내가 늦게 보여도 저장 실패로 단정하거나 같은 약을 중복 등록하지 마세요. 상세정보 보완은 직접 확인한 복용량·기간·시간대를 바꾸지 않습니다. 누락 정보가 자동으로 반드시 채워지는 것은 아니며, 상세 화면을 다시 열어 확인하세요.
 
-<a id="manual_page_40"></a>
+저장 완료 후 일정 조회가 실패하면 연결을 확인해 복약함을 다시 여세요. 저장 가능한 약 개수에 도달하면 등록 목록을 먼저 확인하세요. 불필요한 약을 정리할 때는 기록 삭제 범위를 확인하고, 진행 중인 약을 한도 때문에 임의로 지우지 마세요.
 
-**[2.7 - 27페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=27)**
+<a id="manual_page_43"></a>
+
+**[2.7 - 28페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=28)**
 
 저장한 약은 ‘약 등록·관리 → 약 관리’에서 찾습니다. 보이지 않으면 검색어·복용 상태·날짜 조건을 확인하고, 오늘 일정에 없으면 복용 기간·다음 복용일을 확인하세요. 등록한 복용 정보와 제품의 일반 안내는 구분하세요. 총 기간과 실제 복용일 수는 다르며, 선택지로 처방을 표현할 수 없으면 임의로 비슷한 주기를 고르지 마세요.
 
@@ -853,33 +887,35 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 검색한 제품을 선택하면 해당 상자에 이름과 제품 정보가 연결됩니다. 이름을 바꾸면 연결이 해제됩니다. 결과가 없어도 이름을 직접 입력할 수 있지만 조회 실패가 제품 일치나 안전성 확인을 뜻하지는 않습니다.
 
-저장 전 모든 미저장 상자의 입력을 확인하고 상자 순서대로 저장합니다. 실패한 지점에서 멈추므로 앞서 저장한 약까지 취소된 것은 아닙니다. 같은 화면에서 재시도하면 완료한 상자는 제외되며, 화면을 다시 열었다면 먼저 복약함을 확인하세요. X는 미저장 상자를 빼는 버튼이며 저장한 약은 복약함에서 삭제합니다. 필요시 약의 등록·기록은 2.8과 4.5를 참고하세요.
+직접 등록·알약 사진 등록·처방전 등록은 모두 결과 화면에서 개별 또는 전체 저장하고 같은 완료창으로 이동합니다. 결과 화면에서 일부만 저장됐다면 완료 항목은 유지되며, 남은 항목만 다시 저장하세요. 화면을 다시 열었다면 먼저 복약함을 확인하세요. 직접 등록 입력의 X는 미저장 상자를 빼는 버튼이며 저장한 약은 복약함에서 삭제합니다. 필요시 약의 등록·기록은 2.8과 4.5를 참고하세요.
 
-**[2.8 - 31페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=31)**
+**[2.8 - 32페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=32)**
 
 복용 여부·간격·최대량은 처방·복약지도에 따르세요. 앱이 이를 판단하거나 정하지 않습니다.
 
-**[2.9 - 32페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=32)**
+**[2.9 - 33페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=33)**
 
-사진은 외부 AI로 분석됩니다. 얼굴·신분증·환자 이름이 포함되지 않게 하세요. 무료 Gemini 환경에서는 개인정보·민감정보를 보낼 수 없으므로 환자 정보가 담긴 사진을 사용하지 마세요.
+사진은 외부 AI로 분석됩니다. 화면 진입 때 보이는 안내는 약 5초 뒤 사라지지만 사진 전송 조건이 달라지는 것은 아닙니다. 얼굴·신분증·환자 이름이 포함되지 않게 하세요. 무료 Gemini 환경에서는 개인정보·민감정보를 보낼 수 없으므로 환자 정보가 담긴 사진을 사용하지 마세요.
 
-**[2.10 - 33페이지 - 3~4번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=33)**
+**[2.10 - 35페이지 - 3~4번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=35)**
 
 필요 없는 묶음은 해당 묶음 오른쪽 위의 휴지통을 눌러 삭제할 수 있습니다.
 
-**[2.11 - 34페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=34)**
+**[2.11 - 36페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=36)**
 
-후보 수와 일치도는 사진에 따라 다릅니다. 목록을 내려 나머지 후보를 확인하고, 후보를 눌러 상세정보를 볼 수 있습니다. 확인 전에는 복약함에 저장되지 않습니다.
+후보 수와 일치도는 사진에 따라 다릅니다. 목록을 내려 나머지 후보를 확인하세요. 사진은 확대, 정보 영역과 선택 원은 선택·해제 동작입니다. 사진을 확대하거나 후보를 고른 것만으로 복약함에 저장되지 않습니다.
 
-**[2.12 - 36페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=36)**
+<a id="manual_page_44"></a>
+
+**[2.12 - 38페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=38)**
 
 여러 사진에서 같은 제품을 고르면 중복 처리 안내가 나올 수 있습니다. 별도로 유지하거나 같은 일정만 묶을 수 있으며 복용량·날짜·기간이 다르면 별도로 유지됩니다. 중복 처리 방식을 골라도 바로 저장되지는 않습니다.
 
+미선택·후보 없음 항목이 남아도 하나 이상 선택하면 선택한 약만 검토할 수 있습니다. 제외한 알약을 나중에 등록하려면 사진과 후보를 다시 확인하세요. 개별 촬영의 앞뒷면은 같은 약의 사진으로 함께 검토하며, 확대창에서는 축소 상태에서 좌우로 넘기거나 작은 사진으로 이동합니다.
+
 복용 주기와 복용하는 날의 횟수·시간대를 구분하고 총 기간 안의 복용일 수를 확인하세요. ‘월 1회’는 30일 간격입니다. 필요시 복용은 정기 주기·시간대 대신 별도로 기록합니다.
 
-<a id="manual_page_41"></a>
-
-**[2.13 - 38페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=38)**
+**[2.13 - 41페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=41)**
 
 약품 검색만 바꿔도 ‘저장하기’를 눌러야 하며, 저장 전 나가면 확인 창이 나올 수 있습니다. 검색 설정은 이 기기에만 저장되고 다른 기기나 서버에는 반영되지 않습니다. 처방전 제품 조회·독립 약 검색·직접 등록·채팅의 제품 검색에 적용됩니다. ‘정확도 우선’은 검색 범위 선택이지 정확성 보증은 아닙니다.
 
@@ -892,11 +928,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 3.1 저장한 약 찾아보기
 
-[소섹션: PDF 42쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=42)
+[소섹션: PDF 45쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=45)
 
-<a id="manual_page_42"></a>
+<a id="manual_page_45"></a>
 
-[화면 예시: PDF 42쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=42)
+[화면 예시: PDF 45쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=45)
 
 #### 1. 복약함 열기
 
@@ -910,11 +946,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 3.2 조회 조건과 정렬 바꾸기
 
-[소섹션: PDF 43쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=43)
+[소섹션: PDF 46쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=46)
 
-<a id="manual_page_43"></a>
+<a id="manual_page_46"></a>
 
-[화면 예시: PDF 43쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=43)
+[화면 예시: PDF 46쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=46)
 
 #### 1. 조회 조건 열기
 
@@ -932,9 +968,9 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ‘표시 순서’에서 최신순 또는 오래된순 중 원하는 순서를 고르세요. 배경색과 선택 표시로 현재 어떤 항목을 골랐는지 확인하세요.
 
-<a id="manual_page_44"></a>
+<a id="manual_page_47"></a>
 
-[화면 예시: PDF 44쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=44)
+[화면 예시: PDF 47쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=47)
 
 #### 5. 조회 조건 적용하기
 
@@ -952,9 +988,9 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ‘전체’ 목록에는 복용 중인 약과 복용이 끝난 약이 함께 표시될 수 있습니다. 약 이름 아래의 복용 기간과 상태 배지를 확인하세요.
 
-<a id="manual_page_45"></a>
+<a id="manual_page_48"></a>
 
-[화면 예시: PDF 45쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=45)
+[화면 예시: PDF 48쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=48)
 
 #### 9. 날짜 묶음 접고 펼치기
 
@@ -964,11 +1000,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 3.3 복용이 끝난 약 확인하기
 
-[소섹션: PDF 46쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=46)
+[소섹션: PDF 49쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=49)
 
-<a id="manual_page_46"></a>
+<a id="manual_page_49"></a>
 
-[화면 예시: PDF 46쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=46)
+[화면 예시: PDF 49쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=49)
 
 #### 1. 복용 종료 목록 보기
 
@@ -985,11 +1021,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 3.4 약 상세정보와 사진 보기
 
-[소섹션: PDF 47쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=47)
+[소섹션: PDF 50쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=50)
 
-<a id="manual_page_47"></a>
+<a id="manual_page_50"></a>
 
-[화면 예시: PDF 47쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=47)
+[화면 예시: PDF 50쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=50)
 
 #### 1. 약 상세정보 열기
 
@@ -999,15 +1035,19 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 제품명·효능·등록된 복용 정보·일반 가이드·주의사항을 구분해 끝까지 읽으세요. 사진이 없는 약도 있으므로 이미지 유무만으로 제품을 판단하지 마세요.
 
+#### 3. 약 사진 확대와 닫기
+
+약 사진을 누르면 제목과 사진이 가운데 확대창에 표시됩니다. 두 손가락으로 확대하고, X나 창 바깥을 눌러 상세 화면으로 돌아오세요. 사진이 없거나 불러오지 못하면 문자 정보를 확인하세요.
+
 <a id="section-3-5"></a>
 
 ### 3.5 약 안내를 음성으로 듣기
 
-[소섹션: PDF 48쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=48)
+[소섹션: PDF 51쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=51)
 
-<a id="manual_page_48"></a>
+<a id="manual_page_51"></a>
 
-[화면 예시: PDF 48쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=48)
+[화면 예시: PDF 51쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=51)
 
 #### 1. 음성 안내 듣기
 
@@ -1017,11 +1057,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 3.6 약 정보 수정과 처방 교체
 
-[소섹션: PDF 49쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=49)
+[소섹션: PDF 52쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=52)
 
-<a id="manual_page_49"></a>
+<a id="manual_page_52"></a>
 
-[화면 예시: PDF 49쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=49)
+[화면 예시: PDF 52쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=52)
 
 #### 1. 약 관리 메뉴 열기
 
@@ -1039,9 +1079,9 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ‘새 처방으로 교체’에서 이름·1회량·시작일·종료일·유형·주기·시간대를 입력하세요. 시작일이 적용일이며, 기존 값도 새 처방과 대조해 확인하세요.
 
-<a id="manual_page_50"></a>
+<a id="manual_page_53"></a>
 
-[화면 예시: PDF 50쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=50)
+[화면 예시: PDF 53쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=53)
 
 #### 5. 교체 내용 확인하기
 
@@ -1051,11 +1091,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 3.7 처방에 따른 복용 중단 기록하기
 
-[소섹션: PDF 51쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=51)
+[소섹션: PDF 54쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=54)
 
-<a id="manual_page_51"></a>
+<a id="manual_page_54"></a>
 
-[화면 예시: PDF 51쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=51)
+[화면 예시: PDF 54쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=54)
 
 #### 1. 복용 중단 메뉴 열기
 
@@ -1073,11 +1113,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 3.8 약 삭제하기
 
-[소섹션: PDF 52쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=52)
+[소섹션: PDF 55쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=55)
 
-<a id="manual_page_52"></a>
+<a id="manual_page_55"></a>
 
-[화면 예시: PDF 52쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=52)
+[화면 예시: PDF 55쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=55)
 
 #### 1. 약 선택 모드 열기
 
@@ -1101,9 +1141,9 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 1. 삭제 대상과 주의사항 확인
 2. 취소하여 약과 기록 유지
 
-<a id="manual_page_53"></a>
+<a id="manual_page_56"></a>
 
-[화면 예시: PDF 53쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=53)
+[화면 예시: PDF 56쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=56)
 
 #### 5. 삭제 취소하기
 
@@ -1113,33 +1153,33 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 날짜 묶음을 펼쳐 약을 확인하고 제목의 ‘삭제’를 누르세요. 접힌 카드에도 버튼이 있으니 대상을 먼저 확인하며, 확인창을 여는 것만으로 삭제되지는 않습니다.
 
-<a id="manual_page_54"></a>
+<a id="manual_page_57"></a>
 
 ### 참고
 
-**[3.1 - 42페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=42)**
+**[3.1 - 45페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=45)**
 
 복약함 검색창에 약 이름의 일부를 입력하세요. 결과가 없으면 검색어와 조회 조건을 확인하고, 필요하면 복용 상태를 ‘전체’로 바꾸세요. 약이 보이지 않는다고 바로 다시 등록하지 마세요. 격일·주 1회 등 비매일 약은 다음 복용일이 표시될 수 있습니다. 조제일자가 없으면 등록한 날을 복용 시작 기준으로 사용하며, 기간이 끝났거나 시작일을 알 수 없으면 다음 날짜가 없을 수 있습니다.
 
-**[3.2 - 43페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=43)**
+**[3.2 - 46페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=46)**
 
 ‘복용 중’ 목록이 비어 있어도 약이 모두 삭제된 것은 아닙니다. ‘전체 보기’나 조회 조건의 ‘전체’로 기간이 지난 약까지 확인하세요. 조건과 정렬은 목록 표시만 바꾸며 약의 시작일이나 복용 기간은 바꾸지 않습니다.
 
 날짜 묶음은 처음에 모두 펼쳐집니다. 검색하면 찾은 약의 묶음이 펼쳐지고, 검색 중에 접으면 검색어가 바뀔 때까지 유지됩니다. 검색어를 지우면 검색 전 접힘 상태로 돌아갑니다.
 
-**[3.3 - 46페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=46)**
+**[3.3 - 49페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=49)**
 
 복용 종료 목록과 배지는 약의 기간·중단·교체 상태를 나타내며, 실제 복용 여부를 뜻하지 않습니다. 중단·교체된 약이 ‘복용 중’ 목록에 없다면 ‘전체’ 또는 ‘복용 종료’로 바꿔 확인하세요.
 
-**[3.4 - 47페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=47)**
+**[3.4 - 50페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=50)**
 
 등록된 내 일정과 제품의 일반 안내를 구분해 읽으세요. 제품 사진이 있으면 눌러 확대하고 닫기 버튼으로 돌아올 수 있습니다. ‘정보 없음’은 자료가 제공되지 않았다는 뜻이므로 복용법을 임의로 정하지 마세요. 별도의 ‘약 검색’에서 여는 상세는 제품 정보 조회이며, 내 약 등록이나 복용량·일정 설정은 이루어지지 않습니다.
 
-**[3.5 - 48페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=48)**
+**[3.5 - 51페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=51)**
 
 일시정지한 위치에서 이어 듣는 기능은 제공하지 않습니다.
 
-**[3.6 - 49페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=49)**
+**[3.6 - 52페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=52)**
 
 변경 내용은 처방·복약지도에 따라 입력하세요. 적용일은 과거로 정할 수 없고, 이미 기록된 날짜의 수정·교체에는 더 이후 날짜가 필요할 수 있습니다. 미래 날짜로 변경하면 적용일 전까지 이전 일정이 유지되며, 이전 약의 복용 기록은 남습니다.
 
@@ -1147,13 +1187,13 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 처방 교체는 한 약만 바꿉니다. 직접 등록과 달리 여러 약 상자·약 추가·제품 검색·사진 추가·기타 간격 입력은 제공하지 않습니다. 선택지로 처방 지시를 표현할 수 없다면 임의로 가까운 주기를 고르지 마세요.
 
-<a id="manual_page_55"></a>
+<a id="manual_page_58"></a>
 
-**[3.7 - 51페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=51)**
+**[3.7 - 54페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=54)**
 
 의료진·약사의 지시에 따른 중단을 기록하는 기능입니다. 스스로 복용을 중단하거나 과거 기록을 없애는 용도로 사용하지 마세요. 통신 실패 시 ‘같은 내용으로 다시 시도’를 이용하고, 결과가 불확실할 때 새 요청을 반복하지 마세요. 목록 재확인이 필요한 오류는 3.6 참고를 확인하세요.
 
-**[3.8 - 52페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=52)**
+**[3.8 - 55페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=55)**
 
 삭제 후 목록을 다시 확인하고, 일부만 실패했다면 남은 약을 확인한 뒤 진행하세요. 선택 모드에서 휴대폰 뒤로가기를 누르면 약을 지우지 않고 선택 모드만 끝납니다. 일반 복약함에서 다시 뒤로가기를 누르면 홈으로 돌아갑니다. 삭제 확인창의 왼쪽은 ‘취소’, 오른쪽은 ‘삭제’입니다. 복용만 중단하고 기록을 보관하려면 ‘처방에 따른 복용 중단’을 이용하되, 처방 변경 없이 임의로 약을 중단하지 마세요.
 
@@ -1166,11 +1206,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 4.1 홈에서 오늘 일정 확인하기
 
-[소섹션: PDF 56쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=56)
+[소섹션: PDF 59쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=59)
 
-<a id="manual_page_56"></a>
+<a id="manual_page_59"></a>
 
-[화면 예시: PDF 56쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=56)
+[화면 예시: PDF 59쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=59)
 
 #### 1. 오늘 진행률 확인
 
@@ -1184,11 +1224,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 4.2 홈에서 완료와 취소 기록하기
 
-[소섹션: PDF 57쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=57)
+[소섹션: PDF 60쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=60)
 
-<a id="manual_page_57"></a>
+<a id="manual_page_60"></a>
 
-[화면 예시: PDF 57쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=57)
+[화면 예시: PDF 60쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=60)
 
 #### 1. 시간대 복용 기록
 
@@ -1213,11 +1253,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 4.3 전체 일정에서 약별로 기록하기
 
-[소섹션: PDF 58쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=58)
+[소섹션: PDF 61쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=61)
 
-<a id="manual_page_58"></a>
+<a id="manual_page_61"></a>
 
-[화면 예시: PDF 58쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=58)
+[화면 예시: PDF 61쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=61)
 
 #### 1. 오늘 일정 열기
 
@@ -1241,9 +1281,9 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 1. 체크와 취소선으로 표시된 완료 기록
 2. 잘못 기록했다면 실행 취소
 
-<a id="manual_page_59"></a>
+<a id="manual_page_62"></a>
 
-[화면 예시: PDF 59쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=59)
+[화면 예시: PDF 62쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=62)
 
 #### 5. 약 하나의 기록 취소
 
@@ -1257,11 +1297,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 4.4 시간대 전체 기록하기
 
-[소섹션: PDF 60쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=60)
+[소섹션: PDF 63쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=63)
 
-<a id="manual_page_60"></a>
+<a id="manual_page_63"></a>
 
-[화면 예시: PDF 60쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=60)
+[화면 예시: PDF 63쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=63)
 
 #### 1. 시간대 전체 기록
 
@@ -1271,11 +1311,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 4.5 필요시 복용 체크와 정정하기
 
-[소섹션: PDF 61쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=61)
+[소섹션: PDF 64쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=64)
 
-<a id="manual_page_61"></a>
+<a id="manual_page_64"></a>
 
-[화면 예시: PDF 61쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=61)
+[화면 예시: PDF 64쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=64)
 
 #### 1. 필요시 복용 기록
 
@@ -1297,11 +1337,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 4.6 연결이 끊겼을 때 기록 확인하기
 
-[소섹션: PDF 62쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=62)
+[소섹션: PDF 65쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=65)
 
-<a id="manual_page_62"></a>
+<a id="manual_page_65"></a>
 
-[화면 예시: PDF 62쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=62)
+[화면 예시: PDF 65쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=65)
 
 #### 1. 전송 대기 확인
 
@@ -1311,35 +1351,35 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 연결 후 전송 대기가 사라지고 대기 목록에 ‘서버에 모두 저장했습니다.’가 표시되는지 확인하세요. 보호자 화면은 새로고침하고 미확인 기록은 지우지 마세요.
 
-<a id="manual_page_63"></a>
+<a id="manual_page_66"></a>
 
 ### 참고
 
-**[4.1 - 56페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=56)**
+**[4.1 - 59페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=59)**
 
 약이 있는 시간대만 표시되며 시간대를 넘겨도 기록이나 오늘 전체 진행률은 바뀌지 않습니다. ‘미복용’은 아직 완료로 기록하지 않았다는 뜻입니다. 격일·주 1회 약은 복용일에만 나타나므로 보이지 않으면 복약함에서 다음 복용일을 확인하세요. 시작 전·종료 후·쉬는 날의 약을 임의로 완료 처리하거나 보충 복용하지 마세요.
 
-**[4.2 - 57페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=57)**
+**[4.2 - 60페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=60)**
 
 다른 시간대로 이동했다면 원래 시간대로 돌아와 기록을 확인하세요. 앱을 연 채 자정이 지나면 어제 목록에서 누른 기록은 남지 않고 홈·전체 일정이 오늘 목록으로 갱신됩니다. 날짜 변경 안내가 나오면 오늘 일정을 확인한 뒤 다시 누르세요. 복약 알림의 버튼은 해당 알림 날짜로 기록하므로 이 안내가 나오지 않습니다.
 
 홈에서 예정 시각보다 30분 넘게 늦거나 2시간 넘게 일찍 기록하면 확인 안내가 나올 수 있습니다. 이는 기록 시각 안내이며 복용 간격이나 추가 복용 기준이 아닙니다. 보호자 미복약 알림 조건은 7.7을 참고하세요.
 
-**[4.3 - 58페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=58)**
+**[4.3 - 61페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=61)**
 
 약이 없다는 결과와 조회 실패를 구분하세요. 예상한 약이 없으면 복약함에서 기간·주기·시간대를 확인하세요. 매일 먹지 않는 약은 쉬는 날에 일정·복약 알림이 생기지 않습니다. 시간대의 복용 완료를 기록하면 위젯 설치 여부와 관계없이 그 시간대의 오늘 알림이 정리됩니다.
 
 필요시 목록에 기존 약이 있으면 재조회 중 목록이 유지될 수 있습니다. 로딩 중에는 약을 다시 등록하지 마세요. 이 절의 체크 재누르기는 정기 복용 기록의 취소이며, 필요시 약은 새 횟수를 추가하므로 4.5를 참고하세요.
 
-**[4.5 - 61페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=61)**
+**[4.5 - 64페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=64)**
 
 먼저 필요시 약을 등록해야 합니다. 첫 체크는 오늘 1회로 기록하며 두 번째부터 기존 횟수와 추가 후 횟수를 확인하세요. 추가 확인창의 지난 시간이 1분 미만이면 ‘방금 전’으로 표시됩니다. 실행 취소 안내가 보이면 다른 화면에서도 취소할 수 있지만 보호자에게 이미 전달된 알림은 회수되지 않습니다. 다시 조회한 기록에는 정정된 횟수가 반영됩니다.
 
 저장 결과를 확인하지 못했다면 연결을 복구하고 ‘체크를 다시 누르면 같은 기록으로 확인합니다’ 안내에 따라 재시도하세요. 미확인 기록은 앱을 다시 열어도 같은 계정에서 확인하므로 새 복용을 기록하기 전에 날짜·횟수를 조회하세요. 앱 재시작이 추가 복용을 뜻하지는 않으며, 앱 데이터 삭제·재설치는 기기에만 남은 미확인 기록을 잃게 할 수 있습니다.
 
-<a id="manual_page_64"></a>
+<a id="manual_page_67"></a>
 
-**[4.6 - 62페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=62)**
+**[4.6 - 65페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=65)**
 
 전송 대기 표시를 눌러 미전송 기록을 확인하고 연결 후 재전송되는지 살펴보세요. 날짜가 바뀌어도 원래 날짜로 전송되므로 오늘 기록으로 다시 입력하지 마세요. 여러 기록을 순서대로 보내는 동안 다른 항목도 대기할 수 있습니다. ‘전송 확인 필요’가 계속되면 해당 기록을 확인하고 임의로 삭제하지 마세요. 일정·연동 변경으로 한 기록이 거절돼도 다른 기록까지 모두 실패한 것은 아닙니다.
 
@@ -1354,11 +1394,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 5.1 주간·월간·기간별 통계 보기
 
-[소섹션: PDF 65쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=65)
+[소섹션: PDF 68쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=68)
 
-<a id="manual_page_65"></a>
+<a id="manual_page_68"></a>
 
-[화면 예시: PDF 65쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=65)
+[화면 예시: PDF 68쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=68)
 
 #### 1. 복약 기록 열기
 
@@ -1376,11 +1416,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 5.2 날짜별 상세와 보호자 조회
 
-[소섹션: PDF 66쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=66)
+[소섹션: PDF 69쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=69)
 
-<a id="manual_page_66"></a>
+<a id="manual_page_69"></a>
 
-[화면 예시: PDF 66쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=66)
+[화면 예시: PDF 69쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=69)
 
 #### 1. 상태와 시각 확인
 
@@ -1392,17 +1432,21 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 #### 3. 보호자 조회 범위 확인
 
-보호자는 환자 일정이나 공유 카드에서 ‘읽기 전용’ 기록을 열 수 있습니다. 조회·공유는 가능하지만 환자 기록을 수정하거나 새 복용을 체크할 수는 없습니다.
+홈 복약 일정을 ‘연동된 환자’로 저장했다면 하단 ‘복약 기록’도 선택한 환자의 읽기 전용 기록을 엽니다. 환자 이름과 ‘읽기 전용’을 확인하세요. 조회·공유는 가능하지만 수정·복용 체크는 할 수 없습니다.
+
+#### 4. 조회할 환자 바꾸기
+
+위쪽 환자 이름의 좌우 화살표로 대상을 바꾸세요. 선택한 환자는 홈·일정·복약 기록에서 함께 사용됩니다. 환자를 바꾼 뒤에는 이름과 조회 기간을 다시 확인하세요.
 
 <a id="section-5-3"></a>
 
 ### 5.3 복용 상태와 기록 수정하기
 
-[소섹션: PDF 67쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=67)
+[소섹션: PDF 70쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=70)
 
-<a id="manual_page_67"></a>
+<a id="manual_page_70"></a>
 
-[화면 예시: PDF 67쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=67)
+[화면 예시: PDF 70쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=70)
 
 #### 1. 수정할 기록 선택
 
@@ -1420,11 +1464,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 5.4 공유 기간과 채팅 상대 선택하기
 
-[소섹션: PDF 68쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=68)
+[소섹션: PDF 71쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=71)
 
-<a id="manual_page_68"></a>
+<a id="manual_page_71"></a>
 
-[화면 예시: PDF 68쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=68)
+[화면 예시: PDF 71쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=71)
 
 #### 1. 기록 공유 열기
 
@@ -1449,11 +1493,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 5.5 공유 카드와 최신 기록 보기
 
-[소섹션: PDF 69쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=69)
+[소섹션: PDF 72쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=72)
 
-<a id="manual_page_69"></a>
+<a id="manual_page_72"></a>
 
-[화면 예시: PDF 69쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=69)
+[화면 예시: PDF 72쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=72)
 
 #### 1. 공유 카드 확인
 
@@ -1467,41 +1511,41 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 5.6 다른 앱으로 기록 공유하기
 
-[소섹션: PDF 70쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=70)
+[소섹션: PDF 73쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=73)
 
-<a id="manual_page_70"></a>
+<a id="manual_page_73"></a>
 
-[화면 예시: PDF 70쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=70)
+[화면 예시: PDF 73쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=73)
 
 #### 1. 다른 앱으로 공유
 
 ‘다른 방법으로 공유’를 누르고 Android 공유창에서 받을 앱·상대를 확인하세요. 파일 없이 날짜별 글을 보내며, 공유창을 여는 것만으로 전송되지는 않습니다.
 
-<a id="manual_page_71"></a>
+<a id="manual_page_74"></a>
 
 ### 참고
 
-**[5.1 - 65페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=65)**
+**[5.1 - 68페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=68)**
 
 조회는 최근 90일이며 데이터 삭제 주기를 뜻하지 않습니다. 공유 기간은 별도의 공유 창에서 정하고, 다른 앱은 최대 90일·채팅은 최대 31일까지 공유할 수 있습니다.
 
 앱을 종료하지 않고 다른 탭에 다녀오면 선택한 기간·날짜와 스크롤 위치가 유지됩니다. 같은 기간을 새로 확인하는 동안에는 기존 기록이 보일 수 있으니 갱신 완료를 기다리세요. 계정이 바뀌거나 조회 오류가 나면 기존 기록이 숨겨질 수 있습니다.
 
-**[5.2 - 66페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=66)**
+**[5.2 - 69페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=69)**
 
 시각이 없는 예전 기록은 ‘시각 미입력’으로 표시됩니다. 기간 선택에서는 일별 상세의 날짜와 좌우 화살표로 원하는 날을 확인하세요.
 
-**[5.3 - 67페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=67)**
+**[5.3 - 70페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=70)**
 
 환자 본인만 기록을 수정할 수 있습니다. 건너뜀은 복용 완료로 계산되지 않고 기존 복약·미복약 알림도 유지됩니다. 실제 복용 시각은 미래로 저장할 수 없습니다. 서버 확인 후 저장이 완료되므로 연결 오류가 나면 다시 조회하세요. 수정한 상태는 홈·채팅·위젯에서도 사용하며, 기록 수정은 이전 기록을 없애는 용도가 아닙니다.
 
-**[5.4 - 68페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=68)**
+**[5.4 - 71페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=71)**
 
 채팅에는 요약과 최신 기록을 여는 카드가 전송되며 글이나 파일은 첨부되지 않습니다. 전송 결과가 불확실하면 연결·연동 상태를 확인하고 같은 창의 ‘다시 전송’을 이용하세요. 같은 기간·상대의 미확인 전송은 중복되지 않게 재시도하며, 창을 닫거나 앱을 재시작했다면 먼저 채팅에 카드가 있는지 확인하세요.
 
 기록이 너무 많다는 안내가 나오면 공유 기간을 줄이세요. 기간을 바꿔도 원래 조회 화면은 바뀌지 않고, 공유를 취소해도 기록은 유지됩니다.
 
-**[5.6 - 70페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=70)**
+**[5.6 - 73페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=73)**
 
 다른 앱에 보내는 글에는 기간·상태별 건수·날짜·시간대·약 이름·복용 시각·건너뛴 이유와 자가 기록·한국 시간 안내가 포함됩니다. 계정 식별값을 제외해도 익명 자료가 아니므로 받을 상대와 보관 위치를 확인하세요. 외부 사본은 MedBuddy에서 회수할 수 없습니다. 공유창을 지원하지 않는 기기에서는 별도 동의 후 글을 클립보드에 복사하며, 다른 앱이 복사한 내용을 읽을 수 있습니다.
 
@@ -1514,11 +1558,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 6.1 환자가 연동 코드 만들기
 
-[소섹션: PDF 72쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=72)
+[소섹션: PDF 75쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=75)
 
-<a id="manual_page_72"></a>
+<a id="manual_page_75"></a>
 
-[화면 예시: PDF 72쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=72)
+[화면 예시: PDF 75쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=75)
 
 #### 1. 환자 코드 만들기
 
@@ -1535,15 +1579,19 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 1. 만료되어 사용할 수 없는 코드
 2. 새 코드 만들기
 
+#### 4. 환자 화면에서 연동 완료 확인
+
+코드 창을 열어 둔 동안 보호자가 이 코드를 등록하면 환자 화면에도 ‘연동 완료’ 창이 자동으로 표시됩니다. ‘확인’을 누른 뒤 연결된 보호자를 확인하세요.
+
 <a id="section-6-2"></a>
 
 ### 6.2 보호자가 환자 등록하기
 
-[소섹션: PDF 73쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=73)
+[소섹션: PDF 76쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=76)
 
-<a id="manual_page_73"></a>
+<a id="manual_page_76"></a>
 
-[화면 예시: PDF 73쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=73)
+[화면 예시: PDF 76쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=76)
 
 #### 1. 환자 코드 등록하기
 
@@ -1553,11 +1601,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 6.3 연동된 가족 확인하기
 
-[소섹션: PDF 74쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=74)
+[소섹션: PDF 77쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=77)
 
-<a id="manual_page_74"></a>
+<a id="manual_page_77"></a>
 
-[화면 예시: PDF 74쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=74)
+[화면 예시: PDF 77쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=77)
 
 #### 1. 가족 대화 열기
 
@@ -1567,11 +1615,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 6.4 환자의 홈과 전체 일정 확인하기
 
-[소섹션: PDF 75쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=75)
+[소섹션: PDF 78쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=78)
 
-<a id="manual_page_75"></a>
+<a id="manual_page_78"></a>
 
-[화면 예시: PDF 75쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=75)
+[화면 예시: PDF 78쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=78)
 
 #### 1. 환자 선택하기
 
@@ -1579,33 +1627,37 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 #### 2. 전체 일정 열기
 
-선택한 환자 이름을 확인하고 ‘일정 보기’를 누르세요. 오늘의 읽기 전용 일정이 열리며, 보호자는 완료 기록을 대신 체크하거나 취소할 수 없습니다.
+선택한 환자 이름을 확인하고 ‘일정 보기’ 또는 하단 ‘일정’을 누르세요. 홈 복약 일정이 ‘연동된 환자’이면 같은 환자의 읽기 전용 일정이 열리며 완료 기록을 대신 체크할 수 없습니다.
 
 #### 3. 일정 내용 확인하기
 
-환자 이름·진행률·업데이트 상태와 약별 1회량을 확인하세요. 완료 체크 버튼은 없으며, 시간대의 종 아이콘은 보호자가 받을 알림을 설정합니다.
+위쪽 환자 이름·진행률·업데이트 상태와 약별 1회량을 확인하세요. 이름 옆 화살표로 다른 환자를 볼 수 있습니다. 시간대의 종은 보호자 알림이며 완료 체크 버튼은 없습니다.
 
 #### 4. 기록 새로고침하기
 
 환자에게 새 소식을 받았다면 업데이트 문구 오른쪽의 새로고침을 누르세요. 조회 후 문구와 진행률을 확인하며, 새 기록이 없으면 수치는 그대로입니다.
 
-<a id="manual_page_76"></a>
+<a id="manual_page_79"></a>
 
-[화면 예시: PDF 76쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=76)
+[화면 예시: PDF 79쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=79)
 
 #### 5. 필요시 복용 내역 보기
 
 일정 아래 ‘필요시 복용’에서 약별 1회량과 오늘 복용 횟수를 확인하세요. 체크 버튼은 없으며, 종 아이콘의 보호자 알림은 환자 본인의 알림과 별개입니다.
 
+#### 6. 환자 연동 조회 오류 확인
+
+연동 환자를 불러오지 못하면 ‘다시 시도’를 누르세요. 이 상태를 내 일정이나 환자가 없는 상태로 해석하지 마세요. 실제로 연결된 환자가 없다는 안내이면 ‘환자 연동’을 이용하세요.
+
 <a id="section-6-5"></a>
 
 ### 6.5 가족의 표시 이름 바꾸기
 
-[소섹션: PDF 77쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=77)
+[소섹션: PDF 80쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=80)
 
-<a id="manual_page_77"></a>
+<a id="manual_page_80"></a>
 
-[화면 예시: PDF 77쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=77)
+[화면 예시: PDF 80쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=80)
 
 #### 1. 표시 이름 바꾸기
 
@@ -1615,11 +1667,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 6.6 연동 해제하기
 
-[소섹션: PDF 78쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=78)
+[소섹션: PDF 81쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=81)
 
-<a id="manual_page_78"></a>
+<a id="manual_page_81"></a>
 
-[화면 예시: PDF 78쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=78)
+[화면 예시: PDF 81쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=81)
 
 #### 1. 연동 해제 창 열기
 
@@ -1633,11 +1685,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 6.7 가족과 대화 열기
 
-[소섹션: PDF 79쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=79)
+[소섹션: PDF 82쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=82)
 
-<a id="manual_page_79"></a>
+<a id="manual_page_82"></a>
 
-[화면 예시: PDF 79쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=79)
+[화면 예시: PDF 82쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=82)
 
 #### 1. 안 읽은 대화 열기
 
@@ -1659,11 +1711,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 6.8 대화할 약 선택하기
 
-[소섹션: PDF 80쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=80)
+[소섹션: PDF 83쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=83)
 
-<a id="manual_page_80"></a>
+<a id="manual_page_83"></a>
 
-[화면 예시: PDF 80쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=80)
+[화면 예시: PDF 83쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=83)
 
 #### 1. 대화할 약 고르기
 
@@ -1681,29 +1733,53 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 6.9 메시지와 복약 확인 요청 보내기
 
-[소섹션: PDF 81쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=81)
+[소섹션: PDF 84쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=84)
 
-<a id="manual_page_81"></a>
+<a id="manual_page_84"></a>
 
-[화면 예시: PDF 81쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=81)
+[화면 예시: PDF 84쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=84)
 
 #### 1. 메시지 보내기
 
 글을 500자 이내로 입력하고 보내기 화살표를 누르면 오른쪽에 표시됩니다. 전송에 실패하면 인터넷 연결·가족 연동 상태와 입력 내용을 확인하세요.
 
-#### 2. 복약 확인 요청 보내기
+#### 2. 시간대 전체 확인 요청
 
 보호자는 ‘+ → 오늘의 복약 시간대’에서 약과 진행률을 확인하고 시간대를 누르세요. 요청은 즉시 전송되지만 복용 기록을 바꾸지는 않으며, 환자에게는 이 메뉴가 없습니다.
+
+#### 3. 선택한 약 확인 요청
+
+보호자는 ‘대화할 약 선택’에서 등록 약과 시간대를 고른 뒤 ‘복용하셨나요?’를 누르세요. 선택한 약의 확인 요청을 보내며 같은 시간대의 다른 약까지 함께 요청하지 않습니다.
+
+#### 4. 요청한 약만 복용 기록
+
+환자는 오늘 받은 요청의 약·시간대를 확인하고 실제로 복용했다면 ‘약 복용하기’를 누르세요. 요청에 포함된 약만 기록되며, 여러 시간대이면 해당 시간대 버튼을 따로 누르세요.
+
+<a id="manual_page_85"></a>
+
+[화면 예시: PDF 85쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=85)
+
+#### 5. 완료 표시와 전송 확인
+
+처리된 약 요청은 ‘약 복용 완료’, 시간대 요청은 ‘아침 기록 완료’처럼 표시되어 다시 누를 수 없게 됩니다. 전송 대기 안내가 있으면 연결을 확인하고 일정·기록에서 상태를 확인하세요.
+
+#### 6. 시간대 전체 복용 기록
+
+‘아침 복용 완료’처럼 시간대가 표시된 요청은 그 시간대에 포함된 정기 약을 함께 기록합니다. 약별 요청과 범위가 다르므로 포함된 약을 모두 복용했을 때만 누르세요.
+
+#### 7. 시간대 완료 결과 확인
+
+‘아침 기록 완료’와 전송 상태를 확인하세요. 완료 버튼이 꺼져도 전송 대기 중이면 보호자에게 아직 반영되지 않았을 수 있으므로 일정·기록을 다시 확인하세요.
 
 <a id="section-6-10"></a>
 
 ### 6.10 복용 상태와 불편함 알리기
 
-[소섹션: PDF 82쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=82)
+[소섹션: PDF 86쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=86)
 
-<a id="manual_page_82"></a>
+<a id="manual_page_86"></a>
 
-[화면 예시: PDF 82쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=82)
+[화면 예시: PDF 86쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=86)
 
 #### 1. 약과 시간대 확인하기
 
@@ -1721,11 +1797,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 6.11 약 부족을 알리고 병원·약국 정보 공유하기
 
-[소섹션: PDF 83쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=83)
+[소섹션: PDF 87쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=87)
 
-<a id="manual_page_83"></a>
+<a id="manual_page_87"></a>
 
-[화면 예시: PDF 83쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=83)
+[화면 예시: PDF 87쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=87)
 
 #### 1. 대화에서 장소 찾기
 
@@ -1749,9 +1825,9 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 1. 받는 사람·장소·첨부 약 확인
 2. 확인한 내용 보내기
 
-<a id="manual_page_84"></a>
+<a id="manual_page_88"></a>
 
-[화면 예시: PDF 84쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=84)
+[화면 예시: PDF 88쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=88)
 
 #### 5. 공유한 장소 확인하기
 
@@ -1765,11 +1841,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 6.12 메시지 복사·삭제하고 대화 정리하기
 
-[소섹션: PDF 85쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=85)
+[소섹션: PDF 89쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=89)
 
-<a id="manual_page_85"></a>
+<a id="manual_page_89"></a>
 
-[화면 예시: PDF 85쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=85)
+[화면 예시: PDF 89쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=89)
 
 #### 1. 메시지 복사·선택하기
 
@@ -1800,47 +1876,51 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 6.13 채팅에서 복약 기록 공유하기
 
-[소섹션: PDF 86쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=86)
+[소섹션: PDF 90쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=90)
 
-<a id="manual_page_86"></a>
+<a id="manual_page_90"></a>
 
-[화면 예시: PDF 86쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=86)
+[화면 예시: PDF 90쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=90)
 
 #### 1. 채팅에서 공유 시작
 
 현재 채팅의 ‘+ → 복약 기록 공유’를 누르세요. 이 관계의 환자와 현재 대화가 대상으로 정해집니다. 5.4에서 안내하는 공유 창에서 기간과 상대를 확인한 뒤 전송하세요.
 
-<a id="manual_page_87"></a>
+<a id="manual_page_91"></a>
 
 ### 참고
 
-**[6.1 - 72페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=72)**
+**[6.1 - 75페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=75)**
 
-코드는 15분 동안 한 번만 사용할 수 있습니다. 만료되거나 사용한 코드는 새로 발급하고, 보호자에게는 새 코드만 전달하세요. 창을 닫거나 새 코드를 만들어도 이전 코드가 즉시 폐기되지는 않습니다. 만료되면 코드가 회색으로 바뀌고 ‘새 코드 만들기’가 표시됩니다.
+코드는 15분 동안 한 번만 사용할 수 있습니다. 코드 창에서는 지금 표시한 코드의 등록 상태를 자동으로 확인합니다. 인터넷 연결이 끊기거나 앱이 뒤로 가 있으면 완료 표시가 늦을 수 있으므로 앱으로 돌아와 연동 목록을 확인하세요. 코드 생성만으로 연동 완료가 되지는 않습니다.
 
-**[6.2 - 73페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=73)**
+만료되거나 사용한 코드는 새로 발급하고, 보호자에게는 새 코드만 전달하세요. 창을 닫거나 새 코드를 만들어도 이전 코드가 즉시 폐기되지는 않습니다. 만료되면 코드가 회색으로 바뀌고 ‘새 코드 만들기’가 표시됩니다.
+
+**[6.2 - 76페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=76)**
 
 코드의 소문자는 대문자로 바뀌며, 창을 닫으면 등록을 취소합니다. 긴 환자 해시는 등록용 코드가 아니고, 자신의 계정에서 만든 코드는 같은 계정에 등록할 수 없습니다. 코드가 만료되었거나 이미 사용했거나 잘못되었다는 안내가 나오면 새 코드를 받으세요. 연동 인원 한도에 도달했다면 목록을 확인하세요. 불필요한 연동을 해제하기 전에는 대화와 알림 설정의 삭제 범위를 확인하세요.
 
-**[6.3 - 74페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=74)**
+**[6.3 - 77페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=77)**
 
 보호자는 ‘연결된 환자’의 ‘환자 복약 정보 확인’으로 읽기 전용 일정을 열 수 있지만, 완료 기록을 대신 바꿀 수는 없습니다. 환자·보호자 역할은 관계마다 다릅니다. 대화의 등록 약·시간대·공유 기록은 해당 관계의 환자 자료이므로 다른 대화를 열 때 환자 이름과 상대를 확인하세요.
 
-**[6.4 - 75페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=75)**
+**[6.4 - 78페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=78)**
 
 시간대 요약을 좌우로 밀면 약이 있는 시간대 사이를 이동합니다. 전체 일정은 아래로 내려 다른 시간대를 보고, 약을 눌러 효능·등록된 복용 정보·주의사항을 확인하세요. 자료가 없으면 복용 정보를 임의로 정하지 마세요. 완료 표시는 실제 복용을 자동 확인한 결과가 아닙니다. ‘불러오는 중’, ‘조회 실패’, ‘등록된 약 없음’을 구분하고, 조회에 실패하면 새로고침한 뒤 환자 연결 상태를 확인하세요.
 
-**[6.5 - 77페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=77)**
+‘연동된 환자’ 모드에서는 홈·일정·복약 기록이 같은 환자 선택을 공유합니다. 환자 변경·연동 해제·계정 변경 후 이전 환자의 기록이 계속 보이는 것으로 판단하지 말고 표시 이름과 조회 상태를 확인하세요. 내 자료를 보려면 홈 복약 일정을 ‘내 일정’으로 저장하세요.
+
+**[6.5 - 80페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=80)**
 
 표시 이름은 내 계정에서만 사용하는 별칭입니다. 상대의 로그인 이름이나 다른 가족이 정한 이름은 바뀌지 않습니다. 저장 후 연동 목록에 반영되었는지 확인하세요.
 
-**[6.6 - 78페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=78)**
+**[6.6 - 81페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=81)**
 
 취소하면 연동과 대화가 유지됩니다. 확인창의 빨간 ‘연동 해제’를 누르면 두 사람의 대화 기록도 삭제되며, 다시 연결해도 복구되지 않습니다. 다시 연결하려면 새로운 환자 코드를 등록해야 합니다.
 
-<a id="manual_page_88"></a>
+<a id="manual_page_92"></a>
 
-**[6.7 - 79페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=79)**
+**[6.7 - 82페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=82)**
 
 대화를 열어 최신 메시지를 읽으면 안 읽은 수가 갱신됩니다. 목록만 보거나 ‘실시간 연결됨’이 표시되는 것은 읽음 확인이 아니며, 알림함의 읽음 상태와도 별개입니다. ‘이전 대화 보기’로 과거 내용을 볼 수 있고, 새 메시지가 와도 읽던 위치는 유지됩니다. 채팅 알림으로 다시 열면 최신 위치로 이동할 수 있습니다.
 
@@ -1850,33 +1930,37 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 묶인 채팅 알림은 상대·안 읽은 수·최근 메시지 최대 3줄을 보여 줍니다. ‘알림 종류만 표시’로 설정하면 상대 이름과 본문 대신 ‘새 가족 메시지’와 안 읽은 수만 표시됩니다. 알림을 지워도 메시지는 남으며, 대화에서 읽으면 같은 대화의 알림이 정리됩니다.
 
-**[6.8 - 80페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=80)**
+**[6.8 - 83페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=83)**
 
 등록 약은 원이나 ‘전체 선택’으로 고르며, 카드의 이름·화살표를 누르면 상세정보가 열립니다. 선택만으로 복용 기록이 생기지는 않습니다. 등록 약이 없어도 제품을 검색할 수 있습니다.
 
 ‘검색약 · 미등록’은 이름·제조사·제공되는 사진을 담은 참고 정보입니다. 복약함·일정·알림·복용 기록을 만들지 않으며, 참고 카드에서는 복용 기록이나 상세 열기를 할 수 없습니다. 일반 메시지에는 등록 약과 검색약을 합해 최대 10개를 첨부할 수 있고, 글을 입력한 뒤 보내기를 눌러야 전송됩니다. 검색약이 하나라도 첨부되면 빠른 답장이 숨겨집니다. 카드의 이름·제조사·사진은 최근 하루 안에 약 검색에서 받은 정보로 표시됩니다. 검색한 지 하루가 지나 전송되지 않는다는 안내가 나오면 약을 다시 검색해 첨부하세요.
 
-**[6.9 - 81페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=81)**
+**[6.9 - 84페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=84)**
 
 보낸 글은 수정할 수 없으므로 새 메시지로 정정하세요. 보호자는 약을 선택한 뒤 ‘복용하셨나요?’ 등의 빠른 답장을 보낼 수 있습니다. 질문은 확인창 없이 전송되며 환자의 복용 기록은 바꾸지 않습니다.
 
-**[6.10 - 82페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=82)**
+채팅의 완료 버튼은 환자가 오늘 받은 유효한 확인 요청에만 표시됩니다. 일반 글·지난 날짜·삭제된 요청·연동 해제 상태에서는 사용할 수 없습니다. ‘약 복용하기’는 요청된 약만, ‘아침 복용 완료’ 같은 시간대 버튼은 그 요청에 포함된 시간대 약을 함께 기록합니다. 시간대에 약이 한 개뿐이어도 시간대 요청 문구를 사용합니다. 필요한 약만 실제로 복용했는지 확인하고 누르세요.
+
+기기에 저장된 기록은 연결 복구 후 전송될 수 있습니다. 전송 대기는 서버 반영 완료와 다르며, 일정 변경 등으로 처리되지 않으면 안내와 현재 일정을 확인하세요. 이미 완료한 버튼을 다시 누르지 말고, 정정은 일정이나 복약 기록에서 하세요.
+
+<a id="manual_page_93"></a>
+
+**[6.10 - 86페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=86)**
 
 ‘선택 완료’는 대화에 약을 첨부하는 동작입니다. 환자의 ‘먹었어요’는 정기 약의 복용 기록과 보호자 확인 메시지를 처리합니다. 여러 시간대 중 일부만 처리되거나 전송 대기가 남으면 각 상태를 확인하세요. 기기 저장만으로 확인 메시지가 즉시 전달되지는 않습니다. 빠른 답장을 가로로 넘기면 추가 응답을 볼 수 있습니다. 불편함 안내의 ‘병원 찾기’는 검색 기능으로, 진료나 긴급 연락을 대신하지 않습니다.
 
-<a id="manual_page_89"></a>
-
-**[6.11 - 83페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=83)**
+**[6.11 - 87페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=87)**
 
 ‘약이 부족해요’를 누르면 부족 메시지가 전송됩니다. 메시지의 ‘찾기’ 버튼으로도 장소를 검색할 수 있으며, 검색·공유를 취소해도 이미 보낸 부족·불편함 메시지는 회수되지 않습니다. 홈에서 연 검색에는 ‘채팅에 공유’ 버튼이 없을 수 있습니다.
 
 장소 공유는 예약을 뜻하지 않습니다. 약국의 전화 확인 항목은 실제 통화로 운영 여부를 확인한 경우에만 체크하세요. 병원에는 이 항목이 없습니다. 공유 카드의 ‘전화’와 ‘길찾기’는 전화 앱이나 외부 지도를 엽니다.
 
-**[6.12 - 85페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=85)**
+**[6.12 - 89페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=89)**
 
 선택 모드에는 ‘전체 선택’이 없으며, 왼쪽 위 X를 누르면 선택을 취소합니다. 메시지를 삭제해도 약과 복용 기록은 남고, 지운 메시지를 복구하는 버튼은 없습니다. 다른 앱이 클립보드의 내용을 읽을 수 있으므로 건강정보가 담긴 글은 필요할 때만 복사하세요.
 
-**[6.13 - 86페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=86)**
+**[6.13 - 90페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=90)**
 
 채팅에서 시작하면 현재 환자와 대화 상대가 고정되며 보호자 본인이나 다른 환자의 기록으로 바꿀 수 없습니다. 조회·전송 시 계정과 연동 권한을 다시 확인하며, 연동이 해제된 관계에는 공유할 수 없습니다. 전송을 마치면 대화로 돌아갑니다.
 
@@ -1889,11 +1973,11 @@ Google 계정 선택과 인증 화면은 기기·계정 상태에 따라 다릅�
 
 ### 7.1 휴대폰 알림 권한 확인하기
 
-[소섹션: PDF 90쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=90)
+[소섹션: PDF 94쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=94)
 
-<a id="manual_page_90"></a>
+<a id="manual_page_94"></a>
 
-[화면 예시: PDF 90쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=90)
+[화면 예시: PDF 94쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=94)
 
 #### 1. 휴대폰 설정 열기
 
@@ -1911,9 +1995,9 @@ Android에서 ‘복약 및 알림 → 휴대폰 설정 → 알림 허용’을 
 
 ‘정확한 시간에 알림’을 눌러 Android의 알람 및 리마인더 설정을 여세요. 일반 알림과 별도 권한이며, 허용하지 않으면 예약 알림이 늦어질 수 있습니다.
 
-<a id="manual_page_91"></a>
+<a id="manual_page_95"></a>
 
-[화면 예시: PDF 91쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=91)
+[화면 예시: PDF 95쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=95)
 
 #### 5. 알람 권한 허용
 
@@ -1927,11 +2011,11 @@ Android에서 ‘복약 및 알림 → 휴대폰 설정 → 알림 허용’을 
 
 ### 7.2 받을 알림 종류 선택하기
 
-[소섹션: PDF 92쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=92)
+[소섹션: PDF 96쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=96)
 
-<a id="manual_page_92"></a>
+<a id="manual_page_96"></a>
 
-[화면 예시: PDF 92쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=92)
+[화면 예시: PDF 96쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=96)
 
 #### 1. 받을 알림 선택
 
@@ -1949,25 +2033,25 @@ Android에서 ‘복약 및 알림 → 휴대폰 설정 → 알림 허용’을 
 
 ### 7.3 테스트 알림 보내기
 
-[소섹션: PDF 93쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=93)
+[소섹션: PDF 97쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=97)
 
-<a id="manual_page_93"></a>
+<a id="manual_page_97"></a>
 
-[화면 예시: PDF 93쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=93)
+[화면 예시: PDF 97쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=97)
 
 #### 1. 테스트 알림 확인
 
-‘테스트 알림 보내기’를 누른 뒤 휴대폰 알림창을 내려 알림이 오는지 확인하세요. 테스트는 복약 기록이나 알림 설정을 바꾸지 않습니다.
+‘테스트 알림 보내기’를 누른 뒤 휴대폰 알림창에서 ‘MedBuddy 테스트 알림’과 ‘표시 확인용입니다.’를 확인하세요. 테스트는 복약 기록이나 알림 설정을 바꾸지 않습니다.
 
 <a id="section-7-4"></a>
 
 ### 7.4 기본 복약 시간 바꾸기
 
-[소섹션: PDF 94쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=94)
+[소섹션: PDF 98쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=98)
 
-<a id="manual_page_94"></a>
+<a id="manual_page_98"></a>
 
-[화면 예시: PDF 94쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=94)
+[화면 예시: PDF 98쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=98)
 
 #### 1. 시간대 선택
 
@@ -1985,9 +2069,9 @@ Android에서 ‘복약 및 알림 → 휴대폰 설정 → 알림 허용’을 
 
 시간을 돌려 고르기 어렵다면 가운데 시·분 숫자를 누르세요. 숫자를 직접 입력할 수 있는 창이 열립니다.
 
-<a id="manual_page_95"></a>
+<a id="manual_page_99"></a>
 
-[화면 예시: PDF 95쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=95)
+[화면 예시: PDF 99쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=99)
 
 #### 5. 숫자 입력·적용
 
@@ -2004,11 +2088,11 @@ Android에서 ‘복약 및 알림 → 휴대폰 설정 → 알림 허용’을 
 
 ### 7.5 일정별 알림 시간 설정하기
 
-[소섹션: PDF 96쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=96)
+[소섹션: PDF 100쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=100)
 
-<a id="manual_page_96"></a>
+<a id="manual_page_100"></a>
 
-[화면 예시: PDF 96쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=96)
+[화면 예시: PDF 100쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=100)
 
 #### 1. 시간대 알림 설정 열기
 
@@ -2035,9 +2119,9 @@ Android에서 ‘복약 및 알림 → 휴대폰 설정 → 알림 허용’을 
 1. 시를 숫자로 입력
 2. 입력한 숫자 적용
 
-<a id="manual_page_97"></a>
+<a id="manual_page_101"></a>
 
-[화면 예시: PDF 97쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=97)
+[화면 예시: PDF 101쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=101)
 
 #### 5. 알림 설정 저장
 
@@ -2050,11 +2134,11 @@ Android에서 ‘복약 및 알림 → 휴대폰 설정 → 알림 허용’을 
 
 ### 7.6 필요시 약 확인 알림 설정하기
 
-[소섹션: PDF 98쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=98)
+[소섹션: PDF 102쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=102)
 
-<a id="manual_page_98"></a>
+<a id="manual_page_102"></a>
 
-[화면 예시: PDF 98쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=98)
+[화면 예시: PDF 102쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=102)
 
 #### 1. 확인 알림 설정
 
@@ -2064,11 +2148,11 @@ Android에서 ‘복약 및 알림 → 휴대폰 설정 → 알림 허용’을 
 
 ### 7.7 보호자 복약 알림 설정하기
 
-[소섹션: PDF 99쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=99)
+[소섹션: PDF 103쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=103)
 
-<a id="manual_page_99"></a>
+<a id="manual_page_103"></a>
 
-[화면 예시: PDF 99쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=99)
+[화면 예시: PDF 103쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=103)
 
 #### 1. 보호자 알림 설정 열기
 
@@ -2086,11 +2170,11 @@ Android에서 ‘복약 및 알림 → 휴대폰 설정 → 알림 허용’을 
 
 ### 7.8 알림함 확인하고 정리하기
 
-[소섹션: PDF 100쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=100)
+[소섹션: PDF 104쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=104)
 
-<a id="manual_page_100"></a>
+<a id="manual_page_104"></a>
 
-[화면 예시: PDF 100쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=100)
+[화면 예시: PDF 104쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=104)
 
 #### 1. 알림함 열기
 
@@ -2112,11 +2196,11 @@ Android에서 ‘복약 및 알림 → 휴대폰 설정 → 알림 허용’을 
 
 ### 7.9 알림에서 화면 열기와 복용 완료하기
 
-[소섹션: PDF 101쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=101)
+[소섹션: PDF 105쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=105)
 
-<a id="manual_page_101"></a>
+<a id="manual_page_105"></a>
 
-[화면 예시: PDF 101쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=101)
+[화면 예시: PDF 105쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=105)
 
 #### 1. 알림에서 화면 열기
 
@@ -2130,11 +2214,11 @@ Android에서 ‘복약 및 알림 → 휴대폰 설정 → 알림 허용’을 
 
 ### 7.10 알림에 표시할 내용 정하기
 
-[소섹션: PDF 102쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=102)
+[소섹션: PDF 106쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=106)
 
-<a id="manual_page_102"></a>
+<a id="manual_page_106"></a>
 
-[화면 예시: PDF 102쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=102)
+[화면 예시: PDF 106쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=106)
 
 #### 1. 알림 내용 선택
 
@@ -2148,38 +2232,38 @@ Android에서 ‘복약 및 알림 → 휴대폰 설정 → 알림 허용’을 
 
 ### 7.11 내 복약 위젯 추가하고 사용하기
 
-[소섹션: PDF 103쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=103)
+[소섹션: PDF 107쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=107)
 
-<a id="manual_page_103"></a>
+<a id="manual_page_107"></a>
 
-[화면 예시: PDF 103쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=103)
+[화면 예시: PDF 107쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=107)
 
 #### 1. 복약 위젯 추가
 
-‘화면 및 음성 → 홈 화면 → 홈 화면 복약 위젯 추가’를 누르세요. 기기의 추가 안내를 마친 뒤 홈 화면에 위젯이 생겼는지 확인하세요.
+‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화면 복약 위젯 추가’를 누르세요. 미리보기에서 ‘4 x 1 기본’과 ‘4 x 3 확장’을 비교하세요.
 
 #### 2. 위젯 추가 요청하기
 
-Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화면 복약 위젯 추가’를 누르세요. 휴대폰에 표시되는 안내에 따라 홈 화면에 추가하세요.
+원하는 크기의 미리보기를 누르고 Android의 추가 안내를 마치세요. 미리보기의 약·날짜·시각은 예시이며, 홈 화면에 놓인 위젯에서 내 실제 일정과 날짜를 확인하세요.
 
-#### 3. 위젯 목록에서 추가하기
+#### 3. 확장 크기로 추가하기
 
-자동으로 추가되지 않으면 홈 화면을 길게 눌러 위젯 목록을 여세요. MedBuddy 4×1을 골라 배치한 뒤 복용 버튼을 사용할 수 있습니다.
+처음부터 날짜·약 목록을 넓게 보려면 ‘4 x 3 확장’을 고르세요. 홈 화면의 추가 안내를 마치면 배치되며, 추가를 취소하면 기존 위젯은 그대로입니다.
 
 #### 4. 한 줄 위젯 확인하기
 
-새 위젯은 기본 4×1 크기로 시간대·저장 상태·버튼을 보여 줍니다. 날짜와 약 목록은 위젯 높이를 늘리거나 앱의 일정에서 확인하세요.
+한 줄 높이에서도 시간대 옆 좌우 화살표로 이동하고 저장 상태·복용 버튼을 확인할 수 있습니다. 날짜와 약 목록은 높이를 늘리거나 앱 일정에서 확인하세요.
 
-1. 높이를 늘린 위젯
-2. 기본 4×1 크기의 새 위젯
+1. 날짜와 약 목록이 보이는 확장 높이
+2. 시간대 화살표가 보이는 한 줄 높이
 
-<a id="manual_page_104"></a>
+<a id="manual_page_108"></a>
 
-[화면 예시: PDF 104쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=104)
+[화면 예시: PDF 108쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=108)
 
 #### 5. 높이 늘려 시간대 보기
 
-위젯 높이를 늘리면 날짜·상세정보와 시간대 이동 화살표·점이 나타납니다. 시간대를 이동하는 것만으로 복용 기록이 바뀌지는 않습니다.
+두 종류 모두 길게 눌러 크기를 바꿀 수 있고 같은 실제 크기에서는 같은 내용을 표시합니다. 높이를 늘리면 날짜·약 목록·시간대 점이 보이며, 이동만으로 복용 기록은 바뀌지 않습니다.
 
 #### 6. 시간대 전체 복용 기록하기
 
@@ -2199,26 +2283,26 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 1. 서버 전송 완료
 2. 해당 시간대의 완료 기록 취소
 
-<a id="manual_page_105"></a>
+<a id="manual_page_109"></a>
 
-[화면 예시: PDF 105쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=105)
+[화면 예시: PDF 109쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=109)
 
 #### 9. 취소 결과 확인하기
 
 취소 후 미복용 표시와 진행률을 확인하세요. ‘서버 저장 완료’는 전송 대기가 없다는 뜻이며, 모든 약을 복용했다는 뜻은 아닙니다.
 
-1. 취소 후 복용 진행률
+1. 취소 후 약별 미복용 상태
 2. 기록의 서버 전송 상태
 
 <a id="section-7-12"></a>
 
 ### 7.12 보호자 위젯에서 환자 일정 보기
 
-[소섹션: PDF 106쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=106)
+[소섹션: PDF 110쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=110)
 
-<a id="manual_page_106"></a>
+<a id="manual_page_110"></a>
 
-[화면 예시: PDF 106쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=106)
+[화면 예시: PDF 110쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=110)
 
 #### 1. 환자 이름 확인하기
 
@@ -2240,93 +2324,95 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 7.13 로그아웃된 위젯에서 다시 로그인하기
 
-[소섹션: PDF 107쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=107)
+[소섹션: PDF 111쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=111)
 
-<a id="manual_page_107"></a>
+<a id="manual_page_111"></a>
 
-[화면 예시: PDF 107쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=107)
+[화면 예시: PDF 111쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=111)
 
 #### 1. 같은 계정으로 로그인하기
 
 위젯에 ‘로그인이 필요해요’가 표시되면 ‘로그인하기’를 눌러 앱을 여세요. 사용하던 계정으로 로그인하고 해당 계정의 일정을 다시 확인하세요.
 
-<a id="manual_page_108"></a>
+<a id="manual_page_112"></a>
 
 ### 참고
 
-**[7.1 - 90페이지 - 2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=90)**
+**[7.1 - 94페이지 - 2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=94)**
 
 항목 이름은 기기마다 다르며, 앱에서 저장하는 것만으로 휴대폰 권한이 허용되지는 않습니다. 설정이 열리지 않으면 휴대폰 설정 앱을 이용하세요.
 
 일반 알림과 정확한 알람 권한은 별개입니다. 정확한 알람을 허용하고 앱으로 돌아오면 현재 계정에서 조건에 맞는 향후 복약 알림의 재예약을 시도합니다. 허용하지 않으면 알림이 늦어질 수 있습니다. 별도 권한 설정이 없는 Android에서는 ‘정확한 시간에 알림’ 스위치가 생략됩니다. 설정을 바꾸지 않고 돌아오면 실제 상태가 유지됩니다.
 
-**[7.1 - 91페이지 - 6번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=91)**
+**[7.1 - 95페이지 - 6번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=95)**
 
 화면을 여는 것만으로 권한을 요청하지 않으며, 휴대폰 설정에서 돌아오면 상태를 다시 확인합니다. 휴대폰 권한을 꺼도 앱에서 선택한 수신 종류는 유지됩니다.
 
-**[7.2 - 92페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=92)**
+**[7.2 - 96페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=96)**
 
 설정 첫 화면에서 켜진 알림 종류 수를 확인할 수 있습니다. 보호자 알림은 전체 수신 여부이며 환자별 조건은 별도로 확인하세요. 알림이 오지 않으면 휴대폰 권한·등록 일정·시간대별 알림·연동 상태를 확인하세요.
 
-**[7.3 - 93페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=93)**
+**[7.3 - 97페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=97)**
 
 복약 알림이 차단됐거나 권한 상태를 확인할 수 없으면 테스트가 제한됩니다. 정확한 알람 권한이 없어도 즉시 테스트는 가능합니다. 테스트는 즉시 알림의 표시 여부만 확인하며, 예약 알림·서버 푸시·소리·절전 환경의 정상 동작까지 보장하지는 않습니다.
 
-**[7.4 - 94페이지 - 1~3번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=94)**
+**[7.4 - 98페이지 - 1~3번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=98)**
 
 기본 시간은 알림을 따로 저장하지 않은 시간대에만 쓰입니다. 이미 저장한 알림은 새 약을 추가해도 기존 시각을 유지합니다. 기존 일정은 ‘시간대별 세부 설정’을 눌러 ‘오늘의 복약 일정’에서 확인하고, 이동 전에 환경설정 변경을 저장하세요. 처음 표시된 시각은 개인별 복용 지시가 아닙니다.
 
-**[7.4 - 94페이지 - 4번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=94) / [7.4 - 95페이지 - 5~6번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=95)**
+**[7.4 - 98페이지 - 4번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=98) / [7.4 - 99페이지 - 5~6번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=99)**
 
 시간 표시를 오전/오후로 설정했어도 시는 0~23으로 입력하세요. 숫자는 최대 두 자리까지 입력할 수 있습니다.
 
-**[7.5 - 96페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=96)**
+**[7.5 - 100페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=100)**
 
 시간 선택만으로 저장되지는 않으며 원래 알림창의 ‘저장’을 눌러야 반영됩니다. 취소하면 변경하지 않습니다. 알림을 받으려면 시간대의 알림 사용, 환경설정의 ‘내 복약 알림’, 휴대폰 알림 권한이 모두 켜져 있어야 합니다.
 
-<a id="manual_page_109"></a>
+<a id="manual_page_113"></a>
 
-**[7.6 - 98페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=98)**
+**[7.6 - 102페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=102)**
 
 확인 알림은 본인 기기에 저장되며 정기·미복용 알림과 다릅니다. 환경설정의 ‘내 복약 알림’과 휴대폰 알림 권한을 확인하세요. 지난 시각을 고르면 다음 날에 알리므로 날짜·시각을 함께 확인하세요. 보호자 알림은 자동으로 켜지지 않습니다.
 
-**[7.7 - 99페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=99)**
+**[7.7 - 103페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=103)**
 
 ‘정해진 시각까지 미복용 시 알림’은 시·분을 정한 뒤 원래 설정창에서 ‘저장하기’를 눌러야 적용됩니다. 이 시각은 보호자의 확인 기준이며 환자의 복약 알림 시각은 바꾸지 않습니다. 설정창에 표시된 복약 알림 기준 시각보다 이르게 고를 수 없으며, 환자의 변경 시각을 아직 받지 못했다면 시간대의 기본 시각이 표시될 수 있습니다. 실제 전송에는 환자 복약 알림 이후 최소 30분의 유예와 설정한 확인 시각이 함께 적용됩니다.
 
 ‘10분 후 다시 알림’은 요청 접수 후 미복용 조건이 유지될 때 다시 알립니다. 비매일 약은 복용하는 날에만 확인하며, 다시 알림 전에 모두 완료되면 보내지 않을 수 있습니다. ‘채팅으로 알림’은 확인 요청만 보내고 복용을 대신 기록하지 않습니다. 미복용 확인 시각과 다시 알림은 정기 약에만 적용됩니다. 환자의 확인 알림과 보호자의 완료 알림은 독립된 설정입니다.
 
-**[7.8 - 100페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=100)**
+**[7.8 - 104페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=104)**
 
 알림 오른쪽 점 세 개의 ‘삭제’나 선택 모드로 알림을 지울 수 있습니다. ‘전체 선택’을 했다면 개수와 대상을 확인하세요. 확인창에서 취소하면 그대로 남고, 삭제하면 알림만 지워지며 채팅과 복용 기록은 유지됩니다. X로 선택 모드를 끝내고, 목록을 아래로 당겨 최신 알림을 확인하세요. 읽음·미읽음 전용 필터는 없습니다. ‘모두 읽음’이 비활성화되거나 ‘안 읽음’ 표시가 사라졌는지 확인하세요.
 
 내 복약 일정에 연결된 정형 알림은 현재 앱 언어로 표시합니다. 채팅은 원문을 유지하고, 보호자 알림의 저장된 상세는 이전 언어로 남을 수 있습니다. 휴대폰 알림의 ‘복용 완료’는 알림함의 ‘모두 읽음’과 다릅니다. 복용 기록 조건은 7.9 참고를 확인하세요.
 
-**[7.9 - 101페이지 - 2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=101)**
+**[7.9 - 105페이지 - 2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=105)**
 
 지원되는 Android에서는 환자가 오늘의 복약 확인 요청 알림에서 ‘복용 완료’를 눌러 해당 시간대의 정기 약을 함께 완료로 기록할 수 있습니다. 약·날짜·시간대를 확인하고 모두 복용했을 때만 누르세요. 일부만 복용했다면 본문으로 대화를 열고 일정에서 개별 기록하세요. 보호자가 대신 기록하거나 필요시 복용 횟수를 추가하는 기능은 아닙니다.
 
 알림 본문은 대화만 엽니다. 로그아웃·계정 전환·지난 날짜·일정 확인 불가 상태에서는 완료가 처리되지 않을 수 있습니다. 기기에 저장돼도 서버 전송 대기일 수 있으니 앱에서 기록과 전송 상태를 확인하고 중복 입력하지 마세요. 연동 해제나 일정 변경으로 전송이 거절되면 상태를 확인하세요. 버튼이 없으면 대화와 일정에서 확인하세요.
 
-<a id="manual_page_110"></a>
+<a id="manual_page_114"></a>
 
-**[7.10 - 102페이지 - 1~2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=102)**
+**[7.10 - 106페이지 - 1~2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=106)**
 
 ‘알림 종류만 표시’를 선택하면 위젯은 약 이름 대신 복용 완료·미복용 개수를 보여 줍니다. 표시 이름·개수·상태를 모두 숨기지는 않으며 기존 알림이 즉시 모두 바뀌는 것도 아닙니다. 잠금 화면의 노출은 휴대폰 설정도 확인하세요.
 
-**[7.11 - 103페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=103)**
+**[7.11 - 107페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=107)**
 
-위젯 자동 추가가 안 되면 홈 화면의 위젯 목록에서 MedBuddy를 찾으세요. 추가 창에서 취소하면 위젯은 추가되지 않습니다.
+위젯 자동 추가가 안 되면 홈 화면의 위젯 목록에서 MedBuddy를 찾으세요. 미리보기를 불러오지 못하면 다시 시도할 수 있으며 크기 선택 자체는 가능합니다. 추가 창에서 취소하면 위젯은 추가되지 않습니다.
 
-**[7.11 - 103페이지 - 2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=103)**
+**[7.11 - 107페이지 - 2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=107)**
 
-위젯을 길게 눌러 위치와 크기를 바꿀 수 있으며, 표시 공간에 따라 약 목록 일부가 생략될 수 있습니다. 위젯만 제거해도 앱의 약과 복용 기록은 삭제되지 않습니다. 새 위젯은 기본 4×1이고 이미 배치한 위젯은 기존 크기를 유지합니다. 실제 칸 크기와 조절 방법은 홈 화면 앱마다 다릅니다. Android 7~11에서도 지원하지만 기기별 홈 화면 동작은 다를 수 있습니다.
+4×1·4×3은 추가할 때의 시작 크기이며 기능이 다른 별도 위젯이 아닙니다. 길게 눌러 위치와 크기를 바꿀 수 있고, 표시 공간에 따라 약 목록 일부가 생략될 수 있습니다. 이미 놓인 위젯은 기존 크기를 유지합니다. 위젯만 제거해도 약과 복용 기록은 삭제되지 않습니다. 실제 칸 크기와 조절 방법은 홈 화면 앱마다 다릅니다.
 
-**[7.12 - 106페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=106)**
+**[7.12 - 110페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=110)**
 
-홈 복약 일정을 연동된 환자로 설정한 뒤 Android 홈 화면에 MedBuddy 위젯을 추가하세요. ‘알림 종류만 표시’로 저장하면 약 이름 대신 완료·미복용 개수를 보여 주며, 환자 이름과 기록을 모두 숨기지는 않습니다. 한 줄 높이에서는 내용이 간략하므로 환자 선택과 시간대 이동이 보이지 않으면 높이를 늘리세요.
+홈 복약 일정을 연동된 환자로 설정한 뒤 Android 홈 화면에 MedBuddy 위젯을 추가하세요. ‘알림 종류만 표시’로 저장하면 약 이름 대신 완료·미복용 개수를 보여 주며, 환자 이름과 기록을 모두 숨기지는 않습니다. 환자 이름과 날짜·상세 목록은 확장 높이에서 확인하세요.
 
-**[7.13 - 107페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=107)**
+보호자 위젯은 앱을 닫아 둔 동안에도 연결된 환자 일정 갱신을 시도합니다. 네트워크·휴대폰의 백그라운드 제한에 따라 늦어질 수 있고 실시간 반영을 보장하지 않습니다. 오래된 날짜나 상태이면 새로고침하거나 앱의 환자 일정을 여세요. 보호자 위젯의 갱신은 환자의 복용 기록을 대신 바꾸지 않습니다.
+
+**[7.13 - 111페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=111)**
 
 ‘로그인하기’는 앱을 여는 버튼으로, 복용을 기록하지 않습니다. 위젯 목록의 이름·미리보기·접근성 안내는 휴대폰 언어에 따라 한국어·영어로 표시됩니다. 앱이 갱신한 일정은 앱 언어를 따르므로 표시 언어가 다를 수 있습니다.
 
@@ -2339,11 +2425,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 8.1 건강 관리 추천 보기
 
-[소섹션: PDF 111쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=111)
+[소섹션: PDF 115쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=115)
 
-<a id="manual_page_111"></a>
+<a id="manual_page_115"></a>
 
-[화면 예시: PDF 111쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=111)
+[화면 예시: PDF 115쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=115)
 
 #### 1. 건강 관리 추천 열기
 
@@ -2365,11 +2451,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 8.2 건강 관리 추천이 나오지 않을 때
 
-[소섹션: PDF 112쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=112)
+[소섹션: PDF 116쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=116)
 
-<a id="manual_page_112"></a>
+<a id="manual_page_116"></a>
 
-[화면 예시: PDF 112쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=112)
+[화면 예시: PDF 116쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=116)
 
 #### 1. 추천 다시 확인하기
 
@@ -2379,11 +2465,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 8.3 병원과 약국 선택하기
 
-[소섹션: PDF 113쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=113)
+[소섹션: PDF 117쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=117)
 
-<a id="manual_page_113"></a>
+<a id="manual_page_117"></a>
 
-[화면 예시: PDF 113쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=113)
+[화면 예시: PDF 117쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=117)
 
 #### 1. 주변 검색 열기
 
@@ -2405,11 +2491,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 8.4 증상·진료과목으로 병원 찾기
 
-[소섹션: PDF 114쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=114)
+[소섹션: PDF 118쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=118)
 
-<a id="manual_page_114"></a>
+<a id="manual_page_118"></a>
 
-[화면 예시: PDF 114쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=114)
+[화면 예시: PDF 118쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=118)
 
 #### 1. 진료과목 찾기
 
@@ -2430,9 +2516,9 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 현재 위치 버튼을 눌러 기기 주변을 다시 찾으세요. 가까운 결과가 없으면 검색 범위를 순서대로 넓힐 수 있으며, 확대 안내가 표시됩니다.
 
-<a id="manual_page_115"></a>
+<a id="manual_page_119"></a>
 
-[화면 예시: PDF 115쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=115)
+[화면 예시: PDF 119쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=119)
 
 #### 5. 진료과목 변경
 
@@ -2442,11 +2528,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 8.5 병원 조회 조건과 날짜 바꾸기
 
-[소섹션: PDF 116쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=116)
+[소섹션: PDF 120쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=120)
 
-<a id="manual_page_116"></a>
+<a id="manual_page_120"></a>
 
-[화면 예시: PDF 116쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=116)
+[화면 예시: PDF 120쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=120)
 
 #### 1. 조회 조건 열기
 
@@ -2470,9 +2556,9 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 1. 주말·공휴일 진료시간으로 검색
 2. 진료시간 조건 없이 검색
 
-<a id="manual_page_117"></a>
+<a id="manual_page_121"></a>
 
-[화면 예시: PDF 117쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=117)
+[화면 예시: PDF 121쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=121)
 
 #### 5. 조건 적용
 
@@ -2486,11 +2572,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 8.6 병원 목록과 상세 정보 보기
 
-[소섹션: PDF 118쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=118)
+[소섹션: PDF 122쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=122)
 
-<a id="manual_page_118"></a>
+<a id="manual_page_122"></a>
 
-[화면 예시: PDF 118쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=118)
+[화면 예시: PDF 122쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=122)
 
 #### 1. 병원 목록 열기
 
@@ -2515,11 +2601,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 8.7 병원 즐겨찾기와 방문 준비
 
-[소섹션: PDF 119쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=119)
+[소섹션: PDF 123쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=123)
 
-<a id="manual_page_119"></a>
+<a id="manual_page_123"></a>
 
-[화면 예시: PDF 119쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=119)
+[화면 예시: PDF 123쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=123)
 
 #### 1. 병원 즐겨찾기
 
@@ -2537,11 +2623,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 8.8 주변 약국 조회하기
 
-[소섹션: PDF 120쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=120)
+[소섹션: PDF 124쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=124)
 
-<a id="manual_page_120"></a>
+<a id="manual_page_124"></a>
 
-[화면 예시: PDF 120쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=120)
+[화면 예시: PDF 124쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=124)
 
 #### 1. 근처 약국 찾기
 
@@ -2563,11 +2649,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 8.9 약국 조회 조건과 날짜 바꾸기
 
-[소섹션: PDF 121쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=121)
+[소섹션: PDF 125쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=125)
 
-<a id="manual_page_121"></a>
+<a id="manual_page_125"></a>
 
-[화면 예시: PDF 121쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=121)
+[화면 예시: PDF 125쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=125)
 
 #### 1. 조회 조건 열기
 
@@ -2585,9 +2671,9 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 날짜를 바꿀 수 있는 영업 상태에서 ‘날짜’를 눌러 달력을 여세요. ‘현재 영업 중’을 선택한 상태에서는 날짜를 바꿀 수 없습니다.
 
-<a id="manual_page_122"></a>
+<a id="manual_page_126"></a>
 
-[화면 예시: PDF 122쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=122)
+[화면 예시: PDF 126쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=126)
 
 #### 5. 방문일 선택
 
@@ -2612,11 +2698,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 8.10 약국 목록과 상세 정보 보기
 
-[소섹션: PDF 123쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=123)
+[소섹션: PDF 127쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=127)
 
-<a id="manual_page_123"></a>
+<a id="manual_page_127"></a>
 
-[화면 예시: PDF 123쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=123)
+[화면 예시: PDF 127쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=127)
 
 #### 1. 약국 목록 살펴보기
 
@@ -2638,11 +2724,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 8.11 약국 즐겨찾기
 
-[소섹션: PDF 124쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=124)
+[소섹션: PDF 128쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=128)
 
-<a id="manual_page_124"></a>
+<a id="manual_page_128"></a>
 
-[화면 예시: PDF 124쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=124)
+[화면 예시: PDF 128쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=128)
 
 #### 1. 약국 즐겨찾기
 
@@ -2664,11 +2750,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 8.12 약국 전화와 길찾기
 
-[소섹션: PDF 125쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=125)
+[소섹션: PDF 129쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=129)
 
-<a id="manual_page_125"></a>
+<a id="manual_page_129"></a>
 
-[화면 예시: PDF 125쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=125)
+[화면 예시: PDF 129쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=129)
 
 #### 1. 약국에 전화
 
@@ -2686,37 +2772,37 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ‘주소 복사’를 누르고 지도나 메모 앱에 붙여 넣으세요. 복사된 주소가 방문하려는 약국의 주소인지 확인하세요.
 
-<a id="manual_page_126"></a>
+<a id="manual_page_130"></a>
 
 ### 참고
 
-**[8.1 - 111페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=111)**
+**[8.1 - 115페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=115)**
 
 추천은 등록된 복용 중인 약을 바탕으로 합니다. 서버에 약품 설명이 없는 약은 추천 근거에서 제외되며, 주의 안내에 이름이 표시될 수 있습니다. 추천에 없다고 복용을 중단하거나 안전한 약으로 판단하지 마세요.
 
 무료 Gemini 환경에서는 실제 환자의 복약 정보를 전송해 추천을 요청하지 마세요. 동의 문구나 계정 해시만으로 무료 API의 개인정보·민감정보 전송 제한이 해결되지는 않습니다. ‘데이터 이용 안내’에서 처리 범위를 확인하세요.
 
-**[8.2 - 112페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=112)**
+**[8.2 - 116페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=116)**
 
 추천은 현재 복용 중인 약을 기준으로 합니다. 홈의 ‘약 등록·관리 → 약 등록’으로도 약을 등록할 수 있으며, 등록 후 ‘다시 불러오기’로 확인하세요. 조회가 계속 실패하면 잠시 후 다시 시도하고, 기존 약이나 계정을 삭제하지 마세요.
 
-**[8.3 - 113페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=113)**
+**[8.3 - 117페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=117)**
 
 기관 정보·운영시간·검색 결과 수는 조회 시점과 지역에 따라 달라집니다.
 
-**[8.3 - 113페이지 - 2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=113)**
+**[8.3 - 117페이지 - 2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=117)**
 
 실제 접수·진료 여부는 표시된 시간과 다를 수 있으니 방문 전 전화로 확인하세요. 병원 찾기는 예약이나 응급의료 요청 기능이 아닙니다.
 
-**[8.3 - 113페이지 - 3번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=113)**
+**[8.3 - 117페이지 - 3번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=117)**
 
 병원을 열 때마다 진료과목이나 ‘전체’를 선택하세요. 현재 위치를 사용하려면 위치 권한을 앱 사용 중 허용하고, 위치 확인에 실패하면 안내된 대체 검색 지역을 확인하세요.
 
-**[8.3 - 113페이지 - 4번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=113)**
+**[8.3 - 117페이지 - 4번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=117)**
 
 위치 확인에 실패하면 안내된 기본 지역을 확인하세요. 거리는 검색 기준 위치에서의 거리이며 실제 이동 거리가 아닙니다. 지도를 옮긴 뒤에는 검색 지역과 새 결과를 확인하세요.
 
-**[8.4 - 114페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=114)**
+**[8.4 - 118페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=118)**
 
 다른 지역은 지도를 옮긴 뒤 해당 지역 검색을 이용하세요. 정보 미확인은 휴진 확정이 아니며, 결과에 주변 모든 병원이 포함되는 것은 아닙니다.
 
@@ -2724,71 +2810,71 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 일일 사용 횟수나 공공 조회 횟수를 모두 썼다는 안내는 결과가 없다는 뜻이 아닙니다. 반복 조회 대신 한국 시각 자정 이후 다시 확인하세요.
 
-<a id="manual_page_127"></a>
+<a id="manual_page_131"></a>
 
-**[8.5 - 116페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=116)**
+**[8.5 - 120페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=120)**
 
 ‘현재 진료 중’에서는 날짜를 바꿀 수 없습니다. 다른 진료 상태를 고른 뒤 달력에서 날짜를 선택하고 ‘적용’까지 누르세요. X나 뒤로가기로 닫으면 적용하지 않은 변경은 취소됩니다.
 
-**[8.6 - 118페이지 - 1~2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=118)**
+**[8.6 - 122페이지 - 1~2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=122)**
 
 실제 접수·진료 여부는 표시된 시간과 다를 수 있으니 방문 전 전화로 확인하세요. 병원 찾기는 예약이나 응급의료 요청 기능이 아닙니다.
 
-**[8.6 - 118페이지 - 3번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=118)**
+**[8.6 - 122페이지 - 3번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=122)**
 
 채팅에서 병원 찾기를 열면 ‘채팅에 공유’가 표시되며, 홈에서 연 검색에는 공유 버튼이 없습니다.
 
-**[8.6 - 118페이지 - 4번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=118)**
+**[8.6 - 122페이지 - 4번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=122)**
 
 목록 위쪽 손잡이를 아래로 당기거나 ‘지도 크게 보기’를 눌러도 지도로 돌아갑니다. 상세 정보를 닫아도 조회 조건은 유지됩니다.
 
-**[8.7 - 119페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=119)**
+**[8.7 - 123페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=123)**
 
 상세 정보의 ‘길찾기’에서 지도 앱을 고르거나 주소를 복사할 수 있습니다. 앱이 열리지 않으면 다른 지도나 주소 복사를 이용하세요. 전화 앱을 여는 것만으로 통화가 시작되지는 않습니다.
 
-**[8.8 - 120페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=120)**
+**[8.8 - 124페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=124)**
 
 위치 확인에 실패하면 홍익대학교 서울캠퍼스 기준으로 검색할 수 있으며, 이 결과는 현재 내 주변이 아닐 수 있습니다. 약국 조회에는 계정별 일일 한도가 있고, 채팅에서 약국 정보를 새로 조회해 공유하는 경우도 포함됩니다. 한도 소진은 주변에 약국이 없다는 뜻이 아니므로 한국 시각 자정 이후 다시 조회하세요.
 
-**[8.8 - 120페이지 - 2, 4번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=120)**
+**[8.8 - 124페이지 - 2, 4번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=124)**
 
 ‘늦게까지 영업’에는 밤 10시 이후까지 또는 자정을 넘겨 영업하는 약국, 24시간·공공심야약국이 포함될 수 있습니다. 병원의 ‘저녁 진료’와 기준이 다르며, 실제 영업 여부는 방문 전 전화로 확인하세요.
 
-**[8.8 - 120페이지 - 3번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=120)**
+**[8.8 - 124페이지 - 3번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=124)**
 
 검색 지역을 옮기면 거리는 새 검색 중심을 기준으로 표시됩니다. 위치 권한이 없거나 위치 확인에 실패하면 안내된 기본 지역을 확인하세요.
 
-**[8.9 - 121페이지 - 1, 3~4번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=121) / [8.9 - 122페이지 - 5~6, 8번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=122)**
+**[8.9 - 125페이지 - 1, 3~4번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=125) / [8.9 - 126페이지 - 5~6, 8번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=126)**
 
 조건을 바꾸는 동안 기존 결과가 유지되며 ‘적용’을 눌러야 새로 조회합니다. X나 뒤로가기로 닫으면 변경이 취소됩니다. ‘현재 영업 중’은 현재 기준이므로 날짜를 따로 선택할 수 없습니다.
 
-<a id="manual_page_128"></a>
+<a id="manual_page_132"></a>
 
-**[8.9 - 121페이지 - 2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=121) / [8.9 - 122페이지 - 7번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=122)**
-
-‘늦게까지 영업’에는 밤 10시 이후까지 또는 자정을 넘겨 영업하는 약국, 24시간·공공심야약국이 포함될 수 있습니다. 병원의 ‘저녁 진료’와 기준이 다르며, 실제 영업 여부는 방문 전 전화로 확인하세요.
-
-**[8.10 - 123페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=123)**
+**[8.9 - 125페이지 - 2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=125) / [8.9 - 126페이지 - 7번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=126)**
 
 ‘늦게까지 영업’에는 밤 10시 이후까지 또는 자정을 넘겨 영업하는 약국, 24시간·공공심야약국이 포함될 수 있습니다. 병원의 ‘저녁 진료’와 기준이 다르며, 실제 영업 여부는 방문 전 전화로 확인하세요.
 
-**[8.10 - 123페이지 - 2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=123)**
+**[8.10 - 127페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=127)**
+
+‘늦게까지 영업’에는 밤 10시 이후까지 또는 자정을 넘겨 영업하는 약국, 24시간·공공심야약국이 포함될 수 있습니다. 병원의 ‘저녁 진료’와 기준이 다르며, 실제 영업 여부는 방문 전 전화로 확인하세요.
+
+**[8.10 - 127페이지 - 2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=127)**
 
 채팅 공유는 채팅의 장소 선택으로 연 화면에서 제공될 수 있습니다. 홈에서 연 병원·약국 검색에는 채팅 공유 버튼이 없습니다.
 
-**[8.11 - 124페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=124)**
+**[8.11 - 128페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=128)**
 
 즐겨찾기는 이 기기에 계정별로 저장되며, 병원과 약국의 즐겨찾기는 서로 구분됩니다.
 
-**[8.11 - 124페이지 - 4번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=124)**
+**[8.11 - 128페이지 - 4번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=128)**
 
 ‘늦게까지 영업’에는 밤 10시 이후까지 또는 자정을 넘겨 영업하는 약국, 24시간·공공심야약국이 포함될 수 있습니다. 병원의 ‘저녁 진료’와 기준이 다르며, 실제 영업 여부는 방문 전 전화로 확인하세요.
 
-**[8.12 - 125페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=125)**
+**[8.12 - 129페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=129)**
 
 ‘늦게까지 영업’에는 밤 10시 이후까지 또는 자정을 넘겨 영업하는 약국, 24시간·공공심야약국이 포함될 수 있습니다. 병원의 ‘저녁 진료’와 기준이 다르며, 실제 영업 여부는 방문 전 전화로 확인하세요.
 
-**[8.12 - 125페이지 - 3번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=125)**
+**[8.12 - 129페이지 - 3번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=129)**
 
 설치된 지도 앱이 없거나 열리지 않으면 Google 지도 또는 주소 복사를 이용하세요.
 
@@ -2801,11 +2887,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 9.1 설정 메뉴와 저장·변경 취소
 
-[소섹션: PDF 129쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=129)
+[소섹션: PDF 133쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=133)
 
-<a id="manual_page_129"></a>
+<a id="manual_page_133"></a>
 
-[화면 예시: PDF 129쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=129)
+[화면 예시: PDF 133쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=133)
 
 #### 1. 설정 메뉴 선택
 
@@ -2830,11 +2916,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 9.2 글자 크기 바꾸기
 
-[소섹션: PDF 130쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=130)
+[소섹션: PDF 134쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=134)
 
-<a id="manual_page_130"></a>
+<a id="manual_page_134"></a>
 
-[화면 예시: PDF 130쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=130)
+[화면 예시: PDF 134쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=134)
 
 #### 1. 글자 크기 선택
 
@@ -2848,11 +2934,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 9.3 언어와 시간 표시 바꾸기
 
-[소섹션: PDF 131쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=131)
+[소섹션: PDF 135쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=135)
 
-<a id="manual_page_131"></a>
+<a id="manual_page_135"></a>
 
-[화면 예시: PDF 131쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=131)
+[화면 예시: PDF 135쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=135)
 
 #### 1. 언어 선택
 
@@ -2870,15 +2956,15 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 9.4 홈에 표시할 일정 선택하기
 
-[소섹션: PDF 132쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=132)
+[소섹션: PDF 136쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=136)
 
-<a id="manual_page_132"></a>
+<a id="manual_page_136"></a>
 
-[화면 예시: PDF 132쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=132)
+[화면 예시: PDF 136쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=136)
 
 #### 1. 일정 대상 선택
 
-‘화면 및 음성 → 홈 화면 → 홈 복약 일정’에서 내 일정이나 연동된 환자를 고르세요. 홈·위젯의 표시 대상을 바꾸는 설정이며 새 연동을 만들지는 않습니다.
+‘화면 및 음성 → 홈 화면 → 홈 복약 일정’에서 내 일정이나 연동된 환자를 고르세요. 홈·일정·복약 기록·위젯의 표시 대상을 바꾸는 설정이며 새 연동을 만들지는 않습니다.
 
 #### 2. 일정 대상 저장
 
@@ -2888,11 +2974,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 9.5 읽기 속도와 음성 미리보기
 
-[소섹션: PDF 133쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=133)
+[소섹션: PDF 137쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=137)
 
-<a id="manual_page_133"></a>
+<a id="manual_page_137"></a>
 
-[화면 예시: PDF 133쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=133)
+[화면 예시: PDF 137쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=137)
 
 #### 1. 읽기 속도 선택
 
@@ -2910,11 +2996,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 9.6 데이터 이용과 삭제 범위 확인하기
 
-[소섹션: PDF 134쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=134)
+[소섹션: PDF 138쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=138)
 
-<a id="manual_page_134"></a>
+<a id="manual_page_138"></a>
 
-[화면 예시: PDF 134쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=134)
+[화면 예시: PDF 138쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=138)
 
 #### 1. 데이터 이용 안내
 
@@ -2932,11 +3018,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 9.7 로그아웃하기
 
-[소섹션: PDF 135쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=135)
+[소섹션: PDF 139쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=139)
 
-<a id="manual_page_135"></a>
+<a id="manual_page_139"></a>
 
-[화면 예시: PDF 135쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=135)
+[화면 예시: PDF 139쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=139)
 
 #### 1. 일반 계정 로그아웃
 
@@ -2954,9 +3040,9 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 게스트의 복약정보·일정·연동·설정이 영구 삭제된다는 경고를 확인하세요. 삭제 후 로그아웃하려는 경우에만 진행하고, 자료를 계속 사용하려면 취소하세요.
 
-<a id="manual_page_136"></a>
+<a id="manual_page_140"></a>
 
-[화면 예시: PDF 136쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=136)
+[화면 예시: PDF 140쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=140)
 
 #### 5. 게스트 종료 후 확인
 
@@ -2966,11 +3052,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 9.8 계정 데이터 삭제하기
 
-[소섹션: PDF 137쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=137)
+[소섹션: PDF 141쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=141)
 
-<a id="manual_page_137"></a>
+<a id="manual_page_141"></a>
 
-[화면 예시: PDF 137쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=137)
+[화면 예시: PDF 141쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=141)
 
 #### 1. 삭제 확인 창 열기
 
@@ -2987,11 +3073,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 계정 삭제가 끝나면 로그인 화면으로 돌아갑니다. 삭제한 계정과 데이터는 복구할 수 없으므로, 진행 전에 삭제 경고를 확인하세요.
 
-<a id="manual_page_138"></a>
+<a id="manual_page_142"></a>
 
 ### 참고
 
-**[9.1 - 129페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=129)**
+**[9.1 - 133페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=133)**
 
 ‘저장하기’는 ‘복약 및 알림’과 ‘화면 및 음성’에만 있습니다. ‘기기에만 저장’은 서버에 아직 반영되지 않은 상태로, 연결 복구 후 앱을 다시 열거나 설정을 불러올 때 전송을 재시도합니다. 안내가 남으면 선택값을 확인해 다시 저장하세요. 여러 기기의 값은 자동 병합되지 않으므로 다른 기기의 설정도 확인하세요.
 
@@ -2999,35 +3085,35 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 알림 권한·수신 종류·기본 복약 시간·테스트와 위젯은 7장에서, 약품 검색 방식은 2.13에서 안내합니다. 이 장에서는 화면·음성·개인정보·계정 설정을 다룹니다.
 
-**[9.2 - 130페이지 - 1~2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=130)**
+**[9.2 - 134페이지 - 1~2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=134)**
 
 선택하지 않고 창을 닫으면 기존 크기가 유지됩니다. 선택한 크기를 저장하지 않으려면 뒤로가기 후 ‘변경 취소’를 누르세요.
 
-**[9.3 - 131페이지 - 1~3번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=131)**
+**[9.3 - 135페이지 - 1~3번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=135)**
 
 언어는 설정 화면에 먼저 반영되며 로그인·가입·이메일 인증 안내에도 적용됩니다. ‘기기 설정 따르기’는 기기 언어가 영어이면 영어, 그 외에는 한국어를 사용합니다. 앱 시작·기기 언어 변경·앱 복귀 시 기기 언어를 다시 확인합니다.
 
 채팅 시각과 위젯은 선택한 시간 표시를 따르지만, 시간 선택 창은 계속 24시간제입니다. 저장하지 않은 변경을 취소하려면 ‘변경 취소’ 또는 ‘Discard changes’를 누르세요.
 
-**[9.4 - 132페이지 - 1~2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=132)**
+**[9.4 - 136페이지 - 1~2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=136)**
 
-‘연동된 환자가 없습니다.’가 나오면 ‘환자 연동’을 이용하거나 ‘내 일정’을 선택하세요. 환자가 여럿이면 홈의 이름 옆 화살표로 바꾸고, 조회 오류가 나면 새로고침하세요. 연동된 환자의 위젯은 조회 전용입니다.
+‘연동된 환자가 없습니다.’가 나오면 ‘환자 연동’을 이용하거나 ‘내 일정’을 선택하세요. 환자가 여럿이면 홈·일정·복약 기록의 이름 옆 화살표로 바꾸고, 조회 오류가 나면 다시 시도하세요. 연동된 환자의 일정·기록·위젯은 조회 전용입니다.
 
-**[9.5 - 133페이지 - 1~3번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=133)**
+**[9.5 - 137페이지 - 1~3번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=137)**
 
 홈 화면 구역 아래의 음성·미리보기에서 재생 버튼을 찾으세요. 재생되지 않으면 기기의 음량과 음성 재생 상태를 확인하고 다시 시도하세요. 앱에는 목소리나 음량을 바꾸는 별도 설정이 없습니다.
 
-**[9.6 - 134페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=134)**
+**[9.6 - 138페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=138)**
 
 데이터 이용 안내는 정보 처리 설명이며 개인정보처리방침이나 별도 동의를 대신하지 않습니다. 무료 Gemini 환경에서는 실제 환자의 처방전·복약 정보로 AI 기능을 이용하지 마세요. 이름 제거나 해시 처리만으로 완전한 익명화가 보장되지는 않습니다. 처방전·연락처·복약 기록을 공개 게시판에 올리지 마세요.
 
-<a id="manual_page_139"></a>
+<a id="manual_page_143"></a>
 
-**[9.7 - 135페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=135)**
+**[9.7 - 139페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=139)**
 
 게스트 자료를 보존하며 정식 계정으로 전환하는 버튼은 없습니다. 일반 계정은 로그아웃 전에 복용 기록 전송을 시도하며, 보내지 못한 기록은 같은 계정의 전송 대기로 남을 수 있습니다. 다른 계정에서는 처리되지 않으니 로그아웃 전 전송 상태를 확인하세요. 기기에만 남은 기록이 있다면 앱 데이터 삭제나 재설치를 피하세요.
 
-**[9.8 - 137페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=137)**
+**[9.8 - 141페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=141)**
 
 복약정보·일정·보호자 연동·설정과 MedBuddy 로그인 계정이 영구 삭제됩니다. 재로그인 안내가 나오면 인증 후 진행하며, Google 계정 자체는 삭제되지 않습니다.
 
@@ -3042,11 +3128,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 10.1 로그인 입력과 연결 오류 확인하기
 
-[소섹션: PDF 140쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=140)
+[소섹션: PDF 144쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=144)
 
-<a id="manual_page_140"></a>
+<a id="manual_page_144"></a>
 
-[화면 예시: PDF 140쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=140)
+[화면 예시: PDF 144쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=144)
 
 #### 1. 가입 입력 확인
 
@@ -3063,11 +3149,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 10.2 처방전 촬영과 분석 문제 해결하기
 
-[소섹션: PDF 141쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=141)
+[소섹션: PDF 145쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=145)
 
-<a id="manual_page_141"></a>
+<a id="manual_page_145"></a>
 
-[화면 예시: PDF 141쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=141)
+[화면 예시: PDF 145쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=145)
 
 #### 1. 사진·연결 확인
 
@@ -3077,11 +3163,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 10.3 알약 후보가 없거나 분석에 실패했을 때
 
-[소섹션: PDF 142쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=142)
+[소섹션: PDF 146쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=146)
 
-<a id="manual_page_142"></a>
+<a id="manual_page_146"></a>
 
-[화면 예시: PDF 142쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=142)
+[화면 예시: PDF 146쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=146)
 
 #### 1. 알약 후보 확인
 
@@ -3098,11 +3184,11 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 10.4 알림이 오지 않을 때
 
-[소섹션: PDF 143쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=143)
+[소섹션: PDF 147쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=147)
 
-<a id="manual_page_143"></a>
+<a id="manual_page_147"></a>
 
-[화면 예시: PDF 143쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=143)
+[화면 예시: PDF 147쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=147)
 
 #### 1. 알림 수신 확인
 
@@ -3116,47 +3202,47 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 ### 10.5 기록이나 위젯이 늦게 바뀔 때
 
-[소섹션: PDF 144쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=144)
+[소섹션: PDF 148쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=148)
 
-<a id="manual_page_144"></a>
+<a id="manual_page_148"></a>
 
-[화면 예시: PDF 144쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=144)
+[화면 예시: PDF 148쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=148)
 
 #### 1. 위젯 새로고침
 
-위젯의 환자 이름과 조회 상태를 확인하고 새로고침하거나 앱의 환자 일정을 여세요. 표시된 진행률은 사용자가 남긴 복용 기록을 기준으로 합니다.
+위젯의 날짜·환자 이름·조회 상태를 확인하고 새로고침하거나 앱의 환자 일정을 여세요. 백그라운드 갱신은 네트워크·배터리 제한으로 늦어질 수 있으며 진행률은 사용자가 남긴 기록을 기준으로 합니다.
 
 <a id="section-10-6"></a>
 
 ### 10.6 병원·약국 결과를 다시 확인할 때
 
-[소섹션: PDF 145쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=145)
+[소섹션: PDF 149쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=149)
 
-<a id="manual_page_145"></a>
+<a id="manual_page_149"></a>
 
-[화면 예시: PDF 145쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=145)
+[화면 예시: PDF 149쪽](MedBuddy_User_Guide_ko_portrait.pdf#page=149)
 
 #### 1. 운영 여부 재확인
 
 ‘전체 병원’이나 ‘전체 약국’에서 주소·연락처를 확인하고 전화로 실제 진료·영업 여부를 확인하세요. 시간 정보가 없으면 운영 중이라고 단정하지 마세요.
 
-<a id="manual_page_146"></a>
+<a id="manual_page_150"></a>
 
 ### 참고
 
-**[10.1 - 140페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=140)**
+**[10.1 - 144페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=144)**
 
 연결 오류는 인터넷을 확인하고, ‘보안 세션 다시 연결’이 제공되면 이용하세요. 이메일 미인증 안내는 메일 인증 후 돌아오고, 비밀번호를 잊었다면 재설정 메일을 요청하세요.
 
 로그인 만료 안내일 때는 다시 로그인하고, 연동 종료는 연동 상태를 확인하세요. 일일 한도 소진은 한국 시각 자정 이후 재시도하세요. 접속 오류를 해결하려고 계정을 삭제·재생성하거나 앱 데이터를 초기화하지 마세요.
 
-**[10.2 - 141페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=141)**
+**[10.2 - 145페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=145)**
 
 사진에 개인정보가 보이지 않는지 확인하고, 분석 결과의 누락·오인식은 원본과 대조하세요. ‘조회 실패’로 남은 약은 연결을 확인한 뒤 ‘미확인 약 다시 조회’를 누르세요. 카메라 권한을 계속 거부했다면 휴대폰 설정에서 MedBuddy의 카메라 권한을 확인하세요.
 
 사진 선택을 취소하거나 사진을 바꾸면 이전 분석 결과를 현재 사진의 결과로 보지 마세요. 하루 분석 횟수 소진과 일시적인 응답 실패는 다른 안내입니다.
 
-**[10.4 - 143페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=143)**
+**[10.4 - 147페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=147)**
 
 보호자 알림은 환자와 연동된 상태에서 받습니다. 알림이 없으면 앱의 환자 일정을 확인하고, 알림만으로 실제 복용 여부를 단정하지 마세요. 완료한 시간대나 비매일 약의 쉬는 날에는 알림이 없을 수 있습니다.
 
@@ -3164,19 +3250,19 @@ Android에서 ‘환경설정 → 화면 및 음성 → 홈 화면 → 홈 화�
 
 보호자의 확인 요청을 받으려면 환자의 ‘채팅 알림’ 수신도 확인하세요. 직접 완료 버튼은 지원 기기의 오늘 요청에만 제공되며, 일반 글이나 과거 요청에는 없을 수 있습니다. 누른 뒤 상태가 불확실하면 앱의 일정과 전송 대기를 확인하세요.
 
-**[10.4 - 143페이지 - 2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=143)**
+**[10.4 - 147페이지 - 2번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=147)**
 
 Android 14 이상에서는 알람 및 리마인더가 기본으로 꺼져 알림이 늦어질 수 있습니다. ‘정확한 시간에 알림’에서 권한을 허용한 뒤 앱으로 돌아오세요. 앱을 강제 종료했다면 다시 열어 예약을 갱신하세요.
 
-**[10.5 - 144페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=144)**
+**[10.5 - 148페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=148)**
 
 전송 대기 기록이 남아 있으면 인터넷 연결과 기존 기록의 전송 상태를 확인하세요. 보호자 기기의 서버 저장 완료가 환자 기기의 조회 완료를 뜻하지는 않습니다. 알림의 직접 완료도 전송 대기로 남을 수 있습니다.
 
 재조회 중 로딩과 조회 완료 후 약 없음은 다릅니다. 특히 필요시 복용은 이전 결과가 비어 있어도 재조회가 끝날 때까지 기다리세요.
 
-<a id="manual_page_147"></a>
+<a id="manual_page_151"></a>
 
-**[10.6 - 145페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=145)**
+**[10.6 - 149페이지 - 1번 사진](MedBuddy_User_Guide_ko_portrait.pdf#page=149)**
 
 결과가 없으면 검색 지역·날짜·진료과목·운영 조건을 확인하고 조건을 넓혀 다시 조회하세요. 조회 실패나 정보 미확인은 휴진·폐업 확정이 아닙니다. 위치 권한이 없으면 홍익대학교 서울캠퍼스 등 대체 지역이 사용될 수 있으니 검색 기준 지역을 확인하세요.
 
