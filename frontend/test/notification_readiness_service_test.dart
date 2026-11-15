@@ -192,6 +192,7 @@ void main() {
     final arguments =
         calls.singleWhere((c) => c.method == 'show').arguments as Map;
     expect(arguments['title'], 'MedBuddy test notification');
+    expect(arguments['body'], 'Display check only.');
     expect(arguments['payload'], anyOf(isNull, isEmpty));
     expect(arguments['id'], -17023);
     final android = arguments['platformSpecifics'] as Map;
@@ -209,6 +210,13 @@ void main() {
       ),
       isEmpty,
     );
+  });
+
+  test('한국어 테스트 알림은 짧은 표시 확인 문구만 사용한다', () async {
+    await service.showReadinessTestNotification(language: 'ko');
+    final arguments =
+        calls.singleWhere((call) => call.method == 'show').arguments as Map;
+    expect(arguments['body'], '표시 확인용입니다.');
   });
 
   // 함수이름: test 콜백
