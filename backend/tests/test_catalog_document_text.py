@@ -45,6 +45,8 @@ def test_html_fragments_and_tables_keep_separate_text() -> None:
     '<DOC><PARAGRAPH>https://nedrug.mfds.go.kr/doc.pdf</PARAGRAPH></DOC>',
     '<a href="https://example.com/doc">https://example.com/doc</a>',
     '<DOC><ARTICLE>Broken XML', '<DOC>&unknown;</DOC>', '<DOC', '<p>Text</broken',
+    '<p>Text</p></broken', '<p>Text</p><broken', '<p>Text</p><',
+    '<DOC><![CDATA[<p>Text</broken]]></DOC>',
     '&lt;DOC&gt;&lt;PARAGRAPH&gt;Unrendered&lt;/PARAGRAPH&gt;&lt;/DOC&gt;',
     '<!DOCTYPE DOC [<!ENTITY x "expanded">]><DOC>&x;</DOC>',
     '<!DOCTYPE DOC SYSTEM "https://example.com/remote.dtd"><DOC>Text</DOC>',

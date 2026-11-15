@@ -150,6 +150,10 @@ def read_catalog_document(value: str | None) -> str:
         if "<" in document or "&" in document:
             parser = _HTMLText()
             parser.feed(document)
+            # Some Python patch releases discard unfinished end tags on close.
+            # Reject pending markup before that recovery can hide a broken source.
+            if "<" in parser.rawdata:
+                raise _InvalidDocument("Incomplete HTML element")
             parser.close()
             document = parser.output.text()
         lines: list[str] = []
