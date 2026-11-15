@@ -16,12 +16,16 @@ selection. The saved-medication feature reuses the selected product instead of
 looking it up again; without one it attempts the existing detail lookup and still
 allows manual registration when that lookup fails.
 
-Manual registration accepts up to ten independent entries. All remaining entries
-are validated before saving, then submitted sequentially through the existing
-single-medication save contract. A failure stops the sequence; completed or
-duplicate entries remain completed in that screen and are skipped on retry.
-This is not an atomic batch or a durable batch-resume queue. Each entry keeps its
-own dates, dose, mode and optional device-only photo.
+Manual registration accepts up to ten independent entries. The app validates
+remaining entries before handing them to the shared registration result screen;
+this handoff does not save. Individual or all-item save uses the existing
+single-medication contract. The shared all-item flow attempts unfinished rows
+sequentially, retains failures for retry and skips saved/duplicate rows. The
+standalone boundary's legacy direct-save callback still stops at its first
+failure. Neither path is an atomic batch or a durable batch-resume queue. Each
+entry keeps its own dates, dose, mode and optional device-only photo. See
+[registration review](Medication%20Registration%20Review.md) for the handoff,
+photo ownership and completion navigation.
 
 Scheduled entries support a custom interval of 1 through 90 days in addition to
 the existing cycle choices. The shared cycle calculation anchors the interval to
@@ -133,6 +137,14 @@ network delivery. Opening the alert navigates to the linked patient's schedule.
 
 ## History and Corrections
 
+- `homeScheduleSource` now selects the data source for Home, Schedule and History,
+  as well as the Android widget. In linked-patient mode, the app shares a selected
+  active link/patient across these three tabs and provides previous/next patient
+  arrows. Schedule and history remain read-only for caregivers. Pending, failed
+  and empty link lookups have distinct states and never silently show the
+  caregiver's own history. Account, source, patient or relationship changes
+  invalidate retained readers and their late responses; inactive schedule tabs
+  stop their polling. Widget instances retain their own page selection.
 - Calendar icons in patient and linked-caregiver schedule headers open medication
   history. Only the patient can write; linked caregivers have read-only access.
 - History starts on the current month. Scheduled taken/total counts and a separate
@@ -197,8 +209,9 @@ allowed history window. External text sharing covers up to 90 days, fetched in
 parts of at most 31 days; linked-chat sharing remains limited to 31 days. Internal
 revision fields are not shared. The general lookup limit remains 31 days per request.
 
-Feature search opens personal history and, for the sharing destination, only
-opens this dialog after the initial read succeeds in the same session. It does
+Feature search's history destination selects the History tab with its configured
+self/linked-patient scope. The separate sharing destination opens personal
+history and only opens this dialog after the initial read succeeds in the same session. It does
 not transmit a file or chat message. Read-only or failed initial entry does not
 automatically open the dialog. See [Feature Search](Feature%20Search.md).
 

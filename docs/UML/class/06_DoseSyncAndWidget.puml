@@ -21,6 +21,8 @@ package "Flutter" {
   note "dose_widget_store.dart\nDart extension DoseWidgetStore on DoseOutboxStore\n독립 객체가 아닌 암호화 저장소 확장" as DoseWidgetStore
   class DoseSyncBackgroundScheduler <<Service>>
   class DoseHomeWidget <<Service>>
+  class DoseHomeWidgetPicker <<Boundary>>
+  class PushNotificationService <<Service>>
   class DoseWidgetState <<Entity>> {
     + completedReminderSlots(now): Iterable<String>
   }
@@ -31,6 +33,8 @@ package "Flutter" {
 }
 package "Android" {
   class DoseWidgetProvider <<Boundary>>
+  class DoseWidgetLargeProvider <<Boundary>>
+  class DoseWidgetPreview <<Kotlin object>>
   class DoseWidgetLayout <<Kotlin object>>
   class WorkManager <<External>>
 }
@@ -53,7 +57,7 @@ DoseSyncService --> OfflineScheduleWindow : 앱·위젯의 날짜별 일정 계�
 OfflineStore ..> DoseOutboxStore : 계정·캐시 revision을 함께 검사
 DoseHomeWidget --> DoseSyncService : prepareOfflineCache() / 주기 갱신의 refreshScheduleWindow()
 DoseSyncService --> DoseSyncBackgroundScheduler
-DoseSyncBackgroundScheduler --> WorkManager : 일회 전송, 보낼 기록·위젯 갱신이 남았을 때만 15분 재시도
+DoseSyncBackgroundScheduler --> WorkManager : 전송·만료 캐시·설치된 환자 위젯의 주기 조회 (최소 15분, 실행 보장 아님)
 WorkManager --> DoseSyncService : 연결 시 재전송
 DoseSyncService --> SyncDose : 인증된 completion-operations
 SyncDose --> DoseSyncRequest : 검증된 입력
@@ -73,17 +77,25 @@ DoseWidgetStore --> DoseWidgetState
 DoseHomeWidget --> DoseWidgetState : 오늘 본인 완료 시간대 검사
 DoseHomeWidget --> NotificationService : 기기 저장 이후 날짜별 재알림 취소
 DoseHomeWidget --> DoseWidgetProvider : 표시 상태·불투명 토큰
+DoseHomeWidget --> DoseWidgetLargeProvider : 같은 발행·예약·취소
+DoseWidgetLargeProvider --|> DoseWidgetProvider : 초기 4 x 3, 같은 크기 조절 구현
+DoseHomeWidgetPicker --> DoseHomeWidget : 초기 4 x 1 / 4 x 3 선택 후 pin
+DoseHomeWidget --> DoseWidgetPreview : MethodChannel; 개인정보 없는 PNG
+DoseWidgetPreview --> DoseWidgetLayout : 실제 레이아웃으로 메모리 렌더링
+PushNotificationService --> DoseHomeWidget : 보호자 Push는 조회 예약 힌트
 DoseWidgetProvider --> DoseHomeWidget : 버튼 백그라운드 콜백
 DoseWidgetProvider --> DoseWidgetLayout : 내용·클릭 동작을 유지한 크기별 배치
 
 note right of DoseWidgetLayout
   Android 12 이상은 높이별 RemoteViews를 제공한다.
   이전 버전은 런처의 회전별 높이에 맞춘다.
-  기본·최소 축소 높이 48dp로
-  지원 런처에 요청한 4 x 1 초기 크기를 유지한다.
+  초기 크기만 4 x 1 / 4 x 3으로 구분한다.
+  두 Provider 모두 최소 48dp 높이까지 같은 구현으로 축소한다.
   작은 높이는 요약 배치로 전환하고 기록 권한은 바꾸지 않는다.
   110dp 미만은 한 줄 배치, 180dp 미만은 제목 줄에
   시간대와 저장 상태만 남긴다.
+  한 줄에도 시간대 화살표를 두되 단일/없는 시간대에는 숨긴다.
+  한 줄은 놓친 약 경고를 생략한다. 크기 재적용 때 표시 상태를 초기화한다.
 end note
 
 note bottom of DoseWidgetStore
@@ -95,6 +107,9 @@ note bottom of CheckCaregiverMedication
   홈·위젯 일괄 조회는 알림을 끈 환자도 포함하고 약 상세는 제외한다.
   감시는 진행 중인 홈 조회 또는 15초 미만의 당일 결과를 재사용한다.
   계정·날짜·응답 권한을 검사하며 백그라운드와 전역 공유하지 않는다.
+  설치된 환자 위젯은 오늘 캐시가 있어도 주기적으로 다시 읽는다.
+  보호자 background 작업도 알림 감시와 별도로 전체 활성 환자 일정을 읽는다.
+  Push의 완료 값을 직접 적용하지 않으며 실제 갱신 시각은 Android가 정한다.
 end note
 note bottom of DoseSyncService
   기기 영속 저장 이후 표시 콜백은 변경을 합쳐 비동기로 발행한다.
@@ -113,6 +128,7 @@ note bottom of OfflineScheduleWindow
   기간 밖·다른 계정·기기 시각 역행은 이전 캐시 재사용 근거가 아니다.
 end note
 note bottom of DoseOutboxStore
+  열 때 rollbackActiveTransactionOnOpen=false로 다른 엔진의 트랜잭션을 유지한다.
   SQLite 트랜잭션에서 계정별 유효한 전송 선점을 하나만 허용한다.
   ACK가 전체 일정이므로 약·시간대가 달라도 전경·백그라운드는 기다린다.
   BLOCKED 기록은 같은 날짜·시간대에 약이 겹치는 후속 기록만 막는다.

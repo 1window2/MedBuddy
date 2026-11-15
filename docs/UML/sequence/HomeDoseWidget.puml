@@ -9,6 +9,16 @@ participant "Existing dose sync worker" as Sync
 participant "Completion API" as API
 participant "Linked-patient schedule Control" as Schedules
 participant "NotificationService" as Notifications
+participant "DoseHomeWidgetPicker" as Picker
+participant "DoseWidgetPreview" as Preview
+participant "Android background work" as Background
+
+User -> Picker: Add widget; choose default 4 x 1 or expanded 4 x 3
+Picker -> Preview: Render both real Android layouts with example data
+Preview --> Picker: In-memory PNGs without personal data or actions
+Picker -> Callback: pin(size) after selection
+Callback -> Widget: Request corresponding provider from launcher
+note over Picker,Widget: Both providers share the same resizable implementation and state.\nPin request success is not placement confirmation.\nEach widget keeps its own patient/slot page; compact rows also have slot arrows.
 
 User -> Callback: Set home schedule source (self / patients)
 Callback -> Store: Persist shared source; invalidate incompatible actions
@@ -23,7 +33,18 @@ Widget -> Widget: Select patient and slot locally (no write)
 User -> Widget: Open displayed patient's schedule
 Widget -> Callback: Opaque patient key + navigation context
 Callback -> Store: Resolve active-account current-day linked patient
-Callback -> User: Existing read-only patient detail screen
+Callback -> User: Read-only patient schedule\nUse shared selected-patient tab when source is patients
+loop Installed patient widget periodic refresh (Android-controlled timing)
+Background -> Callback: Refresh despite usable same-day patient cache
+Callback -> Schedules: GET /caregiver/schedules (including alerts-off patients)
+Schedules --> Callback: Current authorized statuses, including undo
+Callback -> Store: Recheck active owner, date and patient revision
+Callback -> Widget: Publish read-only state to both providers
+end
+opt Caregiver push or caregiver background monitoring wake-up
+Background -> Callback: Schedule/read authorized patient data
+note right of Background: Push is a hint, not a dose write.\n15-minute minimum work interval is not an update deadline.\nMonitoring data is not the widget's source of truth.
+end
 else Own schedules
 
 Callback -> Store: publish(): prepareOfflineCache(owner, now)

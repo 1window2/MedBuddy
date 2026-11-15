@@ -1,0 +1,44 @@
+@startuml
+skinparam defaultFontName Nanum Gothic
+skinparam shadowing false
+title 채팅의 선택 약 / 시간대 확인 요청과 환자 완료
+actor Caregiver
+actor Patient
+boundary "LinkedChatUI (caregiver)" as Sender
+control "ManageLinkedChat (server)" as Chat
+database "Chat messages + push jobs" as Messages
+boundary "LinkedChatUI (patient)" as Receiver
+control "LinkedChatDoseRecorder" as Recorder
+participant "DoseSyncService" as Sync
+database "Encrypted dose outbox" as Store
+control "SyncDose" as Server
+
+Caregiver -> Sender: Select saved medications and request a medication check
+Sender -> Chat: medication_check_request + medication IDs + optional slot
+Chat -> Chat: Active link, caregiver role, patient ownership and active medications
+Chat -> Chat: Snapshot only selected medicines due today in requested slots
+note right of Chat: PRN/rest-day attachments do not gain scheduled dose actions.\nNo search references, place/history/source-alert context mixing.\nSame ID with changed body/ID set/slot or deleted request is a conflict.
+Chat -> Messages: Persist request and delivery job
+Messages --> Receiver: Existing delivery/history path
+Receiver -> Recorder: confirmationContexts(message, user, patient, day)
+Recorder --> Receiver: Only incoming explicit current-day request slots
+note over Receiver,Recorder: Also supports existing slot_check_request snapshots.\nNo actions for ordinary text, other roles, old days or deleted messages.
+Patient -> Receiver: Tap one slot's completion button
+Receiver -> Recorder: Load current schedules
+Recorder --> Receiver: Current authorized dose contexts
+Receiver -> Receiver: Recheck message, link, account, day and current completion state
+Receiver -> Recorder: Plan only original requested medicines in tapped slot
+alt Current schedule still supports selection
+Recorder -> Sync: Record same-account dose intent (existing app path)
+Sync -> Store: Durable operation ID and pending state
+Store --> Receiver: Local saved / awaiting sync; keep composer draft
+Sync -> Server: Existing completion-operations request
+Server -> Server: Validate ownership, date, regimen revision; apply once
+Server --> Sync: Receipt + schedule (+ chat receipt when link permits)
+Sync -> Store: Atomic ACK + authoritative cache
+Sync --> Receiver: Confirmed state
+else Scope or schedule changed
+Receiver -> Patient: Recheck schedule; do not broaden to other drugs/slots
+end
+note over Store,Server: Local save is not server acknowledgement.\nRetries use existing stable IDs; caregiver never writes the patient's dose.\nA lost link after durable recording may omit chat while validating own dose.
+@enduml
