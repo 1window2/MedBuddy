@@ -1,7 +1,7 @@
 # MedBuddy Release TODO
 
 1.0.0 was released on 2026-11-13 (`v1.0.0`, `main` at `912e6fb`); 1.0.1 is in development on
-the `beta/v1.0.1` branch, see the [1.0.1 notes](releases/v1.0.1.md). This
+the `v1.0.1` branch, see the [1.0.1 notes](releases/v1.0.1.md). This
 file lists open items only, sorted by priority. Finished items were removed on
 2026-11-12; they remain in the git history, the release notes and the
 [decision log](MedBuddy%20-%20Decision%20Log.md). Changes are listed in the
@@ -119,7 +119,7 @@ Device checks on the release build. The last pass (2026-11-13) is summarised in 
       IPv6 client addresses (quotas count an IPv6 address as its /64).
 - [ ] Signed workflow: whether the deployment review shows the dispatch inputs, which
       branches the `beta-android` policy still allows (remove finished `beta/v0.2.x`
-      entries), and branch protection for `beta/v1.0.1`.
+      entries), and branch protection for `v1.0.1`.
 - [ ] Push tokens of a user disabled by the operator keep receiving pushes until the
       account is deleted, and the account owner has no "sign out other devices"
       action.

@@ -575,7 +575,7 @@ secrets. It supplies `ANDROID_SIGNING_CERT_SHA256`,
 variables for Flutter compile-time configuration. Firebase API/app identifiers
 and certificate fingerprints are identifiers rather than credentials. The
 environment must require owner approval and an exact custom deployment policy
-for `main` and the active release branch (`beta/v1.0.1`); entries for finished beta
+for `main` and the active release branch (`v1.0.1`); entries for finished beta
 branches should be removed from that policy. The workflow repeats that exact-ref
 gate before repository build code can receive signing material. Other beta
 branches and version-like tags cannot access the environment. A dispatch input
