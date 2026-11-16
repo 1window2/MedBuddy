@@ -4,7 +4,7 @@
 
 - Scope review: 2026-09-30
 - Stable functional baseline: `v1.0.0`
-- Active development branch: `v1.0.1`
+- Active development branch: `beta/v1.0.1`
 - Target release tag: `v1.0.1`
 - Target platform: Android
 - iOS: deferred until after the Android public-release decision, no earlier than
