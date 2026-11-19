@@ -12,6 +12,7 @@ import 'package:medbuddy_frontend/boundaries/check_medication_detail_ui_boundary
 import 'package:medbuddy_frontend/controls/request_voice_guide_control.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
+import 'package:medbuddy_frontend/entities/voice_reading_position.dart';
 
 // Class Name: _RecordingVoiceGuide
 // Role: Voice-guide control fake that keeps playback running until it is stopped.
@@ -29,6 +30,7 @@ class _RecordingVoiceGuide extends RequestVoiceGuide {
   int disposeCount = 0;
   bool failNextStart = false;
   Completer<String>? _playback;
+  void Function(VoicePosition)? report;
 
   // Function Name: _RecordingVoiceGuide
   // Description:
@@ -58,8 +60,10 @@ class _RecordingVoiceGuide extends RequestVoiceGuide {
     required MedicationDetail medicationDetail,
     required UserSetting userSetting,
     void Function()? onComplete,
+    void Function(VoicePosition)? onPosition,
   }) {
     startCount += 1;
+    report = onPosition;
     if (failNextStart) {
       failNextStart = false;
       return Future<String>.error(StateError('speech engine unavailable'));
@@ -137,6 +141,50 @@ Future<void> _pumpDetail(
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  testWidgets('강조는 재생을 따라가고 중지 뒤 늦은 이벤트에는 반응하지 않는다', (tester) async {
+    final guide = _RecordingVoiceGuide();
+    addTearDown(guide.dispose);
+    await _pumpDetail(tester, guide);
+    await tester.tap(find.byIcon(Icons.volume_up));
+    await tester.pump();
+    guide.report!((section: VoiceSection.usage, sentence: null, offset: -1));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('spoken-caption')), findsNothing);
+    guide.report!((
+      section: VoiceSection.usage,
+      sentence: '하루 한 번 복용하세요.',
+      offset: 0,
+    ));
+    await tester.pump();
+    expect(find.byKey(const Key('spoken-caption')), findsNothing);
+    expect(
+      find.byWidgetPredicate((w) =>
+          w is Text &&
+          (w.data ?? w.textSpan?.toPlainText() ?? '').replaceAll('\u2060', '') ==
+              '하루 한 번 복용하세요.'),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is Text &&
+            w.textSpan is TextSpan &&
+            ((w.textSpan! as TextSpan).children ?? [])
+                .whereType<TextSpan>()
+                .any((span) => span.style?.backgroundColor != null),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.byIcon(Icons.stop_circle_outlined));
+    await tester.pumpAndSettle();
+    guide.report!((
+      section: VoiceSection.warning,
+      sentence: '주의사항을 확인하세요.',
+      offset: 0,
+    ));
+    await tester.pump();
+    expect(find.byKey(const Key('spoken-caption')), findsNothing);
+  });
   // Function Name: testWidgets callback
   // Description:
   // - Expected behavior: reading aloud stops and the button returns to its idle label when the
