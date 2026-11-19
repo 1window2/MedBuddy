@@ -663,6 +663,7 @@ void main() {
               efficacy: '호흡기 감염과 피부 감염 치료에 사용됩니다.',
               usageMethod: '처방받은 기간 동안 정해진 용량을 복용하세요.',
               warning: '심한 이상 반응이 나타나면 의료진과 상담하세요.',
+              storageMethod: 'Storage instructions',
               dosagePerTime: '1정',
               dailyFrequency: '1일 3회',
               totalDays: '7일',
@@ -674,8 +675,15 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('약 상세정보'), findsOneWidget);
-      await tester.drag(find.byType(ListView), const Offset(0, -500));
+      final lastItem = find.text('Storage instructions').hitTestable();
+      expect(lastItem, findsNothing);
+      final body = find.descendant(
+        of: find.byType(CheckMedicationDetailUI),
+        matching: find.byType(Scrollable),
+      );
+      await tester.dragUntilVisible(lastItem, body, const Offset(0, -220));
       await tester.pumpAndSettle();
+      expect(lastItem, findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
