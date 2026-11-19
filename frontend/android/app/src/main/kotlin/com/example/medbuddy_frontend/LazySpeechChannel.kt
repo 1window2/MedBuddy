@@ -42,6 +42,7 @@ internal class LazySpeechChannel(
     private var speakResult: MethodChannel.Result? = null
     private var currentUtterance: String? = null
     private var latestUtterance: String? = null
+    private var trackedUtterance: String? = null
     private var audioFocusRequest: AudioFocusRequest? = null
 
     init {
@@ -133,6 +134,7 @@ internal class LazySpeechChannel(
                 engine,
                 call.argument<String>("text").orEmpty(),
                 call.argument<Boolean>("focus") ?: false,
+                call.argument<Boolean>("track") ?: false,
                 result,
             )
             "setLanguage" -> {
@@ -175,7 +177,7 @@ internal class LazySpeechChannel(
     // Parameters: engine - ready TTS engine; text - sentence to read; focus - whether to duck other audio;
     // result - answered with 1 when reading finishes, or 0 when it cannot start, is stopped or fails.
     // Returns: Unit.
-    private fun speak(engine: TextToSpeech, text: String, focus: Boolean, result: MethodChannel.Result) {
+    private fun speak(engine: TextToSpeech, text: String, focus: Boolean, track: Boolean, result: MethodChannel.Result) {
         if (speakResult != null) {
             // Dart는 읽기 전에 항상 중지하므로 겹친 요청은 이전 동작과 같이 시작하지 않는다.
             result.success(0)
@@ -184,6 +186,7 @@ internal class LazySpeechChannel(
         if (focus) requestAudioFocus()
         val utteranceId = UUID.randomUUID().toString()
         currentUtterance = utteranceId
+        trackedUtterance = if (track) utteranceId else null
         latestUtterance = utteranceId
         speakResult = result
         if (engine.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId) != TextToSpeech.SUCCESS) {
@@ -204,12 +207,23 @@ internal class LazySpeechChannel(
         val result = speakResult ?: return
         speakResult = null
         currentUtterance = null
+        trackedUtterance = null
         result.success(value)
     }
 
     // Engine callbacks arrive on binder threads; channel work happens on the main thread.
     private val progressListener = object : UtteranceProgressListener() {
-        override fun onStart(utteranceId: String) = Unit
+        // Engines without range timing still announce the current section.
+        override fun onStart(utteranceId: String) = reportRange(utteranceId, -1, -1)
+
+        override fun onRangeStart(utteranceId: String, start: Int, end: Int, frame: Int) =
+            reportRange(utteranceId, start, end)
+
+        private fun reportRange(id: String, start: Int, end: Int) {
+            mainHandler.post {
+                if (id == trackedUtterance) channel.invokeMethod("onReadingRange", listOf(start, end))
+            }
+        }
 
         override fun onDone(utteranceId: String) {
             mainHandler.post {

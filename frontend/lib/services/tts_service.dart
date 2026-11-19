@@ -31,6 +31,7 @@ class TTSService {
     String text,
     UserSetting userSetting, {
     void Function()? onComplete,
+    void Function(int start, int end)? onProgress,
   }) async {
     final normalizedText = text.trim();
     if (normalizedText.isEmpty) {
@@ -40,6 +41,10 @@ class TTSService {
     // 이전 발화를 정리한 뒤 완료 시점까지 기다려 재생 상태와 실제 음성을 일치시킨다.
     final generation = ++_playbackGeneration;
     await _engine.stop();
+    if (generation != _playbackGeneration) {
+      onComplete?.call();
+      return;
+    }
     String? platformError;
     // 오류 알림이 speak 결과(0)보다 먼저 도착하므로 오류 알림으로 대기를 끝내 오류 문구를 남긴다.
     final playbackResult = Completer<dynamic>();
@@ -49,7 +54,7 @@ class TTSService {
      * - 없음.
      * 반환값:
      * - 없음.
-     */() {
+     */ () {
       onComplete?.call();
     });
     _engine.setCancelHandler(/* 함수이름: setCancelHandler 콜백
@@ -58,7 +63,7 @@ class TTSService {
      * - 없음.
      * 반환값:
      * - 없음.
-     */() {
+     */ () {
       onComplete?.call();
     });
     _engine.setErrorHandler(/* 함수이름: setErrorHandler 콜백
@@ -67,7 +72,7 @@ class TTSService {
      * - message (dynamic): 사용자에게 표시하거나 오류로 보존할 안내 문구
      * 반환값:
      * - 없음.
-     */(message) {
+     */ (message) {
       platformError = '$message';
       onComplete?.call();
       if (!playbackResult.isCompleted) {
@@ -85,7 +90,7 @@ class TTSService {
     }
     unawaited(
       _engine
-          .speak(normalizedText, focus: true)
+          .speak(normalizedText, focus: true, onProgress: onProgress)
           .then(
             /* 함수이름: then 콜백
              * 함수역할: 플랫폼 재생 요청의 결과로 대기를 끝낸다. 오류 알림이 먼저 끝냈으면 무시한다.
