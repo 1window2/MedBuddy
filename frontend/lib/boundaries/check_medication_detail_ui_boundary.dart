@@ -76,6 +76,10 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI>
   Widget _section(VoiceSection id, Widget child) =>
       KeyedSubtree(key: _sectionKeys[id], child: child);
 
+  // 읽는 위치가 이 구역에 있을 때만 강조 위치를 넘긴다.
+  VoicePosition? _positionIn(VoiceSection id) =>
+      _position?.section == id ? _position : null;
+
   void _showPosition(VoicePosition next) {
     if (!mounted || !_isSpeaking || next == _position) return;
     final moved = next.section != _position?.section;
@@ -176,9 +180,7 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI>
                         _section(
                           VoiceSection.name,
                           _MedicationHeroCard(
-                            position: _position?.section == VoiceSection.name
-                                ? _position
-                                : null,
+                            position: _positionIn(VoiceSection.name),
                             medicationDetail: widget.medicationDetail,
                             displayName: widget.medicationDetail
                                 .displayNameForLanguage(
@@ -212,9 +214,7 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI>
                           _DetailedDosageGuideCard(
                             medicationDetail: widget.medicationDetail,
                             text: text,
-                            position: _position?.section == VoiceSection.usage
-                                ? _position
-                                : null,
+                            position: _positionIn(VoiceSection.usage),
                           ),
                         ),
                         const SizedBox(height: 18),
@@ -223,9 +223,7 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI>
                           _MedicationRiskCard(
                             medicationDetail: widget.medicationDetail,
                             text: text,
-                            position: _position?.section == VoiceSection.warning
-                                ? _position
-                                : null,
+                            position: _positionIn(VoiceSection.warning),
                           ),
                         ),
                         const SizedBox(height: 18),

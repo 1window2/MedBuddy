@@ -213,9 +213,9 @@ internal class LazySpeechChannel(
 
     // Engine callbacks arrive on binder threads; channel work happens on the main thread.
     private val progressListener = object : UtteranceProgressListener() {
-        // Engines without range timing still announce the current section.
-        override fun onStart(utteranceId: String) = reportRange(utteranceId, -1, -1)
+        override fun onStart(utteranceId: String) = Unit
 
+        // Android 8.0+ engines report the next spoken range; others leave the text unmarked.
         override fun onRangeStart(utteranceId: String, start: Int, end: Int, frame: Int) =
             reportRange(utteranceId, start, end)
 
