@@ -588,7 +588,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('환자 오늘의 복약 일정'), findsOneWidget);
+    expect(find.text('오늘의 복약 일정'), findsOneWidget);
     expect(find.text('1/3'), findsOneWidget);
     // 읽기 전용 화면에는 체크 모양을 남기지 않고 완료 취소선과 진행률은 보존한다.
     expect(find.byIcon(Icons.check_circle_outline), findsNothing);
@@ -672,7 +672,7 @@ void main() {
       tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
       MedBuddyColors.pageBackground,
     );
-    final title = find.text('환자 오늘의 복약 일정');
+    final title = find.text('오늘의 복약 일정');
     expect(tester.widget<Text>(title).style, MedBuddyPageHeader.titleStyle);
     expect(
       tester.widget<Text>(title).strutStyle,
@@ -805,7 +805,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('환자 오늘의 복약 일정'), findsOneWidget);
+    expect(find.text('오늘의 복약 일정'), findsOneWidget);
     expect(find.byType(ListView), findsOneWidget);
     await tester.drag(find.byType(ListView), const Offset(0, -260));
     await tester.pumpAndSettle();

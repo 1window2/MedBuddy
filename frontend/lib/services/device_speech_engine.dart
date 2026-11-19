@@ -26,6 +26,7 @@ class DeviceSpeechEngine {
   VoidCallback? _completionHandler;
   VoidCallback? _cancelHandler;
   SpeechErrorHandler? _errorHandler;
+  void Function(int start, int end)? _progress;
 
   // 함수이름: DeviceSpeechEngine._
   // 함수역할: 채널을 보관하고 네이티브가 보내는 재생 결과 알림을 받는다.
@@ -98,8 +99,22 @@ class DeviceSpeechEngine {
   // - focus (bool): 읽는 동안 다른 소리를 줄이도록 오디오 포커스를 요청할지 여부
   // 반환값:
   // - Future<dynamic>: 끝까지 읽었으면 1, 시작하지 못했거나 중지·오류로 끝났으면 0.
-  Future<dynamic> speak(String text, {bool focus = false}) => _channel
-      .invokeMethod('speak', <String, Object>{'text': text, 'focus': focus});
+  Future<dynamic> speak(
+    String text, {
+    bool focus = false,
+    void Function(int, int)? onProgress,
+  }) async {
+    _progress = onProgress;
+    try {
+      return await _channel.invokeMethod('speak', <String, Object>{
+        'text': text,
+        'focus': focus,
+        if (onProgress != null) 'track': true,
+      });
+    } finally {
+      if (identical(_progress, onProgress)) _progress = null;
+    }
+  }
 
   // 함수이름: setCompletionHandler
   // 함수역할: 끝까지 읽었을 때 호출할 처리기를 등록한다.
@@ -139,6 +154,14 @@ class DeviceSpeechEngine {
   // - Future<void>: 처리기 호출 완료.
   Future<void> _handlePlatformCall(MethodCall call) async {
     switch (call.method) {
+      case 'onReadingRange':
+        final range = call.arguments;
+        if (range is List &&
+            range.length == 2 &&
+            range[0] is int &&
+            range[1] is int) {
+          _progress?.call(range[0] as int, range[1] as int);
+        }
       case 'onComplete':
         _completionHandler?.call();
       case 'onCancel':

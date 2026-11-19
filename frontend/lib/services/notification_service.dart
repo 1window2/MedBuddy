@@ -1732,7 +1732,9 @@ extension LinkedChatNotificationCleanup on NotificationService {
     if (defaultTargetPlatform != TargetPlatform.android) return;
     try {
       for (final active in await _plugin.getActiveNotifications()) {
-        final match = RegExp(r'^chat:(\d+):(\d+)$').firstMatch(active.tag ?? '');
+        final match = RegExp(
+          r'^chat:(\d+):(\d+)$',
+        ).firstMatch(active.tag ?? '');
         if (match == null ||
             active.channelId != NotificationService._chatChannelId ||
             int.parse(match.group(1)!) != linkId ||
@@ -1863,9 +1865,7 @@ extension NotificationReadinessDiagnostics on NotificationService {
     await _plugin.show(
       id: -17023,
       title: english ? 'MedBuddy test notification' : 'MedBuddy 테스트 알림',
-      body: english
-          ? 'Display check only. No medication record is changed.'
-          : '표시 확인용입니다. 복용 기록은 변경되지 않습니다.',
+      body: english ? 'Display check only.' : '표시 확인용입니다.',
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           NotificationService._medicationChannelId,

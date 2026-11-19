@@ -174,6 +174,8 @@ class MedBuddyViewModel extends ChangeNotifier {
   // Parameters: None.
   // Returns: The prescription feature's save-in-progress flag.
   bool get isMedicationSaving => _prescriptions.isMedicationSaving;
+  MedicationResultSource get medicationResultSource =>
+      _prescriptions.resultSource;
 
   // Function Name: completedMedicationSaveIndexes
   // Description: Exposes the analyzed medication indexes whose saves completed.

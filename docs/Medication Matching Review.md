@@ -147,6 +147,34 @@ Redis의 검색 결과 캐시는 후보 요약이 모두 성공한 비어 있지
 미일치가 아니라 조회 오류로 안내한다. 다른 503과 인증 오류를 무한 재시도하지 않는다.
 대기·재시도 전후에 현재 분석인지 확인하므로 취소된 처방을 다시 채우지 않는다.
 
+## 확정 품목의 빠른 로컬 조회
+
+알약 후보를 이미 선택한 저장 경로는 `/identify`의 이름 검색·요약과 분리한다.
+`GET /api/v1/medication/catalog/{item_seq}`는 인증된 읽기 전용 경로로, 1~32자리
+ASCII 숫자 품목번호만 받는다. `CheckCatalogMedicationDetail`은 기본정보를 먼저,
+없으면 허가정보를 정확 조회하며 없을 때 `success=true, data=null`을 반환한다.
+외부 네트워크·AI 요약 생성·DB 쓰기는 하지 않고 기존에 저장된 요약은 재사용한다.
+기존 `/care/...` 경로는 유지한다.
+
+`catalog_document_text.read_catalog_document`는 XML·HTML 구조를 파싱해 제목과
+문단 순서를 보존한다. URL 문서를 가져오거나 외부 엔티티를 해석하지 않으며 선언·
+실행 요소·해석 불가 문서와 크기/깊이/요소 제한 초과는 누락으로 처리한다.
+저장 필드 한도를 넘는 설명은 중간 경고가 잘리지 않도록 해당 필드를 비운다.
+이는 카탈로그 내용의 임상적 검증이 아니다. 저장 후 누락 보완의 동일성 검사와
+실패 한계는 [등록 검토 문서](Medication%20Registration%20Review.md)를 따른다.
+
+## 단일 알약 식별 시간 초과 진단
+
+`PillVisionBoundary.extractVisualFeatures`는 요청별 임의 분석 ID로 `total`,
+`queue`, `preprocessing`, `provider` 단계의 경과 시간·결과·예외 유형과 가능한
+제공자 상태 코드를 기록한다. 새 로그에는 이미지·응답 본문·자격 증명·예외 원문을
+넣지 않는다. 전체 제한 시간은 분석 대기열을 포함하며 기존 설정을 유지한다.
+`httpx.TimeoutException` 같은 제공자 전송 시간 초과를 `TimeoutError`로 구분한다.
+상위 시간 제한의 취소는 내부 단계에 `cancelled`, 전체에는 `timeout`으로 남을 수 있다.
+로그는 지연 위치를 조사할 근거이며 분석 성공률 개선, 제공자 장애 해소 또는
+시간 초과 문제가 해결됐다는 증거가 아니다. 다중 식별 전체에 같은 계측이 추가됐다고
+확대 해석하지 않는다.
+
 ## 설계 및 검증
 
 - `test_medication_lookup_completeness.py`는 로컬·공공 경로 모두에서 동일 이름의

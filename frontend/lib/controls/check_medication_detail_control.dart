@@ -56,6 +56,30 @@ class CheckMedicationDetail {
        _readSearchMode = readSearchMode,
        _ownsClient = client == null;
 
+  // 함수이름: requestCatalogMedicationDetail
+  // 함수역할: 사용자가 확정한 품목번호로 기존 상세 정보만 조회한다. 이름 재검색이나 AI 요약을 요청하지 않는다.
+  // 매개변수: itemSeq: 확인한 공공 약품 품목번호.
+  // 반환값: 같은 품목의 상세 정보 또는 null. 연결 오류는 호출자가 후보 정보로 저장을 계속할 수 있게 전달한다.
+  Future<MedicationDetail?> requestCatalogMedicationDetail(
+    String itemSeq,
+  ) async {
+    final id = itemSeq.trim();
+    if (!RegExp(r'^[0-9]{1,32}$').hasMatch(id)) return null;
+    final response = await _client
+        .get(Uri.parse('$baseUrl/catalog/$id'))
+        .timeout(const Duration(seconds: 5));
+    final body = ApiResponseParser.requireOkBody(
+      'Catalog lookup failed',
+      response,
+    );
+    final decoded = ApiResponseParser.decodeMap(body);
+    final raw = decoded['data'];
+    if (decoded['success'] != true || raw is! Map) return null;
+    final detail = MedicationDetail.fromJson(Map<String, dynamic>.from(raw));
+    // 응답이 잘못되더라도 다른 약의 설명을 선택한 품목번호로 저장하지 않는다.
+    return detail.itemSeq.trim() == id ? detail : null;
+  }
+
   // 함수이름: requestMedicationDetail
   // 함수역할: 처방전 원문을 함께 조회하고 불확실한 후보는 사용자 확인 단계로 전달한다.
   // 매개변수:

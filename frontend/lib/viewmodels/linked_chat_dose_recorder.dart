@@ -42,8 +42,7 @@ class ChatDoseRequest {
   // Function Name: signature
   // Description: Identifies the same day, slot and medications across retries.
   // Parameters: None. Returns: "<date>:<slot>:<id,id,...>".
-  String get signature =>
-      '$scheduleDate:$slotKey:${medicationIds.join(',')}';
+  String get signature => '$scheduleDate:$slotKey:${medicationIds.join(',')}';
 }
 
 // Class Name: ChatDosePlan
@@ -115,7 +114,13 @@ class LinkedChatDoseRecorder {
           slotKey: slotKey,
           alarmTime: '',
           alarmEnabled: false,
-          completedCount: 0,
+          completedCount: schedules
+              .where(
+                (schedule) =>
+                    schedule.slotKeys.contains(slotKey) &&
+                    schedule.isSlotCompleted(slotKey),
+              )
+              .length,
           totalCount: schedules
               .where((schedule) => schedule.slotKeys.contains(slotKey))
               .length,
@@ -185,6 +190,45 @@ class LinkedChatDoseRecorder {
       return const ChatDosePlan(ChatDosePlanStatus.noSchedule);
     }
     return ChatDosePlan(ChatDosePlanStatus.ready, List.unmodifiable(requests));
+  }
+
+  // Function Name: confirmationContexts
+  // Description: Offers only today's explicit incoming check requests to the linked patient.
+  // Parameters: message - server message; userHash/patientHash - chat identity; day - current dose day.
+  // Returns: Nonempty, valid slot snapshots; ordinary text, old days and other roles never gain a dose action.
+  static List<ChatScheduleContext> confirmationContexts(
+    ChatMessage message, {
+    required String userHash,
+    required String patientHash,
+    required String day,
+  }) {
+    if (patientHash.isEmpty ||
+        userHash != patientHash ||
+        message.senderHash == userHash ||
+        message.hiddenForMe ||
+        message.deletedForEveryone) {
+      return const [];
+    }
+    final contexts = switch (message.messageKind) {
+      ChatMessageKind.slotCheckRequest => [
+        if (message.scheduleContext != null) message.scheduleContext!,
+      ],
+      ChatMessageKind.medicationCheckRequest => message.medicationCheckContexts,
+      _ => const <ChatScheduleContext>[],
+    };
+    final seen = <String>{};
+    return contexts
+        .where(
+          (slot) =>
+              slot.scheduleDate == day &&
+              medicationScheduleSlotKeys.contains(slot.slotKey) &&
+              slot.medications.isNotEmpty &&
+              slot.medications.every(
+                (medication) => medication.medicationId > 0,
+              ) &&
+              seen.add(slot.slotKey),
+        )
+        .toList(growable: false);
   }
 
   // Function Name: _syncFor

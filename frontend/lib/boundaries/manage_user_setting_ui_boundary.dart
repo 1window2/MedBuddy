@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../services/dose_home_widget_service.dart';
 
 import '../widgets/medbuddy_confirm_dialog.dart';
+import '../widgets/dose_home_widget_picker.dart';
 import '../widgets/medbuddy_preference_row.dart';
 import '../widgets/medbuddy_setting_toggle.dart';
 
@@ -142,6 +143,7 @@ enum _SettingSection {
 // - _savedSetting (UserSetting): 마지막으로 저장된 설정. 편집 중인 값과 비교해 미저장 변경을 판정한다.
 class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   late UserSetting _draft;
+  bool _isAddingHomeWidget = false;
   bool _isSaving = false;
   // 마지막 저장값과 비교하며 중복 종료 확인을 막는다.
   late UserSetting _savedSetting;
@@ -858,22 +860,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                 title: text.isEnglish
                     ? 'Add medication widget'
                     : '홈 화면 복약 위젯 추가',
-                onTap: () async {
-                  var supported = false;
-                  try {
-                    supported = await DoseHomeWidget.pin();
-                  } catch (_) {}
-                  if (!mounted || supported) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: KeepWordsText(
-                        text.isEnglish
-                            ? 'Add MedBuddy from your home screen widget list.'
-                            : '홈 화면의 위젯 목록에서 MedBuddy를 추가해주세요.',
-                      ),
-                    ),
-                  );
-                },
+                onTap: _isAddingHomeWidget ? null : _addHomeWidget,
               ),
           ],
         ),
@@ -909,6 +896,53 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         ),
       ],
     );
+  }
+
+  // 함수이름: _addHomeWidget
+  // 함수역할: 추가 버튼에서 두 위젯 중 하나를 고른 뒤 해당 런처 추가 창을 연다.
+  // 매개변수: 없음. 반환값: 추가 흐름 완료. 취소 시 기존 위젯과 계정 설정을 변경하지 않는다.
+  Future<void> _addHomeWidget() async {
+    if (_isAddingHomeWidget) return;
+    setState(() => _isAddingHomeWidget = true);
+    final text = _SettingText(_language);
+    try {
+      final systemScale =
+          MediaQueryData.fromView(View.of(context)).textScaler.scale(16) / 16;
+      final selected = await showModalBottomSheet<DoseHomeWidgetSize>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        backgroundColor: MedBuddyColors.surface,
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * .9,
+          maxWidth: 560,
+        ),
+        builder: (sheetContext) => MediaQuery(
+          data: MediaQuery.of(sheetContext).copyWith(
+            textScaler: TextScaler.linear(_draft.resolveTextScale(systemScale)),
+          ),
+          child: DoseHomeWidgetPicker(isEnglish: text.isEnglish),
+        ),
+      );
+      if (!mounted || selected == null) return;
+      var supported = false;
+      try {
+        supported = await DoseHomeWidget.pin(size: selected);
+      } catch (_) {}
+      if (!mounted || supported) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: KeepWordsText(
+            text.isEnglish
+                ? 'Add MedBuddy from your home screen widget list.'
+                : '홈 화면의 위젯 목록에서 MedBuddy를 추가해주세요.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isAddingHomeWidget = false);
+    }
   }
 
   // 함수이름: _buildAccountSettings

@@ -44,6 +44,13 @@ class CheckCaregiverMedicationUI extends StatefulWidget {
   final CheckCaregiverMedication? control;
   final SetCaregiverNotification? notificationControl;
   final MedicationHistoryControl? historyControl;
+  final CheckCaregiverMedication Function()? controlFactory;
+  final MedicationHistoryControl Function()? historyControlFactory;
+  final bool showBackButton;
+  final bool isActive;
+  final bool Function()? isScopeCurrent;
+  final VoidCallback? onHistoryRequested;
+  final Widget? patientSelector;
 
   // 함수이름: CheckCaregiverMedicationUI
   // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림에 필요한 입력값과 표시 설정을 초기화한다.
@@ -56,6 +63,9 @@ class CheckCaregiverMedicationUI extends StatefulWidget {
   // - control (CheckCaregiverMedication?): 화면의 조회·변경 요청을 처리할 컨트롤러.
   // - notificationControl (SetCaregiverNotification?): 보호자 알림 조회·저장을 처리할 컨트롤러.
   // - historyControl (MedicationHistoryControl?): 필요시 복용 이력을 조회할 주입 제어기. 생략하면 이력 위젯의 기본 제어기를 사용한다.
+  // - controlFactory/historyControlFactory: optional owned readers; directly injected controls remain caller-owned.
+  // - showBackButton/isActive/isScopeCurrent: tab navigation, visibility and access guards.
+  // - onHistoryRequested/patientSelector: shared history navigation and patient choice.
   // 반환값: 입력 설정이 반영된 CheckCaregiverMedicationUI 인스턴스.
   const CheckCaregiverMedicationUI({
     super.key,
@@ -66,6 +76,13 @@ class CheckCaregiverMedicationUI extends StatefulWidget {
     this.control,
     this.notificationControl,
     this.historyControl,
+    this.controlFactory,
+    this.historyControlFactory,
+    this.showBackButton = true,
+    this.isActive = true,
+    this.isScopeCurrent,
+    this.onHistoryRequested,
+    this.patientSelector,
   });
 
   // Function Name: createState
@@ -96,6 +113,7 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
 
   late final CheckCaregiverMedication _control;
   late final bool _ownsControl;
+  late final MedicationHistoryControl _historyControl;
   late final SetCaregiverNotification _notificationControl;
   late final bool _ownsNotificationControl;
   CaregiverMedicationInfo? _medicationInfo;
@@ -149,7 +167,16 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
           );
     _control =
         widget.control ??
+        widget.controlFactory?.call() ??
         CheckCaregiverMedication(caregiverHash: widget.caregiverHash);
+    _historyControl =
+        widget.historyControl ??
+        widget.historyControlFactory?.call() ??
+        MedicationHistoryControl(
+          patientHash: widget.patientHash,
+          readOnly: true,
+          isScopeCurrent: widget.isScopeCurrent,
+        );
     _ownsNotificationControl = widget.notificationControl == null;
     _notificationControl =
         widget.notificationControl ??
@@ -170,6 +197,22 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
     _isRouteCurrent = ModalRoute.of(context)?.isCurrent ?? true;
     _applyScreenVisibility();
   }
+
+  // Role: Updates the shared patient label and tab visibility without replacing valid data.
+  // Parameters: oldWidget. Returns: none; a changed identity requires a new parent key.
+  @override
+  void didUpdateWidget(CheckCaregiverMedicationUI oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.patientLabel != widget.patientLabel &&
+        widget.patientLabel?.trim().isNotEmpty == true) {
+      _patientLabel = widget.patientLabel!.trim();
+    }
+    _applyScreenVisibility();
+  }
+
+  // Role: Guards asynchronous results and actions against revoked navigation scope.
+  // Parameters: none. Returns: whether this mounted patient view still has access.
+  bool get _scopeIsCurrent => mounted && widget.isScopeCurrent?.call() != false;
 
   // Function Name: didChangeAppLifecycleState
   // Description: Stops polling outside the foreground and rereads alert settings when resuming.
@@ -193,7 +236,7 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
   // Parameters: None.
   // Returns: None.
   void _applyScreenVisibility() {
-    final isVisible = _isAppResumed && _isRouteCurrent;
+    final isVisible = _isAppResumed && _isRouteCurrent && widget.isActive;
     final wasVisible = _wasScreenVisible;
     if (isVisible == wasVisible) {
       return;
@@ -237,6 +280,7 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
     if (_ownsControl) {
       _control.dispose();
     }
+    if (widget.historyControl == null) _historyControl.dispose();
     if (_ownsNotificationControl) {
       _notificationControl.dispose();
     }
@@ -249,52 +293,78 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
   // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
+    if (!_scopeIsCurrent) return const SizedBox.shrink();
     final schedules =
         _medicationInfo?.todayMedicationScheduleList ??
         const <MedicationSchedule>[];
     final progress = _calculateProgress(schedules);
 
-    return Scaffold(
-      backgroundColor: MedBuddyColors.pageBackground,
-      body: Column(
-        children: [
-          MedicationScheduleHeader(
-            title: _isEnglish
-                ? "Patient's Medication Schedule"
-                : '환자 오늘의 복약 일정',
-            subtitle: _patientLabel,
-            backTooltip: _isEnglish ? 'Back' : '뒤로가기',
-            actionKey: const Key('caregiver-schedule-history'),
-            actionTooltip: _isEnglish ? 'Medication history' : '복용 기록',
-            progressLabel: _isEnglish ? 'Medication progress' : '복용 진행률',
-            completedCount: progress.completedCount,
-            totalCount: progress.totalCount,
-            onAction: _openMedicationHistory,
-            // 함수이름: build.onBack callback
-            // 함수역할: `Navigator.pop(context)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-            onBack: () => Navigator.pop(context),
-          ),
-          _CaregiverSynchronizationBanner(
-            isEnglish: _isEnglish,
-            lastSynchronizedAt: _lastSynchronizedAt,
-            hasSynchronizationError: _errorMessage != null,
-            isRefreshing: _isRefreshInFlight && _isLoading,
-            onRefresh: _requestPatientMedicationInfo,
-          ),
-          Expanded(
-            child: SafeArea(
-              top: false,
-              child: RefreshIndicator(
-                color: MedBuddyColors.primary,
-                onRefresh: _requestPatientMedicationInfo,
-                child: _buildBody(schedules),
-              ),
+    final header = Column(
+      children: [
+        MedicationScheduleHeader(
+          title: _isEnglish ? "Today's Medication Schedule" : '오늘의 복약 일정',
+          subtitle: widget.patientSelector == null ? _patientLabel : null,
+          backTooltip: _isEnglish ? 'Back' : '뒤로가기',
+          actionKey: const Key('caregiver-schedule-history'),
+          actionTooltip: _isEnglish ? 'Medication history' : '복용 기록',
+          progressLabel: _isEnglish ? 'Medication progress' : '복용 진행률',
+          completedCount: progress.completedCount,
+          totalCount: progress.totalCount,
+          onAction: widget.onHistoryRequested ?? _openMedicationHistory,
+          // 함수이름: build.onBack callback
+          // 함수역할: `Navigator.pop(context)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
+          // 매개변수:
+          // - 없음.
+          // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
+          onBack: widget.showBackButton ? () => Navigator.pop(context) : null,
+        ),
+        if (widget.patientSelector != null)
+          ColoredBox(
+            key: const Key('schedule-patient-selector-surface'),
+            color: MedBuddyColors.pageBackground,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+              child: widget.patientSelector!,
             ),
           ),
-        ],
+        _CaregiverSynchronizationBanner(
+          isEnglish: _isEnglish,
+          lastSynchronizedAt: _lastSynchronizedAt,
+          hasSynchronizationError: _errorMessage != null,
+          isRefreshing: _isRefreshInFlight && _isLoading,
+          onRefresh: _requestPatientMedicationInfo,
+        ),
+      ],
+    );
+    final body = SafeArea(
+      top: false,
+      child: RefreshIndicator(
+        color: MedBuddyColors.primary,
+        onRefresh: _requestPatientMedicationInfo,
+        child: _buildBody(schedules),
+      ),
+    );
+    return Scaffold(
+      backgroundColor: MedBuddyColors.pageBackground,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          // Keep the patient selector reachable when large text exceeds the tab height.
+          if (constraints.maxHeight < 600 ||
+              MediaQuery.textScalerOf(context).scale(16) > 22) {
+            return NestedScrollView(
+              headerSliverBuilder: (_, _) => [
+                SliverToBoxAdapter(child: header),
+              ],
+              body: body,
+            );
+          }
+          return Column(
+            children: [
+              header,
+              Expanded(child: body),
+            ],
+          );
+        },
       ),
     );
   }
@@ -303,7 +373,7 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
   // 함수역할: 서버의 연동 권한 검사를 거치는 환자 기록을 읽기 전용으로 연다.
   // 매개변수: 없음. 반환값: 기록 화면 종료 후 완료.
   Future<void> _openMedicationHistory() async {
-    if (_historyWorkflowActive) return;
+    if (!_scopeIsCurrent || _historyWorkflowActive) return;
     _historyWorkflowActive = true;
     try {
       await Navigator.push<void>(
@@ -454,10 +524,10 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
         patientHash: widget.patientHash,
         isEnglish: _isEnglish,
         readOnly: true,
-        isActive: _isAppResumed && _isRouteCurrent,
+        isActive: _isAppResumed && _isRouteCurrent && widget.isActive,
         refreshInProgress: _isRefreshInFlight,
         refreshVersion: _asNeededRefreshVersion,
-        control: widget.historyControl,
+        control: _historyControl,
         emptyState: emptyState,
         readOnlyStatusLabel: !widget.userSetting.caregiverNotificationsEnabled
             ? (_isEnglish ? 'Caregiver alerts off' : '보호자 알림 꺼짐')
@@ -487,7 +557,8 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
   // Returns: None.
   void _refreshOnTimer() {
     // 경로 변경 통지가 아직 반영되지 않았더라도 가려진 화면은 조회하지 않는다.
-    if (!mounted ||
+    if (!_scopeIsCurrent ||
+        !widget.isActive ||
         !_isAppResumed ||
         ModalRoute.of(context)?.isCurrent == false) {
       return;
@@ -500,6 +571,7 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
   // Parameters: None.
   // Returns: Future completing after the alias lookup.
   Future<void> _loadPatientLabel() async {
+    if (widget.patientLabel?.trim().isNotEmpty == true) return;
     final label = await _localStateControl.loadLabel(
       caregiverHash: widget.caregiverHash,
       patientHash: widget.patientHash,
@@ -526,6 +598,7 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
     bool silent = false,
     bool repeatIfInFlight = false,
   }) async {
+    if (!_scopeIsCurrent) return;
     if (_isRefreshInFlight) {
       if (repeatIfInFlight) {
         _refreshAgainAfterCurrent = true;
@@ -548,7 +621,7 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
       final info = await _control.requestPatientMedicationInfo(
         patientHash: widget.patientHash,
       );
-      if (mounted) {
+      if (_scopeIsCurrent) {
         // 함수이름: _requestPatientMedicationInfo.setState callback
         // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 입력·요청 상태를 `_medicationInfo = info; _errorMessage = null; _lastSynchronizedAt = DateTime.now()`로 갱신한다.
         // 매개변수:
@@ -561,7 +634,7 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
         });
       }
     } catch (error) {
-      if (mounted) {
+      if (_scopeIsCurrent) {
         // 함수이름: _requestPatientMedicationInfo.setState callback
         // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 입력·요청 상태를 `_errorMessage = UserFacingErrorMessage.resolve(error, isEnglish: _isEnglish)`로 갱신한다.
         // 매개변수:
@@ -576,7 +649,7 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
       }
     } finally {
       _isRefreshInFlight = false;
-      if (mounted) {
+      if (_scopeIsCurrent) {
         // Function Name: _requestPatientMedicationInfo.setState callback
         // Description: Updates the local input or request state for a patient's dose completion and per-slot caregiver reminder controls: `_isLoading = false`.
         // Parameters:
@@ -702,11 +775,12 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
   Future<void> _showCaregiverNotificationPopup(
     _CaregiverScheduleSlot slot,
   ) async {
+    if (!_scopeIsCurrent) return;
     if (_notificationSettings[slot.key] == null) {
       final loaded = await _requestCaregiverNotificationSettings(
         showError: true,
       );
-      if (!loaded || !mounted) {
+      if (!loaded || !_scopeIsCurrent) {
         return;
       }
     }
@@ -729,7 +803,7 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
           slotLabel: slot.title(_isEnglish),
           userSetting: widget.userSetting,
         );
-    if (selectedSetting == null || !mounted) {
+    if (selectedSetting == null || !_scopeIsCurrent) {
       return;
     }
     final unchanged =
@@ -1254,7 +1328,9 @@ class _CaregiverMedicationRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       KeepWordsText(
-                        schedule.displayNameForLanguage(isEnglish ? 'en' : 'ko'),
+                        schedule.displayNameForLanguage(
+                          isEnglish ? 'en' : 'ko',
+                        ),
                         softWrap: true,
                         style: TextStyle(
                           color: isCompleted
@@ -1269,7 +1345,9 @@ class _CaregiverMedicationRow extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       KeepWordsText(
-                        schedule.dosageLabelForLanguage(isEnglish ? 'en' : 'ko'),
+                        schedule.dosageLabelForLanguage(
+                          isEnglish ? 'en' : 'ko',
+                        ),
                         style: const TextStyle(
                           color: MedBuddyColors.textSubtle,
                           fontSize: 13,

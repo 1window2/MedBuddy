@@ -453,6 +453,22 @@ date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again
   candidates in Android settings.
 - **To undo:** set `version` in `backend/main.py` back to `1.0.0-rc`.
 
+## 2026-11-16: the 1.0.1 line runs on the v1.0.1 branch
+
+- **Chosen:** the collaborator's branch keeps its name `v1.0.1` (owner), and the rules
+  follow it. Push CI also runs for branches named like a version
+  (`v[0-9]+.[0-9]+.[0-9]+`), which the signed workflow's CI gate needs, and the signed
+  workflow's off-Play exception moves from `beta/v1.0.0` to exactly `v1.0.1`.
+  `beta/v1.0.0` keeps its own workflow copy, so hotfix builds stay possible there until
+  the exhibition ends. The App Check preflight identity is not involved: off-Play builds
+  skip it. The dormant backend deploy workflow was left as it is.
+- **Alternatives:** renaming the branch `beta/v1.0.1`, which the patterns already
+  matched. It was tried and undone: GitHub closes pull requests whose head branch is
+  renamed, and PR #139 had to be reopened.
+- **To undo:** remove the version pattern from the CI push triggers and restore the
+  references in `release-android.yml`, `scripts/check_android_release_configuration.py`
+  and their tests.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the

@@ -26,8 +26,9 @@ enum MedicationSaveStatus { saved, duplicate, failed }
 // Class Name: MedicationSaveFailureKind
 // Role: Categorizes medication-save failures for localized UI feedback.
 // Responsibilities: Separate capacity limits, network uncertainty and other rejection without exposing server text.
-// Attributes: none: Nonfailure; limitReached: Account capacity; network: Unconfirmed transport result; other: Remaining failures.
-enum MedicationSaveFailureKind { none, limitReached, network, other }
+// Attributes: none: Nonfailure; limitReached: Account capacity; network: Unconfirmed transport result;
+//   rejected: Refused before anything was saved (the app's schedule check or a request validation reply); other: Remaining failures.
+enum MedicationSaveFailureKind { none, limitReached, network, rejected, other }
 
 // 클래스명: MedicationRegimenAction
 // 역할: 적용일 이후 복약 계획에 수행할 변경 종류를 구분한다.
@@ -254,6 +255,7 @@ class CheckSavedMedication {
       return const MedicationSaveResult(
         status: MedicationSaveStatus.failed,
         message: '복용 주기를 확인하지 못했습니다. 처방·복약지도에 맞는 일정으로 수정해 주세요.',
+        failureKind: MedicationSaveFailureKind.rejected,
       );
     }
     final savePayload = _buildSaveRequest(medicationDetail, medicationSchedule);
@@ -273,9 +275,12 @@ class CheckSavedMedication {
           status: MedicationSaveStatus.failed,
           message: ApiResponseParser.extractErrorDetail(responseBody),
           // 저장 API의 409는 계정당 저장 가능한 약 수를 넘었을 때만 쓰인다.
-          failureKind: response.statusCode == 409
-              ? MedicationSaveFailureKind.limitReached
-              : MedicationSaveFailureKind.other,
+          // 422는 요청 검증 단계의 거절이라 저장 처리까지 가지 않았다.
+          failureKind: switch (response.statusCode) {
+            409 => MedicationSaveFailureKind.limitReached,
+            422 => MedicationSaveFailureKind.rejected,
+            _ => MedicationSaveFailureKind.other,
+          },
         );
       }
 

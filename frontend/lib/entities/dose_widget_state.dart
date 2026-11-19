@@ -302,10 +302,7 @@ class DoseWidgetState {
     final view = <String, dynamic>{
       'language': english ? 'en' : 'ko',
       'date': day,
-      'date_label': tr(
-        '${local.month}월 ${local.day}일 ($weekday)',
-        '${local.month}/${local.day} ($weekday)',
-      ),
+      'date_label': '${day.replaceAll('-', '.')} ($weekday)',
       'utc_offset_minutes': doseWidgetUtcOffset,
       'title': tr('나의 복약 일정', 'My medication'),
       'heading': !current

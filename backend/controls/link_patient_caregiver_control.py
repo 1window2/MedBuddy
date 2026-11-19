@@ -5,6 +5,7 @@ import logging
 from datetime import timedelta
 
 from fastapi import HTTPException
+from sqlalchemy import and_, or_
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -124,6 +125,52 @@ class LinkPatientCaregiver:
             "success": True,
             "message": "Patient link code was created.",
             "data": patient_link_code.to_response_dict(),
+        }
+
+    def requestPatientCodeStatus(
+        self, patient_hash: str, patient_code: str
+    ) -> dict[str, object]:
+        """Read only the owner's exact code and its currently active consumer pair."""
+        owner = normalize_patient_hash(patient_hash)
+        code = self._normalize_patient_code(patient_code)
+        # One snapshot prevents mixing an earlier consumption with a later link state.
+        row = (
+            self.db.query(_PatientLinkCode, _PatientCaregiverLink)
+            .outerjoin(
+                _PatientCaregiverLink,
+                and_(
+                    _PatientCaregiverLink.patient_hash == _PatientLinkCode.patient_hash,
+                    _PatientCaregiverLink.caregiver_hash == _PatientLinkCode.caregiver_hash,
+                    _PatientCaregiverLink.linked.is_(True),
+                ),
+            )
+            .filter(
+                _PatientLinkCode.patient_hash == owner,
+                _PatientLinkCode.patient_code == code,
+            )
+            .populate_existing()
+            .first()
+        )
+        if row is None:
+            raise HTTPException(status_code=404, detail="Patient code was not found.")
+        link_code, link = row
+        code_entity = PatientLinkCode(
+            code=link_code.patient_code,
+            patient_hash=link_code.patient_hash,
+            expires_at=link_code.expires_at,
+        )
+        if link_code.used:
+            status = "linked" if link_code.caregiver_hash and link is not None else "revoked"
+        else:
+            status = "expired" if code_entity.isExpired() else "pending"
+        return {
+            "success": True,
+            "data": {
+                **code_entity.to_response_dict(),
+                "status": status,
+                "link": self.toResponseDict(link, viewer_hash=owner)
+                if status == "linked" else None,
+            },
         }
 
     # Function Name: requestPatientCaregiverLink
@@ -325,8 +372,16 @@ class LinkPatientCaregiver:
             # 해제 전에 발급한 코드로 해제된 보호자가 환자 몰래 다시 연동하지 못하게 남은 코드를 모두 막는다.
             self.db.query(_PatientLinkCode).filter(
                 _PatientLinkCode.patient_hash == link.patient_hash,
-                _PatientLinkCode.used.is_(False),
-            ).update({"used": True}, synchronize_session=False)
+                or_(
+                    _PatientLinkCode.used.is_(False),
+                    _PatientLinkCode.caregiver_hash == link.caregiver_hash,
+                ),
+            ).update(
+                # Clear this pair's consumption proof so a later re-link cannot
+                # resurrect success for an old code. Other active pairs stay intact.
+                {"used": True, "caregiver_hash": None},
+                synchronize_session=False,
+            )
             self.db.commit()
             self.db.refresh(link)
         except Exception as exc:

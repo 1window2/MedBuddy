@@ -5,7 +5,7 @@ name: FastAPI CI
 
 on:
   push:
-    branches: [ "main", "beta/**" ]
+    branches: [ "main", "beta/**", "v[0-9]+.[0-9]+.[0-9]+" ]
   pull_request:
     branches: [ "main", "beta/**" ]
 

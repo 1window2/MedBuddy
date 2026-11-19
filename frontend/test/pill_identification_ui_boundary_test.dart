@@ -19,7 +19,9 @@ import 'package:medbuddy_frontend/entities/identified_pill_save_request_entity.d
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/pill_identification_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
+import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
+import 'package:medbuddy_frontend/widgets/medication_review_image_gallery.dart';
 
 // Class Name: _FakeIdentifyPill
 // Role: Pill-identification fixture with a valid PNG and one confirmable candidate.
@@ -374,6 +376,63 @@ class _OnePhotoMultipleIdentifyPill extends _FakeIdentifyPill {
   }
 }
 
+class _DelayedMultipleIdentifyPill extends _OnePhotoMultipleIdentifyPill {
+  final analysis = Completer<MultiplePillIdentificationResult>();
+
+  @override
+  Future<MultiplePillIdentificationResult> requestMultiplePillIdentification({
+    required Uint8List image,
+  }) => analysis.future;
+
+  void completeAnalysis() {
+    analysis.complete(
+      super.requestMultiplePillIdentification(image: _FakeIdentifyPill._png),
+    );
+  }
+}
+
+class _ImageCandidatesIdentifyPill extends _OnePhotoMultipleIdentifyPill {
+  final String language;
+
+  _ImageCandidatesIdentifyPill(this.language);
+
+  @override
+  Future<MultiplePillIdentificationResult> requestMultiplePillIdentification({
+    required Uint8List image,
+  }) async {
+    final result = await super.requestMultiplePillIdentification(image: image);
+    return MultiplePillIdentificationResult(
+      requiresConfirmation: true,
+      observations: [
+        MultiplePillObservation(
+          index: 1,
+          boundingBox: result.observations.first.boundingBox,
+          identification: PillIdentificationResult(
+            isConfident: false,
+            requiresConfirmation: true,
+            observedFeatures: const PillVisualFeatures(),
+            candidates: [
+              for (var index = 0; index < 2; index++)
+                PillIdentificationCandidate(
+                  itemSeq: 'image-$index',
+                  itemName: language == 'en'
+                      ? 'Example tablet 2.5 mg'
+                      : '예시정2.5밀리그램',
+                  manufacturer: language == 'en' ? 'Example Pharma' : '예시제약',
+                  imageUrl: 'https://nedrug.mfds.go.kr/pill-$index.png',
+                  printFront: 'AB',
+                  printBack: '25',
+                  matchScore: 0.7,
+                ),
+            ],
+          ),
+        ),
+        result.observations.last,
+      ],
+    );
+  }
+}
+
 // 클래스명: _RefinementIdentifyPill
 // 역할: 번호별 자르기·뒷면·실패·동점 확장을 외부 호출 없이 검증한다.
 // 주요 책임: 선택·자르기·재식별 입력을 기록하고 취소·실패·후보 확장을 재현한다.
@@ -472,18 +531,34 @@ class _RefinementIdentifyPill extends _OnePhotoMultipleIdentifyPill {
 // 함수역할: 좁은 화면과 큰 글씨에서 다중 분석 결과를 연다. 매개변수: tester, control. 반환값: 렌더링 완료.
 Future<void> _openRefinementGroup(
   WidgetTester tester,
-  _RefinementIdentifyPill control,
-) async {
-  tester.view.physicalSize = const Size(320, 800);
-  tester.view.devicePixelRatio = 1;
+  IdentifyPill control, {
+  String language = 'ko',
+  double textScale = 1,
+  Size physicalSize = const Size(320, 800),
+  double devicePixelRatio = 1,
+  IdentifiedPillSaveCallback? onSaveRequested,
+  IdentifiedPillBatchSaveCallback? onBatchSaveRequested,
+  bool Function(List<IdentifiedPillSaveRequest>)? onReviewRequested,
+}) async {
+  tester.view.physicalSize = physicalSize;
+  tester.view.devicePixelRatio = devicePixelRatio;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
     MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
       home: PillIdentificationUI(
-        userSetting: const UserSetting(language: 'ko', fontSize: 20),
+        userSetting: UserSetting(language: language, fontSize: 20),
         control: control,
         captureMode: PillCaptureMode.singlePhoto,
+        onSaveRequested: onSaveRequested,
+        onBatchSaveRequested: onBatchSaveRequested,
+        onReviewRequested: onReviewRequested,
       ),
     ),
   );
@@ -492,7 +567,7 @@ Future<void> _openRefinementGroup(
     find.byKey(const Key('identify-multiple-pills-from-one-photo-button')),
   );
   await tester.pumpAndSettle();
-  await tester.tap(find.text('카메라로 촬영'));
+  await tester.tap(find.text(language == 'en' ? 'Take Photo' : '카메라로 촬영'));
   await tester.pumpAndSettle();
 }
 
@@ -557,7 +632,7 @@ class _DuplicateIdentifyPill extends _FakeIdentifyPill {
 // 반환값:
 // - 대상 위젯의 탭 처리 완료.
 Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
-  await tester.ensureVisible(finder);
+  await Scrollable.ensureVisible(tester.element(finder), alignment: 0.5);
   await tester.pumpAndSettle();
   await tester.tap(finder);
 }
@@ -689,7 +764,9 @@ Future<void> _addPillPhoto(WidgetTester tester, int index) async {
   await _tapVisible(
     tester,
     find.byKey(
-      Key(index == 0 ? 'pill-front-image-slot' : 'pill-front-image-slot-$index'),
+      Key(
+        index == 0 ? 'pill-front-image-slot' : 'pill-front-image-slot-$index',
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -771,6 +848,739 @@ Future<void> _reviewAndConfirm(
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  for (final language in ['ko', 'en']) {
+    testWidgets('individual photo analysis stays in footer $language', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final control = _FakeIdentifyPill();
+      addTearDown(control.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: PillIdentificationUI(
+            userSetting: UserSetting(language: language),
+            captureMode: PillCaptureMode.individualPhotos,
+            control: control,
+          ),
+        ),
+      );
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pumpAndSettle();
+      final footer = find.byKey(const Key('pill-review-footer'));
+      final analyze = find.byKey(const Key('identify-pill-button'));
+      final scroll = find.byType(SingleChildScrollView).first;
+      expect(tester.getRect(footer).bottom, 800);
+      expect(analyze.hitTestable(), findsOneWidget);
+      expect(tester.widget<FilledButton>(analyze).onPressed, isNull);
+      expect(
+        find.ancestor(
+          of: analyze,
+          matching: find.byType(SingleChildScrollView),
+        ),
+        findsNothing,
+      );
+      expect(
+        tester.getRect(find.byKey(const Key('pill-photo-heading'))).top -
+            tester.getRect(scroll).top,
+        20,
+      );
+      await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(language == 'en' ? 'Take Photo' : '카메라로 촬영'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<FilledButton>(analyze).onPressed, isNotNull);
+      expect(analyze.hitTestable(), findsOneWidget);
+      await tester.tap(analyze);
+      await tester.pumpAndSettle();
+      expect(analyze, findsNothing);
+      expect(
+        find.byKey(const Key('confirm-pill-candidate-button')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(tester.getRect(footer).bottom, 800);
+      expect(tester.takeException(), isNull);
+    });
+  }
+  for (final language in ['ko', 'en']) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'review stays fixed and photo controls share heading $language $scale',
+        (tester) async {
+          final control = _OnePhotoMultipleIdentifyPill();
+          addTearDown(control.dispose);
+          await _openRefinementGroup(
+            tester,
+            control,
+            language: language,
+            textScale: scale,
+          );
+          await tester.pump(const Duration(seconds: 6));
+          await tester.pumpAndSettle();
+          final footer = find.byKey(const Key('pill-review-footer'));
+          final button = find.byKey(const Key('confirm-pill-candidate-button'));
+          final initialBounds = tester.getRect(footer);
+          expect(initialBounds.bottom, 800);
+          expect(button.hitTestable(), findsOneWidget);
+          expect(_confirmButton(tester).onPressed, isNull);
+          expect(
+            find.ancestor(
+              of: footer,
+              matching: find.byType(SingleChildScrollView),
+            ),
+            findsNothing,
+          );
+          final heading = find.byKey(const Key('pill-photo-heading'));
+          final change = find.byKey(
+            const Key('identify-multiple-pills-from-one-photo-button'),
+          );
+          expect(
+            find.descendant(of: heading, matching: change),
+            findsOneWidget,
+          );
+          expect(find.textContaining('사진에서 찾은 알약에 번호를 표시'), findsNothing);
+          expect(
+            find.textContaining('Detected pills are numbered'),
+            findsNothing,
+          );
+          final frame = find.byKey(const Key('multiple-pill-photo-frame'));
+          final firstGroup = find.byKey(const Key('pill-result-group-0'));
+          expect(
+            tester.getRect(change).right,
+            closeTo(tester.getRect(frame).right, 0.01),
+          );
+          expect(
+            tester.getRect(change).center.dy,
+            closeTo(tester.getRect(heading).center.dy, 0.01),
+          );
+          expect(
+            tester.getRect(frame).top - tester.getRect(heading).bottom,
+            closeTo(8, 0.01),
+          );
+          expect(
+            tester.getRect(firstGroup).top - tester.getRect(frame).bottom,
+            16,
+          );
+          await _tapVisible(tester, find.text('첫 번째 알약'));
+          await tester.pumpAndSettle();
+          expect(_confirmButton(tester).onPressed, isNotNull);
+          expect(_confirmButtonLabel(tester), contains('1'));
+          expect(tester.getRect(footer).bottom, initialBounds.bottom);
+          expect(button.hitTestable(), findsOneWidget);
+          await tester.drag(
+            find.byType(SingleChildScrollView).first,
+            const Offset(0, -600),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.getRect(footer).bottom, initialBounds.bottom);
+          expect(button.hitTestable(), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+  for (final language in ['ko', 'en']) {
+    testWidgets('multiple-photo entry reserves the uploaded frame $language', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final control = _OnePhotoMultipleIdentifyPill();
+      addTearDown(control.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: PillIdentificationUI(
+            userSetting: UserSetting(language: language),
+            captureMode: PillCaptureMode.singlePhoto,
+            control: control,
+          ),
+        ),
+      );
+      final frame = find.byKey(const Key('multiple-pill-photo-frame'));
+      final addPhoto = find.byKey(
+        const Key('identify-multiple-pills-from-one-photo-button'),
+      );
+      final initialSize = tester.getSize(frame);
+      expect(initialSize.width, 280);
+      expect(initialSize.aspectRatio, closeTo(16 / 9, 0.001));
+      expect(find.byKey(const Key('pill-front-image-slot')), findsNothing);
+      expect(find.byKey(const Key('pill-result-group-0')), findsNothing);
+      expect(
+        find.textContaining(language == 'en' ? 'Pill 1' : '알약 1'),
+        findsNothing,
+      );
+      expect(find.descendant(of: frame, matching: addPhoto), findsOneWidget);
+      final icon = find.byIcon(Icons.add_photo_alternate_outlined);
+      expect(
+        tester.getCenter(icon).dx,
+        closeTo(tester.getCenter(frame).dx, 0.1),
+      );
+      expect(tester.getSize(addPhoto), initialSize);
+      await _tapVisible(tester, addPhoto);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(language == 'en' ? 'Take Photo' : '카메라로 촬영'));
+      await tester.pumpAndSettle();
+      await tester.runAsync(
+        () => precacheImage(
+          MemoryImage(_FakeIdentifyPill._png),
+          tester.element(frame),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getSize(frame), initialSize);
+      final imageBounds = tester.getRect(
+        find.byKey(const Key('multiple-pill-preview-image')),
+      );
+      final overlayBounds = tester.getRect(
+        find.byKey(const Key('multiple-pill-region-overlay')),
+      );
+      expect(imageBounds.size.aspectRatio, 1);
+      expect(overlayBounds, imageBounds);
+      expect(imageBounds.width, lessThan(initialSize.width));
+      expect(imageBounds.height, closeTo(initialSize.height, 0.1));
+      expect(_confirmButton(tester).onPressed, isNull);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final compact in [false, true]) {
+      testWidgets('candidate rows stay horizontal $language compact=$compact', (
+        tester,
+      ) async {
+        final control = _ImageCandidatesIdentifyPill(language);
+        addTearDown(control.dispose);
+        // Local emulator profiles: 1080 x 2400 at 420 dpi (2.625 DPR).
+        await _openRefinementGroup(
+          tester,
+          control,
+          language: language,
+          physicalSize: compact ? const Size(320, 800) : const Size(1080, 2400),
+          devicePixelRatio: compact ? 1 : 2.625,
+          textScale: compact ? 2 : 1,
+        );
+        final row = find.byKey(const Key('pill-candidate-row-image-0'));
+        final thumbnail = find.byKey(const Key('pill-candidate-image-image-0'));
+        final details = find.byKey(const Key('pill-candidate-details-image-0'));
+        await tester.ensureVisible(row);
+        await tester.pumpAndSettle();
+        final imageBounds = tester.getRect(thumbnail);
+        final detailsBounds = tester.getRect(details);
+        final radio = find.descendant(
+          of: row,
+          matching: find.byIcon(Icons.radio_button_unchecked),
+        );
+        final radioBounds = tester.getRect(radio);
+        expect(imageBounds.width, inInclusiveRange(72, 80));
+        expect(imageBounds.height, imageBounds.width);
+        expect(detailsBounds.left, greaterThan(imageBounds.right));
+        expect(detailsBounds.top, closeTo(imageBounds.top, 0.1));
+        expect(radioBounds.left, greaterThan(detailsBounds.right));
+        expect(radioBounds.top, closeTo(imageBounds.top, 0.1));
+        if (!compact) {
+          expect(tester.getSize(row).height, lessThanOrEqualTo(100));
+        }
+        final group = find.byKey(const Key('pill-result-group-0'));
+        expect(
+          find.descendant(
+            of: group,
+            matching: find.byKey(const Key('pill-confidence-warning')),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text(language == 'en' ? 'More evidence needed' : '추가 확인 필요'),
+          findsNothing,
+        );
+        expect(
+          find.text(language == 'en' ? 'Candidate for comparison' : '비교 후보'),
+          findsNothing,
+        );
+        expect(
+          find.descendant(of: row, matching: find.textContaining('AB / 25')),
+          findsOneWidget,
+        );
+        expect(_confirmButton(tester).onPressed, isNull);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('candidate image zoom does not change selection $language', (
+      tester,
+    ) async {
+      final control = _ImageCandidatesIdentifyPill(language);
+      addTearDown(control.dispose);
+      await _openRefinementGroup(tester, control, language: language);
+      final image = find.byKey(const Key('pill-candidate-image-image-0'));
+      await _tapVisible(tester, image);
+      await tester.pumpAndSettle();
+      expect(find.byType(InteractiveViewer), findsOneWidget);
+      final viewer = tester.widget<InteractiveViewer>(
+        find.byType(InteractiveViewer),
+      );
+      expect(viewer.maxScale, greaterThan(1));
+      final close = find.byKey(const Key('medication-image-viewer-close'));
+      expect(
+        tester.widget<IconButton>(close).tooltip,
+        language == 'en' ? 'Close enlarged image' : '확대 사진 닫기',
+      );
+      await tester.tap(close);
+      await tester.pumpAndSettle();
+      expect(find.byType(InteractiveViewer), findsNothing);
+      expect(find.byIcon(Icons.radio_button_checked), findsNothing);
+      expect(_confirmButton(tester).onPressed, isNull);
+      final details = find.byKey(const Key('pill-candidate-details-image-0'));
+      await _tapVisible(
+        tester,
+        find.descendant(
+          of: details,
+          matching: find.text(
+            language == 'en' ? 'Example tablet 2.5 mg' : '예시정2.5밀리그램',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final selectedLabel = _confirmButtonLabel(tester);
+      expect(find.byIcon(Icons.radio_button_checked), findsOneWidget);
+      expect(_confirmButton(tester).onPressed, isNotNull);
+      await _tapVisible(tester, image);
+      await tester.pumpAndSettle();
+      await tester.tap(close);
+      await tester.pumpAndSettle();
+      expect(_confirmButtonLabel(tester), selectedLabel);
+      expect(find.byIcon(Icons.radio_button_checked), findsOneWidget);
+      expect(_confirmButton(tester).onPressed, isNotNull);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('AI disclosure hides at five seconds $language', (
+      tester,
+    ) async {
+      final control = _FakeIdentifyPill();
+      addTearDown(control.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PillIdentificationUI(
+            userSetting: UserSetting(language: language),
+            control: control,
+          ),
+        ),
+      );
+      final disclosure = find.byKey(const Key('pill-ai-disclosure'));
+      expect(disclosure, findsOneWidget);
+      expect(
+        find.textContaining(language == 'en' ? 'external AI' : '외부 AI'),
+        findsOneWidget,
+      );
+      await tester.pump(const Duration(milliseconds: 4999));
+      expect(disclosure, findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(disclosure, findsNothing);
+      await tester.pump(const Duration(seconds: 5));
+      expect(disclosure, findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final batchSave in [false, true]) {
+      testWidgets('two detected pills save only the selected one $language '
+          'batch=$batchSave', (tester) async {
+        final control = _OnePhotoMultipleIdentifyPill();
+        addTearDown(control.dispose);
+        final savedBatches = <List<String>>[];
+        const saved = MedicationSaveResult(
+          status: MedicationSaveStatus.saved,
+          message: 'saved',
+        );
+        await _openRefinementGroup(
+          tester,
+          control,
+          language: language,
+          onSaveRequested: batchSave
+              ? null
+              : (candidate, schedule) async {
+                  expect(schedule.medicationName, candidate.itemName);
+                  savedBatches.add([candidate.itemSeq]);
+                  return saved;
+                },
+          onBatchSaveRequested: batchSave
+              ? (requests) async {
+                  savedBatches.add([
+                    for (final request in requests) request.candidate.itemSeq,
+                  ]);
+                  return [for (final _ in requests) saved];
+                }
+              : null,
+        );
+        final zeroLabel = language == 'en' ? '0 pills selected' : '선택한 알약 0개';
+        final oneLabel = language == 'en'
+            ? 'Review and save 1 selected pill'
+            : '선택한 알약 1개 검토 후 저장';
+        expect(_confirmButtonLabel(tester), zeroLabel);
+        expect(_confirmButton(tester).onPressed, isNull);
+        expect(find.byIcon(Icons.radio_button_checked), findsNothing);
+        await _tapVisible(
+          tester,
+          find.byKey(const Key('pill-candidate-image-group-2')),
+        );
+        await tester.pumpAndSettle();
+        expect(_confirmButton(tester).onPressed, isNull);
+        expect(find.byType(InteractiveViewer), findsNothing);
+        expect(
+          find.textContaining(
+            language == 'en' ? 'Only the pills you select' : '선택한 알약만 검토하고 저장',
+          ),
+          findsNothing,
+        );
+
+        await _tapVisible(tester, find.text('두 번째 알약'));
+        await tester.pumpAndSettle();
+        expect(_confirmButtonLabel(tester), oneLabel);
+        expect(_confirmButton(tester).onPressed, isNotNull);
+        final staleConfirm = _confirmButton(tester).onPressed!;
+        await _tapVisible(tester, find.text('두 번째 알약'));
+        await tester.pumpAndSettle();
+        expect(_confirmButtonLabel(tester), zeroLabel);
+        expect(_confirmButton(tester).onPressed, isNull);
+        staleConfirm();
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('schedule-review-confirm')), findsNothing);
+
+        await _tapVisible(tester, find.text('두 번째 알약'));
+        await _tapVisible(
+          tester,
+          find.byKey(const Key('confirm-pill-candidate-button')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('schedule-review-card-0')), findsOneWidget);
+        expect(find.byKey(const Key('schedule-review-card-1')), findsNothing);
+        final reviewList = find.byKey(const Key('schedule-review-list'));
+        expect(
+          find.descendant(of: reviewList, matching: find.text('두 번째 알약')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: reviewList, matching: find.text('첫 번째 알약')),
+          findsNothing,
+        );
+        expect(savedBatches, isEmpty);
+        final gallery = tester.widget<MedicationReviewImageGallery>(
+          find.byType(MedicationReviewImageGallery),
+        );
+        expect(gallery.photos, hasLength(1));
+        expect(
+          gallery.photos.single.title,
+          language == 'en' ? 'Pill photo' : '촬영한 알약 사진',
+        );
+        await _tapVisible(
+          tester,
+          find.byKey(const Key('schedule-review-confirm')),
+        );
+        await tester.pumpAndSettle();
+        expect(savedBatches, [
+          ['group-2'],
+        ]);
+        expect(_confirmButtonLabel(tester), zeroLabel);
+        expect(_confirmButton(tester).onPressed, isNull);
+        expect(find.byIcon(Icons.radio_button_checked), findsOneWidget);
+
+        ScaffoldMessenger.of(
+          tester.element(find.byType(PillIdentificationUI)),
+        ).hideCurrentSnackBar();
+        await tester.pumpAndSettle();
+        await _tapVisible(tester, find.text('첫 번째 알약'));
+        await tester.pumpAndSettle();
+        expect(_confirmButtonLabel(tester), oneLabel);
+        await _reviewAndConfirm(tester);
+        expect(savedBatches, [
+          ['group-2'],
+          ['group-1'],
+        ]);
+        expect(
+          _confirmButtonLabel(tester),
+          language == 'en' ? 'Saved' : '저장 완료',
+        );
+        expect(_confirmButton(tester).onPressed, isNull);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('pill groups fit narrow screens with large text $language', (
+      tester,
+    ) async {
+      final control = _RefinementIdentifyPill()..expandCandidates = true;
+      addTearDown(control.dispose);
+      await _openRefinementGroup(
+        tester,
+        control,
+        language: language,
+        textScale: 2,
+      );
+      for (var index = 0; index < 2; index++) {
+        final group = find.byKey(Key('pill-result-group-$index'));
+        final decoration =
+            tester.widget<Container>(group).decoration! as BoxDecoration;
+        expect(decoration.borderRadius, MedBuddyRadii.card);
+        expect(decoration.color, MedBuddyColors.surface);
+        expect(decoration.border, isNotNull);
+        for (final action in ['region', 'back']) {
+          final button = find.byKey(Key('refine-pill-$action-$index'));
+          expect(find.descendant(of: group, matching: button), findsOneWidget);
+          await tester.ensureVisible(button);
+          await tester.pumpAndSettle();
+          final bounds = tester.getRect(button);
+          expect(bounds.left, greaterThanOrEqualTo(20));
+          expect(bounds.right, lessThanOrEqualTo(300));
+        }
+        expect(
+          find.descendant(
+            of: group,
+            matching: find.text(index == 0 ? '동점 후보 0' : '두 번째 알약'),
+          ),
+          findsOneWidget,
+        );
+      }
+      await _tapVisible(tester, find.text('두 번째 알약'));
+      await tester.ensureVisible(
+        find.byKey(const Key('confirm-pill-candidate-button')),
+      );
+      await tester.pumpAndSettle();
+      expect(_confirmButton(tester).onPressed, isNotNull);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('disposing before five seconds cancels the disclosure timer', (
+    tester,
+  ) async {
+    final control = _FakeIdentifyPill();
+    addTearDown(control.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'ko'),
+          control: control,
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(tester.takeException(), isNull);
+    // Leaving the clock before expiry also checks for an uncancelled timer.
+  });
+
+  testWidgets('disclosure timeout does not finish or interrupt analysis', (
+    tester,
+  ) async {
+    final control = _DelayedMultipleIdentifyPill();
+    addTearDown(control.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'ko'),
+          control: control,
+          captureMode: PillCaptureMode.singlePhoto,
+        ),
+      ),
+    );
+    final photoButton = find.byKey(
+      const Key('identify-multiple-pills-from-one-photo-button'),
+    );
+    await _tapVisible(tester, photoButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('카메라로 촬영'));
+    await tester.pump();
+    expect(find.byKey(const Key('pill-ai-disclosure')), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsWidgets);
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.byKey(const Key('pill-ai-disclosure')), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsWidgets);
+    expect(tester.widget<FilledButton>(photoButton).onPressed, isNull);
+    control.completeAnalysis();
+    await tester.pumpAndSettle();
+    expect(find.text('첫 번째 알약'), findsOneWidget);
+    expect(find.text('두 번째 알약'), findsOneWidget);
+    expect(_confirmButton(tester).onPressed, isNull);
+    expect(find.byKey(const Key('pill-ai-disclosure')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('여러 알약 검토는 선택한 약만 결과 단계에 넘기고 바로 저장하지 않는다', (tester) async {
+    final control = _PartlyEmptyIdentifyPill();
+    addTearDown(control.dispose);
+    List<IdentifiedPillSaveRequest>? reviewed;
+    var saves = 0;
+    await _openRefinementGroup(
+      tester,
+      control,
+      onReviewRequested: (requests) {
+        reviewed = requests;
+        return true;
+      },
+      onBatchSaveRequested: (_) async {
+        saves++;
+        return [];
+      },
+    );
+    await _tapVisible(tester, find.text('첫 번째 알약'));
+    await _reviewAndConfirm(tester);
+    expect(reviewed, hasLength(1));
+    expect(reviewed!.single.candidate.itemSeq, 'group-1');
+    expect(reviewed!.single.medicationSchedule.scheduleSlotKeys, ['morning']);
+    expect(saves, 0);
+    expect(_confirmButtonLabel(tester), isNot('저장 중...'));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('개별 알약 검토도 결과 단계가 거절하면 후보와 일정을 유지한다', (tester) async {
+    final control = _FakeIdentifyPill();
+    addTearDown(control.dispose);
+    var attempts = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: MedBuddyTheme.light(),
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'ko'),
+          control: control,
+          onReviewRequested: (requests) {
+            attempts++;
+            expect(requests.single.candidate.itemSeq, '200808877');
+            return false;
+          },
+          onSaveRequested: (_, _) async => throw StateError('must not save'),
+        ),
+      ),
+    );
+    await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('카메라로 촬영'));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.byKey(const Key('identify-pill-button')));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('페라트라정2.5밀리그램(레트로졸)'));
+    await _reviewAndConfirm(tester);
+    expect(attempts, 1);
+    expect(_confirmButton(tester).onPressed, isNotNull);
+    await _reviewAndConfirm(tester);
+    expect(attempts, 2);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('unselected pill without candidates does not block saving', (
+    tester,
+  ) async {
+    final control = _PartlyEmptyIdentifyPill();
+    addTearDown(control.dispose);
+    final saved = <String>[];
+    await _openRefinementGroup(
+      tester,
+      control,
+      onSaveRequested: (candidate, schedule) async {
+        saved.add(candidate.itemSeq);
+        return const MedicationSaveResult(
+          status: MedicationSaveStatus.saved,
+          message: 'saved',
+        );
+      },
+    );
+    expect(find.byKey(const Key('pill-empty-results-1')), findsOneWidget);
+    expect(_confirmButton(tester).onPressed, isNull);
+    await _tapVisible(tester, find.text('첫 번째 알약'));
+    await _reviewAndConfirm(tester);
+    expect(saved, ['group-1']);
+    expect(_confirmButton(tester).onPressed, isNull);
+    expect(_confirmButtonLabel(tester), '선택한 알약 0개');
+    expect(control.refinementCalls, 0);
+  });
+
+  testWidgets('candidate bounds restrict only selected pills', (tester) async {
+    final control = _RefinementIdentifyPill()..incompleteCandidateList = true;
+    addTearDown(control.dispose);
+    final saved = <String>[];
+    await _openRefinementGroup(
+      tester,
+      control,
+      onSaveRequested: (candidate, schedule) async {
+        saved.add(candidate.itemSeq);
+        return const MedicationSaveResult(
+          status: MedicationSaveStatus.saved,
+          message: 'saved',
+        );
+      },
+    );
+    await _tapVisible(tester, find.text('두 번째 알약'));
+    await tester.pumpAndSettle();
+    final confirm = _confirmButton(tester).onPressed!;
+    expect(_confirmButtonLabel(tester), '선택한 알약 1개 검토 후 저장');
+    await _tapVisible(tester, find.text('동점 후보 0'));
+    await tester.pumpAndSettle();
+    expect(_confirmButton(tester).onPressed, isNull);
+    expect(_confirmButtonLabel(tester), '선택한 알약 2개 검토 후 저장');
+    confirm();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('schedule-review-confirm')), findsNothing);
+    expect(saved, isEmpty);
+    await _tapVisible(tester, find.text('동점 후보 0'));
+    await _reviewAndConfirm(tester);
+    expect(saved, ['group-2']);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'an unfinished unselected photo does not block review or saving',
+    (tester) async {
+      _setTallPillViewport(tester);
+      final control = _FakeIdentifyPill();
+      addTearDown(control.dispose);
+      final saved = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PillIdentificationUI(
+            userSetting: const UserSetting(language: 'ko'),
+            control: control,
+            onSaveRequested: (candidate, schedule) async {
+              saved.add(candidate.itemSeq);
+              return const MedicationSaveResult(
+                status: MedicationSaveStatus.saved,
+                message: 'saved',
+              );
+            },
+          ),
+        ),
+      );
+      await _addPillPhoto(tester, 0);
+      await _tapVisible(tester, find.byKey(const Key('identify-pill-button')));
+      await tester.pumpAndSettle();
+      await _tapVisible(tester, find.text('페라트라정2.5밀리그램(레트로졸)'));
+      await _tapVisible(
+        tester,
+        find.byKey(const Key('add-pill-photo-set-button')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('pill-front-image-slot-1')), findsOneWidget);
+      expect(_confirmButton(tester).onPressed, isNotNull);
+      expect(_confirmButtonLabel(tester), '선택한 알약 1개 검토 후 저장');
+      await _reviewAndConfirm(tester);
+      expect(saved, ['200808877']);
+      expect(_confirmButton(tester).onPressed, isNull);
+      expect(_confirmButtonLabel(tester), '선택한 알약 0개');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   // 함수이름: testWidgets callback
   // 함수역할:
   // - 알약 후보 확인을 연속 호출해도 검토창 하나만 열리고 취소 시 저장하지 않으며 이후 재확인에서 한 번만 저장하는지 검증한다.
@@ -1036,7 +1846,8 @@ void main() {
     await _openRefinementGroup(tester, control);
     expect(find.text('동점 후보 5'), findsNothing);
     expect(find.textContaining('100%'), findsNothing);
-    expect(find.textContaining('추가 확인 필요'), findsWidgets);
+    expect(find.textContaining('추가 확인 필요'), findsNothing);
+    expect(find.textContaining('불확실한 후보'), findsNWidgets(2));
     await _tapVisible(tester, find.byKey(const Key('more-pill-candidates-0')));
     await tester.pumpAndSettle();
     expect(find.text('동점 후보 5'), findsOneWidget);
@@ -1366,6 +2177,14 @@ void main() {
 
     expect(find.text('복약 정보 확인'), findsOneWidget);
     expect(find.textContaining('임시 기본값'), findsOneWidget);
+    expect(find.byType(BottomSheet), findsNothing);
+    final gallery = tester.widget<MedicationReviewImageGallery>(
+      find.byType(MedicationReviewImageGallery),
+    );
+    expect(gallery.photos, hasLength(1));
+    expect(gallery.photos.single.title, '페라트라정2.5밀리그램(레트로졸)');
+    expect(find.byKey(const Key('pill-review-photo-side-0')), findsOneWidget);
+    expect(find.byKey(const Key('pill-review-photo-side-1')), findsNothing);
     expect(savedSchedule, isNull);
 
     await tester.tap(find.byKey(const Key('schedule-review-confirm')));
@@ -1424,6 +2243,11 @@ void main() {
     await tester.tap(find.text('카메라로 촬영'));
     await tester.pumpAndSettle();
 
+    await _tapVisible(tester, find.byKey(const Key('pill-back-image-slot')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('카메라로 촬영'));
+    await tester.pumpAndSettle();
+
     await _tapVisible(
       tester,
       find.byKey(const Key('add-pill-photo-set-button')),
@@ -1448,6 +2272,29 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('복약 정보 확인'), findsOneWidget);
+    final gallery = tester.widget<MedicationReviewImageGallery>(
+      find.byType(MedicationReviewImageGallery),
+    );
+    expect(gallery.photos.map((photo) => photo.title).toList(), [
+      '다중 알약 1',
+      '다중 알약 2',
+    ]);
+    final firstPhoto = find.byKey(
+      const Key('medication-review-gallery-photo-0'),
+    );
+    expect(
+      find.descendant(of: firstPhoto, matching: find.byType(Image)),
+      findsNWidgets(2),
+    );
+    await tester.drag(firstPhoto, const Offset(-300, 0));
+    await tester.pumpAndSettle();
+    final secondPhoto = find.byKey(
+      const Key('medication-review-gallery-photo-1'),
+    );
+    expect(
+      find.descendant(of: secondPhoto, matching: find.byType(Image)),
+      findsOneWidget,
+    );
     await _tapVisible(tester, find.byKey(const Key('schedule-review-confirm')));
     await tester.pumpAndSettle();
 
@@ -1679,7 +2526,7 @@ void main() {
     expect(sentBatches.single, ['A약', 'B약']);
     expect(find.text('저장 1개, 기존 정보 0개, 실패 1개입니다.'), findsOneWidget);
     // 실패한 B만 남았으므로 저장 완료로 표시하지 않고 한 건만 다시 확인한다.
-    expect(_confirmButtonLabel(tester), '선택한 후보 확인');
+    expect(_confirmButtonLabel(tester), '선택한 알약 1개 검토 후 저장');
     expect(_confirmButton(tester).onPressed, isNotNull);
 
     failB = false;
@@ -1738,7 +2585,7 @@ void main() {
     );
     expect(sentBatches.single, ['A약', 'B약']);
     expect(find.textContaining('동일한 복약 일정 1개'), findsOneWidget);
-    expect(_confirmButtonLabel(tester), '선택한 후보 확인');
+    expect(_confirmButtonLabel(tester), '선택한 알약 1개 검토 후 저장');
 
     // 남은 것은 B 한 장뿐이므로 중복 안내 없이 B만 다시 보낸다.
     failB = false;
@@ -1848,7 +2695,7 @@ void main() {
     await _reviewAndConfirm(tester);
     expect(sentNames, ['A약', 'B약']);
     expect(find.text('저장 1개, 기존 정보 0개, 실패 1개입니다.'), findsOneWidget);
-    expect(_confirmButtonLabel(tester), '선택한 후보 확인');
+    expect(_confirmButtonLabel(tester), '선택한 알약 1개 검토 후 저장');
 
     throwOnB = false;
     await _reviewAndConfirm(tester);
@@ -1961,10 +2808,7 @@ void main() {
     await tester.pumpAndSettle();
     await _tapVisible(tester, find.text('A약'));
     await tester.pumpAndSettle();
-    expect(
-      find.byKey(const Key('pill-save-progress-indicator')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('pill-save-progress-indicator')), findsNothing);
     await _tapVisible(
       tester,
       find.byKey(const Key('confirm-pill-candidate-button')),
@@ -1986,10 +2830,7 @@ void main() {
     ]);
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('pill-save-progress-indicator')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('pill-save-progress-indicator')), findsNothing);
     expect(_confirmButtonLabel(tester), '저장 완료');
     expect(tester.takeException(), isNull);
   });
@@ -2167,7 +3008,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('pill-confidence-warning')), findsOneWidget);
-    expect(find.textContaining('matches are uncertain'), findsOneWidget);
+    expect(find.textContaining('Uncertain matches'), findsOneWidget);
     final resultSemantics = tester
         .getSemantics(find.byKey(const Key('pill-candidate-results')))
         .getSemanticsData();

@@ -79,6 +79,17 @@ class ManualMedicationEntry {
   // Returns: int: inclusive medication-course days.
   int get totalDays => inclusiveMedicationCourseDays(startDate, endDate);
 
+  // 함수이름: selectedCatalogDetail
+  // 함수역할: 검색에서 고른 품목이 지금 입력된 약명과 같을 때만 그 상세정보를 쓴다. 이름을 고친 뒤에는 이전 품목을 버린다.
+  // 매개변수: 없음.
+  // 반환값: MedicationDetail? - 결과 화면 표시와 저장이 함께 쓰는 선택 품목, 없으면 null.
+  MedicationDetail? get selectedCatalogDetail {
+    final selected = catalogMedication;
+    return selected != null && selected.itemName.trim() == medicationName.trim()
+        ? selected
+        : null;
+  }
+
   // 함수이름: dosage
   // 함수역할: 공백을 정리한 복용량 숫자와 단위를 붙여 저장할 1회 용량 문자열을 만든다.
   // 매개변수:

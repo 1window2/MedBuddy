@@ -76,7 +76,41 @@ class PatientLinkCode {
     final duration = expiresAt.difference(now ?? DateTime.now());
     return duration.isNegative ? Duration.zero : duration;
   }
+}
 
+enum PatientLinkCodeState { pending, linked, expired, revoked }
+
+class PatientLinkCodeStatus {
+  final PatientLinkCode patientCode;
+  final PatientLinkCodeState state;
+  final PatientCaregiverLink? link;
+
+  const PatientLinkCodeStatus({
+    required this.patientCode,
+    required this.state,
+    this.link,
+  });
+
+  factory PatientLinkCodeStatus.fromJson(Map<String, dynamic> json) {
+    final code = PatientLinkCode.fromJson(json);
+    final state = PatientLinkCodeState.values.byName(json['status'] as String);
+    final rawLink = json['link'];
+    final link = rawLink is Map
+        ? PatientCaregiverLink.fromJson(Map<String, dynamic>.from(rawLink))
+        : null;
+    if (state == PatientLinkCodeState.linked &&
+        (link == null ||
+            !link.linkStatus ||
+            link.linkId == null ||
+            link.patientHash != code.patientHash ||
+            link.caregiverHash.isEmpty ||
+            link.caregiverHash == code.patientHash)) {
+      throw const FormatException(
+        'Patient code status has no valid linked pair.',
+      );
+    }
+    return PatientLinkCodeStatus(patientCode: code, state: state, link: link);
+  }
 }
 
 // 클래스명: PatientCaregiverLink

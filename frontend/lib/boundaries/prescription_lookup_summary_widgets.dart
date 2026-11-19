@@ -1,22 +1,26 @@
-// File Name: prescription_lookup_summary_widgets.dart
-// Role: Renders pinned lookup counts alongside the independently scrollable prescription review.
+// 파일명: prescription_lookup_summary_widgets.dart
+// 역할: 제목과 약 추가 명령, 고정 조회 요약, 독립 스크롤 본문을 배치한다.
 
 part of 'prescription_analysis_preview_ui_boundary.dart';
 
-// Class Name: _PrescriptionReviewLayout
-// Role: A prescription review layout whose header cannot consume the whole viewport.
-// Responsibilities: Caps title height and optionally pins lookup status above the scrollable body.
-// Attributes: title (String): heading; isEnglish (bool): language; showSummary (bool): summary visibility; counts (Map<MedicationLookupStatus,int>): totals; child (Widget): review body.
+// 클래스명: _PrescriptionReviewLayout
+// 역할: 처방 제목과 약 추가 명령을 본문 경계에 맞추고 조회 요약을 고정한다.
+// 주요 책임: 좁은 화면과 큰 글씨에서는 헤더 안에서 줄바꿈하고 본문 스크롤 공간을 남긴다.
+// 속성: title/addMedicationLabel (String): 표시 문구; onAddMedication (VoidCallback?): 추가 명령;
+// isEnglish/showSummary (bool): 언어·요약 표시; counts (Map): 조회 건수; child (Widget): 본문.
 class _PrescriptionReviewLayout extends StatelessWidget {
   final String title;
   final bool isEnglish;
   final bool showSummary;
   final Map<MedicationLookupStatus, int> counts;
   final Widget child;
+  final String addMedicationLabel;
+  final VoidCallback? onAddMedication;
 
   // 함수이름: _PrescriptionReviewLayout
   // 함수역할: 처방 검토 제목·조회 건수와 스크롤 본문을 받는다.
-  // 매개변수: title (String): 제목; isEnglish/showSummary (bool): 언어·요약 여부; counts (Map<MedicationLookupStatus,int>): 상태별 건수; child (Widget): 본문.
+  // 매개변수: title/addMedicationLabel (String): 제목·추가 문구; onAddMedication (VoidCallback?): 추가 동작;
+  // isEnglish/showSummary (bool): 언어·요약 여부; counts (Map<MedicationLookupStatus,int>): 상태별 건수; child (Widget): 본문.
   // 반환값: 새 _PrescriptionReviewLayout.
   const _PrescriptionReviewLayout({
     required this.title,
@@ -24,12 +28,14 @@ class _PrescriptionReviewLayout extends StatelessWidget {
     required this.showSummary,
     required this.counts,
     required this.child,
+    required this.addMedicationLabel,
+    this.onAddMedication,
   });
 
-  // Function Name: build
-  // Description: Reserves bounded title and summary regions while keeping the review body scrollable.
-  // Parameters: context (BuildContext): Parent layout location.
-  // Returns: LayoutBuilder containing the constrained review layout.
+  // 함수이름: build
+  // 함수역할: 제목·추가 버튼의 최대 높이를 제한하고 본문과 같은 최대 너비를 적용한다.
+  // 매개변수: context (BuildContext): 부모 레이아웃 위치.
+  // 반환값: 헤더와 요약을 고정한 스크롤 본문.
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) => Column(
@@ -40,15 +46,10 @@ class _PrescriptionReviewLayout extends StatelessWidget {
           child: SingleChildScrollView(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-              child: KeepWordsText(
-                title,
-                key: const Key('prescription-review-title'),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: MedBuddyColors.textStrong,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 640),
+                  child: _buildHeader(context),
                 ),
               ),
             ),
@@ -72,6 +73,68 @@ class _PrescriptionReviewLayout extends StatelessWidget {
         ),
       ],
     ),
+  );
+
+  // 함수이름: _buildHeader
+  // 함수역할: 기본 배치에서는 제목과 버튼을 양끝에 두고 공간이 부족하면 헤더 안에서 줄을 나눈다.
+  // 매개변수: context (BuildContext): 글씨 배율과 방향을 제공하는 위치.
+  // 반환값: 왼쪽 제목과 오른쪽 추가 명령을 가진 헤더.
+  Widget _buildHeader(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final titleWidget = Semantics(
+        header: true,
+        child: KeepWordsText(
+          title,
+          key: const Key('prescription-review-title'),
+          textAlign: TextAlign.start,
+          style: const TextStyle(
+            color: MedBuddyColors.textStrong,
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0,
+          ),
+        ),
+      );
+      if (onAddMedication == null) {
+        return Align(alignment: Alignment.centerLeft, child: titleWidget);
+      }
+      final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+      final stacked = constraints.maxWidth < 300 * scale;
+      final action = ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: stacked ? constraints.maxWidth : constraints.maxWidth * .48,
+        ),
+        child: OutlinedButton.icon(
+          key: const Key('ocr-add-medication-button'),
+          onPressed: onAddMedication,
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          ),
+          icon: const Icon(Icons.add_rounded, size: 20),
+          label: KeepWordsText(addMedicationLabel, textAlign: TextAlign.center),
+        ),
+      );
+      return SizedBox(
+        key: const Key('prescription-review-header'),
+        width: double.infinity,
+        child: stacked
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  titleWidget,
+                  const SizedBox(height: 8),
+                  Align(alignment: Alignment.centerRight, child: action),
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(child: titleWidget),
+                  const SizedBox(width: 12),
+                  action,
+                ],
+              ),
+      );
+    },
   );
 
   // Function Name: _buildScrollRegion

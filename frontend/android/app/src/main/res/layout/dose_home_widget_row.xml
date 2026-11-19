@@ -1,35 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 파일명: dose_home_widget_row.xml
      역할: 1칸 높이(가로 화면 약 51dp, 세로 화면 약 109dp 미만) 위젯의 한 줄 배치.
-     시간대와 저장 상태, 복용 버튼만 두고 같은 뷰 ID를 써서 기본 배치와 같은 채우기 코드를 공유한다. -->
+     시간대 양쪽의 이동 화살표와 복용 버튼은 기본 배치의 동작을 공유한다. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent" android:layout_height="match_parent"
     android:orientation="horizontal" android:gravity="center_vertical"
     android:paddingHorizontal="12dp" android:paddingVertical="1dp"
     android:background="@drawable/dose_widget_background">
-    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-        android:orientation="vertical" android:paddingEnd="8dp">
-        <!-- 놓친 일정이면 시간대 오른쪽의 빈 칸에 안내를 둔다. -->
+    <ImageButton android:id="@+id/widget_previous" android:layout_width="48dp" android:layout_height="48dp"
+        android:src="@drawable/dose_widget_previous" android:padding="10dp" android:visibility="gone"
+        android:background="?android:attr/selectableItemBackgroundBorderless" android:contentDescription="@string/dose_widget_previous_schedule" />
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="0.95"
+        android:orientation="vertical">
+        <!-- 안내는 숨긴 채 유지하여 확장 배치와 같은 상태 갱신을 받는다. -->
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
             android:orientation="horizontal" android:gravity="center_vertical">
-            <TextView android:id="@+id/widget_tiny_heading" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            <TextView android:id="@+id/widget_tiny_heading" android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
                 android:includeFontPadding="false"
                 android:text="@string/dose_widget_sign_in_title"
                 android:textColor="#25272B" android:textSize="14sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
             <TextView android:id="@+id/widget_tiny_warning" android:layout_width="0dp" android:layout_height="wrap_content"
-                android:layout_weight="1" android:paddingStart="8dp"
+                android:layout_weight="1.2" android:paddingStart="4dp"
                 android:includeFontPadding="false" android:visibility="gone"
                 android:textColor="#765710" android:textSize="11sp" android:maxLines="2" android:ellipsize="end" />
         </LinearLayout>
         <TextView android:id="@+id/widget_tiny_status" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:gravity="center"
             android:includeFontPadding="false"
             android:textColor="#595D65" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" />
     </LinearLayout>
+    <ImageButton android:id="@+id/widget_next" android:layout_width="48dp" android:layout_height="48dp"
+        android:src="@drawable/dose_widget_next" android:padding="10dp" android:visibility="gone"
+        android:background="?android:attr/selectableItemBackgroundBorderless" android:contentDescription="@string/dose_widget_next_schedule" />
     <Button android:id="@+id/widget_take" android:layout_width="0dp" android:layout_height="48dp"
-        android:layout_weight="1" android:minWidth="48dp"
+        android:layout_weight="1.05" android:minWidth="48dp" android:layout_marginStart="4dp"
         android:includeFontPadding="false"
         android:background="@drawable/dose_widget_button" android:textColor="#FFFFFF" android:textSize="15sp"
         android:textStyle="bold" android:textAllCaps="false" android:text="@string/dose_widget_sign_in"
-        android:maxLines="1" android:ellipsize="end" android:paddingHorizontal="4dp" android:paddingVertical="2dp" />
+        android:maxLines="2" android:ellipsize="end" android:paddingHorizontal="2dp" android:paddingVertical="0dp" />
 </LinearLayout>
