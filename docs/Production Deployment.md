@@ -163,7 +163,10 @@ PHARMACY_API_TIMEOUT_SECONDS=12
 
 The hospital feature additionally needs approval for the
 [NEMC hospital lookup service](https://www.data.go.kr/data/15000736/openapi.do).
-It uses `HOSPITAL_API_KEY` when set, otherwise `PUBLIC_DATA_API_KEY`.
+It uses `HOSPITAL_API_KEY` when set, otherwise `PUBLIC_DATA_API_KEY`. The service runs
+on an operating account since 2026-11-22 (100,000 calls per operation a day; the
+default `HOSPITAL_API_DAILY_REQUEST_BUDGET` of 80,000 assumes it). A development
+account allows 1,000, so set the budget to 800 with one.
 Both nearby features use `PUBLIC_DATA_API_KEY` for the
 [KASI holiday calendar](https://www.data.go.kr/data/15012690/openapi.do), so approve
 that service separately even when the hospital-specific key works.

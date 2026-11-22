@@ -128,9 +128,9 @@ class Settings(BaseSettings):
     HOSPITAL_DETAIL_REQUEST_BUDGET: int = Field(default=12, ge=1, le=30)
     HOSPITAL_SEARCH_TIMEOUT_SECONDS: float = Field(default=22, gt=0, le=24)
     HOSPITAL_CALENDAR_TIMEOUT_SECONDS: float = Field(default=2, gt=0, le=3)
-    # 제공기관 오퍼레이션(위치·상세·진료과 목록)마다 따로 적용하는 하루 호출 예산. 개발계정 할당량은
-    # 오퍼레이션당 하루 1,000건이며, 운영계정으로 늘어난 할당량도 설정할 수 있게 상한을 넉넉히 둔다.
-    HOSPITAL_API_DAILY_REQUEST_BUDGET: int = Field(default=800, ge=1, le=1_000_000)
+    # 제공기관 오퍼레이션(위치·상세·진료과 목록)마다 따로 적용하는 하루 호출 예산. 운영계정 할당량은
+    # 오퍼레이션당 하루 100,000건이다. 재시작하면 카운터가 0이 되므로 20%를 남겨 둔다.
+    HOSPITAL_API_DAILY_REQUEST_BUDGET: int = Field(default=80_000, ge=1, le=1_000_000)
     PILL_IMAGE_API_ENABLED: bool = True
     PILL_IMAGE_API_TIMEOUT_SECONDS: float = Field(default=8.0, gt=0, le=120)
     PUBLIC_API_MAX_CONCURRENCY: int = Field(default=6, ge=1, le=20)

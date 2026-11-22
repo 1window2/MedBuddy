@@ -18,9 +18,8 @@ file lists open items only, sorted by priority. Finished items were removed on
 ## P0: blocking the 1.0.0 release
 
 On 2026-11-13 the owner decided that P0 items do not block the graduation exhibition
-demo (2026-11-26 to 27): the demo runs on the GitHub APK without App Check, a few
-demo searches stay far below the hospital API quota, and nothing is distributed to
-the public. They still block a public 1.0.0 release.
+demo (2026-11-26 to 27): the demo runs on the GitHub APK without App Check, and
+nothing is distributed to the public. They still block a public 1.0.0 release.
 
 - [ ] Google Play distribution with App Check (Play Integrity). The owner chose both
       Google Play and the GitHub APK on 2026-11-07, so the criteria below block 1.0.0;
@@ -59,15 +58,6 @@ the public. They still block a public 1.0.0 release.
       Integrity recognises only Play-distributed builds).
 - [ ] A final privacy policy and consent for health data; the in-app data-use guide
       does not replace them (Beta Scope). Owner and legal.
-- [ ] A larger hospital API quota: an operating account on the public data portal
-      (requested by registering a use case). The development account (valid to
-      2028-10-01, 1,000 calls per operation a day) leaves a server budget of 800 calls
-      a day per operation shared by all users, and one specialty search can cost up
-      to 41 requests. One free account can spend the detail budget in about 67
-      searches inside its own 120-search quota, after which hospital search answers
-      503 for everyone until midnight. If the quota is not raised, the owner decides
-      whether to charge detail calls per account, which would also limit ordinary
-      users to a few searches a day.
 
 ## P1: before 1.0.0
 

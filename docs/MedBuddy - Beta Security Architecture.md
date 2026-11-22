@@ -278,10 +278,12 @@ that is refused before sign-in leaves only the per-minute address counter,
 which expires within a minute. Day-long counters for unauthenticated addresses
 could otherwise pile up until the counter store reached its memory cap; a full
 store refuses every write, and the limiter then answers 503 to every user.
-The public hospital API budget (`HOSPITAL_API_DAILY_REQUEST_BUDGET`) is still
-shared by all users of one process; it is counted per provider operation
-(location, detail, department list), matching the provider's quota, and a spent
-budget is answered with its own message and a wait until local midnight.
+The public hospital API budget (`HOSPITAL_API_DAILY_REQUEST_BUDGET`, 80,000 of the
+operating account's 100,000 calls per operation a day) is shared by all users of one
+process; it is counted per provider operation (location, detail, department list),
+matching the provider's quota, and a spent budget is answered with its own message and
+a wait until local midnight. One account's daily search quota can use at most a few
+thousand calls of it.
 
 The in-app map requests map content through Naver Dynamic Map for the visible
 viewport. This does not expose the MedBuddy public-data credential, but the map

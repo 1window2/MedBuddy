@@ -319,10 +319,10 @@ a dose through the exported launcher activity.
 
 ## 2026-11-07: findings of the second audit left to the owner
 
-- **Hospital budget:** one free account can spend the shared hospital API budget
-  inside its own daily search quota. The provider's operating-account quota is the
-  real fix; a per-call share per account would also limit ordinary users, so no code
-  change was made.
+- **Hospital budget:** one free account could spend the shared hospital API budget
+  inside its own daily search quota. Resolved on 2026-11-22 with the provider's
+  operating account (100,000 calls per operation a day) and a server budget of 80,000;
+  no per-call charging per account was added.
 - **Database pool:** same-account requests waiting for the account lock hold pooled
   connections for up to 5 s. The audit rejected it as a finding (any client with
   several requests in flight fills the pool too), so the PostgreSQL lock path was not
