@@ -1,7 +1,7 @@
 # MedBuddy Release TODO
 
-1.0.0 was released on 2026-11-13 (`v1.0.0`, `main` at `912e6fb`); 1.0.1 is in development on
-the `v1.0.1` branch, see the [1.0.1 notes](releases/v1.0.1.md). This
+1.0.0 was released on 2026-11-13 and 1.0.1 on 2026-11-22 (`v1.0.1`), see the
+[1.0.1 notes](releases/v1.0.1.md). This
 file lists open items only, sorted by priority. Finished items were removed on
 2026-11-12; they remain in the git history, the release notes and the
 [decision log](MedBuddy%20-%20Decision%20Log.md). Changes are listed in the
