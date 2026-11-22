@@ -176,8 +176,9 @@ Copy placeholders from `deploy/backend.env.example` and fill the ignored
 Do not place the public-data key in Flutter compile-time values. The client
 sends search coordinates and filters to the authenticated `/api/v1/pharmacy`
 or `/api/v1/hospitals` boundary after the user chooses nearby care from Home.
-The hospital provider budget defaults to 800 calls per process per day and
-resets on restart. Multiple workers have independent counters; this is not a
+The hospital and pharmacy-location provider budgets default to 80,000 calls per
+process per day (both services run on operating accounts with 100,000 calls per
+operation a day since 2026-11-22) and reset on restart. Multiple workers have independent counters; this is not a
 shared production quota. Keep worker counts and portal quotas consistent, and
 monitor provider failures without logging keys or credential-bearing URLs.
 
