@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- File Name: dose_home_widget_large_info.xml
+     Role: Starts the existing responsive widget at 4 x 3 without changing the original 4 x 1 component.
+     Both entries can shrink to the shared single-row layout. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:initialLayout="@layout/dose_home_widget"
+    android:previewLayout="@layout/dose_home_widget_expanded_preview"
+    android:minWidth="250dp" android:minHeight="180dp"
+    android:minResizeWidth="250dp" android:minResizeHeight="48dp"
+    android:targetCellWidth="4" android:targetCellHeight="3"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen" />

@@ -271,15 +271,19 @@ shared in chat, has `HOSPITAL_SEARCH_DAILY_LIMIT`, and nearby pharmacy search ha
 `PHARMACY_API_DAILY_REQUEST_BUDGET`). A day ends at midnight in the
 service time zone (Asia/Seoul). One IP address is allowed twenty times the
 account quota, which bounds what scripted accounts can spend from one address.
-The per-address daily count is taken after sign-in is checked, so a request
+The per-address daily count is taken after sign-in and after the account's own
+daily count, so a request the account quota refuses does not spend the allowance
+other users of the address share, and a request
 that is refused before sign-in leaves only the per-minute address counter,
 which expires within a minute. Day-long counters for unauthenticated addresses
 could otherwise pile up until the counter store reached its memory cap; a full
 store refuses every write, and the limiter then answers 503 to every user.
-The public hospital API budget (`HOSPITAL_API_DAILY_REQUEST_BUDGET`) is still
-shared by all users of one process; it is counted per provider operation
-(location, detail, department list), matching the provider's quota, and a spent
-budget is answered with its own message and a wait until local midnight.
+The public hospital API budget (`HOSPITAL_API_DAILY_REQUEST_BUDGET`, 80,000 of the
+operating account's 100,000 calls per operation a day) is shared by all users of one
+process; it is counted per provider operation (location, detail, department list),
+matching the provider's quota, and a spent budget is answered with its own message and
+a wait until local midnight. One account's daily search quota can use at most a few
+thousand calls of it.
 
 The in-app map requests map content through Naver Dynamic Map for the visible
 viewport. This does not expose the MedBuddy public-data credential, but the map
@@ -575,7 +579,7 @@ secrets. It supplies `ANDROID_SIGNING_CERT_SHA256`,
 variables for Flutter compile-time configuration. Firebase API/app identifiers
 and certificate fingerprints are identifiers rather than credentials. The
 environment must require owner approval and an exact custom deployment policy
-for `main` and the active release branch (`beta/v1.0.0`); entries for finished beta
+for `main` and the active release branch (`v1.0.1`); entries for finished beta
 branches should be removed from that policy. The workflow repeats that exact-ref
 gate before repository build code can receive signing material. Other beta
 branches and version-like tags cannot access the environment. A dispatch input

@@ -59,6 +59,8 @@ package "Flutter Frontend" #E8F4FF {
   class SetCaregiverNotificationUI <<UI>>
   class CaregiverNotificationMonitorService <<Service>>
   class "LinkPatientCaregiver" as FLinkPatientCaregiver <<Control>>
+  class PatientLinkCodeStatus <<Entity>>
+  class MedicationHistoryControl <<Control>>
   class ManageCaregiverPatientLocalState <<Control>>
   class "CheckCaregiverMedication" as FCheckCaregiverMedication <<Control>>
   class "SetCaregiverNotification" as FSetCaregiverNotification <<Control>>
@@ -107,6 +109,22 @@ package "FastAPI Backend" #EAF8F0 {
 cloud "Firebase Cloud Messaging" as FCM
 
 LinkPatientCaregiverUI --> FLinkPatientCaregiver
+FLinkPatientCaregiver --> PatientLinkCodeStatus : 코드·소유자 일치 검사
+FLinkPatientCaregiver --> BLinkPatientCaregiver : GET /link/code/status (no-store)
+HomeScreen --> CheckCaregiverMedicationUI : patients 출처의 읽기 전용 일정 탭
+HomeScreen --> MedicationHistoryUI : 같은 선택 환자의 기록 탭
+HomeScreen --> MedicationHistoryControl : owner/source/link/patient/generation 범위
+note bottom of PatientLinkCodeStatus
+  pending / linked / expired / revoked
+  현재 전경 코드 창에서만 완료 후 2초 간격 단일 조회.
+  성공은 정확한 코드의 소비자와 활성 연결이 일치할 때만.
+  종료·배경·만료·계정 변경은 취소하고 늦은 응답을 버린다.
+  해제는 과거 코드의 소비 증거를 지워 재연결로 성공이 되살아나지 않게 한다.
+end note
+note bottom of MedicationHistoryControl
+  연결 환자 변경·출처 변경·접근 상실 후 이전 조회를 적용하지 않는다.
+  연결 조회 중/실패/없음을 본인 기록으로 대체하지 않는다.
+end note
 HomeScreen --> ManageChatList : active connections
 HomeScreen --> NotificationInboxUI : bell / unread badge
 HomeScreen --> ManageNotificationInbox : lifecycle / unread count
@@ -162,6 +180,13 @@ LinkedChatUI *-- LinkedChatHistoryViewModel : account/link/patient session
 LinkedChatUI *-- LinkedChatComposerViewModel : same identity-keyed session
 LinkedChatUI *-- LinkedChatDoseRecorder : 선택 약·날짜·시간대 검증
 LinkedChatDoseRecorder --> DoseSyncService : 계정별 영속 복용 기록
+note bottom of LinkedChatDoseRecorder
+  오늘의 수신 slot_check_request / medication_check_request만 완료 동작.
+  현재 환자·메시지·연동·일정을 재검사하고 누른 시간대의 약만 기록한다.
+  선택 약 요청은 서버가 선택 약만 묶은 시간대 스냅샷을 사용한다.
+  일반 텍스트·검색 참조·PRN·쉬는 날에는 정기 완료 동작을 추정하지 않는다.
+  기기 저장·전송 대기와 서버 ACK를 구분하고 작성 중 초안은 유지한다.
+end note
 LinkedChatDoseRecorder --> ManageLinkedChat : 문맥 조회 / 큐 없는 경우의 fallback
 LinkedChatComposerViewModel --> ManageLinkedChat : borrowed authenticated send adapter
 LinkedChatComposerViewModel --> ChatMessageDraft : immutable payload / retry comparison

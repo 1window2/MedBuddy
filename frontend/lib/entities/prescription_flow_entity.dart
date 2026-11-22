@@ -16,6 +16,9 @@ enum PrescriptionFlowState {
   resultReady,
 }
 
+// 결과 화면의 문구를 구분하며 저장·완료 탐색은 같은 흐름을 사용한다.
+enum MedicationResultSource { prescription, pillPhoto, manual }
+
 // 클래스명: AnalysisProgressStep
 // 역할: 처방전 인식과 약 정보 분석의 진행 단계를 구분한다.
 // 주요 책임: 분석 작업 상태를 화면 진행 표시에 연결한다.

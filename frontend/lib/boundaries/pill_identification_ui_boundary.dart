@@ -1,10 +1,12 @@
 // File Name: pill_identification_ui_boundary.dart
 // Role: UI boundaries and helpers for pill-photo identification, candidate comparison, duplicate resolution, and schedule saving.
 
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import '../widgets/medbuddy_page_header.dart';
+import '../widgets/medication_review_image_gallery.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../controls/check_saved_medication_control.dart';
@@ -21,6 +23,7 @@ import '../theme/medbuddy_theme.dart';
 import 'medication_schedule_review_ui_boundary.dart';
 import 'medication_capture_options_ui_boundary.dart';
 import 'medication_photo_source_sheet.dart';
+import 'medication_image_viewer_boundary.dart';
 import '../widgets/keep_words_text.dart';
 
 // 타입명: IdentifiedPillSaveCallback
@@ -65,6 +68,8 @@ class PillIdentificationUI extends StatefulWidget {
   final IdentifyPillBatch? batchControl;
   final IdentifiedPillSaveCallback? onSaveRequested;
   final IdentifiedPillBatchSaveCallback? onBatchSaveRequested;
+  // 선택·중복 정리한 일정을 공통 결과 단계에 넘긴다. 이 콜백은 저장을 실행하지 않는다.
+  final bool Function(List<IdentifiedPillSaveRequest>)? onReviewRequested;
 
   // 함수이름: PillIdentificationUI
   // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장에 필요한 입력값과 표시 설정을 초기화한다.
@@ -85,6 +90,7 @@ class PillIdentificationUI extends StatefulWidget {
     this.batchControl,
     this.onSaveRequested,
     this.onBatchSaveRequested,
+    this.onReviewRequested,
   });
 
   // Function Name: createState
@@ -173,6 +179,8 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   bool? _selectingFront;
   String _errorMessage = '';
   int? _refiningDraftIndex;
+  Timer? _disclosureTimer;
+  bool _showDisclosure = true;
 
   // 함수이름: _usesSinglePhoto
   // 함수역할: 한 사진에서 여러 알약을 찾는 전용 모드인지 확인한다.
@@ -223,26 +231,20 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       if (_drafts[index].hasFrontImage && _drafts[index].result == null) index,
   ];
 
-  // Function Name: _canConfirmAll
-  // Description: Checks that every unsaved photo has analysis results, candidates and an explicit selection ready for confirmation.
-  // Parameters: None.
-  // Returns: True when all remaining drafts can be confirmed.
-  bool get _canConfirmAll {
-    if (_isBatchSaved || !_allDraftsReady) {
-      return false;
-    }
-    // 함수이름: _canConfirmAll.every callback
-    // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장에 대해 `result != null && result.candidates.isNotEmpty && draft.selectedItemSeq != null` 조건으로 컬렉션 항목을 판별한다.
-    // 매개변수:
-    // - draft (콜백 계약에서 추론): 앞·뒷면 사진과 결과·선택을 보관한 알약 작업 초안.
-    // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
-    return _drafts.every((draft) {
-      final result = draft.result;
-      return result != null &&
-          !result.hasMoreCandidates &&
-          result.candidates.isNotEmpty &&
-          draft.selectedItemSeq != null;
-    });
+  List<_PillPhotoDraft> get _selectedUnsavedDrafts => [
+    for (final draft in _drafts)
+      if (!draft.isSaved && draft.selectedItemSeq != null) draft,
+  ];
+
+  bool get _canConfirmSelections {
+    final selectedDrafts = _selectedUnsavedDrafts;
+    return selectedDrafts.isNotEmpty &&
+        selectedDrafts.every(
+          (draft) =>
+              draft.hasFrontImage &&
+              draft.result?.hasMoreCandidates == false &&
+              _selectedCandidate(draft) != null,
+        );
   }
 
   // 함수이름: initState
@@ -257,6 +259,9 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     _control = widget.control ?? IdentifyPill();
     _batchControl =
         widget.batchControl ?? IdentifyPillBatch(singlePillControl: _control);
+    _disclosureTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) setState(() => _showDisclosure = false);
+    });
   }
 
   // Function Name: dispose
@@ -266,6 +271,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   // Returns: None; updates state or performs the documented action.
   @override
   void dispose() {
+    _disclosureTimer?.cancel();
     if (_ownsControl) {
       _control.dispose();
     }
@@ -287,6 +293,13 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     // - draft (콜백 계약에서 추론): 앞·뒷면 사진과 결과·선택을 보관한 알약 작업 초안.
     // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
     final hasVisibleResults = _drafts.any((draft) => draft.result != null);
+    final showIdentifyAction =
+        !_usesSinglePhoto &&
+        (!hasVisibleResults ||
+            !_allDraftsReady ||
+            pendingCount > 0 ||
+            _isSelectingImage ||
+            _isAnalyzing);
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,
       body: SafeArea(
@@ -302,25 +315,72 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
             ),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    MedBuddyNotice(
-                      message: text.safetyNotice,
-                      padding: const EdgeInsets.all(16),
-                    ),
-                    const SizedBox(height: 22),
-                    KeepWordsText(
-                      hasVisibleResults
-                          ? text.detectedPillCount(_drafts.length)
-                          : text.photoSectionTitle(_usesSinglePhoto),
-                      style: const TextStyle(
-                        color: MedBuddyColors.textStrong,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0,
+                    if (_showDisclosure) ...[
+                      MedBuddyNotice(
+                        key: const Key('pill-ai-disclosure'),
+                        message: text.safetyNotice,
+                        padding: const EdgeInsets.all(16),
                       ),
+                      const SizedBox(height: 22),
+                    ],
+                    Row(
+                      key: const Key('pill-photo-heading'),
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: KeepWordsText(
+                            hasVisibleResults
+                                ? text.detectedPillCount(_drafts.length)
+                                : text.photoSectionTitle(_usesSinglePhoto),
+                            style: const TextStyle(
+                              color: MedBuddyColors.textStrong,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0,
+                            ),
+                          ),
+                        ),
+                        if (_usesSinglePhoto && hasVisibleResults) ...[
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 2,
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton.icon(
+                                key: const Key(
+                                  'identify-multiple-pills-from-one-photo-button',
+                                ),
+                                onPressed: _isBusy
+                                    ? null
+                                    : () => _selectMultiplePillPhoto(text),
+                                icon: const Icon(Icons.edit_outlined, size: 18),
+                                label: KeepWordsText(text.changePhoto),
+                                style: TextButton.styleFrom(
+                                  minimumSize: const Size(0, 36),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    4,
+                                    4,
+                                    0,
+                                    4,
+                                  ),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  alignment: Alignment.centerRight,
+                                  textStyle: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     if (!hasVisibleResults) ...[
                       const SizedBox(height: 6),
@@ -334,14 +394,18 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: _usesSinglePhoto && hasVisibleResults ? 8 : 16,
+                    ),
                     if (_multiplePillSourceImage != null)
                       _MultiplePillObservationPreview(
                         imageBytes: _multiplePillSourceImage!,
                         observations: _multiplePillObservations,
-                        description: text.multiplePhotoPreviewDescription,
+                        description: text.multiplePhotoPreviewLabel,
                       )
-                    else if (!_usesSinglePhoto)
+                    else if (_usesSinglePhoto)
+                      _buildAddPhotoActions(text)
+                    else
                       for (
                         var index = 0;
                         index < _drafts.length;
@@ -351,8 +415,12 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                         if (index < _drafts.length - 1)
                           const Divider(height: 32),
                       ],
-                    const SizedBox(height: 14),
-                    _buildAddPhotoActions(text),
+                    if (!_usesSinglePhoto ||
+                        (_multiplePillSourceImage != null &&
+                            !hasVisibleResults)) ...[
+                      const SizedBox(height: 14),
+                      _buildAddPhotoActions(text),
+                    ],
                     // 함수이름: build.any callback
                     // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장에 대해 `draft.hasAnyImage` 조건으로 컬렉션 항목을 판별한다.
                     // 매개변수:
@@ -376,57 +444,6 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                       const SizedBox(height: 14),
                       _ErrorNotice(message: _errorMessage),
                     ],
-                    if (!_usesSinglePhoto) ...[
-                      const SizedBox(height: 18),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          key: const Key('identify-pill-button'),
-                          onPressed:
-                              !_allDraftsReady || pendingCount == 0 || _isBusy
-                              ? null
-                              : _requestIdentification,
-                          style: FilledButton.styleFrom(
-                            minimumSize: const Size.fromHeight(56),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
-                            ),
-                            backgroundColor: MedBuddyColors.primary,
-                            disabledBackgroundColor: MedBuddyColors.outline,
-                          ),
-                          icon: _isAnalyzing
-                              ? const SizedBox.square(
-                                  dimension: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.4,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(Icons.search),
-                          label: KeepWordsText(
-                            _isAnalyzing
-                                ? text.analysisProgress(
-                                    completedCount: _analysisCompletedCount,
-                                    totalCount: _analysisTotalCount,
-                                    isWaitingForRetry:
-                                        _retryingRequestCount > 0,
-                                  )
-                                : text.identifyPills(
-                                    _allDraftsReady
-                                        ? pendingCount
-                                        : _drafts.length,
-                                  ),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
                     if (_isAnalyzing && _retryingRequestCount > 0) ...[
                       const SizedBox(height: 10),
                       Semantics(
@@ -444,14 +461,79 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                       ),
                     ],
                     if (hasVisibleResults) ...[
-                      const SizedBox(height: 30),
+                      const SizedBox(height: 16),
                       _buildAllResults(text),
                     ],
                   ],
                 ),
               ),
             ),
+            if (hasVisibleResults || showIdentifyAction)
+              Container(
+                key: const Key('pill-review-footer'),
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                decoration: const BoxDecoration(
+                  color: MedBuddyColors.pageBackground,
+                  border: Border(
+                    top: BorderSide(color: MedBuddyColors.divider),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (showIdentifyAction)
+                      _buildIdentifyButton(text, pendingCount),
+                    if (showIdentifyAction && hasVisibleResults)
+                      const SizedBox(height: 8),
+                    if (hasVisibleResults) _buildConfirmationButton(text),
+                  ],
+                ),
+              ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // 사진 입력과 분석 결과를 오가도 주요 동작은 화면 하단에 유지한다.
+  Widget _buildIdentifyButton(_PillIdentificationText text, int pendingCount) {
+    return FilledButton.icon(
+      key: const Key('identify-pill-button'),
+      onPressed: !_allDraftsReady || pendingCount == 0 || _isBusy
+          ? null
+          : _requestIdentification,
+      style: FilledButton.styleFrom(
+        minimumSize: const Size.fromHeight(56),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        backgroundColor: MedBuddyColors.primary,
+        disabledBackgroundColor: MedBuddyColors.outline,
+      ),
+      icon: _isAnalyzing
+          ? const SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.4,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.search),
+      label: KeepWordsText(
+        _isAnalyzing
+            ? text.analysisProgress(
+                completedCount: _analysisCompletedCount,
+                totalCount: _analysisTotalCount,
+                isWaitingForRetry: _retryingRequestCount > 0,
+              )
+            : text.identifyPills(
+                _allDraftsReady ? pendingCount : _drafts.length,
+              ),
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontSize: 17,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0,
         ),
       ),
     );
@@ -629,6 +711,39 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       );
     }
     final hasPhoto = _multiplePillSourceImage != null;
+    if (!hasPhoto) {
+      return _MultiplePillPhotoFrame(
+        child: InkWell(
+          key: const Key('identify-multiple-pills-from-one-photo-button'),
+          onTap: _isBusy ? null : () => _selectMultiplePillPhoto(text),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.add_photo_alternate_outlined,
+                    size: 36,
+                    color: MedBuddyColors.primary,
+                  ),
+                  const SizedBox(height: 8),
+                  KeepWordsText(
+                    text.addPhoto,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: MedBuddyColors.primaryDark,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     final needsRetry =
         hasPhoto && _multiplePillObservations.isEmpty && !_isAnalyzing;
     final label = KeepWordsText(
@@ -695,9 +810,9 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   }
 
   // Function Name: _buildAllResults
-  // Description: Combines completed per-photo results with the confirm-all action.
+  // Description: Groups per-pill actions and results inside the scrollable area.
   // Parameters: text (_PillIdentificationText): labels.
-  // Returns: The result list and confirmation controls.
+  // Returns: The result list; confirmation remains fixed below the scroll area.
   Widget _buildAllResults(_PillIdentificationText text) {
     final resultIndexes = [
       for (var index = 0; index < _drafts.length; index += 1)
@@ -711,80 +826,100 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
           position < resultIndexes.length;
           position += 1
         ) ...[
-          _buildRefinementActions(resultIndexes[position], text),
-          _buildResultForDraft(resultIndexes[position], text),
-          if (position < resultIndexes.length - 1) const Divider(height: 34),
+          _buildPillResultGroup(resultIndexes[position], text),
+          const SizedBox(height: 16),
         ],
-        if (resultIndexes.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              key: const Key('confirm-pill-candidate-button'),
-              onPressed: !_canConfirmAll || _isBusy
-                  ? null
-                  // 함수이름: _buildAllResults.onPressed callback
-                  // 함수역할: 모든 사진의 선택을 모아 중복 처리 방식을 확인한 뒤 일정 검토·저장 또는 선택 안내를 진행한다.
-                  // 매개변수:
-                  // - 없음.
-                  // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                  : () => _confirmCandidates(text),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: MedBuddyColors.primaryDark,
-                side: const BorderSide(
-                  color: MedBuddyColors.primary,
-                  width: 1.5,
-                ),
-                minimumSize: const Size.fromHeight(54),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
+      ],
+    );
+  }
+
+  // Keeps the selection count and save state visible without scrolling the candidates.
+  Widget _buildConfirmationButton(_PillIdentificationText text) {
+    return OutlinedButton(
+      key: const Key('confirm-pill-candidate-button'),
+      onPressed: !_canConfirmSelections || _isBusy
+          ? null
+          // 함수이름: _buildConfirmationButton.onPressed callback
+          // 함수역할: 모든 사진의 선택을 모아 중복 처리 방식을 확인한 뒤 일정 검토·저장 또는 선택 안내를 진행한다.
+          // 매개변수:
+          // - 없음.
+          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+          : () => _confirmCandidates(text),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: MedBuddyColors.primaryDark,
+        side: const BorderSide(color: MedBuddyColors.primary, width: 1.5),
+        minimumSize: const Size.fromHeight(54),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (_isSaving)
+            const SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(
+                key: Key('pill-save-progress-indicator'),
+                strokeWidth: 2.4,
+                color: MedBuddyColors.primary,
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (_isSaving)
-                    const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(
-                        key: Key('pill-save-progress-indicator'),
-                        strokeWidth: 2.4,
-                        color: MedBuddyColors.primary,
-                      ),
-                    )
-                  else
-                    Icon(
-                      _isBatchSaved
-                          ? Icons.check_circle_outline
-                          : Icons.verified_outlined,
-                    ),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: KeepWordsText(
-                      _isSaving
-                          ? text.savingSelections
-                          : _isBatchSaved
-                          ? text.savedComplete
-                          : text.confirmSelections(
-                              _drafts.where((draft) => !draft.isSaved).length,
-                            ),
-                      maxLines: 2,
-                      textAlign: TextAlign.center,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ),
-                ],
+            )
+          else
+            Icon(
+              _isBatchSaved
+                  ? Icons.check_circle_outline
+                  : Icons.verified_outlined,
+            ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: KeepWordsText(
+              _isSaving
+                  ? text.savingSelections
+                  : _isBatchSaved
+                  ? text.savedComplete
+                  : text.confirmSelections(_selectedUnsavedDrafts.length),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
               ),
             ),
           ),
         ],
-      ],
+      ),
+    );
+  }
+
+  Widget _buildPillResultGroup(int index, _PillIdentificationText text) {
+    return Container(
+      key: Key('pill-result-group-$index'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: MedBuddyColors.surface,
+        borderRadius: MedBuddyRadii.card,
+        border: Border.all(color: MedBuddyColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          KeepWordsText(
+            text.candidateTitleForPill(
+              index + 1,
+              _drafts[index].result!.candidates.length,
+            ),
+            style: const TextStyle(
+              color: MedBuddyColors.textStrong,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildRefinementActions(index, text),
+          _buildResultForDraft(index, text),
+        ],
+      ),
     );
   }
 
@@ -889,8 +1024,8 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                     height: 140,
                     fit: BoxFit.contain,
                     // 140dp 미리보기에 필요한 해상도까지만 디코딩한다.
-                    cacheHeight:
-                        (140 * MediaQuery.devicePixelRatioOf(context)).round(),
+                    cacheHeight: (140 * MediaQuery.devicePixelRatioOf(context))
+                        .round(),
                   ),
                   const SizedBox(height: 12),
                   KeepWordsText(text.samePillBackNotice),
@@ -991,41 +1126,16 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          KeepWordsText(
-            text.candidateTitleForPill(index + 1, result.candidates.length),
-            style: const TextStyle(
-              color: MedBuddyColors.textStrong,
-              fontSize: 19,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0,
-            ),
-          ),
-          const SizedBox(height: 6),
-          KeepWordsText(
-            text.candidateDescription,
-            style: const TextStyle(
-              color: MedBuddyColors.textMuted,
-              fontSize: 13,
-              height: 1.4,
-              letterSpacing: 0,
-            ),
-          ),
           if (!result.isConfident ||
               result.hasMoreCandidates ||
               result.observedFeatures.qualityIssues.isNotEmpty) ...[
-            const SizedBox(height: 12),
             _ConfidenceNotice(
               key: index == 0
                   ? const Key('pill-confidence-warning')
                   : Key('pill-confidence-warning-$index'),
-              message: text.lowConfidenceNotice,
-            ),
-          ],
-          const SizedBox(height: 14),
-          if (result.hasMoreCandidates) ...[
-            KeepWordsText(
-              text.tooManyCandidates,
-              style: const TextStyle(fontSize: 13),
+              message: result.hasMoreCandidates
+                  ? '${text.lowConfidenceNotice} ${text.tooManyCandidates}'
+                  : text.lowConfidenceNotice,
             ),
             const SizedBox(height: 12),
           ],
@@ -1034,37 +1144,26 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
           )) ...[
             _PillCandidateCard(
               candidate: candidate,
-              needsMoreEvidence:
-                  !result.isConfident ||
-                  result.hasMoreCandidates ||
-                  result.observedFeatures.qualityIssues.isNotEmpty,
               selected: candidate.itemSeq == draft.selectedItemSeq,
               duplicateCount: candidate.itemSeq == draft.selectedItemSeq
                   ? _selectedCandidateCount(candidate)
                   : 1,
               text: text,
               onTap: actionsEnabled
-                  // 함수이름: _buildResultForDraft.setState callback
-                  // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 입력·요청 상태를 `draft.selectedItemSeq = candidate.itemSeq`로 갱신한다.
-                  // 매개변수:
-                  // - 없음.
-                  // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-                  // 함수이름: _buildResultForDraft.onTap callback
-                  // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장에서 캡처된 작업 `setState(() {draft.selectedItemSeq = candidate.itemSeq;})`을 실행한다.
-                  // 매개변수:
-                  // - 없음.
-                  // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
                   ? () => setState(() {
-                      if (draft.selectedItemSeq != candidate.itemSeq) {
-                        // 다른 약을 고르면 이전 약의 검토값과 저장 표시는 더 이상 맞지 않는다.
-                        draft.reviewedSchedule = null;
-                        draft.isSaved = false;
+                      if (draft.selectedItemSeq == candidate.itemSeq) {
+                        // Saved selections stay locked against accidental resubmission.
+                        if (!draft.isSaved) draft.selectedItemSeq = null;
+                        return;
                       }
+                      // 다른 약을 고르면 이전 약의 검토값과 저장 표시는 더 이상 맞지 않는다.
+                      draft.reviewedSchedule = null;
+                      draft.isSaved = false;
                       draft.selectedItemSeq = candidate.itemSeq;
                     })
                   : null,
             ),
-            const SizedBox(height: 10),
+            const Divider(height: 16),
           ],
           if (draft.visibleCandidateCount < result.candidates.length)
             TextButton.icon(
@@ -1532,7 +1631,10 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   // 매개변수: text (_PillIdentificationText): 언어별 안내 문구.
   // 반환값: 검토 종료 후 완료; 이미 작업 중이거나 비활성 경로이면 즉시 완료.
   Future<void> _confirmCandidates(_PillIdentificationText text) async {
-    if (_isBusy || !mounted || ModalRoute.of(context)?.isCurrent != true) {
+    if (_isBusy ||
+        !_canConfirmSelections ||
+        !mounted ||
+        ModalRoute.of(context)?.isCurrent != true) {
       return;
     }
     setState(() => _isConfirmingCandidates = true);
@@ -1548,18 +1650,14 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   // 매개변수: text (_PillIdentificationText): 선택·중복 확인 안내 문구.
   // 반환값: 선택 누락·취소 시 중단하며 검토·저장 또는 안내가 끝나면 완료되는 Future<void>.
   Future<void> _reviewCandidates(_PillIdentificationText text) async {
-    final pendingDrafts = <_PillPhotoDraft>[];
+    if (!_canConfirmSelections) return;
+    final pendingDrafts = _selectedUnsavedDrafts;
     final candidates = <PillIdentificationCandidate>[];
-    for (final draft in _drafts) {
+    for (final draft in pendingDrafts) {
       final candidate = _selectedCandidate(draft);
       if (candidate == null) {
         return;
       }
-      // 이미 저장한 약은 다시 검토하거나 저장하지 않는다.
-      if (draft.isSaved) {
-        continue;
-      }
-      pendingDrafts.add(draft);
       candidates.add(candidate);
     }
     if (candidates.isEmpty) {
@@ -1583,7 +1681,9 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
 
     final onSaveRequested = widget.onSaveRequested;
     final onBatchSaveRequested = widget.onBatchSaveRequested;
-    if (onSaveRequested != null || onBatchSaveRequested != null) {
+    if (widget.onReviewRequested != null ||
+        onSaveRequested != null ||
+        onBatchSaveRequested != null) {
       await _reviewAndSaveCandidates(
         drafts: pendingDrafts,
         candidates: candidates,
@@ -1668,7 +1768,9 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
       builder: (context) => AlertDialog(
         title: KeepWordsText(text.duplicateSelectionTitle),
-        content: KeepWordsText(text.duplicateSelectionMessage(duplicatePhotoCount)),
+        content: KeepWordsText(
+          text.duplicateSelectionMessage(duplicatePhotoCount),
+        ),
         actionsOverflowAlignment: OverflowBarAlignment.end,
         actions: [
           TextButton(
@@ -1741,6 +1843,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
               ),
       ],
       userSetting: widget.userSetting,
+      photos: _reviewPhotos(drafts, candidates),
     );
     if (!mounted || reviewedSchedules == null) {
       return;
@@ -1764,9 +1867,18 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     final savePlan = _duplicateSelectionControl.buildPillSavePlan(
       reviewedRequests,
       mergeEquivalent:
-          duplicateResolution == _DuplicatePillResolution.mergeMatchingSchedules,
+          duplicateResolution ==
+          _DuplicatePillResolution.mergeMatchingSchedules,
     );
     final requests = savePlan.uniqueRequests;
+
+    final onReviewRequested = widget.onReviewRequested;
+    if (onReviewRequested != null) {
+      if (!onReviewRequested(requests) && mounted) {
+        _showSnackBar(text.medicationSaveFailed);
+      }
+      return;
+    }
 
     // 함수이름: _reviewAndSaveCandidates.setState callback
     // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 입력·요청 상태를 `_isSaving = true`로 갱신한다.
@@ -1842,6 +1954,40 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     );
   }
 
+  // 함수이름: _reviewPhotos
+  // 함수역할: 검토 중인 알약에 대응하는 촬영 사진만 모으고 앞뒷면을 한 장의 보기로 묶는다.
+  // 매개변수: drafts: 선택한 미저장 사진 초안; candidates: 같은 순서의 확인한 약품.
+  // 반환값: 전체 사진 방식은 원본 한 장, 개별 촬영 방식은 약마다 앞뒷면 보기 목록.
+  List<MedicationReviewPhoto> _reviewPhotos(
+    List<_PillPhotoDraft> drafts,
+    List<PillIdentificationCandidate> candidates,
+  ) {
+    final sourceImage = _multiplePillSourceImage;
+    if (_usesSinglePhoto && sourceImage != null) {
+      return [
+        MedicationReviewPhoto(
+          title: _PillIdentificationText(widget.userSetting.language).isEnglish
+              ? 'Pill photo'
+              : '촬영한 알약 사진',
+          aspectRatio: 4 / 3,
+          imageBuilder: (context) => _PillReviewPhotoPair(front: sourceImage),
+        ),
+      ];
+    }
+    return [
+      for (var index = 0; index < drafts.length; index++)
+        if (drafts[index].hasAnyImage)
+          MedicationReviewPhoto(
+            title: candidates[index].itemName,
+            aspectRatio: 4 / 3,
+            imageBuilder: (context) => _PillReviewPhotoPair(
+              front: drafts[index].frontImage,
+              back: drafts[index].backImage,
+            ),
+          ),
+    ];
+  }
+
   // 함수이름: _showSnackBar
   // 함수역할: 기존 Snackbar를 교체하여 알약 분석·저장 결과 문구를 표시한다.
   // 매개변수:
@@ -1877,15 +2023,78 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   }
 }
 
-// Class Name: _MultiplePillObservationPreview
-// Role: Represents identified regions and explanation over a multi-pill photo.
-// Responsibilities:
-// - Composes identified regions and explanation over a multi-pill photo using the display values and actions supplied by its parent.
-// Attributes:
-// - imageBytes (Uint8List): Camera frame or image bytes used for analysis or preview.
-// - observations (List<MultiplePillObservation>): Pill positions and characteristics detected in the photo.
-// - description (String): Supporting explanation or account detail below the primary label.
-class _MultiplePillObservationPreview extends StatelessWidget {
+// Keeps the empty upload control and analyzed photo in the same fixed frame.
+class _MultiplePillPhotoFrame extends StatelessWidget {
+  final Widget child;
+
+  const _MultiplePillPhotoFrame({required this.child});
+
+  @override
+  Widget build(BuildContext context) => AspectRatio(
+    key: const Key('multiple-pill-photo-frame'),
+    aspectRatio: 16 / 9,
+    child: Material(
+      color: MedBuddyColors.surfaceSubtle,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: MedBuddyRadii.control,
+        side: const BorderSide(color: MedBuddyColors.divider),
+      ),
+      child: child,
+    ),
+  );
+}
+
+// 클래스명: _PillReviewPhotoPair
+// 역할: 같은 알약의 실제 촬영 앞면과 뒷면을 한 화면에 보여준다.
+// 주요 책임: 없는 면은 만들지 않고 한 면만 있으면 전체 폭으로 표시한다.
+// 속성: front/back (Uint8List?): 원본 촬영 이미지 바이트.
+class _PillReviewPhotoPair extends StatelessWidget {
+  final Uint8List? front;
+  final Uint8List? back;
+
+  // 함수이름: _PillReviewPhotoPair
+  // 함수역할: 검토할 알약의 선택적 앞뒷면 사진을 보관한다.
+  // 매개변수: front/back: 실제 촬영 사진; 촬영하지 않은 면은 null.
+  // 반환값: 알약 한 건의 사진 보기.
+  const _PillReviewPhotoPair({this.front, this.back});
+
+  // 함수이름: build
+  // 함수역할: 존재하는 사진을 비율 유지하며 나란히 배치하고 로드 실패만 아이콘으로 대체한다.
+  // 매개변수: context: 화면 표시 위치.
+  // 반환값: 한 면 또는 양면 사진이 있는 흰색 사진 영역.
+  @override
+  Widget build(BuildContext context) {
+    final images = [?front, ?back];
+    return ColoredBox(
+      color: Colors.white,
+      child: Row(
+        children: [
+          for (var index = 0; index < images.length; index++) ...[
+            if (index > 0) const SizedBox(width: 4),
+            Expanded(
+              child: Image.memory(
+                images[index],
+                key: ValueKey('pill-review-photo-side-$index'),
+                fit: BoxFit.contain,
+                gaplessPlayback: true,
+                errorBuilder: (context, error, stack) => const Center(
+                  child: Icon(
+                    Icons.broken_image_outlined,
+                    color: MedBuddyColors.textMuted,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// Places normalized region markers over the photo without including letterboxing.
+class _MultiplePillObservationPreview extends StatefulWidget {
   final Uint8List imageBytes;
   final List<MultiplePillObservation> observations;
   final String description;
@@ -1903,6 +2112,60 @@ class _MultiplePillObservationPreview extends StatelessWidget {
     required this.description,
   });
 
+  @override
+  State<_MultiplePillObservationPreview> createState() =>
+      _MultiplePillObservationPreviewState();
+}
+
+class _MultiplePillObservationPreviewState
+    extends State<_MultiplePillObservationPreview> {
+  ImageStream? _imageStream;
+  Size? _imageSize;
+  late final ImageStreamListener _imageListener = ImageStreamListener((
+    info,
+    _,
+  ) {
+    if (mounted) {
+      setState(() {
+        _imageSize = Size(
+          info.image.width.toDouble(),
+          info.image.height.toDouble(),
+        );
+      });
+    }
+    info.dispose();
+  });
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _resolveImage();
+  }
+
+  @override
+  void didUpdateWidget(_MultiplePillObservationPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageBytes != widget.imageBytes) {
+      _imageSize = null;
+      _resolveImage();
+    }
+  }
+
+  void _resolveImage() {
+    final stream = MemoryImage(
+      widget.imageBytes,
+    ).resolve(createLocalImageConfiguration(context));
+    if (_imageStream?.key == stream.key) return;
+    _imageStream?.removeListener(_imageListener);
+    _imageStream = stream..addListener(_imageListener);
+  }
+
+  @override
+  void dispose() {
+    _imageStream?.removeListener(_imageListener);
+    super.dispose();
+  }
+
   // Function Name: build
   // Description: Renders identified regions and explanation over a multi-pill photo from the current configuration and state.
   // Parameters:
@@ -1913,40 +2176,33 @@ class _MultiplePillObservationPreview extends StatelessWidget {
     return Semantics(
       key: const Key('multiple-pill-observation-preview'),
       container: true,
-      label: description,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ClipRRect(
-            borderRadius: MedBuddyRadii.control,
+      label: widget.description,
+      child: _MultiplePillPhotoFrame(
+        child: Center(
+          // Keep region coordinates aligned with the contained image, not its letterboxing.
+          child: AspectRatio(
+            aspectRatio: _imageSize?.aspectRatio ?? 16 / 9,
             child: Stack(
+              fit: StackFit.expand,
               children: [
                 Image.memory(
-                  imageBytes,
-                  width: double.infinity,
-                  fit: BoxFit.fitWidth,
+                  widget.imageBytes,
+                  key: const Key('multiple-pill-preview-image'),
+                  fit: BoxFit.contain,
                   gaplessPlayback: true,
                 ),
                 Positioned.fill(
                   child: IgnorePointer(
                     child: CustomPaint(
-                      painter: _MultiplePillBoxPainter(observations),
+                      key: const Key('multiple-pill-region-overlay'),
+                      painter: _MultiplePillBoxPainter(widget.observations),
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 8),
-          KeepWordsText(
-            description,
-            style: const TextStyle(
-              color: MedBuddyColors.textMuted,
-              fontSize: 12,
-              height: 1.4,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -2091,7 +2347,11 @@ class _PillImageSlot extends StatelessWidget {
         onTap: onTap,
         borderRadius: MedBuddyRadii.small,
         child: Container(
-          height: 174,
+          // 큰 글씨에서도 앞면·필수 표시와 삭제 버튼이 사진 영역을 밀어내지 않는다.
+          height:
+              174.0 +
+              (MediaQuery.textScalerOf(context).scale(16) - 16).clamp(0, 48) *
+                  2,
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             borderRadius: MedBuddyRadii.small,
@@ -2202,7 +2462,6 @@ class _PillImageSlot extends StatelessWidget {
 // Attributes: candidate: identification result; selected: checked state; duplicateCount: matching photos; callbacks: selection/detail actions.
 class _PillCandidateCard extends StatelessWidget {
   final PillIdentificationCandidate candidate;
-  final bool needsMoreEvidence;
   final bool selected;
   final int duplicateCount;
   final _PillIdentificationText text;
@@ -2216,11 +2475,9 @@ class _PillCandidateCard extends StatelessWidget {
   // - duplicateCount (int): 중복으로 감지되거나 병합한 항목 수.
   // - text (_PillIdentificationText): 해당 화면 구역의 언어별 표시 문구.
   // - onTap (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
-  // - needsMoreEvidence (bool): 신뢰도 부족·추가 후보 등의 이유로 일반 비교 문구 대신 추가 확인 필요 안내를 표시할지 여부. 선택 확정 여부를 대신하지 않는다.
   // 반환값: 입력 설정이 반영된 _PillCandidateCard 인스턴스.
   const _PillCandidateCard({
     required this.candidate,
-    required this.needsMoreEvidence,
     required this.selected,
     required this.duplicateCount,
     required this.text,
@@ -2242,103 +2499,96 @@ class _PillCandidateCard extends StatelessWidget {
       // - value (inferred by callback contract): Input to validate, normalize, display, or pass through a selection callback.
       // Returns: Boolean predicate result for the supplied item.
     ].where((value) => value.isNotEmpty).join(' / ');
+    final details = Column(
+      key: Key('pill-candidate-details-${candidate.itemSeq}'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        KeepWordsText(
+          candidate.itemName,
+          style: const TextStyle(
+            color: MedBuddyColors.textStrong,
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0,
+          ),
+        ),
+        if (duplicateCount > 1) ...[
+          const SizedBox(height: 6),
+          KeepWordsText(
+            key: Key('duplicate-pill-badge-${candidate.itemSeq}'),
+            text.sameMedicinePhotoCount(duplicateCount),
+            style: const TextStyle(
+              color: MedBuddyColors.reminderAccent,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+        if (candidate.manufacturer.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          KeepWordsText(
+            candidate.manufacturer,
+            style: const TextStyle(
+              color: MedBuddyColors.textSubtle,
+              fontSize: 12,
+              letterSpacing: 0,
+            ),
+          ),
+        ],
+        if (imprint.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          KeepWordsText(
+            '${text.imprintLabel}: $imprint',
+            style: const TextStyle(
+              color: MedBuddyColors.primaryDark,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0,
+            ),
+          ),
+        ],
+      ],
+    );
+    final selectionIcon = Icon(
+      selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+      color: selected ? MedBuddyColors.primary : MedBuddyColors.textLight,
+      semanticLabel: selected ? text.selected : text.notSelected,
+    );
     return Semantics(
       container: true,
       selected: selected,
       child: Material(
-        color: Colors.white,
-        borderRadius: MedBuddyRadii.small,
+        color: selected ? MedBuddyColors.surfaceSubtle : Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: MedBuddyRadii.small,
           child: Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
             decoration: BoxDecoration(
-              borderRadius: MedBuddyRadii.small,
-              border: Border.all(
-                color: selected
-                    ? MedBuddyColors.primary
-                    : MedBuddyColors.divider,
-                width: selected ? 2 : 1,
+              border: Border(
+                left: BorderSide(
+                  color: selected ? MedBuddyColors.primary : Colors.transparent,
+                  width: 3,
+                ),
               ),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _CandidateImage(url: candidate.imageUrl),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      KeepWordsText(
-                        candidate.itemName,
-                        style: const TextStyle(
-                          color: MedBuddyColors.textStrong,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0,
-                        ),
-                      ),
-                      if (duplicateCount > 1) ...[
-                        const SizedBox(height: 6),
-                        Container(
-                          key: Key('duplicate-pill-badge-${candidate.itemSeq}'),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: MedBuddyColors.warningSurface,
-                            borderRadius: MedBuddyRadii.small,
-                          ),
-                          child: KeepWordsText(
-                            text.sameMedicinePhotoCount(duplicateCount),
-                            style: const TextStyle(
-                              color: MedBuddyColors.reminderAccent,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ],
-                      if (candidate.manufacturer.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          candidate.manufacturer,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: MedBuddyColors.textSubtle,
-                            fontSize: 12,
-                            letterSpacing: 0,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 8),
-                      KeepWordsText(
-                        '${needsMoreEvidence ? text.needsConfirmation : text.comparisonCandidate}'
-                        '${imprint.isEmpty ? '' : '\n${text.imprintLabel}: $imprint'}',
-                        style: const TextStyle(
-                          color: MedBuddyColors.primaryDark,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(
-                  selected
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_unchecked,
-                  color: selected
-                      ? MedBuddyColors.primary
-                      : MedBuddyColors.textLight,
-                  semanticLabel: selected ? text.selected : text.notSelected,
-                ),
-              ],
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Row(
+                  key: Key('pill-candidate-row-${candidate.itemSeq}'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _CandidateImage(
+                      candidate: candidate,
+                      dimension: constraints.maxWidth < 320 ? 72 : 80,
+                      text: text,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(child: details),
+                    const SizedBox(width: 8),
+                    selectionIcon,
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -2352,16 +2602,23 @@ class _PillCandidateCard extends StatelessWidget {
 // Responsibilities:
 // - Composes a candidate's safe network image and unavailable-image fallback using the display values and actions supplied by its parent.
 // Attributes:
-// - url (String): Medication image network URL used after validation.
+// - candidate: Candidate whose validated image opens in the shared viewer.
+// - dimension: Thumbnail edge length; text: Localized accessibility labels.
 class _CandidateImage extends StatelessWidget {
-  final String url;
+  final PillIdentificationCandidate candidate;
+  final double dimension;
+  final _PillIdentificationText text;
 
   // Function Name: _CandidateImage
   // Description: Initializes a candidate's safe network image and unavailable-image fallback with the supplied configuration.
   // Parameters:
-  // - url (String): Medication image network URL used after validation.
+  // - candidate: Candidate image and viewer title; dimension: Thumbnail size; text: Localized labels.
   // Returns: Initialized _CandidateImage instance.
-  const _CandidateImage({required this.url});
+  const _CandidateImage({
+    required this.candidate,
+    required this.dimension,
+    required this.text,
+  });
 
   // Function Name: build
   // Description: Renders a candidate's safe network image and unavailable-image fallback from the current configuration and state.
@@ -2370,24 +2627,24 @@ class _CandidateImage extends StatelessWidget {
   // Returns: Widget tree for a candidate's safe network image and unavailable-image fallback.
   @override
   Widget build(BuildContext context) {
-    final normalizedUrl = safeMedicationImageUrl(url);
+    final normalizedUrl = safeMedicationImageUrl(candidate.imageUrl);
     const placeholder = ColoredBox(
       color: MedBuddyColors.surfaceSubtle,
       child: Center(
         child: Icon(Icons.medication_outlined, color: MedBuddyColors.textLight),
       ),
     );
-    return ClipRRect(
+    final thumbnail = ClipRRect(
       borderRadius: MedBuddyRadii.small,
       child: SizedBox.square(
-        dimension: 76,
+        dimension: dimension,
         child: normalizedUrl.isEmpty
             ? placeholder
             : Image.network(
                 normalizedUrl,
                 fit: BoxFit.contain,
-                cacheWidth: 228,
-                cacheHeight: 228,
+                cacheWidth: (dimension * MediaQuery.devicePixelRatioOf(context))
+                    .round(),
                 // Function Name: build.errorBuilder callback
                 // Description: Substitutes the unavailable-image presentation when the image cannot be decoded or loaded.
                 // Parameters:
@@ -2407,6 +2664,33 @@ class _CandidateImage extends StatelessWidget {
                   return progress == null ? child : placeholder;
                 },
               ),
+      ),
+    );
+    final label = normalizedUrl.isEmpty
+        ? text.imageUnavailable
+        : text.enlargeImage(candidate.itemName);
+    return Semantics(
+      button: normalizedUrl.isNotEmpty,
+      image: true,
+      label: label,
+      child: Tooltip(
+        message: label,
+        child: InkWell(
+          key: Key('pill-candidate-image-${candidate.itemSeq}'),
+          borderRadius: MedBuddyRadii.small,
+          excludeFromSemantics: normalizedUrl.isEmpty,
+          // Thumbnail taps must never toggle the candidate, even for placeholders.
+          onTap: () {
+            if (normalizedUrl.isEmpty) return;
+            MedicationImageViewer.show(
+              context,
+              medicationName: candidate.itemName,
+              imageUrl: normalizedUrl,
+              language: text.language,
+            );
+          },
+          child: thumbnail,
+        ),
       ),
     );
   }
@@ -2520,10 +2804,7 @@ class _EmptyResult extends StatelessWidget {
   // - text (_PillIdentificationText): 해당 화면 구역의 언어별 표시 문구.
   // - onRetry (VoidCallback?): 실패하거나 오래된 화면 데이터를 다시 조회할 콜백.
   // 반환값: 입력 설정이 반영된 _EmptyResult 인스턴스.
-  const _EmptyResult({
-    required this.text,
-    this.onRetry,
-  });
+  const _EmptyResult({required this.text, this.onRetry});
 
   // Function Name: build
   // Description: Shows the no-candidate explanation and optional photo/retry action.
@@ -2599,17 +2880,12 @@ class _PillIdentificationText {
   // 함수역할: 실패 시 기존 결과 유지 상태를 알린다. 매개변수: 없음. 반환값: 안내.
   String get previousResultKept =>
       isEnglish ? 'Previous results were kept.' : '기존 결과는 유지했습니다.';
-  // 함수이름: needsConfirmation
-  // 함수역할: 확정 확률 대신 추가 확인 상태를 표시한다. 매개변수: 없음. 반환값: 상태.
-  String get needsConfirmation =>
-      isEnglish ? 'More evidence needed' : '추가 확인 필요';
-  // 함수이름: comparisonCandidate
-  // 함수역할: 확정되지 않은 비교 후보임을 표시한다. 매개변수: 없음. 반환값: 상태.
-  String get comparisonCandidate =>
-      isEnglish ? 'Candidate for comparison' : '비교 후보';
+  String enlargeImage(String name) =>
+      isEnglish ? 'Enlarge image of $name' : '$name 사진 확대';
+  String get imageUnavailable => isEnglish ? 'Image unavailable' : '사진 없음';
   // 함수이름: imprintLabel
   // 함수역할: 참고 각인 표시명을 번역한다. 매개변수: 없음. 반환값: 표시명.
-  String get imprintLabel => isEnglish ? 'Catalog imprint' : '제품 각인';
+  String get imprintLabel => isEnglish ? 'Imprint' : '각인';
   final String language;
 
   // 함수이름: _PillIdentificationText
@@ -2700,14 +2976,9 @@ class _PillIdentificationText {
   // Returns: The formatted display text or identifier described above.
   String get retryMultiplePillPhoto =>
       isEnglish ? 'Analyze this photo again' : '이 사진 다시 분석';
-  // Function Name: multiplePhotoPreviewDescription
-  // Description: Provides localized wording for "Detected pills are numbered on the photo. Review the candidate list for every number before saving." using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get multiplePhotoPreviewDescription => isEnglish
-      ? 'Detected pills are numbered on the photo. Review the candidate list for every number before saving.'
-      : '사진에서 찾은 알약에 번호를 표시했습니다. 저장하기 전에 각 번호의 후보를 모두 확인해주세요.';
+  // Accessibility label only; the photo has no visible explanatory paragraph.
+  String get multiplePhotoPreviewLabel =>
+      isEnglish ? 'Analyzed pill photo' : '분석한 알약 사진';
   // 함수이름: frontPhotoRequiredForEveryPill
   // 함수역할: 현재 언어와 입력값에 맞춰 "비교를 시작하려면 모든 알약에 앞면 사진을 추가해주세요." 문구를 제공한다.
   // 매개변수:
@@ -2754,14 +3025,14 @@ class _PillIdentificationText {
   // Returns: The formatted display text or identifier described above.
   String get gallery => isEnglish ? 'Choose from gallery' : '갤러리에서 선택';
   // 함수이름: identifyPills
-  // 함수역할: 현재 언어와 입력값에 맞춰 "Find candidates for $normalizedCount pill${normalizedCount == 1 ?" 문구를 제공한다.
+  // 함수역할: 고정 버튼에 표시할 짧은 후보 찾기 문구와 알약 수를 제공한다.
   // 매개변수:
   // - count (int): 문구나 목록에 표시할 항목 수 또는 일련번호.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String identifyPills(int count) {
     final normalizedCount = count < 1 ? 1 : count;
     return isEnglish
-        ? 'Find candidates for $normalizedCount pill${normalizedCount == 1 ? '' : 's'}'
+        ? 'Find matches ($normalizedCount)'
         : '알약 $normalizedCount개 후보 찾기';
   }
 
@@ -2829,22 +3100,14 @@ class _PillIdentificationText {
   // Returns: The formatted display text or identifier described above.
   String removePhoto(String label) =>
       isEnglish ? 'Remove $label photo' : '$label 사진 삭제';
-  // Function Name: candidateDescription
-  // Description: Provides localized wording for "Select the closest product and verify every printed detail." using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get candidateDescription => isEnglish
-      ? 'Select the closest product and verify every printed detail.'
-      : '가장 가까운 제품을 선택한 뒤 각인과 제품 정보를 직접 대조하세요.';
   // Function Name: lowConfidenceNotice
-  // Description: Provides localized wording for "These matches are uncertain or the photo needs extra care. Compare both sides and every imprint before confirming." using the current language and message inputs.
+  // Description: Provides one concise caution for an uncertain pill group.
   // Parameters:
   // - None.
   // Returns: The formatted display text or identifier described above.
   String get lowConfidenceNotice => isEnglish
-      ? 'These matches are uncertain or the photo needs extra care. Compare both sides and every imprint before confirming.'
-      : '후보 일치도가 낮거나 사진 품질에 주의가 필요합니다. 앞뒷면과 각인 정보를 직접 비교한 뒤 선택하세요.';
+      ? 'Uncertain matches. Compare both sides and imprints before choosing.'
+      : '불확실한 후보입니다. 앞뒷면과 각인을 대조한 뒤 선택하세요.';
   // Function Name: selected
   // Description: Provides localized wording for "Selected" using the current language and message inputs.
   // Parameters:
@@ -2905,11 +3168,11 @@ class _PillIdentificationText {
   // - count (int): 문구나 목록에 표시할 항목 수 또는 일련번호.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String confirmSelections(int count) => isEnglish
-      ? count == 1
-            ? 'Confirm selected candidate'
-            : 'Review and save $count selected pills'
-      : count == 1
-      ? '선택한 후보 확인'
+      ? count == 0
+            ? '0 pills selected'
+            : 'Review and save $count selected pill${count == 1 ? '' : 's'}'
+      : count == 0
+      ? '선택한 알약 0개'
       : '선택한 알약 $count개 검토 후 저장';
   // 함수이름: savedComplete
   // 함수역할: 현재 언어와 입력값에 맞춰 "저장 완료" 문구를 제공한다.

@@ -44,11 +44,15 @@ else 같은 세션의 명시적 선택
       end
       opt 선택 유효 및 같은 세션
         Home -> Home : 선택한 활성 연동·보호자 범위 재검사
-        Home -> Target : CheckCaregiverMedicationUI 읽기 전용 진입
+        Home -> Target : CheckCaregiverMedicationUI 읽기 전용 진입\npatients 출처면 공유 환자 선택 후 일정 탭
         Target -> Access : 기존 환자 일정 조회·서버 권한 재검증
         Access --> Target : 허용된 조회 결과 또는 접근 오류
       end
     end
+  else 복약 기록
+    Home -> Home : History 탭 선택 후 검색 화면 닫기
+    Home -> Target : homeScheduleSource의 본인 또는 선택한 연결 환자
+    note right of Target: 연결 환자는 읽기 전용.\n연결 조회 중/실패/없음을 본인 기록으로 대체하지 않는다.
   else 본인 기록 공유
     Home -> Target : 본인 MedicationHistoryUI(initiallyShowExport=true)
     Target -> Access : 기존 기록 최초 조회

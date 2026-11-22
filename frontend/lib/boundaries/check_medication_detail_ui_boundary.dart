@@ -10,6 +10,7 @@ import '../controls/request_voice_guide_control.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_image_url_entity.dart';
 import '../entities/user_setting_entity.dart';
+import '../entities/voice_reading_position.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/medbuddy_page_header.dart';
 import 'medication_image_viewer_boundary.dart';
@@ -68,6 +69,36 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI>
   // 화면이 직접 만든 음성 안내 Control만 화면 종료 때 정리한다.
   late final bool _ownsRequestVoiceGuide;
   bool _isSpeaking = false;
+  int _playback = 0;
+  VoicePosition? _position;
+  final _sectionKeys = {for (final id in VoiceSection.values) id: GlobalKey()};
+
+  Widget _section(VoiceSection id, Widget child) =>
+      KeyedSubtree(key: _sectionKeys[id], child: child);
+
+  // 읽는 위치가 이 구역에 있을 때만 강조 위치를 넘긴다.
+  VoicePosition? _positionIn(VoiceSection id) =>
+      _position?.section == id ? _position : null;
+
+  void _showPosition(VoicePosition next) {
+    if (!mounted || !_isSpeaking || next == _position) return;
+    final moved = next.section != _position?.section;
+    setState(() => _position = next);
+    if (moved) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final target = _sectionKeys[next.section]?.currentContext;
+        if (mounted && _position?.section == next.section && target != null) {
+          unawaited(
+            Scrollable.ensureVisible(
+              target,
+              duration: const Duration(milliseconds: 230),
+              alignment: .08,
+            ),
+          );
+        }
+      });
+    }
+  }
 
   // Function Name: initState
   // Description: Selects the injected or a newly created voice-guide control and starts observing app lifecycle changes.
@@ -141,52 +172,67 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI>
                   constraints: const BoxConstraints(
                     maxWidth: MedBuddySpacing.contentMaxWidth,
                   ),
-                  child: ListView(
+                  child: SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-                    children: [
-                      _MedicationHeroCard(
-                        medicationDetail: widget.medicationDetail,
-                        displayName: widget.medicationDetail
-                            .displayNameForLanguage(
-                              widget.userSetting.language,
-                            ),
-                        language: widget.userSetting.language,
-                      ),
-                      const SizedBox(height: 24),
-                      _DetailQuestionSection(
-                        title: text.efficacyQuestion,
-                        values: _summaryValues(
-                          widget.medicationDetail.efficacy,
-                          text.noInformation,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _section(
+                          VoiceSection.name,
+                          _MedicationHeroCard(
+                            position: _positionIn(VoiceSection.name),
+                            medicationDetail: widget.medicationDetail,
+                            displayName: widget.medicationDetail
+                                .displayNameForLanguage(
+                                  widget.userSetting.language,
+                                ),
+                            language: widget.userSetting.language,
+                          ),
                         ),
-                        noInformation: text.noInformation,
-                      ),
-                      const SizedBox(height: 24),
-                      _DetailQuestionSection(
-                        title: text.dosageQuestion,
-                        subtitle: text.registeredDosage,
-                        values: widget.medicationDetail
-                            .compactDosageGuideLinesForLanguage(
-                              widget.userSetting.language,
-                            ),
-                        noInformation: text.noInformation,
-                      ),
-                      const SizedBox(height: 22),
-                      _DetailedDosageGuideCard(
-                        medicationDetail: widget.medicationDetail,
-                        text: text,
-                      ),
-                      const SizedBox(height: 18),
-                      _MedicationRiskCard(
-                        medicationDetail: widget.medicationDetail,
-                        text: text,
-                      ),
-                      const SizedBox(height: 18),
-                      _MedicationChecklistCard(
-                        medicationDetail: widget.medicationDetail,
-                        text: text,
-                      ),
-                    ],
+                        const SizedBox(height: 24),
+                        _DetailQuestionSection(
+                          title: text.efficacyQuestion,
+                          values: _summaryValues(
+                            widget.medicationDetail.efficacy,
+                            text.noInformation,
+                          ),
+                          noInformation: text.noInformation,
+                        ),
+                        const SizedBox(height: 24),
+                        _DetailQuestionSection(
+                          title: text.dosageQuestion,
+                          subtitle: text.registeredDosage,
+                          values: widget.medicationDetail
+                              .compactDosageGuideLinesForLanguage(
+                                widget.userSetting.language,
+                              ),
+                          noInformation: text.noInformation,
+                        ),
+                        const SizedBox(height: 22),
+                        _section(
+                          VoiceSection.usage,
+                          _DetailedDosageGuideCard(
+                            medicationDetail: widget.medicationDetail,
+                            text: text,
+                            position: _positionIn(VoiceSection.usage),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        _section(
+                          VoiceSection.warning,
+                          _MedicationRiskCard(
+                            medicationDetail: widget.medicationDetail,
+                            text: text,
+                            position: _positionIn(VoiceSection.warning),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        _MedicationChecklistCard(
+                          medicationDetail: widget.medicationDetail,
+                          text: text,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -222,15 +268,19 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI>
   // - None.
   // Returns: Future<void> completing when playback has been asked to stop.
   Future<void> _stopVoiceGuide() async {
-    await _requestVoiceGuide.stop();
+    ++_playback;
     if (mounted) {
       // Function Name: _stopVoiceGuide.setState callback
       // Description: Updates the local input or request state for medication details with indications, dosage, precautions, and read-aloud controls: `_isSpeaking = false`.
       // Parameters:
       // - None.
       // Returns: No payload; applies the captured state changes.
-      setState(() => _isSpeaking = false);
+      setState(() {
+        _isSpeaking = false;
+        _position = null;
+      });
     }
+    await _requestVoiceGuide.stop();
   }
 
   // Function Name: _handleTtsButtonPressed
@@ -249,40 +299,52 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI>
     // Parameters:
     // - None.
     // Returns: No payload; applies the captured state changes.
+    final session = ++_playback;
     setState(() => _isSpeaking = true);
     try {
       await _requestVoiceGuide.requestVoiceGuide(
         medicationDetail: widget.medicationDetail,
         userSetting: widget.userSetting,
+        onPosition: (value) {
+          if (session == _playback) _showPosition(value);
+        },
         // Function Name: _handleTtsButtonPressed.onComplete callback
         // Description: Connects medication details with indications, dosage, precautions, and read-aloud controls to the captured operation `setState(() => _isSpeaking = false)`.
         // Parameters:
         // - None.
         // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
         onComplete: () {
-          if (mounted) {
+          if (mounted && session == _playback) {
             // Function Name: _handleTtsButtonPressed.setState callback
             // Description: Updates the local input or request state for medication details with indications, dosage, precautions, and read-aloud controls: `_isSpeaking = false`.
             // Parameters:
             // - None.
             // Returns: No payload; applies the captured state changes.
-            setState(() => _isSpeaking = false);
+            setState(() {
+              _isSpeaking = false;
+              _position = null;
+            });
           }
         },
       );
     } catch (_) {
-      if (mounted) {
+      if (mounted && session == _playback) {
         // Function Name: _handleTtsButtonPressed.setState callback
         // Description: Updates the local input or request state for medication details with indications, dosage, precautions, and read-aloud controls: `_isSpeaking = false`.
         // Parameters:
         // - None.
         // Returns: No payload; applies the captured state changes.
-        setState(() => _isSpeaking = false);
+        setState(() {
+          _isSpeaking = false;
+          _position = null;
+        });
         // 설정 화면의 음성 미리보기처럼 읽기 실패를 조용히 넘기지 않고 하단 안내로 알린다.
         final text = _MedicationDetailText(widget.userSetting.language);
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(content: KeepWordsText(text.readAloudFailed)));
+          ..showSnackBar(
+            SnackBar(content: KeepWordsText(text.readAloudFailed)),
+          );
       }
     }
   }
@@ -293,6 +355,7 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI>
 // Responsibilities: Combines the representative image with the display name.
 // Attributes: medicationDetail: image source; displayName: visible name; language: localized image labels.
 class _MedicationHeroCard extends StatelessWidget {
+  final VoicePosition? position;
   final MedicationDetail medicationDetail;
   final String displayName;
   final String language;
@@ -305,6 +368,7 @@ class _MedicationHeroCard extends StatelessWidget {
   // - language (String): 화면 문구를 선택할 언어 코드.
   // 반환값: 입력 설정이 반영된 _MedicationHeroCard 인스턴스.
   const _MedicationHeroCard({
+    required this.position,
     required this.medicationDetail,
     required this.displayName,
     required this.language,
@@ -342,8 +406,9 @@ class _MedicationHeroCard extends StatelessWidget {
               ),
               const SizedBox(width: 7),
               Flexible(
-                child: KeepWordsText(
+                child: _ReadingText(
                   displayName,
+                  position: position,
                   textAlign: TextAlign.center,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
@@ -400,8 +465,8 @@ class _MedicationImageBox extends StatelessWidget {
     final hasLocalImage = localImageFile?.existsSync() ?? false;
     final hasImage = hasLocalImage || normalizedImageUrl.isNotEmpty;
     // 88dp 상자에 맞춰 디코딩해 원본 크기 사진이 메모리를 차지하지 않게 한다. 가로로 긴 사진을 채워 그릴 때도 흐려지지 않도록 두 배 여유를 둔다.
-    final imageCacheWidth =
-        (88 * MediaQuery.devicePixelRatioOf(context) * 2).round();
+    final imageCacheWidth = (88 * MediaQuery.devicePixelRatioOf(context) * 2)
+        .round();
 
     return Semantics(
       button: hasImage,
@@ -619,6 +684,7 @@ class _DetailValueTile extends StatelessWidget {
 // 속성:
 // - medicationDetail (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
 class _DetailedDosageGuideCard extends StatelessWidget {
+  final VoicePosition? position;
   final MedicationDetail medicationDetail;
   final _MedicationDetailText text;
 
@@ -629,6 +695,7 @@ class _DetailedDosageGuideCard extends StatelessWidget {
   // - text (_MedicationDetailText): 해당 화면 구역의 언어별 표시 문구.
   // 반환값: 입력 설정이 반영된 _DetailedDosageGuideCard 인스턴스.
   const _DetailedDosageGuideCard({
+    this.position,
     required this.medicationDetail,
     required this.text,
   });
@@ -642,6 +709,7 @@ class _DetailedDosageGuideCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return _DetailListCard(
       title: text.detailedGuide,
+      position: position,
       items: _uniqueNonEmptyValues([medicationDetail.usageMethod]),
       noInformation: text.noInformation,
     );
@@ -655,6 +723,7 @@ class _DetailedDosageGuideCard extends StatelessWidget {
 // 속성:
 // - medicationDetail (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
 class _MedicationRiskCard extends StatelessWidget {
+  final VoicePosition? position;
   final MedicationDetail medicationDetail;
   final _MedicationDetailText text;
 
@@ -665,6 +734,7 @@ class _MedicationRiskCard extends StatelessWidget {
   // - text (_MedicationDetailText): 해당 화면 구역의 언어별 표시 문구.
   // 반환값: 입력 설정이 반영된 _MedicationRiskCard 인스턴스.
   const _MedicationRiskCard({
+    this.position,
     required this.medicationDetail,
     required this.text,
   });
@@ -678,6 +748,7 @@ class _MedicationRiskCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return _DetailListCard(
       title: text.risksAndSideEffects,
+      position: position,
       items: _uniqueNonEmptyValues([
         medicationDetail.warning,
         medicationDetail.precaution,
@@ -734,6 +805,7 @@ class _MedicationChecklistCard extends StatelessWidget {
 // Responsibilities: Preserves all supplied items and substitutes missing-information text for an empty list.
 // Attributes: title: section heading; items: information lines; useInsetSurface: inset background choice; noInformation: empty fallback.
 class _DetailListCard extends StatelessWidget {
+  final VoicePosition? position;
   final String title;
   final List<String> items;
   final bool useInsetSurface;
@@ -748,6 +820,7 @@ class _DetailListCard extends StatelessWidget {
   // - noInformation (String): 값이나 약품 정보를 제공할 수 없을 때 사용할 대체 문구.
   // 반환값: 입력 설정이 반영된 _DetailListCard 인스턴스.
   const _DetailListCard({
+    this.position,
     required this.title,
     required this.items,
     this.useInsetSurface = false,
@@ -765,8 +838,9 @@ class _DetailListCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (int index = 0; index < visibleItems.length; index++) ...[
-          KeepWordsText(
+          _ReadingText(
             visibleItems[index],
+            position: index == 0 ? position : null,
             style: TextStyle(
               color: MedBuddyColors.textMuted,
               fontSize: 14,
@@ -818,6 +892,65 @@ class _DetailListCard extends StatelessWidget {
   }
 }
 
+// 원문 위치까지 일치할 때만 강조해 중복된 문장이나 요약문을 잘못 표시하지 않는다.
+class _ReadingText extends StatelessWidget {
+  final String value;
+  final VoicePosition? position;
+  final TextStyle style;
+  final TextAlign? textAlign;
+  final int? maxLines;
+  final TextOverflow? overflow;
+
+  const _ReadingText(
+    this.value, {
+    required this.position,
+    required this.style,
+    this.textAlign,
+    this.maxLines,
+    this.overflow,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final sentence = position?.sentence;
+    final start = position?.offset ?? -1;
+    if (sentence == null ||
+        start < 0 ||
+        start > value.length ||
+        !value.startsWith(sentence, start)) {
+      return KeepWordsText(
+        value,
+        style: style,
+        textAlign: textAlign,
+        maxLines: maxLines,
+        overflow: overflow,
+      );
+    }
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: keepKoreanWords(value.substring(0, start))),
+          TextSpan(
+            text: keepKoreanWords(sentence),
+            style: const TextStyle(
+              backgroundColor: MedBuddyColors.successBorder,
+              color: MedBuddyColors.textStrong,
+            ),
+          ),
+          TextSpan(
+            text: keepKoreanWords(value.substring(start + sentence.length)),
+          ),
+        ],
+      ),
+      semanticsLabel: value,
+      textAlign: textAlign,
+      maxLines: maxLines,
+      overflow: overflow,
+      style: style,
+    );
+  }
+}
+
 // Function Name: _summaryValues
 // Description: Splits indication text at delimiters and sentence boundaries, compacts each part, and supplies a fallback for empty input.
 // Parameters:
@@ -841,7 +974,9 @@ List<String> _summaryValues(String value, String noInformation) {
       .where((item) => item.isNotEmpty)
       .toList(growable: false);
   final fallback = _compactIndicationLabel(normalizedValue);
-  return values.isEmpty ? [fallback.isEmpty ? noInformation : fallback] : values;
+  return values.isEmpty
+      ? [fallback.isEmpty ? noInformation : fallback]
+      : values;
 }
 
 // Function Name: _compactIndicationLabel

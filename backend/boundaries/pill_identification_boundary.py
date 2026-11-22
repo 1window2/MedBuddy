@@ -6,18 +6,20 @@ import json
 import logging
 import math
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import timedelta
 from io import BytesIO
 from typing import Any
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 import cv2
 import httpx
 import numpy as np
 from google import genai
-from google.genai import types
+from google.genai import errors as genai_errors, types
 from PIL import Image, JpegImagePlugin, UnidentifiedImageError
 from sqlalchemy.orm import Session
 
@@ -37,6 +39,34 @@ from repositories.pill_identification_catalog_repository import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _log_single_pill_stage(stage: str, analysis_id: str) -> Iterator[None]:
+    """Record stage timing without image, response, credential or exception text."""
+    started = time.monotonic()
+    outcome, error_type, status = "completed", "none", None
+    try:
+        yield
+    except BaseException as exc:
+        error_type = type(exc).__name__
+        if isinstance(exc, (TimeoutError, httpx.TimeoutException)):
+            outcome = "timeout"
+        elif isinstance(exc, asyncio.CancelledError):
+            outcome = "cancelled"
+        else:
+            outcome = "failed"
+        if isinstance(exc, genai_errors.APIError) and type(exc.code) is int:
+            status = exc.code
+        raise
+    finally:
+        logger.log(
+            logging.INFO if outcome == "completed" else logging.WARNING,
+            "Single-pill analysis: id=%s stage=%s outcome=%s elapsed_ms=%.1f error=%s status=%s",
+            analysis_id, stage, outcome, (time.monotonic() - started) * 1000,
+            error_type, status,
+        )
+
 
 MAX_PILL_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_PILL_IMAGE_PIXELS = 24_000_000
@@ -897,15 +927,26 @@ class PillVisionBoundary:
         front_image: bytes,
         back_image: bytes | None = None,
     ) -> PillVisualFeatures:
-        try:
-            async with asyncio.timeout(self.timeout_seconds):
-                async with self._analysis_semaphore:
-                    return await self._extract_visual_features(
-                        front_image,
-                        back_image,
-                    )
-        except TimeoutError as exc:
-            raise TimeoutError("Pill visual analysis timed out.") from exc
+        analysis_id = uuid4().hex[:12]
+        logger.info(
+            "Single-pill analysis started: id=%s timeout_seconds=%.3f",
+            analysis_id, self.timeout_seconds,
+        )
+        with _log_single_pill_stage("total", analysis_id):
+            try:
+                async with asyncio.timeout(self.timeout_seconds):
+                    with _log_single_pill_stage("queue", analysis_id):
+                        await self._analysis_semaphore.acquire()
+                    try:
+                        return await self._extract_visual_features(
+                            front_image,
+                            back_image,
+                            analysis_id=analysis_id,
+                        )
+                    finally:
+                        self._analysis_semaphore.release()
+            except TimeoutError as exc:
+                raise TimeoutError("Pill visual analysis timed out.") from exc
 
     # Function Name: extractMultipleVisualFeatures
     # Description:
@@ -936,7 +977,8 @@ class PillVisionBoundary:
                         response_schema=self._MULTI_RESPONSE_SCHEMA,
                     )
                     return self._parse_multiple_visual_features(response_text)
-        except TimeoutError as exc:
+        except (TimeoutError, httpx.TimeoutException) as exc:
+            # Like the single-pill path: a transport deadline is a timeout, not an outage.
             raise TimeoutError("Multiple-pill visual analysis timed out.") from exc
         except (PillImageQualityError, PillVisionResponseError):
             raise
@@ -1057,18 +1099,21 @@ class PillVisionBoundary:
         self,
         front_image: bytes,
         back_image: bytes | None,
+        *,
+        analysis_id: str,
     ) -> PillVisualFeatures:
-        (
-            processed_front,
-            processed_back,
-            front_pill_count,
-            back_pill_count,
-        ) = await run_thread_keeping_capacity(
-            self._preprocessing_semaphore,
-            self._preprocess_images,
-            front_image,
-            back_image,
-        )
+        with _log_single_pill_stage("preprocessing", analysis_id):
+            (
+                processed_front,
+                processed_back,
+                front_pill_count,
+                back_pill_count,
+            ) = await run_thread_keeping_capacity(
+                self._preprocessing_semaphore,
+                self._preprocess_images,
+                front_image,
+                back_image,
+            )
         local_counts = tuple(
             count
             for count in (front_pill_count, back_pill_count)
@@ -1080,13 +1125,17 @@ class PillVisionBoundary:
             )
 
         try:
-            response_text = await self.vision_api.requestVisualFeatures(
-                client=self.client,
-                model_name=self.model_name,
-                front_image=processed_front,
-                back_image=processed_back,
-                response_schema=self._RESPONSE_SCHEMA,
-            )
+            with _log_single_pill_stage("provider", analysis_id):
+                response_text = await self.vision_api.requestVisualFeatures(
+                    client=self.client,
+                    model_name=self.model_name,
+                    front_image=processed_front,
+                    back_image=processed_back,
+                    response_schema=self._RESPONSE_SCHEMA,
+                )
+        except (TimeoutError, httpx.TimeoutException) as exc:
+            # Keep transport deadlines distinct from provider rejection or unavailability.
+            raise TimeoutError("Pill visual analysis timed out.") from exc
         except (PillImageQualityError, PillVisionResponseError):
             raise
         except Exception as exc:

@@ -1,6 +1,6 @@
 # 사용자 가이드 재생성
 
-`README.md`가 본문 원본입니다. `source/layout.json`은 92개 소섹션과 328단계의
+`README.md`가 본문 원본입니다. `source/layout.json`은 92개 소섹션과 342단계의
 식별자·스크린샷·크롭·강조 좌표를 연결합니다. 모든 스크린샷은 `assets/`와
 `source/assets/`에 파일로 있고, `source/assets.sha256.json`이 그 파일과 표지 로고의
 해시를 기록합니다. 빌드는 단계가 쓰는 사진마다 이 해시를 대조합니다.
@@ -100,7 +100,7 @@ python -B -m unittest discover -s docs/user-guide/tools -p "test_*.py"
 최대 366pt 높이까지 확대하되, 설명이 긴 단계는 같은 칸에 들어가도록 확대 폭을 줄입니다.
 단계 번호·사진·설명의 왼쪽 시작선을 맞추고, 네 칸의 바깥 여백을 좌우 대칭으로 둡니다.
 강조 번호는 사진 왼쪽의 칸 사이 여백에 배치하며 사진 안쪽으로 밀어 넣지 않습니다.
-두 판의 표지에는 제목과 `ver 1.0.0`을 표시합니다.
+두 판의 표지에는 제목과 `v1.0.1 개발 브랜치`를 표시합니다.
 
 ```powershell
 python -B docs/user-guide/tools/build_landscape.py --font-dir $fontDir
@@ -109,3 +109,32 @@ python -B docs/user-guide/tools/review_guides.py docs/user-guide/.build/MedBuddy
 
 가로본은 별도로 전체 화면을 검토한 뒤 발행 위치에 복사합니다. 두 판의 검수 기록은
 `source/build-verification.json`에 함께 남깁니다.
+
+## 2026-11-16 캡처 재현
+
+PDF 빌드는 이미 수록된 PNG만 사용하므로 아래 작업이 필요하지 않습니다.
+새 캡처가 필요한 경우에만 제품 테스트 사본을 만들고, 다른 Flutter 작업과 먼저
+조율하세요. 전체 앱 테스트나 실기기 조작을 실행하는 절차가 아닙니다.
+
+1. `python -B docs/user-guide/tools/prepare_captures.py --prepare`로 `.build/capture-app`을 만듭니다.
+2. `GUIDE_WORKSPACE`(상위 작업 폴더), `GUIDE_CAPTURE_OUTPUT`(가이드 안 출력 폴더),
+   `GUIDE_CAPTURE_FONT`(Noto Sans CJK Regular 파일), `GUIDE_FLUTTER_SDK`를 지정합니다.
+   사진 입력은 `work/partial-pill-reference-*.jpg`, `work/pill-front-back-1116/MedBuddy_Pill_Test/`,
+   `work/full-audit-20261010/test-prescription.png`입니다. 이 외부 입력은 PDF 빌드에는 불필요합니다.
+3. `CI=true`와 가이드 `.build` 안의 별도 `APPDATA`를 지정하고 사본 안에서
+   `flutter --suppress-analytics test --no-pub --concurrency=1 test/guide_*_capture_test.dart`를 실행합니다.
+   셸이 와일드카드를 펼치지 않으면 여섯 테스트 파일을 각각 지정하세요.
+   의존성은 원본의 준비된 package_config를 쓰며 네이티브 sqlite 캐시도 필요합니다.
+4. `inspect_capture_assets.py <캡처 폴더>`로 모아보기 이미지를 만든 뒤 직접 검수합니다.
+   `update_capture_layout.py`는 11월 16일에 명시적으로 선별한 50장만 반영합니다.
+   다른 날짜 캡처를 자동 선별하는 도구가 아니므로 새 화면은 매핑과 좌표를 먼저 검토해야 합니다.
+
+사본의 `TextStyle`과 테마에는 테스트 엔진의 한글 표시를 위해 Noto Sans KR만 주입합니다.
+제품의 배치·동작 소스는 그대로 사용하며, 원본 `frontend`에는 쓰지 않습니다.
+가상 계정·일정·대역 응답을 쓴 위젯 렌더는 실제 기기나 운영 서버 성공 증거가 아닙니다.
+출처와 원본 소스 해시는 `source/current-captures.json`과
+`source/current-capture-inputs.sha256.json`을 참고하세요.
+
+2026-11-16 최종 검수는 `source/current-content-review.json`과
+`source/build-verification.json`에 기록했습니다. `.build` 안의 중간 캡처·모아보기·
+일회성 검수 기록 스크립트는 재생성 입력이나 배포 파일이 아니며 Git에서 제외합니다.

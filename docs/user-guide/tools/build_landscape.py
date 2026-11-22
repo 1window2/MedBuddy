@@ -292,7 +292,7 @@ def draw_screenshot(
 def footer(c: canvas.Canvas, number: int, total: int, label: str) -> None:
     c.setFillColorRGB(0.25, 0.28, 0.27)
     c.setFont(REG, 9)
-    c.drawString(MARGIN, 14, 'MedBuddy 1.0.0')
+    c.drawString(MARGIN, 14, 'MedBuddy 1.0.1')
     c.drawCentredString(W / 2, 14, f'{number} / {total}')
     size = min(9, 9 * (W / 2 - MARGIN - 45) / max(1, pdfmetrics.stringWidth(label, REG, 9)))
     c.setFont(REG, size)
@@ -312,7 +312,7 @@ def build(font_dir: Path, output: Path) -> None:
     total = 1 + len(toc) + len(pages)
     data, records, step_pages, text_records = BytesIO(), [], {}, []
     c = canvas.Canvas(data, pagesize=(W, H), pageCompression=1, invariant=1)
-    c.setTitle('MedBuddy 사용설명서 - ver 1.0.0')
+    c.setTitle('MedBuddy 사용설명서 - v1.0.1 개발 브랜치')
     c.setAuthor('MedBuddy')
     c.setCreator('MedBuddy')
     c.drawImage(ImageReader(str(ROOT / 'assets/medbuddy_logo.png')),
@@ -320,7 +320,7 @@ def build(font_dir: Path, output: Path) -> None:
     c.setFont(BOLD, 28)
     c.drawCentredString(W / 2, H / 2 - 60, 'MedBuddy 사용설명서')
     c.setFont(REG, 12)
-    c.drawCentredString(W / 2, H / 2 - 86, 'ver 1.0.0')
+    c.drawCentredString(W / 2, H / 2 - 86, 'v1.0.1 개발 브랜치')
     c.showPage()
     for number, rows in enumerate(toc, 2):
         c.setFont(BOLD, 18)

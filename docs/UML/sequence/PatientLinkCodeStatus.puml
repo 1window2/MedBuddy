@@ -1,0 +1,47 @@
+@startuml
+skinparam defaultFontName Nanum Gothic
+skinparam shadowing false
+title 환자 코드 소비 상태 확인과 화면 수명
+actor Patient
+actor Caregiver
+boundary "Patient code dialog" as UI
+control "Flutter LinkPatientCaregiver" as Client
+boundary "Authenticated Medication API" as API
+control "Backend LinkPatientCaregiver" as Control
+database "Link code + active link" as DB
+
+Patient -> UI: Open generated code
+UI -> UI: Bound watch to code expiry, at most 15 minutes
+par Patient foreground polling
+loop Current foreground dialog, same account, unexpired code; one request at a time
+UI -> Client: requestPatientCodeStatus(code, abortTrigger)
+Client -> API: GET /link/code/status; 15s client timeout
+API -> API: Resolve authenticated owner
+API -> Control: requestPatientCodeStatus(owner, exactCode)
+Control -> DB: One owner-scoped snapshot of code and its consumer's active pair
+DB --> Control: Code consumption, expiry and current relationship
+Control --> API: pending / linked / expired / revoked (404 if absent)
+API --> Client: Cache-Control: no-store
+Client --> UI: Verify response code and patient identity
+alt Matching linked result and still-current dialog
+UI -> UI: Stop watch; show success and notify parent link refresh
+else Expired or revoked
+UI -> UI: Stop watch; allow regeneration
+else Pending or transient/auth/network error
+UI -> UI: No success inference; wait 2s after request completes
+end
+end
+note over UI,Client: Closing, backgrounding or account change aborts/invalidate requests.\nLate results cannot complete another dialog; resume rechecks without overlap.
+
+else Caregiver code registration
+Caregiver -> API: Register displayed patient code
+API -> Control: Existing single-use code registration
+Control -> DB: Consume exact code; create/reactivate active pair
+end
+note over Patient,Caregiver: Registration and polling are independent requests.\nA generic link-list change does not prove this code was consumed.
+
+Patient -> API: Unlink caregiver
+API -> Control: Existing authorized unlink
+Control -> DB: Unlink pair; mark unused codes used and clear this pair's code consumption proof
+note over Control,DB: A later re-link does not resurrect success for an older revoked code.\nOther active pairs' consumed codes are preserved.
+@enduml

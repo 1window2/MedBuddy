@@ -788,3 +788,38 @@ def test_revoked_credential_closes_an_open_stream(
 
     assert closed.value.code == 4401
     assert not _is_connected(chat_stream)
+
+
+# Function Name: test_repeated_revalidation_failures_close_the_stream_for_reauthentication
+# Description:
+# - While the session check keeps failing (verifier or database outage), a revoked session must
+#   not keep receiving messages until its token expires: after three failed checks in a row the
+#   stream closes with 4440 so the client reconnects and is authenticated again.
+# Parameters:
+# - chat_stream (_ChatStream): Application and client under test.
+# - monkeypatch (pytest.MonkeyPatch): Makes every ping due for revalidation and fails the check.
+# Returns:
+# - None.
+def test_repeated_revalidation_failures_close_the_stream_for_reauthentication(
+    chat_stream: _ChatStream,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unavailable(_link_id: int, _user_hash: str) -> bool:
+        raise RuntimeError("database connection lost")
+
+    monkeypatch.setattr(settings, "CHAT_WEBSOCKET_REVALIDATION_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(settings, "CHAT_WEBSOCKET_MIN_PING_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(chat_router, "_link_is_still_active", unavailable)
+    with chat_stream.client.websocket_connect(
+        chat_stream.path(), headers=chat_stream.headers
+    ) as socket:
+        assert socket.receive_json()["type"] == "chat_ready"
+        for _ in range(2):
+            socket.send_text("ping")
+            assert socket.receive_json() == {"type": "pong"}
+        socket.send_text("ping")
+        with pytest.raises(WebSocketDisconnect) as closed:
+            socket.receive_json()
+
+    assert closed.value.code == 4440
+    assert not _is_connected(chat_stream)

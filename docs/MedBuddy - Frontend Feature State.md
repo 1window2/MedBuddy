@@ -228,6 +228,58 @@ failed reads or stale sessions do not open it.
 
 ## Prescriptions and completion boundary
 
+### Shared registration results
+
+The prescription feature also owns reviewed pill-photo and manual-registration
+results through `MedicationResultSource`. This is reuse of result/save state,
+not a second OCR pass or a claim that these inputs represent a whole prescription.
+The app hands off only selected pill candidates or validated manual entries;
+review acceptance does not save. Registration routes close only after the model
+accepts the handoff. Pill/manual results do not request a prescription-change radar.
+
+The shared result screen supports individual and sequential all-item saves,
+preserving saved/duplicate rows across later failures. A post-save refresh error
+does not unlock successful rows for resubmission. Once every row is complete,
+a centered dialog closes before navigating to today's schedule, pillbox or Home.
+Result-operation and account generations guard later saves and side effects;
+accepted server writes are not rolled back on navigation. Manual temporary photo
+ownership transfers with the accepted handoff and cleanup waits for in-use saves.
+The common gallery preserves each caller's image content, including OCR masking,
+with separate zoom/pan and original-scale photo paging. See
+[registration review and deferred details](Medication%20Registration%20Review.md).
+
+### Linked-patient tab scope
+
+`HomeScreen` applies `homeScheduleSource` to Schedule and History as well as Home.
+In patient mode the selected `(linkId, patientHash)` is shared by those tabs,
+retained while valid, and replaced by the first valid link when needed. There is
+no own-account fallback while links are unresolved, failed or empty. The captured
+owner/source/link/patient/generation scope invalidates retained history controls
+and rejects late reads after selection, source, account or relationship changes.
+`CheckCaregiverMedicationUI` polls only while its tab, route and app are active;
+caregiver schedule/history access remains read-only. The Android widget shares
+the configured source, but its instance-specific page selection is separate.
+
+### Link-code dialog lifetime
+
+The patient code dialog polls `GET /link/code/status` immediately and then two
+seconds after each completed attempt, without overlapping requests. The control
+uses a 15-second request timeout and abort support. Only the current foreground
+dialog, account and unexpired code can consume a response. Backgrounding,
+closing, expiry and account replacement stop watching and invalidate old results;
+resume rechecks within the remaining code lifetime (bounded to 15 minutes).
+
+The server returns `pending`, `linked`, `expired` or `revoked` for the owner's
+exact code with `Cache-Control: no-store`. Success requires that code's consumer
+pair to remain actively linked, not merely that some link exists. Unlinking clears
+that pair's consumption proof so a later re-link cannot revive an old code's
+success. Only a matching `linked` result triggers success presentation and parent
+refresh; network/auth errors are not evidence of consumption. A later list-read
+failure does not undo a successful link/alias/unlink response. See the
+[code-status sequence](UML/sequence/PatientLinkCodeStatus.puml).
+
+### Prescription-specific review
+
 OCR 인식이 끝나면 중간 분석 시작 확인 없이 약품 1차 조회까지 이어진다.
 `MedBuddyPrescriptionViewModel`은 인식 단계와 실제 조회 완료 건수를 분리하고,
 약별로 확인 완료·후보 있음·검색 결과 없음·조회 실패·조회 전 상태를 보존한다.

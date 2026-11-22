@@ -55,8 +55,8 @@ object DoseWidgetLayout {
             if (veryLarge) 7f else if (large) 10f else 11f)
         views.setTextViewTextSize(R.id.widget_take, TypedValue.COMPLEX_UNIT_SP,
             if (veryLarge) 8f else if (large) 12f else 15f)
-        // 가로 화면 1칸(약 51dp)은 큰 글씨에서 안내 두 줄과 저장 상태가 함께 들어가지 않는다.
-        warning(views, scale, known && overdue, if (veryLarge || (large && height < 60)) 1 else 2)
+        // 한 줄 위젯에서는 시간대와 저장 상태를 우선하고 놓친 약 안내는 확장 배치에만 둔다.
+        views.setViewVisibility(R.id.widget_tiny_warning, View.GONE)
         return views
     }
 
@@ -101,24 +101,24 @@ object DoseWidgetLayout {
         // 숫자 진행률은 그대로 남기고 작은 높이에서만 중복 막대의 공간을 돌려준다.
         views.setViewVisibility(R.id.widget_progress, if (known && !short) View.VISIBLE else View.GONE)
         val summaryOnly = (minimal && known) || (height < 360 && known && hasPager && veryLarge)
+        // A single slot has no pager, but at large text its warning still needs the detail line's space.
         views.setViewVisibility(R.id.widget_details,
-            if (summaryOnly || (short && known && hasPager && large)) View.GONE else View.VISIBLE)
+            if (summaryOnly || (short && known && hasPager && large) ||
+                (short && known && veryLarge && overdue)) View.GONE else View.VISIBLE)
         views.setViewVisibility(R.id.widget_warning, if (overdue && !summaryOnly) View.VISIBLE else View.GONE)
         // 런처의 가로 화면 기준 최소 높이에서도 화살표·저장 상태·복용 버튼은 유지한다.
-        views.setViewVisibility(R.id.widget_content, if (minimal && hasPager) View.GONE else View.VISIBLE)
-        views.setViewVisibility(R.id.widget_compact_heading, if (minimal && hasPager) View.VISIBLE else View.GONE)
-        if (tiny) {
-            // 제목·날짜 자리에 시간대와 저장 상태를 두고 본문·시간대 전환·진행 막대를 숨겨 복용 버튼을 지킨다.
-            views.setTextViewTextSize(R.id.widget_tiny_heading, TypedValue.COMPLEX_UNIT_SP, if (veryLarge) 10f else 14f)
-            views.setTextViewTextSize(R.id.widget_tiny_status, TypedValue.COMPLEX_UNIT_SP, if (veryLarge) 8f else 11f)
-            for (id in listOf(R.id.widget_title, R.id.widget_date))
-                views.setViewVisibility(id, if (known) View.GONE else View.VISIBLE)
-            for (id in listOf(R.id.widget_tiny_heading, R.id.widget_tiny_status))
-                views.setViewVisibility(id, if (known) View.VISIBLE else View.GONE)
-            for (id in listOf(R.id.widget_content, R.id.widget_pager, R.id.widget_progress, R.id.widget_status))
-                views.setViewVisibility(id, View.GONE)
-            warning(views, scale, known && overdue, if (veryLarge) 1 else 2)
-        }
+        views.setViewVisibility(R.id.widget_content, if (tiny || (minimal && hasPager)) View.GONE else View.VISIBLE)
+        views.setViewVisibility(R.id.widget_compact_heading, if (!tiny && minimal && hasPager) View.VISIBLE else View.GONE)
+        views.setViewVisibility(R.id.widget_pager, if (!tiny && hasPager) View.VISIBLE else View.GONE)
+        views.setViewVisibility(R.id.widget_status, if (!tiny && known) View.VISIBLE else View.GONE)
+        // Launchers can reapply another size to the same root, so reset both header variants on every update.
+        for (id in listOf(R.id.widget_title, R.id.widget_date))
+            views.setViewVisibility(id, if (tiny && known) View.GONE else View.VISIBLE)
+        for (id in listOf(R.id.widget_tiny_heading, R.id.widget_tiny_status))
+            views.setViewVisibility(id, if (tiny && known) View.VISIBLE else View.GONE)
+        views.setTextViewTextSize(R.id.widget_tiny_heading, TypedValue.COMPLEX_UNIT_SP, if (veryLarge) 10f else 14f)
+        views.setTextViewTextSize(R.id.widget_tiny_status, TypedValue.COMPLEX_UNIT_SP, if (veryLarge) 8f else 11f)
+        warning(views, scale, tiny && known && overdue, if (veryLarge) 1 else 2)
         return views
     }
 

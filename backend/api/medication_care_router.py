@@ -1,39 +1,66 @@
 # 파일명: medication_care_router.py
-# 역할: 약 관리·복용 기록 HTTP 요청을 인증된 Control에 전달한다.
+# 역할: 약 관리·복용 기록 및 정확한 로컬 품목 조회 요청을 인증된 Control에 전달한다.
 
 from datetime import date
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Path
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_authenticated_principal
 from api.route_support import queue_completion_alerts
+from controls.check_catalog_medication_detail_control import (
+    CATALOG_ITEM_SEQ_MAX_LENGTH,
+    CATALOG_ITEM_SEQ_PATTERN,
+    CheckCatalogMedicationDetail,
+)
 from controls.manage_medication_care_control import ManageMedicationCare
 from core.database import get_db
+from core.request_database_work import run_request_database_work
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from schemas.medication_care import DoseHistoryUpdate, RegimenChangeRequest
+from services.saved_medication_enrichment import queue_changed_medication_enrichment
 
-router = APIRouter(prefix="/care", tags=["Medication care"])
+router = APIRouter(tags=["Medication care"])
+
+
+@router.get("/catalog/{item_seq}")
+async def get_catalog_detail(
+    item_seq: str = Path(
+        min_length=1, max_length=CATALOG_ITEM_SEQ_MAX_LENGTH,
+        pattern=CATALOG_ITEM_SEQ_PATTERN,
+    ),
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Return exact local details or null without generating or refreshing guidance."""
+    detail = await run_request_database_work(
+        CheckCatalogMedicationDetail(db).get_detail, item_seq,
+    )
+    return {"success": True, "data": detail.model_dump(by_alias=True) if detail else None}
 
 
 # 함수이름: change_medication
 # 함수역할: 약 수정·중단·교체를 요청한다. 상위 라우터의 계정 잠금·App Check를 유지한다.
-# 매개변수: medication_id: 기존 약, request: 본문, principal: 주체, db: 공유 세션.
+#   새 과정의 상세 정보가 아직 비어 있으면 응답 뒤 보강을 다시 예약한다.
+# 매개변수: medication_id: 기존 약, request: 본문, background_tasks: 응답 후 작업, principal: 주체, db: 공유 세션.
 # 반환값: 새 약 또는 중단한 약의 버전 응답.
-@router.post("/medications/{medication_id}/change")
+@router.post("/care/medications/{medication_id}/change")
 def change_medication(
     medication_id: int, request: RegimenChangeRequest,
+    background_tasks: BackgroundTasks,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
-    return ManageMedicationCare(db).change_medication(principal, medication_id, request)
+    response = ManageMedicationCare(db).change_medication(principal, medication_id, request)
+    queue_changed_medication_enrichment(background_tasks, db, response)
+    return response
 
 
 # 함수이름: get_history
 # 함수역할: 환자 또는 활성 보호자에게 제한된 날짜별 사용자 보고를 제공한다.
 # 매개변수: start_date/end_date: 범위, patient_hash: 대상, principal: 주체, db: 세션.
 # 반환값: 기록과 저장 약 목록.
-@router.get("/history")
+@router.get("/care/history")
 def get_history(
     start_date: date, end_date: date, patient_hash: str | None = None,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
@@ -47,7 +74,7 @@ def get_history(
 # 매개변수: medication_id (int), schedule_date (date), slot_key (str)는 대상, request (DoseHistoryUpdate)는 보고 내용이다.
 #   background_tasks (BackgroundTasks)는 응답 후 작업, principal (AuthenticatedPrincipal)은 주체, db (Session)는 요청 세션이다.
 # 반환값: 갱신한 기록 응답. 권한·날짜·버전·재전송 충돌 오류는 Control에서 전달한다.
-@router.put("/history/{medication_id}/{schedule_date}/{slot_key}")
+@router.put("/care/history/{medication_id}/{schedule_date}/{slot_key}")
 def update_history(
     medication_id: int, schedule_date: date, slot_key: str, request: DoseHistoryUpdate,
     background_tasks: BackgroundTasks,

@@ -319,10 +319,10 @@ a dose through the exported launcher activity.
 
 ## 2026-11-07: findings of the second audit left to the owner
 
-- **Hospital budget:** one free account can spend the shared hospital API budget
-  inside its own daily search quota. The provider's operating-account quota is the
-  real fix; a per-call share per account would also limit ordinary users, so no code
-  change was made.
+- **Hospital budget:** one free account could spend the shared hospital API budget
+  inside its own daily search quota. Resolved on 2026-11-22 with the provider's
+  operating account (100,000 calls per operation a day) and a server budget of 80,000;
+  no per-call charging per account was added.
 - **Database pool:** same-account requests waiting for the account lock hold pooled
   connections for up to 5 s. The audit rejected it as a finding (any client with
   several requests in flight fills the pool too), so the PostgreSQL lock path was not
@@ -452,6 +452,22 @@ date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again
 - **Alternatives:** `1.0.0+28`, which would tell the release build apart from the
   candidates in Android settings.
 - **To undo:** set `version` in `backend/main.py` back to `1.0.0-rc`.
+
+## 2026-11-16: the 1.0.1 line runs on the v1.0.1 branch
+
+- **Chosen:** the collaborator's branch keeps its name `v1.0.1` (owner), and the rules
+  follow it. Push CI also runs for branches named like a version
+  (`v[0-9]+.[0-9]+.[0-9]+`), which the signed workflow's CI gate needs, and the signed
+  workflow's off-Play exception moves from `beta/v1.0.0` to exactly `v1.0.1`.
+  `beta/v1.0.0` keeps its own workflow copy, so hotfix builds stay possible there until
+  the exhibition ends. The App Check preflight identity is not involved: off-Play builds
+  skip it. The dormant backend deploy workflow was left as it is.
+- **Alternatives:** renaming the branch `beta/v1.0.1`, which the patterns already
+  matched. It was tried and undone: GitHub closes pull requests whose head branch is
+  renamed, and PR #139 had to be reopened.
+- **To undo:** remove the version pattern from the CI push triggers and restore the
+  references in `release-android.yml`, `scripts/check_android_release_configuration.py`
+  and their tests.
 
 ## Earlier decisions
 

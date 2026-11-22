@@ -16,6 +16,7 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
 )
 from pydantic import BaseModel, Field, ValidationError
@@ -392,15 +393,28 @@ def register_push_token(
         get_session_revocation_boundary
     ),
 ) -> dict[str, object]:
+    sessions_valid_after = (
+        revocation.sessionsValidAfter(principal.subject) if revocation else None
+    )
+    # 인증 단계는 계정 상태를 최대 FIREBASE_REVOCATION_CACHE_SECONDS 동안 재사용한다. 그 사이
+    # 취소 전에 발급된 세션이 다시 등록하면 기기 행의 갱신 시각이 취소 뒤로 밀려 정리 대상에서
+    # 빠지므로, 방금 읽은 취소 기준보다 먼저 발급된 토큰의 등록은 받지 않는다.
+    if sessions_valid_after is not None and (
+        principal.issued_at is None
+        or principal.issued_at.replace(tzinfo=None) < sessions_valid_after
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="The Firebase bearer token is invalid or expired.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return manage_push_token.registerPushToken(
         principal.user_hash,
         request.token,
         request.platform,
         request.supports_caregiver_actions,
         supports_slot_check_actions=request.supports_slot_check_actions,
-        sessions_valid_after=(
-            revocation.sessionsValidAfter(principal.subject) if revocation else None
-        ),
+        sessions_valid_after=sessions_valid_after,
     )
 
 
@@ -550,6 +564,7 @@ def check_prescription_change(
 @router.post("/save")
 def save_medication(
     medication: SavedMedicationCreate,
+    background_tasks: BackgroundTasks,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
@@ -561,7 +576,14 @@ def save_medication(
     trusted_medication = medication.model_copy(
         update={"patient_hash": patient_hash},
     )
-    return check_saved_medication.saveMedicationDetail(trusted_medication)
+    response = check_saved_medication.saveMedicationDetail(trusted_medication)
+    from services.saved_medication_enrichment import queue_saved_medication_enrichment
+
+    queue_saved_medication_enrichment(
+        background_tasks, check_saved_medication.db, response,
+        patient_hash, trusted_medication.item_seq,
+    )
+    return response
 
 
 # Function Name: get_saved_medications
@@ -1238,6 +1260,22 @@ def create_patient_link_code(
 ) -> dict[str, object]:
     patient_hash = authorization.resolveOwnUserHash(principal, request.patient_hash)
     return link_patient_caregiver_control.generatePatientHash(patient_hash)
+
+
+@router.get("/link/code/status")
+def get_patient_link_code_status(
+    patient_code: str,
+    response: Response,
+    user_hash: str = DEFAULT_PATIENT_HASH,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    link_patient_caregiver_control: LinkPatientCaregiver = Depends(
+        get_link_patient_caregiver_control
+    ),
+) -> dict[str, object]:
+    response.headers["Cache-Control"] = "no-store"
+    owner = authorization.resolveOwnUserHash(principal, user_hash)
+    return link_patient_caregiver_control.requestPatientCodeStatus(owner, patient_code)
 
 
 # Function Name: register_patient_link_code

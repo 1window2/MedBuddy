@@ -21,7 +21,6 @@ import '../boundaries/health_recommendation_ui_boundary.dart';
 import '../boundaries/guided_prescription_camera_ui_boundary.dart';
 import '../boundaries/input_prescription_ui_boundary.dart';
 import '../boundaries/link_patient_caregiver_ui_boundary.dart';
-import '../boundaries/manual_medication_entry_ui_boundary.dart';
 import '../boundaries/manage_user_hub_ui_boundary.dart';
 import '../boundaries/medbuddy_bottom_navigation_ui_boundary.dart';
 import '../boundaries/manage_user_setting_ui_boundary.dart';
@@ -32,6 +31,8 @@ import '../controls/app_language_control.dart';
 import '../controls/authentication_control.dart';
 import '../controls/manage_chat_list_control.dart';
 import '../controls/check_caregiver_home_control.dart';
+import '../controls/check_caregiver_medication_control.dart';
+import '../controls/medication_history_control.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/prescription_flow_entity.dart';
@@ -53,6 +54,16 @@ import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
 import '../widgets/keep_words_text.dart';
+import '../widgets/medbuddy_page_header.dart';
+
+// Role: Identifies one account/source/patient generation for retained tab data.
+typedef _PatientScope = ({
+  String owner,
+  String source,
+  int? linkId,
+  String patient,
+  int generation,
+});
 
 // 파일명: home_screen.dart
 // 역할: ViewModel의 처방전 분석 상태에 따라 실제 표시할 화면을 선택한다.
@@ -64,15 +75,26 @@ import '../widgets/keep_words_text.dart';
 class HomeScreen extends StatefulWidget {
   final ManageChatList Function(String userHash)? chatListFactory;
   final CheckCaregiverHome Function(String userHash)? caregiverHomeFactory;
+  final CheckCaregiverMedication Function(String userHash)?
+  caregiverMedicationFactory;
+  final MedicationHistoryControl Function({
+    required String patientHash,
+    required bool readOnly,
+    required bool Function() isScopeCurrent,
+  })?
+  historyFactory;
   final DateTime Function()? nowProvider;
   // 함수이름: HomeScreen
   // 함수역할: 처방 흐름과 하단 탐색을 관리하며 테스트·조립용 조회 및 시계 경계를 선택적으로 주입한다.
   // 매개변수: key (Key?): 위젯 식별자; chatListFactory (ManageChatList Function(String)?): 계정별 채팅 목록 Control 생성; caregiverHomeFactory (CheckCaregiverHome Function(String)?): 계정별 보호자 홈 조회 생성; nowProvider (DateTime Function()? ): 날짜·시간 판단 시계.
   // 반환값: HomeScreen: 구성된 홈 화면.
+  // Optional factories create owned caregiver-schedule/history controls for the captured scope.
   const HomeScreen({
     super.key,
     this.chatListFactory,
     this.caregiverHomeFactory,
+    this.caregiverMedicationFactory,
+    this.historyFactory,
     this.nowProvider,
   });
 
@@ -98,6 +120,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   ManageChatList? _chatList;
   CheckCaregiverHome? _caregiverHome;
   String? _homeScheduleSource;
+  MedicationHistoryControl? _historyControl;
+  _PatientScope? _historyScope;
+  MedBuddyViewModel? _patientOwner;
+  (int?, String)? _selectedPatient;
+  int _patientGeneration = 0;
   ManageNotificationInbox? _notificationInbox;
   Timer? _chatRefreshTimer;
   Future<void>? _homeRefresh;
@@ -163,7 +190,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final userHash = viewModel.patientHash;
     final source = viewModel.userSetting.homeScheduleSource;
     final isEnglish = viewModel.userSetting.isEnglish;
-    if (_chatList?.userHash == userHash) {
+    if (_chatList?.userHash == userHash &&
+        identical(_patientOwner, viewModel)) {
       // 별칭이 없는 환자의 기본 이름은 표시 언어를 따르므로 언어가 바뀌면 다음 조회부터 반영한다.
       if (_chatList!.isEnglish != isEnglish) {
         _chatList!.isEnglish = isEnglish;
@@ -172,6 +200,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         });
       }
       if (_homeScheduleSource != source) {
+        _clearHistory();
+        _selectedPatient = null;
+        _patientGeneration++;
         _homeScheduleSource = source;
         _widgetCacheSignature = null;
         // 저장값을 뒤늦게 복원한 경우에도 다음 주기까지 기다리지 않는다.
@@ -181,7 +212,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       return;
     }
+    _patientOwner = viewModel;
     _homeScheduleSource = source;
+    _clearHistory();
+    _selectedPatient = null;
+    _patientGeneration++;
     _linkDisplaySignature = null;
     _widgetCacheSignature = null;
     _homeRefresh = null;
@@ -246,6 +281,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _caregiverHome?.updateLinks(
       _chatList?.hasError == true ? const [] : _chatList?.links ?? const [],
     );
+    _syncSelectedPatient();
+    final scope = _historyScope;
+    if (scope != null &&
+        !_historyScopeIsCurrent(context.read<MedBuddyViewModel>(), scope)) {
+      _historyControl?.invalidateSession();
+    }
     _publishCaregiverWidget();
     setState(
       // 함수이름: 연동 상태 갱신 콜백
@@ -391,6 +432,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _chatList?.removeListener(_onChatListChanged);
     _chatList?.dispose();
     _caregiverHome?.dispose();
+    _clearHistory();
     super.dispose();
   }
 
@@ -568,6 +610,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onHomeRequested: viewModel.clearAnalysisResult,
       ),
       PrescriptionFlowState.resultReady => CheckResultUI(
+        source: viewModel.medicationResultSource,
         analyzedMedicationList: viewModel.analyzedMedicationList,
         prescriptionChangeRadar: viewModel.prescriptionChangeRadar,
         isPrescriptionChangeLoading: viewModel.isPrescriptionChangeLoading,
@@ -664,13 +707,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _prescriptionExitDialogOpen = true;
     final initialFlow = viewModel.prescriptionFlowState;
     final english = viewModel.userSetting.isEnglish;
+    final isRegistration =
+        viewModel.medicationResultSource != MedicationResultSource.prescription;
     try {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: KeepWordsText(english ? 'Leave analysis?' : '분석 결과를 나갈까요?'),
+          title: KeepWordsText(
+            isRegistration
+                ? (english ? 'Leave registration?' : '등록 결과를 나갈까요?')
+                : (english ? 'Leave analysis?' : '분석 결과를 나갈까요?'),
+          ),
           content: KeepWordsText(
-            english
+            isRegistration
+                ? (english
+                      ? 'Saved medications will remain. Unsaved entries will be discarded.'
+                      : '이미 저장한 약은 유지됩니다. 저장하지 않은 입력은 사라집니다.')
+                : english
                 ? 'You will return to the home screen. Unsaved results will be lost, and you will need to take or select the photo again.'
                 : '메인 화면으로 이동합니다. 저장하지 않은 결과는 사라지며 사진을 다시 촬영하거나 선택해야 합니다.',
           ),
@@ -758,27 +811,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               // Parameters:
               // - None.
               // Returns: The value of `const CheckScheduleUI(showBackButton: false)`.
-              () => const CheckScheduleUI(showBackButton: false),
+              () => _buildSchedule(viewModel),
             ),
             _buildDestination(
               MedBuddyDestination.medicationHistory,
               // Function Name: _buildApplicationShell._buildDestination callback
-              // Description: Preserves the signed-in user's history state across tab changes; activation refreshes its data.
+              // Description: Follows the home source while preserving valid history state across tab changes.
               // Parameters:
               // - None.
               // Returns: The medication history screen.
-              () => MedicationHistoryUI(
-                key: ValueKey(viewModel.patientHash),
-                patientHash: viewModel.patientHash,
-                currentUserHash: viewModel.patientHash,
-                isEnglish: viewModel.userSetting.isEnglish,
-                showBackButton: false,
-                isActive:
-                    _selectedDestination ==
-                    MedBuddyDestination.medicationHistory,
-                recordChanges: viewModel.savedDoseRecords,
-                onChanged: viewModel.refreshMedicationSchedule,
-              ),
+              () => _buildMedicationHistory(viewModel),
             ),
             if (showChat)
               _buildDestination(
@@ -866,6 +908,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // Returns: None; chat with a confirmed empty link list is refused and visited screens retain their state while refreshing relevant data.
   void _selectDestination(MedBuddyDestination destination) {
     if (destination == MedBuddyDestination.home) unawaited(_refreshChatList());
+    if ((destination == MedBuddyDestination.medicationHistory ||
+            destination == MedBuddyDestination.schedule) &&
+        _homeScheduleSource == 'patients') {
+      unawaited(_refreshChatList());
+    }
     if (destination == MedBuddyDestination.chat && !_showChatDestination) {
       return;
     }
@@ -873,6 +920,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       unawaited(_chatList?.refresh(includeMessages: true));
     }
     if (destination == MedBuddyDestination.schedule &&
+        _homeScheduleSource != 'patients' &&
         _visitedDestinations.contains(destination)) {
       unawaited(
         context.read<MedBuddyViewModel>().refreshMedicationSchedule(
@@ -892,6 +940,311 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _selectedDestination = destination;
       _visitedDestinations.add(destination);
     });
+  }
+
+  // Role: Discards the retained history and rejects its late responses.
+  // Parameters: none. Returns: none; the next build creates a new controller.
+  void _clearHistory() {
+    _historyControl?.dispose();
+    _historyControl = null;
+    _historyScope = null;
+  }
+
+  // Role: Checks that a history request still belongs to the retained tab.
+  // Parameters: viewModel, scope captured at creation. Returns: current access.
+  bool _historyScopeIsCurrent(
+    MedBuddyViewModel viewModel,
+    _PatientScope scope,
+  ) => _historyScope == scope && _patientScopeIsCurrent(viewModel, scope);
+
+  // Role: Rejects account, source, selection and relationship changes.
+  // Parameters: viewModel, scope captured at creation. Returns: current access.
+  bool _patientScopeIsCurrent(
+    MedBuddyViewModel viewModel,
+    _PatientScope scope,
+  ) =>
+      mounted &&
+      scope.generation == _patientGeneration &&
+      _sameSession(viewModel, scope.owner) &&
+      viewModel.userSetting.homeScheduleSource == scope.source &&
+      (scope.source != 'patients' ||
+          (_chatList?.userHash == scope.owner &&
+              _chatList?.hasResolvedLinks == true &&
+              _chatList?.hasError == false &&
+              (_caregiverHome?.links.any(
+                    (link) =>
+                        link.linkId == scope.linkId &&
+                        link.patientHash == scope.patient,
+                  ) ??
+                  false)));
+
+  // Role: Retains selection by relationship and patient, falling back to the first valid link.
+  // Parameters: none. Returns: selected link, or null without verified patient access.
+  PatientCaregiverLink? _syncSelectedPatient() {
+    final linksKnown =
+        _chatList?.hasResolvedLinks == true && _chatList?.hasError == false;
+    // A failed or pending link read shows no patient but keeps the choice: the next
+    // successful read restores it instead of falling back to the first link.
+    // Access is still refused meanwhile by _patientScopeIsCurrent.
+    if (_homeScheduleSource == 'patients' && !linksKnown) return null;
+    final links = _homeScheduleSource == 'patients'
+        ? _caregiverHome?.links ?? const <PatientCaregiverLink>[]
+        : const <PatientCaregiverLink>[];
+    final selected =
+        links
+            .where(
+              (link) => (link.linkId, link.patientHash) == _selectedPatient,
+            )
+            .firstOrNull ??
+        links.firstOrNull;
+    final next = selected == null
+        ? null
+        : (selected.linkId, selected.patientHash);
+    if (next != _selectedPatient) {
+      _selectedPatient = next;
+      _patientGeneration++;
+    }
+    return selected;
+  }
+
+  // Role: Shares a patient choice across Home, Schedule and History.
+  // Parameters: link from the current list. Returns: none; invalid links are ignored.
+  void _selectPatient(PatientCaregiverLink link) {
+    if (!_caregiverHome!.links.any(
+      (current) =>
+          current.linkId == link.linkId &&
+          current.patientHash == link.patientHash,
+    )) {
+      return;
+    }
+    setState(() {
+      _clearHistory();
+      _selectedPatient = (link.linkId, link.patientHash);
+      _patientGeneration++;
+    });
+  }
+
+  // Role: Captures the owner, source, selected relationship and invalidation generation.
+  // Parameters: model, optional link (null for self). Returns: immutable scope.
+  _PatientScope _patientScope(
+    MedBuddyViewModel model,
+    PatientCaregiverLink? link,
+  ) => (
+    owner: model.patientHash,
+    source: model.userSetting.homeScheduleSource,
+    linkId: link?.linkId,
+    patient: link?.patientHash ?? model.patientHash,
+    generation: _patientGeneration,
+  );
+
+  // Role: Creates an owned history reader with navigation-level access validation.
+  // Parameters: scope, isScopeCurrent access guard. Returns: new controller.
+  MedicationHistoryControl _newHistoryControl(
+    _PatientScope scope,
+    bool Function() isScopeCurrent,
+  ) =>
+      widget.historyFactory?.call(
+        patientHash: scope.patient,
+        readOnly: scope.source == 'patients',
+        isScopeCurrent: isScopeCurrent,
+      ) ??
+      MedicationHistoryControl(
+        patientHash: scope.patient,
+        readOnly: scope.source == 'patients',
+        isScopeCurrent: isScopeCurrent,
+      );
+
+  // Role: Builds self schedule or the selected patient's read-only schedule.
+  // Parameters: viewModel. Returns: scoped schedule or link status, never self fallback.
+  Widget _buildSchedule(MedBuddyViewModel viewModel) {
+    if (viewModel.userSetting.homeScheduleSource != 'patients') {
+      return CheckScheduleUI(
+        key: ValueKey((viewModel, viewModel.patientHash)),
+        showBackButton: false,
+      );
+    }
+    final selected = _syncSelectedPatient();
+    if (selected == null) return _patientLinkStatus(viewModel, schedule: true);
+    final scope = _patientScope(viewModel, selected);
+    // Role: Validates this schedule's captured access. Parameters: none. Returns: current scope.
+    bool isScopeCurrent() => _patientScopeIsCurrent(viewModel, scope);
+    return CheckCaregiverMedicationUI(
+      key: ValueKey((viewModel, scope)),
+      caregiverHash: scope.owner,
+      patientHash: scope.patient,
+      patientLabel: _chatList!.peerName(
+        selected,
+        isEnglish: viewModel.userSetting.isEnglish,
+      ),
+      userSetting: viewModel.userSetting,
+      showBackButton: false,
+      isActive: _selectedDestination == MedBuddyDestination.schedule,
+      isScopeCurrent: isScopeCurrent,
+      controlFactory: widget.caregiverMedicationFactory == null
+          ? null
+          : () => widget.caregiverMedicationFactory!(scope.owner),
+      historyControlFactory: () => _newHistoryControl(scope, isScopeCurrent),
+      onHistoryRequested: () =>
+          _selectDestination(MedBuddyDestination.medicationHistory),
+      patientSelector: _patientSelector(
+        _caregiverHome!.links,
+        selected,
+        _chatList!,
+        viewModel.userSetting.isEnglish,
+        schedule: true,
+      ),
+    );
+  }
+
+  // Role: Retains history only while its owner, source and patient remain valid.
+  // Parameters: viewModel. Returns: editable self history, read-only patient history or link status.
+  Widget _buildMedicationHistory(MedBuddyViewModel viewModel) {
+    final source = viewModel.userSetting.homeScheduleSource;
+    final readOnly = source == 'patients';
+    final chat = _chatList;
+    final english = viewModel.userSetting.isEnglish;
+    final links = _caregiverHome?.links ?? const <PatientCaregiverLink>[];
+    final selected = readOnly ? _syncSelectedPatient() : null;
+    if (readOnly && selected == null) {
+      _clearHistory();
+      return _patientLinkStatus(viewModel);
+    }
+    final scope = _patientScope(viewModel, selected);
+    if (_historyScope != scope || _historyControl?.sessionInvalidated == true) {
+      _clearHistory();
+      _historyScope = scope;
+      // Role: Validates this retained history's access. Parameters: none. Returns: current scope.
+      bool isScopeCurrent() => _historyScopeIsCurrent(viewModel, scope);
+      _historyControl = _newHistoryControl(scope, isScopeCurrent);
+    }
+    return MedicationHistoryUI(
+      key: ObjectKey(_historyControl),
+      control: _historyControl,
+      patientHash: scope.patient,
+      currentUserHash: scope.owner,
+      readOnly: readOnly,
+      isEnglish: english,
+      showBackButton: false,
+      isActive: _selectedDestination == MedBuddyDestination.medicationHistory,
+      recordChanges: readOnly ? null : viewModel.savedDoseRecords,
+      onChanged: readOnly ? null : viewModel.refreshMedicationSchedule,
+      patientSelector: selected == null
+          ? null
+          : _patientSelector(links, selected, chat!, english),
+    );
+  }
+
+  // Role: Builds the same previous/next patient navigation for both tabs.
+  // Parameters: links, selected link, chat labels, english, schedule key prefix.
+  // Returns: patient label and bounded navigation buttons.
+  Widget _patientSelector(
+    List<PatientCaregiverLink> links,
+    PatientCaregiverLink selected,
+    ManageChatList chat,
+    bool english, {
+    bool schedule = false,
+  }) {
+    final index = links.indexOf(selected);
+    final prefix = schedule ? 'schedule' : 'history';
+    final foreground = schedule ? MedBuddyColors.textStrong : Colors.white;
+    final arrowColor = schedule ? MedBuddyColors.primaryDark : Colors.white;
+
+    return Row(
+      key: Key('$prefix-patient-selector'),
+      children: [
+        if (links.length > 1)
+          IconButton(
+            key: Key('$prefix-patient-previous'),
+            tooltip: english ? 'Previous patient' : '이전 환자',
+            onPressed: index > 0
+                ? () => _selectPatient(links[index - 1])
+                : null,
+            color: arrowColor,
+            disabledColor: schedule ? MedBuddyColors.outline : Colors.white38,
+            icon: const Icon(Icons.chevron_left),
+          ),
+        Expanded(
+          child: KeepWordsText(
+            chat.peerName(selected, isEnglish: english),
+            key: Key('$prefix-patient-name'),
+            textAlign: TextAlign.center,
+            style: MedBuddyPageHeader.titleStyle.copyWith(
+              color: foreground,
+              fontSize: 17,
+            ),
+          ),
+        ),
+        if (links.length > 1)
+          IconButton(
+            key: Key('$prefix-patient-next'),
+            tooltip: english ? 'Next patient' : '다음 환자',
+            onPressed: index < links.length - 1
+                ? () => _selectPatient(links[index + 1])
+                : null,
+            color: arrowColor,
+            disabledColor: schedule ? MedBuddyColors.outline : Colors.white38,
+            icon: const Icon(Icons.chevron_right),
+          ),
+      ],
+    );
+  }
+
+  // Role: Distinguishes pending, failed and empty patient access without reading self data.
+  // Parameters: viewModel, schedule title selector. Returns: status with retry or linking action.
+  Widget _patientLinkStatus(
+    MedBuddyViewModel viewModel, {
+    bool schedule = false,
+  }) {
+    final english = viewModel.userSetting.isEnglish;
+    final failed = _chatList?.hasError == true;
+    final loading = !failed && _chatList?.hasResolvedLinks != true;
+    return Scaffold(
+      backgroundColor: MedBuddyColors.pageBackground,
+      body: ListView(
+        children: [
+          MedBuddyPageHeader(
+            title: schedule
+                ? (english ? 'Medication schedule' : '복약 일정')
+                : (english ? 'Medication history' : '복약 기록'),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                if (loading) const CircularProgressIndicator(),
+                KeepWordsText(
+                  loading
+                      ? (english
+                            ? 'Loading linked patients...'
+                            : '연동 환자를 불러오는 중입니다.')
+                      : failed
+                      ? (english
+                            ? 'Could not load linked patients.'
+                            : '연동 환자를 불러오지 못했습니다.')
+                      : (english ? 'No linked patients.' : '연동된 환자가 없습니다.'),
+                  key: Key(
+                    schedule ? 'schedule-link-status' : 'history-link-status',
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                if (!loading)
+                  TextButton.icon(
+                    onPressed: failed
+                        ? _refreshChatList
+                        : () => _openPatientCaregiverLink(context, viewModel),
+                    icon: Icon(failed ? Icons.refresh : Icons.link),
+                    label: KeepWordsText(
+                      failed
+                          ? (english ? 'Retry' : '다시 시도')
+                          : (english ? 'Link a patient' : '환자 연동'),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // Function Name: _buildHomeInput
@@ -946,12 +1299,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onPillIdentificationRequested: (mode) =>
           openPillIdentification(context, viewModel, mode),
       // 함수이름: _buildHomeInput.onManualMedicationRequested callback
-      // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에서 캡처된 작업 `_openManualMedicationEntry(context, viewModel)`을 실행한다.
+      // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에서 캡처된 작업 `openManualMedicationEntry(context, viewModel)`을 실행한다.
       // 매개변수:
       // - 없음.
       // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
       onManualMedicationRequested: () =>
-          _openManualMedicationEntry(context, viewModel),
+          unawaited(openManualMedicationEntry(context, viewModel)),
       // Function Name: _buildHomeInput.onTodayScheduleRequested callback
       // Description: Refreshes revisited Schedule or Pillbox destinations and records a newly selected destination as visited.
       // Parameters:
@@ -1110,7 +1463,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     switch (feature) {
       case AppFeature.manualMedication:
-        _openManualMedicationEntry(context, viewModel);
+        unawaited(openManualMedicationEntry(context, viewModel));
       case AppFeature.medicationSearch:
         await Navigator.push<void>(
           searchContext,
@@ -1132,6 +1485,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       case AppFeature.medicationCabinet:
         await _openMedicationCabinet();
       case AppFeature.medicationHistory:
+        _selectDestination(MedBuddyDestination.medicationHistory);
+        if (searchContext.mounted) Navigator.pop(searchContext);
       case AppFeature.historySharing:
         await Navigator.push<void>(
           context,
@@ -1140,7 +1495,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               patientHash: owner,
               currentUserHash: owner,
               isEnglish: viewModel.userSetting.isEnglish,
-              initiallyShowExport: feature == AppFeature.historySharing,
+              initiallyShowExport: true,
               onChanged: () async {
                 if (!mounted || !_sameSession(viewModel, owner)) return;
                 await viewModel.refreshMedicationSchedule();
@@ -1293,6 +1648,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           );
     if (!mounted || selected == null || !_sameSession(viewModel, owner)) return;
     await _openCaregiverPatient(viewModel, selected);
+    if (origin?.mounted == true &&
+        viewModel.userSetting.homeScheduleSource == 'patients') {
+      Navigator.pop(origin!);
+    }
   }
 
   // Function Name: _buildCaregiverSummary
@@ -1312,6 +1671,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       control: control,
       isEnglish: english,
       patientLabel: (link) => chat.peerName(link, isEnglish: english),
+      selectedPatient: _syncSelectedPatient(),
+      onPatientSelected: _selectPatient,
       onPatientRequested: (link) => _openCaregiverPatient(viewModel, link),
       onLinkRequested: () => _openPatientCaregiverLink(context, viewModel),
       isLoadingLinks: chat.isLoading,
@@ -1339,6 +1700,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               current.caregiverHash == viewModel.patientHash &&
               current.linkStatus,
         )) {
+      return;
+    }
+    if (viewModel.userSetting.homeScheduleSource == 'patients') {
+      _selectPatient(link);
+      _selectDestination(MedBuddyDestination.schedule);
       return;
     }
     await Navigator.push(
@@ -1484,33 +1850,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     return success;
-  }
-
-  // Function Name: _openManualMedicationEntry
-  // Description: Opens manual medication entry with deferred per-save refresh and one final batch refresh.
-  // Parameters: context: Navigator location; viewModel: Settings and save-action owner.
-  // Returns: None; does not wait for route closure.
-  void _openManualMedicationEntry(
-    BuildContext context,
-    MedBuddyViewModel viewModel,
-  ) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        // 함수이름: _openManualMedicationEntry.builder callback
-        // 함수역할: 화면을 만들 때의 사용자 설정으로 약 직접 입력 화면을 구성한다.
-        // 매개변수:
-        // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-        // 반환값: 약 직접 입력 화면 위젯.
-        builder: (context) => ManualMedicationEntryUI(
-          userSetting: viewModel.userSetting,
-          // 여러 약을 저장해도 목록·일정·알림은 마지막에 한 번만 갱신한다.
-          onSaveRequested: (entry) =>
-              viewModel.saveManualMedication(entry, refreshAfterSave: false),
-          onSavesFinished: viewModel.refreshAfterMedicationSaves,
-        ),
-      ),
-    );
   }
 
   // 함수이름: _openPatientCaregiverLink

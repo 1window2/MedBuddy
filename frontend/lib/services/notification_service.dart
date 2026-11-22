@@ -676,15 +676,15 @@ class NotificationService {
   }
 
   // 함수이름: _handleNotificationResponse
-  // 함수역할: 복약 확인 동작은 백그라운드 처리기로 보내고 나머지는 공통 알림 선택 처리기로 전달한다.
+  // 함수역할: 앱 화면으로 들어온 알림 선택을 공통 알림 선택 처리기로 전달한다.
   // 매개변수: response (NotificationResponse): 플랫폼이 전달한 페이로드·동작·알림 ID.
-  // 반환값: void; 복약 확인 작업은 기다리지 않고 시작한다.
+  // 반환값: void.
   static void _handleNotificationResponse(NotificationResponse response) {
     if (_isRepeatedActionCopy(response)) return;
-    if (response.actionId == SlotCheckNotificationContext.actionId) {
-      unawaited(medBuddySlotCheckNotificationBackground(response));
-      return;
-    }
+    // 보호자 확인 요청의 '복용 완료' 버튼은 화면을 열지 않는 동작이라 비공개 브로드캐스트
+    // 수신기와 백그라운드 처리기로만 온다. 이 경로로 같은 동작 ID가 오면 다른 앱이 공개
+    // MainActivity에 보낸 인텐트이므로 기록하지 않는다.
+    if (response.actionId == SlotCheckNotificationContext.actionId) return;
     handleNotificationPayload(
       response.payload,
       actionId: response.actionId,
@@ -1732,7 +1732,9 @@ extension LinkedChatNotificationCleanup on NotificationService {
     if (defaultTargetPlatform != TargetPlatform.android) return;
     try {
       for (final active in await _plugin.getActiveNotifications()) {
-        final match = RegExp(r'^chat:(\d+):(\d+)$').firstMatch(active.tag ?? '');
+        final match = RegExp(
+          r'^chat:(\d+):(\d+)$',
+        ).firstMatch(active.tag ?? '');
         if (match == null ||
             active.channelId != NotificationService._chatChannelId ||
             int.parse(match.group(1)!) != linkId ||
@@ -1863,9 +1865,7 @@ extension NotificationReadinessDiagnostics on NotificationService {
     await _plugin.show(
       id: -17023,
       title: english ? 'MedBuddy test notification' : 'MedBuddy 테스트 알림',
-      body: english
-          ? 'Display check only. No medication record is changed.'
-          : '표시 확인용입니다. 복용 기록은 변경되지 않습니다.',
+      body: english ? 'Display check only.' : '표시 확인용입니다.',
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           NotificationService._medicationChannelId,

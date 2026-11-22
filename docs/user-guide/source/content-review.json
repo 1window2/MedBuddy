@@ -1,4 +1,6 @@
 {
+  "historical_record": true,
+  "superseded_by": "current-content-review.json",
   "reviewed_on": "2026-11-07",
   "sections": 84,
   "steps": 327,

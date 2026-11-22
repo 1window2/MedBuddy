@@ -1,6 +1,7 @@
 # MedBuddy Release TODO
 
-The 1.0.0 line runs on `beta/v1.0.0` from `v0.2.5-beta` (`main` at `5b156c9`). This
+1.0.0 was released on 2026-11-13 and 1.0.1 on 2026-11-22 (`v1.0.1`), see the
+[1.0.1 notes](releases/v1.0.1.md). This
 file lists open items only, sorted by priority. Finished items were removed on
 2026-11-12; they remain in the git history, the release notes and the
 [decision log](MedBuddy%20-%20Decision%20Log.md). Changes are listed in the
@@ -17,9 +18,8 @@ file lists open items only, sorted by priority. Finished items were removed on
 ## P0: blocking the 1.0.0 release
 
 On 2026-11-13 the owner decided that P0 items do not block the graduation exhibition
-demo (2026-11-26 to 27): the demo runs on the GitHub APK without App Check, a few
-demo searches stay far below the hospital API quota, and nothing is distributed to
-the public. They still block a public 1.0.0 release.
+demo (2026-11-26 to 27): the demo runs on the GitHub APK without App Check, and
+nothing is distributed to the public. They still block a public 1.0.0 release.
 
 - [ ] Google Play distribution with App Check (Play Integrity). The owner chose both
       Google Play and the GitHub APK on 2026-11-07, so the criteria below block 1.0.0;
@@ -58,15 +58,6 @@ the public. They still block a public 1.0.0 release.
       Integrity recognises only Play-distributed builds).
 - [ ] A final privacy policy and consent for health data; the in-app data-use guide
       does not replace them (Beta Scope). Owner and legal.
-- [ ] A larger hospital API quota: an operating account on the public data portal
-      (requested by registering a use case). The development account (valid to
-      2028-10-01, 1,000 calls per operation a day) leaves a server budget of 800 calls
-      a day per operation shared by all users, and one specialty search can cost up
-      to 41 requests. One free account can spend the detail budget in about 67
-      searches inside its own 120-search quota, after which hospital search answers
-      503 for everyone until midnight. If the quota is not raised, the owner decides
-      whether to charge detail calls per account, which would also limit ordinary
-      users to a few searches a day.
 
 ## P1: before 1.0.0
 
@@ -106,22 +97,36 @@ Device checks on the release build. The last pass (2026-11-13) is summarised in 
       `MEDBUDDY_APP_DB_USER`/`MEDBUDDY_APP_DB_PASSWORD`, see Production Deployment);
       production needs the owner to add the two settings.
 - [ ] Keep at least one database dump off the production host.
-- [ ] Read the data.go.kr daily quotas of the production key for the MFDS eDrug,
-      drug-approval and pill-image operations and the NEMC pharmacy location
-      operation. MFDS lookups have no shared daily budget: one `/identify` can make up
-      to 16 provider calls and only per-account and per-IP limits apply. Pharmacy
-      lookups stop at 800 a day; raise `PHARMACY_API_DAILY_REQUEST_BUDGET` if the
-      quota is higher.
+- [ ] MFDS eDrug (e약은요) and drug-approval operating accounts were requested on
+      2026-11-22 and are under review (development accounts: 10,000 calls a day,
+      still working meanwhile). MFDS lookups have no shared daily budget: one
+      `/identify` can make up to 16 provider calls and only per-account and per-IP
+      limits apply. Check the approved quotas and update this item once both are
+      approved.
 - [ ] Rate-limit store (128 MB, noeviction; a full store makes the limiter answer 503
       to everyone): read `INFO memory` and `DBSIZE` on rate-limit-redis, add an alert
       as `used_memory` nears `maxmemory`, and check whether Cloudflare forwards full
       IPv6 client addresses (quotas count an IPv6 address as its /64).
 - [ ] Signed workflow: whether the deployment review shows the dispatch inputs, which
       branches the `beta-android` policy still allows (remove finished `beta/v0.2.x`
-      entries), and branch protection for `beta/v1.0.0`.
+      entries), and branch protection for `v1.0.1`.
 - [ ] Push tokens of a user disabled by the operator keep receiving pushes until the
       account is deleted, and the account owner has no "sign out other devices"
       action.
+- [ ] Owner check left by the 2026-11-22 security audit, in a separate non-production
+      Firebase project set up like production (never the production project): whether
+      an unverified email/password credential can be linked to an anonymous user, and
+      whether a later password reset or Google sign-in for that address lands on the
+      same uid. If it does, a caregiver link created while the uid was anonymous
+      survives the takeover; the backend keys accounts on the uid only.
+- [ ] Hardening leads from the same audit (no boundary violation found): push device
+      rows do not store the issue time of the registering session, so a registration
+      in the same second as a revocation survives the prune (needs a migration);
+      an open chat stream is re-checked only when the client pings (a modified,
+      silent client keeps receiving for up to about two and a half minutes after a
+      revocation); hospital and pharmacy shares in chat charge only the per-account
+      daily counter, not the per-address one; the notification inbox keeps caregiver
+      alert text in app-private plaintext preferences for 90 days after sign-out.
 
 ## P3: owner decisions and known limits
 
@@ -151,6 +156,10 @@ Device checks on the release build. The last pass (2026-11-13) is summarised in 
       check on the production catalogue and a decision on review flagging. On the
       local catalogue window it turned correct automatic matches into review lists
       without the true product, so it must not be applied as is.
+- [ ] Since 1.0.1, manual entry and pill identification always hand their results to the
+      shared result screen, so their own direct-save paths (`onSaveRequested`,
+      `_saveAll`, the pill batch save, `saveIdentifiedPills`) run only in tests. Remove
+      them with their tests after the release (code review 2026-11-22).
 - [ ] Rate-limit values (including 120 per minute for per-item deletes), retention of
       dose-sync and tombstone rows, and HTTP 403 wording and retry behaviour before App
       Check is enabled.

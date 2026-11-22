@@ -66,9 +66,8 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
     final canRetryAnalysis = onAnalysisRetryRequested != null;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: MedBuddyColors.pageBackground,
       body: SafeArea(
-        top: false,
         child: Container(
           width: double.infinity,
           color: MedBuddyColors.pageBackground,

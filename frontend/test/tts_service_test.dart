@@ -8,7 +8,6 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/device_speech_engine.dart';
 import 'package:medbuddy_frontend/services/tts_service.dart';
 
-
 // 함수이름: main
 // 함수역할:
 // - TTS 이전 발화 중지, 오디오 포커스, 읽기 속도와 엔진 시작 실패 검증 사례와 테스트 대역을 등록한다.
@@ -357,7 +356,11 @@ class _FakeSpeechEngine implements DeviceSpeechEngine {
   // 반환값:
   // - 테스트가 지정한 엔진 발화 결과 값.
   @override
-  Future<dynamic> speak(String text, {bool focus = false}) async {
+  Future<dynamic> speak(
+    String text, {
+    bool focus = false,
+    void Function(int, int)? onProgress,
+  }) async {
     spokenText = text;
     requestedAudioFocus = focus;
     if (holdSpeak) {

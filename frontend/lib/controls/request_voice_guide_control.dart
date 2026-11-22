@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 
 import '../entities/medication_detail_entity.dart';
 import '../entities/user_setting_entity.dart';
+import '../entities/voice_reading_position.dart';
 import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
@@ -27,8 +28,6 @@ typedef VoiceGuideSpeaker =
       UserSetting userSetting, {
       void Function()? onComplete,
     });
-
-
 
 // Class Name: RequestVoiceGuide
 // Role: Resolve medication voice guidance and delegate playback.
@@ -75,6 +74,7 @@ class RequestVoiceGuide {
     required MedicationDetail medicationDetail,
     required UserSetting userSetting,
     void Function()? onComplete,
+    void Function(VoicePosition)? onPosition,
   }) async {
     final generation = ++_requestGeneration;
     final voiceGuideText = await _getVoiceGuideText(
@@ -86,10 +86,24 @@ class RequestVoiceGuide {
       // 문구를 기다리는 사이 중지했거나 화면을 떠났으면 뒤늦게 읽기 시작하지 않는다.
       return normalizedVoiceGuideText;
     }
+    final positions = onPosition == null
+        ? null
+        : VoiceReadingMap(
+            normalizedVoiceGuideText,
+            medicationDetail,
+            userSetting.language,
+          );
     await requestTTS(
       voiceGuideText: normalizedVoiceGuideText,
       userSetting: userSetting,
       onComplete: onComplete,
+      onProgress: positions == null
+          ? null
+          : (start, end) {
+              if (generation == _requestGeneration) {
+                onPosition!(positions.at(start, end));
+              }
+            },
     );
     return normalizedVoiceGuideText;
   }
@@ -106,16 +120,26 @@ class RequestVoiceGuide {
     required String voiceGuideText,
     required UserSetting userSetting,
     void Function()? onComplete,
+    void Function(int start, int end)? onProgress,
   }) async {
     final normalizedVoiceGuideText = voiceGuideText.trim();
     if (normalizedVoiceGuideText.isEmpty) {
       onComplete?.call();
       throw StateError('Voice guide text is empty.');
     }
-    await (_speaker ?? _ttsService!.speak)(
+    if (_speaker case final speaker?) {
+      await speaker(
+        normalizedVoiceGuideText,
+        userSetting,
+        onComplete: onComplete,
+      );
+      return;
+    }
+    await _ttsService!.speak(
       normalizedVoiceGuideText,
       userSetting,
       onComplete: onComplete,
+      onProgress: onProgress,
     );
   }
 

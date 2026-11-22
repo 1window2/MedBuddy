@@ -449,6 +449,15 @@ async def get_registered_principal(
         daily_quota = resolve_daily_quota(request.method, route_path)
         if daily_quota is not None:
             daily_rule, daily_scope = daily_quota
+            # 계정 한도를 먼저 센다. 자기 한도를 다 쓴 계정의 거절된 요청이 같은 주소를 쓰는
+            # 다른 사용자의 주소 한도까지 써 버리지 않게 한다.
+            await enforce_user_quota(
+                request,
+                user_hash=principal.user_hash,
+                request_scope=daily_scope,
+                rule=daily_rule,
+                exceeded_detail=DAILY_QUOTA_EXCEEDED_DETAIL,
+            )
             # 계정을 여러 개 만들어 계정별 하루 한도를 늘리는 것을 주소 단위로도 막는다. 인증된
             # 요청만 세므로 인증되지 않은 주소는 하루짜리 카운터를 남기지 않는다.
             await enforce_address_quota(
@@ -458,13 +467,6 @@ async def get_registered_principal(
                     daily_rule.max_requests * IP_LIMIT_MULTIPLIER,
                     daily_rule.window_seconds,
                 ),
-                exceeded_detail=DAILY_QUOTA_EXCEEDED_DETAIL,
-            )
-            await enforce_user_quota(
-                request,
-                user_hash=principal.user_hash,
-                request_scope=daily_scope,
-                rule=daily_rule,
                 exceeded_detail=DAILY_QUOTA_EXCEEDED_DETAIL,
             )
     # Step 1: Hold SQLite ownership through registration and endpoint teardown, or queue a

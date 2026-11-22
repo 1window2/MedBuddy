@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -94,6 +95,50 @@ class LinkPatientCaregiver {
         throw StateError('Server response did not include a patient code.');
       },
     );
+  }
+
+  Future<PatientLinkCodeStatus> requestPatientCodeStatus(
+    String patientCode, {
+    Future<void>? abortTrigger,
+  }) async {
+    final abort = Completer<void>();
+    final code = patientCode.trim().toUpperCase();
+    try {
+      final request = http.AbortableRequest(
+        'GET',
+        Uri.parse('$baseUrl/link/code/status').replace(
+          queryParameters: {'user_hash': userHash, 'patient_code': code},
+        ),
+        abortTrigger: abortTrigger == null
+            ? abort.future
+            : Future.any([abort.future, abortTrigger]),
+      );
+      final response = await _client
+          .send(request)
+          .then(http.Response.fromStream)
+          .timeout(const Duration(seconds: 15));
+      final body = ApiResponseParser.requireOkBody(
+        'Patient code status failed',
+        response,
+      );
+      final data = ApiResponseParser.decodeMap(body)['data'];
+      if (data is! Map) {
+        throw const FormatException('Patient code status is missing.');
+      }
+      final status = PatientLinkCodeStatus.fromJson(
+        Map<String, dynamic>.from(data),
+      );
+      if (status.patientCode.code != code ||
+          status.patientCode.patientHash != userHash) {
+        throw const FormatException(
+          'Patient code status scope does not match.',
+        );
+      }
+      return status;
+    } finally {
+      // Abort timed-out transports too, not only the Future waiting for them.
+      abort.complete();
+    }
   }
 
   // Function Name: requestPatientCaregiverLink

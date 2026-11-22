@@ -1,0 +1,262 @@
+{
+  "reviewed_on": "2026-11-16",
+  "app_version": "v1.0.1 development branch",
+  "baseline": "bbbdef53",
+  "code_reference": "8fd45298",
+  "source_snapshot_hashes_verified": 240,
+  "chapters": 10,
+  "subsections": 92,
+  "steps": 342,
+  "previous_steps_preserved_once": 328,
+  "existing_step_order_preserved": true,
+  "added_step_ids": [
+    "UG-20261116-2.7:14",
+    "UG-20261116-2.7:15",
+    "UG-20261116-2.9:5",
+    "UG-20261116-2.11:7",
+    "UG-20261116-2.12:9",
+    "UG-20261116-3.4:3",
+    "UG-20261116-5.2:4",
+    "UG-20261116-6.1:4",
+    "UG-20261116-6.4:6",
+    "UG-20261116-6.9:3",
+    "UG-20261116-6.9:4",
+    "UG-20261116-6.9:5",
+    "UG-20261116-6.9:6",
+    "UG-20261116-6.9:7"
+  ],
+  "refreshed_existing_step_ids": [
+    "ASM-P019:9",
+    "DEV29-2.2:cards",
+    "ASM-P016:2",
+    "ASM-P017:4",
+    "V023-2.2:dose-days",
+    "ASM-P019:8",
+    "ASM-P020:10",
+    "ASM-P022:1",
+    "ASM-P022:2",
+    "CURRENT-2.3:open-candidates",
+    "CURRENT-2.3:compare-candidates",
+    "CURRENT-2.3:confirm-candidate",
+    "CURRENT-2.3:analysis-result",
+    "ASM-P023:3",
+    "ASM-P024:1",
+    "DEV29-2.4:radar-open",
+    "ASM-P025:1",
+    "ASM-P025:2",
+    "ASM-P026:3",
+    "ASM-P027:5",
+    "DEV29-2.5:saved",
+    "ASM-P028:1",
+    "ASM-P029:4",
+    "ASM-P031:8",
+    "CARE17-2.11:2",
+    "ASM-P033:2",
+    "ASM-P034:3",
+    "ASM-P034:4",
+    "ASM-P035:1",
+    "ASM-P035:2",
+    "ASM-P036:3",
+    "ASM-P036:4",
+    "ASM-P037:1",
+    "ASM-P037:2",
+    "ASM-P038:3",
+    "ASM-P038:4",
+    "ASM-P039:5",
+    "ASM-P039:6",
+    "ASM-P040:1",
+    "ASM-P040:2",
+    "ASM-P041:3",
+    "V023-2.10:dose-days",
+    "ASM-P041:4",
+    "ASM-P042:5",
+    "ASM-P042:6",
+    "CURRENT-2.10:saved-demo",
+    "FINAL17-3.7:readonly",
+    "ASM-P062:1",
+    "ASM-P062:2",
+    "ASM-P066:2",
+    "ASM-P069:5",
+    "ASM-P069:6",
+    "ASM-P070:7",
+    "ASM-P083:4",
+    "ASM-P113:1",
+    "ASM-P113:2",
+    "ASM-P114:3",
+    "ASM-P115:4",
+    "ASM-P115:5",
+    "ASM-P116:6",
+    "ASM-P116:7",
+    "ASM-P117:8",
+    "ASM-P119:1",
+    "ASM-P119:2",
+    "ASM-P120:3",
+    "ASM-P121:4",
+    "ASM-P176:1",
+    "ASM-P177:1",
+    "ASM-P177:2",
+    "ASM-P179:2"
+  ],
+  "changed_existing_copy_steps": [
+    "2.3:4",
+    "2.3:9",
+    "2.6:1",
+    "2.6:3",
+    "2.7:1",
+    "2.7:9",
+    "2.7:10",
+    "2.7:13",
+    "2.8:2",
+    "2.9:1",
+    "2.9:2",
+    "2.11:1",
+    "2.11:2",
+    "2.11:4",
+    "2.12:1",
+    "2.12:2",
+    "2.12:6",
+    "2.12:7",
+    "2.12:8",
+    "5.2:3",
+    "6.1:1",
+    "6.4:1",
+    "6.4:2",
+    "6.4:3",
+    "6.9:1",
+    "6.9:2",
+    "7.3:1",
+    "7.11:1",
+    "7.11:2",
+    "7.11:3",
+    "7.11:4",
+    "7.11:5",
+    "7.11:9",
+    "7.12:1",
+    "9.4:1",
+    "9.4:2",
+    "10.5:1"
+  ],
+  "capture_count": 50,
+  "capture_kinds": {
+    "isolated_product_widget_fixture": 44,
+    "supplied_android_capture": 6
+  },
+  "new_capture_step_mappings": 78,
+  "all_selected_captures_used": true,
+  "all_asset_manifest_hashes_verified": 254,
+  "updated_features": [
+    {
+      "feature": "Single-medication chat completion vs slot batch",
+      "sections": [
+        "6.9"
+      ],
+      "source": "frontend/lib/viewmodels/linked_chat_dose_recorder.dart"
+    },
+    {
+      "feature": "Shared linked-patient schedule/history selection and read-only/error states",
+      "sections": [
+        "5.2",
+        "6.4"
+      ],
+      "source": "frontend/lib/boundaries/medication_history_ui_boundary.dart"
+    },
+    {
+      "feature": "4x1/4x3 chooser, same resizing, compact arrows, expanded date",
+      "sections": [
+        "7.11"
+      ],
+      "source": "frontend/lib/widgets/dose_home_widget_picker.dart"
+    },
+    {
+      "feature": "Caregiver background widget refresh with network/battery limitations",
+      "sections": [
+        "7.12",
+        "10.5"
+      ],
+      "source": "frontend/lib/composition/caregiver_notification_background_service.dart"
+    },
+    {
+      "feature": "Partial pill selection, upload placeholder, five-second notice, paired photos",
+      "sections": [
+        "2.9",
+        "2.10",
+        "2.11",
+        "2.12",
+        "10.3"
+      ],
+      "source": "frontend/lib/boundaries/pill_identification_ui_boundary.dart"
+    },
+    {
+      "feature": "Horizontal candidate photos and centered image/gallery modal",
+      "sections": [
+        "2.11",
+        "2.12",
+        "3.4"
+      ],
+      "source": "frontend/lib/widgets/medication_review_image_gallery.dart"
+    },
+    {
+      "feature": "Sticky actions and unified review/result/save/completion flow",
+      "sections": [
+        "2.6",
+        "2.7",
+        "2.8",
+        "2.12"
+      ],
+      "source": "frontend/lib/boundaries/medication_registration_flow.dart"
+    },
+    {
+      "feature": "Prescription fixed header/add control (up to a quarter of the height), photo modal, borders/error surface",
+      "sections": [
+        "2.3",
+        "2.4",
+        "10.2"
+      ],
+      "source": "frontend/lib/boundaries/prescription_analysis_preview_ui_boundary.dart"
+    },
+    {
+      "feature": "Patient code auto-success for the issued code",
+      "sections": [
+        "6.1"
+      ],
+      "source": "frontend/lib/boundaries/link_patient_caregiver_ui_boundary.dart"
+    },
+    {
+      "feature": "Fast save followed by optional detail enrichment without changing schedules",
+      "sections": [
+        "2.6",
+        "2.7",
+        "2.12"
+      ],
+      "source": "backend/services/saved_medication_enrichment.py"
+    },
+    {
+      "feature": "Concise test-notification copy, source-verified without new OS capture",
+      "sections": [
+        "7.3"
+      ],
+      "source": "frontend/lib/services/notification_service.dart"
+    }
+  ],
+  "excluded_prototypes": [
+    "record-first layout",
+    "category tabs"
+  ],
+  "validation": {
+    "guide_unit_tests_passed": 3,
+    "isolated_capture_test_cases_passed": 8,
+    "full_flutter_suite_repeated": false,
+    "production_or_appdata_writes": false,
+    "desktop_focus_used": false,
+    "local_artifacts_promoted": true,
+    "external_publication_or_git_writes": false
+  },
+  "limitations": [
+    "44 images are isolated product-widget renders using synthetic data, mocked transports and Noto Sans KR.",
+    "6 Android images were supplied from November 15; native widget layouts were confirmed unchanged.",
+    "Chooser dates/times are intentional preview placeholders, not real patient data.",
+    "Legacy widget send/cancel examples reuse only unchanged states and controls, excluding old compact/date layouts.",
+    "No live AI identification, real server save/link/chat delivery, OS notification or background-delivery certification.",
+    "All pages inspected as contact sheets; only the listed pages inspected individually at full render size."
+  ]
+}

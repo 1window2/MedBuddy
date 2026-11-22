@@ -114,7 +114,7 @@ class BackgroundTaskDeps {
   }
 
   // Function Name: finishDoseRun
-  // Description: Keeps the account's 15-minute retry only while records wait or the widget still lacks today's data, and removes it otherwise.
+  // Description: Keeps the account's retry while records wait, data is stale, or an installed patient widget needs ongoing polling.
   // Parameters: owner: Account that scheduled the task; periodicRun: Whether this run is the periodic job.
   // Returns: Completion; a periodic run that removes itself may be stopped by the platform right after.
   Future<void> finishDoseRun(String owner, {required bool periodicRun}) =>
@@ -130,6 +130,16 @@ class BackgroundTaskDeps {
   // Returns: Completion of widget refresh; errors propagate to the task dispatcher.
   Future<void> refreshDoseWidget({DoseSyncService? sync, http.Client? client}) =>
       DoseHomeWidget.refreshInBackground(sync: sync, client: client);
+
+  // Refreshes only the active caregiver's installed patient widget from authorized schedules.
+  Future<void> refreshCaregiverWidget({
+    required String owner,
+    required http.Client client,
+  }) => DoseHomeWidget.refreshInBackground(
+    expectedOwner: owner,
+    patientsOnly: true,
+    client: client,
+  );
 
   // Function Name: initializeNotifications
   // Description: Initializes the local notification service before reminder or caregiver work.
@@ -259,9 +269,30 @@ Future<bool> runBackgroundTask(
     if (scopeHash.trim().isEmpty) {
       return true;
     }
+    // The caregiver widget needs the dose store; missed-dose alerts do not. A store that
+    // cannot be opened skips only the widget refresh.
+    var refreshWidget = false;
+    if (!isReminderTask) {
+      try {
+        final store = await deps.openDoseStore();
+        if (!await store.isActive(scopeHash)) return true;
+        refreshWidget = true;
+      } catch (error) {
+        developer.log(
+          '보호자 위젯 갱신을 건너뜁니다: 복약 저장소를 열지 못했습니다.',
+          name: 'CaregiverNotificationMonitorService',
+          error: error,
+        );
+      }
+    }
     client = await deps.openClient();
     if (client == null) {
       return false;
+    }
+    if (refreshWidget) {
+      // Monitoring may omit schedules for patients with alerts disabled.
+      // Widgets always use the separate, complete schedules endpoint.
+      await deps.refreshCaregiverWidget(owner: scopeHash, client: client);
     }
     await deps.initializeNotifications();
     if (isReminderTask) {

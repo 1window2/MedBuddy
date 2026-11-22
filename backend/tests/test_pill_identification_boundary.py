@@ -11,11 +11,13 @@ from collections.abc import AsyncIterator
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, NoReturn
+from unittest.mock import AsyncMock
 
 import cv2
 import httpx
 import numpy as np
 import pytest
+from google.genai import errors as genai_errors
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -917,6 +919,169 @@ async def test_visual_boundary_hides_upstream_failure_details() -> None:
         await boundary.extractVisualFeatures(b"front")
 
     assert "private upstream failure" not in str(context.value)
+
+
+@pytest.mark.parametrize(
+    "error", [TimeoutError("private timeout"), httpx.ReadTimeout("private timeout")],
+)
+@pytest.mark.anyio
+async def test_single_pill_preserves_provider_timeout_without_retry(error: Exception) -> None:
+    vision_api = AsyncMock()
+    vision_api.requestVisualFeatures.side_effect = error
+    boundary = PillVisionBoundary(
+        client=object(),
+        image_processing_boundary=_PassthroughImageProcessingBoundary(),
+        vision_api=vision_api,
+        timeout_seconds=1,
+    )
+
+    with pytest.raises(TimeoutError, match="Pill visual analysis timed out"):
+        await boundary.extractVisualFeatures(b"front", b"back")
+
+    vision_api.requestVisualFeatures.assert_awaited_once()
+
+
+@pytest.mark.parametrize("status", [429, 503])
+@pytest.mark.anyio
+async def test_single_pill_logs_provider_status_without_private_details_or_retry(
+    status: int, caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level("INFO", logger=boundary_module.__name__)
+    vision_api = AsyncMock()
+    vision_api.requestVisualFeatures.side_effect = genai_errors.APIError(
+        status, {"error": {"message": "private-provider-token", "code": status}},
+    )
+    boundary = PillVisionBoundary(
+        client=object(),
+        image_processing_boundary=_PassthroughImageProcessingBoundary(),
+        vision_api=vision_api,
+        timeout_seconds=1,
+    )
+
+    with pytest.raises(PillVisionUnavailableError):
+        await boundary.extractVisualFeatures(b"private-front", b"private-back")
+
+    vision_api.requestVisualFeatures.assert_awaited_once()
+    assert f"status={status}" in caplog.text
+    assert "stage=provider" in caplog.text
+    assert "private-" not in caplog.text
+
+
+@pytest.mark.anyio
+async def test_single_pill_queue_deadline_does_not_start_analysis(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level("INFO", logger=boundary_module.__name__)
+    vision_api = AsyncMock()
+    boundary = PillVisionBoundary(
+        client=object(),
+        image_processing_boundary=_PassthroughImageProcessingBoundary(),
+        vision_api=vision_api,
+        timeout_seconds=0.01,
+        max_concurrency=1,
+    )
+    async with boundary._analysis_semaphore:
+        with pytest.raises(TimeoutError):
+            await boundary.extractVisualFeatures(b"front")
+
+    vision_api.requestVisualFeatures.assert_not_awaited()
+    assert "stage=queue" in caplog.text
+    assert "outcome=timeout" in caplog.text
+    assert "stage=provider" not in caplog.text
+
+
+@pytest.mark.anyio
+async def test_single_pill_provider_deadline_cancels_once_and_recovers(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level("INFO", logger=boundary_module.__name__)
+    cancelled = asyncio.Event()
+
+    async def stalled_provider(**_kwargs: object) -> str:
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    vision_api = AsyncMock()
+    vision_api.requestVisualFeatures.side_effect = stalled_provider
+    boundary = PillVisionBoundary(
+        client=object(),
+        image_processing_boundary=_PassthroughImageProcessingBoundary(),
+        vision_api=vision_api,
+        timeout_seconds=0.05,
+        max_concurrency=1,
+    )
+    with pytest.raises(TimeoutError):
+        await boundary.extractVisualFeatures(b"front", b"back")
+
+    assert cancelled.is_set()
+    vision_api.requestVisualFeatures.assert_awaited_once()
+    assert "stage=provider" in caplog.text
+    assert "outcome=timeout" in caplog.text
+    vision_api.requestVisualFeatures.side_effect = None
+    vision_api.requestVisualFeatures.return_value = json.dumps(_valid_visual_payload())
+    boundary.timeout_seconds = 1
+    assert (await boundary.extractVisualFeatures(b"front")).front_imprint == "YH"
+
+
+@pytest.mark.anyio
+async def test_single_pill_success_logs_configured_budget_and_correlated_stages(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level("INFO", logger=boundary_module.__name__)
+    vision_api = _FakeVisionAPI(_valid_visual_payload())
+    boundary = PillVisionBoundary(
+        client=object(),
+        image_processing_boundary=_PassthroughImageProcessingBoundary(),
+        vision_api=vision_api,
+        timeout_seconds=120,
+    )
+
+    await boundary.extractVisualFeatures(b"private-front", b"private-back")
+
+    assert vision_api.request_count == 1
+    assert "timeout_seconds=120.000" in caplog.text
+    records = [record for record in caplog.records if "stage=%s" in record.msg]
+    assert len({record.args[0] for record in records}) == 1
+    assert [record.args[1] for record in records] == [
+        "queue", "preprocessing", "provider", "total",
+    ]
+    assert all(record.args[2] == "completed" for record in records)
+    assert all(record.args[3] >= 0 for record in records)
+    assert "private-" not in caplog.text
+
+
+@pytest.mark.anyio
+async def test_single_pill_caller_cancellation_is_not_reported_as_timeout(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level("INFO", logger=boundary_module.__name__)
+    entered = asyncio.Event()
+
+    async def stalled_provider(**_kwargs: object) -> str:
+        entered.set()
+        await asyncio.Event().wait()
+
+    vision_api = AsyncMock()
+    vision_api.requestVisualFeatures.side_effect = stalled_provider
+    boundary = PillVisionBoundary(
+        client=object(),
+        image_processing_boundary=_PassthroughImageProcessingBoundary(),
+        vision_api=vision_api,
+        timeout_seconds=1,
+        max_concurrency=1,
+    )
+    request = asyncio.create_task(boundary.extractVisualFeatures(b"front"))
+    await asyncio.wait_for(entered.wait(), timeout=1)
+    request.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await request
+
+    vision_api.requestVisualFeatures.assert_awaited_once()
+    assert "outcome=cancelled" in caplog.text
+    assert "outcome=timeout" not in caplog.text
+    assert not boundary._analysis_semaphore.locked()
 
 
 # Function Name: test_visual_boundary_applies_timeout_to_preprocessing_stage

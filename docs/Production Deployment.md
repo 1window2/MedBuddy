@@ -163,7 +163,10 @@ PHARMACY_API_TIMEOUT_SECONDS=12
 
 The hospital feature additionally needs approval for the
 [NEMC hospital lookup service](https://www.data.go.kr/data/15000736/openapi.do).
-It uses `HOSPITAL_API_KEY` when set, otherwise `PUBLIC_DATA_API_KEY`.
+It uses `HOSPITAL_API_KEY` when set, otherwise `PUBLIC_DATA_API_KEY`. The service runs
+on an operating account since 2026-11-22 (100,000 calls per operation a day; the
+default `HOSPITAL_API_DAILY_REQUEST_BUDGET` of 80,000 assumes it). A development
+account allows 1,000, so set the budget to 800 with one.
 Both nearby features use `PUBLIC_DATA_API_KEY` for the
 [KASI holiday calendar](https://www.data.go.kr/data/15012690/openapi.do), so approve
 that service separately even when the hospital-specific key works.
@@ -173,8 +176,9 @@ Copy placeholders from `deploy/backend.env.example` and fill the ignored
 Do not place the public-data key in Flutter compile-time values. The client
 sends search coordinates and filters to the authenticated `/api/v1/pharmacy`
 or `/api/v1/hospitals` boundary after the user chooses nearby care from Home.
-The hospital provider budget defaults to 800 calls per process per day and
-resets on restart. Multiple workers have independent counters; this is not a
+The hospital and pharmacy-location provider budgets default to 80,000 calls per
+process per day (both services run on operating accounts with 100,000 calls per
+operation a day since 2026-11-22) and reset on restart. Multiple workers have independent counters; this is not a
 shared production quota. Keep worker counts and portal quotas consistent, and
 monitor provider failures without logging keys or credential-bearing URLs.
 
@@ -233,7 +237,7 @@ Owner prerequisites, to configure when enrollment resumes:
   and [App Check IAM reference](https://docs.cloud.google.com/iam/docs/roles-permissions/firebaseappcheck).
 - Configure Workload Identity Federation for the exact repository identity,
   `beta-android` environment and `release-android.yml` workflow, restricted to
-  `main` and the active release branch (`beta/v1.0.0`). Grant the scoped federated principal
+  `main` and the active release branch (`v1.0.1`). Grant the scoped federated principal
   `roles/iam.workloadIdentityUser` on that service account, not a general
   repository-wide deployment grant. Set protected variables
   `GCP_APP_CHECK_WORKLOAD_IDENTITY_PROVIDER` and `GCP_APP_CHECK_SERVICE_ACCOUNT`.

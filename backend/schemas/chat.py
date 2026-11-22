@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from entities.chat_message_entity import (
     CHAT_MESSAGE_KINDS,
     CHAT_MESSAGE_KIND_HOSPITAL_SHARE,
+    CHAT_MESSAGE_KIND_MEDICATION_CHECK_REQUEST,
     CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE,
     CHAT_MESSAGE_KIND_TEXT,
     MAX_CHAT_MEDICATION_CONTEXTS,
@@ -111,6 +112,24 @@ class ChatMessageCreate(BaseModel):
     source_alert_id: int | None = Field(default=None, ge=1)
     history_start_date: date | None = None
     history_end_date: date | None = None
+
+    # 함수이름: validate_medication_check_request
+    # 함수역할: 저장 약 선택을 요구하고 선택적 시간대 외의 다른 문맥 혼합을 거절한다.
+    # 매개변수: 없음. 검증된 요청 필드를 읽는다.
+    # 반환값: 현재 모델. 선택 누락·문맥 혼합은 ValueError다.
+    @model_validator(mode="after")
+    def validate_medication_check_request(self) -> "ChatMessageCreate":
+        """Medication checks select saved medications, never client schedule snapshots."""
+        if self.message_kind == CHAT_MESSAGE_KIND_MEDICATION_CHECK_REQUEST:
+            if self.medication_id is None and not self.medication_ids:
+                raise ValueError("Medication checks require selected saved medications.")
+            if self.medication_references or any(value is not None for value in (
+                self.pharmacy_id, self.hospital_id,
+                self.hospital_schedule_date, self.source_alert_id,
+                self.history_start_date, self.history_end_date,
+            )):
+                raise ValueError("Medication checks cannot be combined with other contexts.")
+        return self
 
     # Function Name: validate_medication_references
     # Description: Allows searched-product attachments only in ordinary chat without other structured context, capping the combined saved/searched count.

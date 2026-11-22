@@ -15,6 +15,8 @@ import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
 import 'package:medbuddy_frontend/entities/chat_message_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_caregiver_link_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
+import 'package:medbuddy_frontend/services/api_response_parser.dart';
+import 'package:medbuddy_frontend/services/user_facing_error_message.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // 클래스명: _FakeLinkPatientCaregiver
@@ -698,7 +700,7 @@ void main() {
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
-  // - 기대 동작: 등록이 성공하면 재조회가 실패해도 등록 창을 닫고 등록된 환자를 보여주며, 이미 쓴 코드를 다시 보내게 하지 않는다.
+  // - 기대 동작: 재조회가 실패해도 등록 성공을 안내하고 확인 후 등록된 환자를 보여준다.
   // 매개변수:
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
   // 반환값:
@@ -741,8 +743,12 @@ void main() {
 
     expect(find.byKey(const Key('patient-link-code')), findsNothing);
     expect(control.registrationCodes, ['ABCD1234']);
-    expect(find.text('환자-보호자 연동을 등록했습니다.'), findsOneWidget);
+    expect(find.byKey(const Key('patient-link-result-dialog')), findsOneWidget);
+    expect(find.text('연동 완료'), findsOneWidget);
     expect(find.text('Link lookup failed.'), findsNothing);
+    await tester.tap(find.byKey(const Key('patient-link-result-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('환자-보호자 연동을 등록했습니다.'), findsOneWidget);
     // 재조회 없이도 서버가 돌려준 연동이 목록에 보인다.
     expect(find.text('환자 NT-A'), findsOneWidget);
     expect(updates, 1);
@@ -1187,10 +1193,7 @@ void main() {
       await tester.tap(find.byTooltip('보호자 표시 이름 수정'));
       await tester.pumpAndSettle();
       expect(find.text('보호자 표시 이름'), findsOneWidget);
-      expect(
-        tester.widget<TextField>(find.byType(TextField)).maxLength,
-        20,
-      );
+      expect(tester.widget<TextField>(find.byType(TextField)).maxLength, 20);
       await tester.enterText(
         find.byType(TextFormField),
         action == 'clear' ? '' : '우리 딸',
@@ -1235,7 +1238,7 @@ void main() {
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
-  // - 기대 동작: 환자 코드를 검증하고 진행 중인 등록 요청을 중복 전송하지 않는다.
+  // - 기대 동작: 코드를 검증하고 중복 제출·완료 확인으로 요청이나 화면 종료가 반복되지 않는다.
   // 매개변수:
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
   // 반환값:
@@ -1307,8 +1310,340 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('patient-link-code')), findsNothing);
+    expect(find.byKey(const Key('patient-link-result-dialog')), findsOneWidget);
+    expect(find.text('연동 완료'), findsOneWidget);
+    // 같은 확인 콜백이 연속 호출되어도 아래 연동 화면은 닫히지 않는다.
+    final acknowledge = tester
+        .widget<FilledButton>(
+          find.byKey(const Key('patient-link-result-confirm')),
+        )
+        .onPressed!;
+    acknowledge();
+    acknowledge();
+    await tester.pumpAndSettle();
+    expect(find.byType(LinkPatientCaregiverUI), findsOneWidget);
+    expect(find.byType(Dialog), findsNothing);
+    expect(control.registrationRequests, hasLength(1));
     expect(tester.takeException(), isNull);
   });
+
+  for (final isEnglish in [false, true]) {
+    for (final succeeds in [false, true]) {
+      // 함수이름: 등록 결과 접근성 테스트
+      // 함수역할: 한·영 성공·실패 창이 작은 화면과 큰 글자에서 중앙에 표시되는지 확인한다.
+      // 매개변수: tester (WidgetTester): 위젯 조작기. 반환값: 검증 완료 Future.
+      testWidgets('등록 결과 중앙 안내 언어=$isEnglish 성공=$succeeds', (tester) async {
+        tester.view.physicalSize = const Size(320, 520);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final control = _FakeLinkPatientCaregiver('caregiver-a');
+        await tester.pumpWidget(
+          _registrationTestApp(control, isEnglish: isEnglish, textScale: 2),
+        );
+        await tester.pump();
+        control.linkRequests.single.complete([]);
+        await tester.pumpAndSettle();
+        await _submitPatientCode(tester, isEnglish: isEnglish);
+        if (succeeds) {
+          control.registrationRequests.single.complete(_caregiverLink);
+          await tester.pump();
+          control.linkRequests.last.complete([_caregiverLink]);
+        } else {
+          control.registrationRequests.single.completeError(
+            TimeoutException('registration timeout'),
+          );
+        }
+        await tester.pumpAndSettle();
+
+        final result = find.byKey(const Key('patient-link-result-dialog'));
+        expect(result, findsOneWidget);
+        expect(find.byType(Dialog), findsOneWidget);
+        expect(find.byType(SnackBar), findsNothing);
+        expect(
+          find.descendant(
+            of: result,
+            matching: find.text(
+              succeeds
+                  ? (isEnglish ? 'Link complete' : '연동 완료')
+                  : (isEnglish ? 'Unable to link' : '연동 실패'),
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(tester.getCenter(find.byType(Dialog)).dx, closeTo(160, 1));
+        expect(
+          find.descendant(
+            of: result,
+            matching: find.byType(SingleChildScrollView),
+          ),
+          findsOneWidget,
+        );
+        final confirm = find.byKey(const Key('patient-link-result-confirm'));
+        await tester.ensureVisible(confirm);
+        await tester.tap(confirm);
+        await tester.pumpAndSettle();
+        expect(result, findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  for (final failure in [
+    ApiRequestException(
+      'Patient registration failed',
+      statusCode: 400,
+      detail: 'Patient code is invalid',
+    ),
+    ApiRequestException(
+      'Patient registration failed',
+      statusCode: 409,
+      detail: 'Patient code was already used',
+    ),
+    ApiRequestException(
+      'Patient registration failed',
+      statusCode: 400,
+      detail: 'Cannot link to the same user',
+    ),
+    ApiRequestException('Patient registration failed', statusCode: 401),
+    TimeoutException('registration timeout'),
+  ]) {
+    // 함수이름: 등록 실패 재시도 테스트
+    // 함수역할: 코드·권한·통신 오류를 중앙에 안내하고 확인 후 같은 입력으로 재시도한다.
+    // 매개변수: tester (WidgetTester): 위젯 조작기. 반환값: 검증 완료 Future.
+    testWidgets('등록 실패는 원인을 안내하고 입력을 보존한다: $failure', (tester) async {
+      _useLinkScreenViewport(tester);
+      final control = _FakeLinkPatientCaregiver('caregiver-a');
+      var updates = 0;
+      // 함수이름: onLinksChanged
+      // 함수역할: 등록 성공의 상위 알림 횟수를 기록한다.
+      // 매개변수: 없음. 반환값: 없음.
+      void onLinksChanged() => updates++;
+      await tester.pumpWidget(
+        _registrationTestApp(control, onLinksChanged: onLinksChanged),
+      );
+      await tester.pump();
+      control.linkRequests.single.complete([]);
+      await tester.pumpAndSettle();
+      await _submitPatientCode(tester);
+      control.registrationRequests.single.completeError(failure);
+      await tester.pumpAndSettle();
+
+      final result = find.byKey(const Key('patient-link-result-dialog'));
+      expect(find.text('연동 실패'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: result,
+          matching: find.text(
+            UserFacingErrorMessage.resolve(failure, isEnglish: false),
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(SnackBar), findsNothing);
+      expect(updates, 0);
+      expect(control.linkRequests, hasLength(1));
+      await tester.tap(find.byKey(const Key('patient-link-result-confirm')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const Key('patient-link-code')))
+            .controller!
+            .text,
+        'ABCD1234',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, '등록하기'));
+      await tester.pump();
+      control.registrationRequests.last.complete(_caregiverLink);
+      await tester.pump();
+      control.linkRequests.last.complete([_caregiverLink]);
+      await tester.pumpAndSettle();
+      expect(result, findsOneWidget);
+      expect(find.text('연동 완료'), findsOneWidget);
+      expect(control.registrationCodes, ['ABCD1234', 'ABCD1234']);
+      expect(updates, 1);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final phase in [
+    'pending-success',
+    'pending-failure',
+    'reload',
+    'result',
+  ]) {
+    // 함수이름: 등록 계정 변경 테스트
+    // 함수역할: 요청·재조회·결과 안내 중 계정 변경 시 이전 창과 응답이 새 계정에 영향을 주지 않는다.
+    // 매개변수: tester (WidgetTester): 위젯 조작기. 반환값: 검증 완료 Future.
+    testWidgets('계정 변경 후 이전 등록 결과를 무시한다: $phase', (tester) async {
+      _useLinkScreenViewport(tester);
+      final oldControl = _FakeLinkPatientCaregiver('caregiver-a');
+      final currentControl = _FakeLinkPatientCaregiver('caregiver-b');
+      var updates = 0;
+      // 함수이름: onLinksChanged
+      // 함수역할: 유효한 계정의 변경 알림 횟수를 기록한다.
+      // 매개변수: 없음. 반환값: 없음.
+      void onLinksChanged() => updates++;
+
+      await tester.pumpWidget(
+        _registrationTestApp(oldControl, onLinksChanged: onLinksChanged),
+      );
+      await tester.pump();
+      oldControl.linkRequests.single.complete([]);
+      await tester.pumpAndSettle();
+      await _submitPatientCode(tester);
+      if (phase == 'reload' || phase == 'result') {
+        oldControl.registrationRequests.single.complete(_caregiverLink);
+        await tester.pump();
+        if (phase == 'result') {
+          oldControl.linkRequests.last.complete([_caregiverLink]);
+          await tester.pumpAndSettle();
+          expect(find.text('연동 완료'), findsOneWidget);
+        }
+      }
+      updates = 0;
+      await tester.pumpWidget(
+        _registrationTestApp(currentControl, onLinksChanged: onLinksChanged),
+      );
+      await tester.pump();
+      currentControl.linkRequests.single.complete([]);
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsNothing);
+      await _submitPatientCode(tester);
+
+      if (phase == 'pending-success') {
+        oldControl.registrationRequests.single.complete(_caregiverLink);
+      } else if (phase == 'pending-failure') {
+        oldControl.registrationRequests.single.completeError(
+          StateError('이전 계정의 오류입니다.'),
+        );
+      } else if (phase == 'reload') {
+        oldControl.linkRequests.last.complete([_caregiverLink]);
+      }
+      await tester.pump();
+      expect(find.byKey(const Key('patient-link-result-dialog')), findsNothing);
+      expect(find.byKey(const Key('patient-link-code')), findsOneWidget);
+      expect(find.text('이전 계정의 오류입니다.'), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(updates, 0);
+      expect(oldControl.disposeCount, 1);
+      expect(
+        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNull,
+      );
+      currentControl.registrationRequests.single.completeError(
+        StateError('현재 계정의 오류입니다.'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('연동 실패'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('patient-link-result-dialog')),
+          matching: find.text('현재 계정의 오류입니다.'),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  // 함수이름: 등록 창 중복 열기 테스트
+  // 함수역할: 같은 열기 콜백의 연속 실행으로 입력 창이나 결과 창이 겹치지 않는다.
+  // 매개변수: tester (WidgetTester): 위젯 조작기. 반환값: 검증 완료 Future.
+  testWidgets('연속 등록 창 열기는 하나의 결과 창만 만든다', (tester) async {
+    _useLinkScreenViewport(tester);
+    final control = _FakeLinkPatientCaregiver('caregiver-a');
+    await tester.pumpWidget(_registrationTestApp(control));
+    await tester.pump();
+    control.linkRequests.single.complete([]);
+    await tester.pumpAndSettle();
+    final openButton = find.widgetWithText(OutlinedButton, '환자 관리 등록');
+    final open = tester.widget<OutlinedButton>(openButton).onPressed!;
+    open();
+    open();
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('patient-link-code')),
+      'ABCD1234',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, '등록하기'));
+    await tester.pump();
+    control.registrationRequests.single.complete(_caregiverLink);
+    await tester.pump();
+    control.linkRequests.last.complete([_caregiverLink]);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('patient-link-result-dialog')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('patient-link-result-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final departure in [
+    'dismiss',
+    'dismiss-transition',
+    'dispose',
+    'owner-dispose',
+  ]) {
+    for (final succeeds in [true, false]) {
+      // 함수이름: 종료된 등록 창 테스트
+      // 함수역할: 창 취소·전체 종료·부모 종료 뒤 응답이 다른 화면에 결과를 표시하지 않는다.
+      // 매개변수: tester (WidgetTester): 위젯 조작기. 반환값: 검증 완료 Future.
+      testWidgets('종료된 등록 결과를 표시하지 않는다: $departure 성공=$succeeds', (
+        tester,
+      ) async {
+        _useLinkScreenViewport(tester);
+        final control = _FakeLinkPatientCaregiver('caregiver-a');
+        final navigatorKey = GlobalKey<NavigatorState>();
+        await tester.pumpWidget(
+          _registrationTestApp(control, navigatorKey: navigatorKey),
+        );
+        await tester.pump();
+        control.linkRequests.single.complete([]);
+        await tester.pumpAndSettle();
+        await _submitPatientCode(tester);
+        if (departure.startsWith('dismiss')) {
+          navigatorKey.currentState!.pop();
+          if (departure == 'dismiss') {
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 300));
+          }
+        } else if (departure == 'dispose') {
+          await tester.pumpWidget(const SizedBox.shrink());
+        } else {
+          await tester.pumpWidget(
+            MaterialApp(navigatorKey: navigatorKey, home: const Text('다른 화면')),
+          );
+          await tester.pump();
+        }
+        if (succeeds) {
+          control.registrationRequests.single.complete(_caregiverLink);
+          await tester.pump();
+          if (departure.startsWith('dismiss')) {
+            control.linkRequests.last.complete([_caregiverLink]);
+          }
+        } else {
+          control.registrationRequests.single.completeError(
+            StateError('종료 후 오류'),
+          );
+        }
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('patient-link-result-dialog')),
+          findsNothing,
+        );
+        expect(find.byType(SnackBar), findsNothing);
+        if (departure.startsWith('dismiss')) {
+          expect(find.byType(LinkPatientCaregiverUI), findsOneWidget);
+        } else {
+          expect(control.linkRequests, hasLength(1));
+          expect(control.disposeCount, 1);
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
@@ -1464,4 +1799,70 @@ void _useLinkScreenViewport(WidgetTester tester) {
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+// 함수이름: _registrationTestApp
+// 함수역할: 등록 결과 테스트의 계정·언어·큰 글씨와 네트워크 대역을 구성한다.
+// 매개변수: control: 계정 대역; isEnglish/textScale: 표시 설정; onLinksChanged: 변경 알림;
+// - navigatorKey: 종료 동작에 사용할 탐색 키.
+// 반환값: 외부 통신 없이 등록 흐름을 검증할 앱.
+Widget _registrationTestApp(
+  _FakeLinkPatientCaregiver control, {
+  bool isEnglish = false,
+  double textScale = 1,
+  VoidCallback? onLinksChanged,
+  GlobalKey<NavigatorState>? navigatorKey,
+}) {
+  return MaterialApp(
+    navigatorKey: navigatorKey,
+    // 함수이름: builder 콜백
+    // 함수역할: 대화상자에도 테스트 글씨 배율을 적용한다.
+    // 매개변수: context, child: 앱 하위 트리. 반환값: 글씨 배율이 설정된 화면.
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(
+        context,
+      ).copyWith(textScaler: TextScaler.linear(textScale)),
+      child: child!,
+    ),
+    home: LinkPatientCaregiverUI(
+      initialUserHash: control.fakeUserHash,
+      userSetting: UserSetting(language: isEnglish ? 'en' : 'ko'),
+      // 함수이름: controlFactory 콜백
+      // 함수역할: 완료 시점을 제어할 연동 대역을 제공한다.
+      // 매개변수: _: 사용자 해시. 반환값: 지정 연동 대역.
+      controlFactory: (_) => control,
+      // 함수이름: chatControlFactory 콜백
+      // 함수역할: 등록 후 조회의 외부 통신을 막는다.
+      // 매개변수: _: 사용자 해시. 반환값: 빈 약 목록 대역.
+      chatControlFactory: (_) => _FakeChatControl(const []),
+      onLinksChanged: onLinksChanged,
+    ),
+  );
+}
+
+// 함수이름: _submitPatientCode
+// 함수역할: 등록 창을 열고 유효한 코드를 제출하되 서버 응답은 대기시킨다.
+// 매개변수: tester: 위젯 조작기; isEnglish: 영어 버튼 사용 여부.
+// 반환값: 등록 요청 시작까지 완료되는 Future<void>.
+Future<void> _submitPatientCode(
+  WidgetTester tester, {
+  bool isEnglish = false,
+}) async {
+  final open = find.text(isEnglish ? 'Register patient' : '환자 관리 등록');
+  await tester.ensureVisible(open);
+  await tester.pumpAndSettle();
+  await tester.tap(open);
+  await tester.pumpAndSettle();
+  await tester.enterText(
+    find.byKey(const Key('patient-link-code')),
+    'ABCD1234',
+  );
+  final submit = find.widgetWithText(
+    FilledButton,
+    isEnglish ? 'Register' : '등록하기',
+  );
+  await tester.ensureVisible(submit);
+  await tester.pumpAndSettle();
+  await tester.tap(submit);
+  await tester.pump();
 }

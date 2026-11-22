@@ -1,6 +1,7 @@
 // 파일명: dose_sync_background_service.dart
 // 역할: 연결 조건을 만족할 때 복약 전송을 예약한다. 실제 실행 시점은 Android가 정한다.
-// 15분 주기 작업은 보낼 기록이 있거나 홈 위젯에 오늘 데이터가 필요할 때만 두고, 할 일이 없으면 지운다.
+// Periodic work remains for pending uploads, stale data, or installed patient
+// views. The 15-minute minimum is best effort, not an update delivery deadline.
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
@@ -97,7 +98,7 @@ class DoseSyncBackgroundScheduler {
   static bool get supported => platform.supported;
 
   // Function Name: reconcile
-  // Description: Keeps the 15-minute retry only while network work remains: queued records, journal taps, or an installed widget without today's data. Otherwise the periodic job is cancelled, then the need is read again so work queued meanwhile is registered again.
+  // Description: Keeps periodic work for uploads, stale data, or installed patient views whose remote state can change throughout the day. Otherwise cancels and rechecks for work queued meanwhile.
   // Parameters: owner (String) - account; needsNetwork (Future<bool> Function()) - current need, read from the outbox and widget state.
   // Returns: Completion; registration and cancellation failures propagate.
   static Future<void> reconcile(

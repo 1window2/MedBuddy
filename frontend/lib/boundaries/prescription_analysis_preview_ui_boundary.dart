@@ -22,6 +22,7 @@ import '../widgets/expandable_medication_section.dart';
 import '../widgets/medbuddy_notice.dart';
 import '../widgets/medication_dosing_mode_selector.dart';
 import '../widgets/medication_entry_fields.dart';
+import '../widgets/medication_review_image_gallery.dart';
 import '../widgets/pinned_analysis_summary.dart';
 import '../widgets/responsive_card_header.dart';
 import '../theme/medbuddy_theme.dart';
@@ -224,6 +225,10 @@ class _PrescriptionAnalysisPreviewUIState
                   isEnglish: text.isEnglish,
                   showSummary: widget.isMedicationLookupReview,
                   counts: lookupCounts,
+                  addMedicationLabel: text.addMissingMedication,
+                  onAddMedication: widget.onMedicationScheduleAdded == null
+                      ? null
+                      : _showMedicationCreator,
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.only(bottom: 8),
@@ -241,18 +246,6 @@ class _PrescriptionAnalysisPreviewUIState
                             previewText: text,
                           ),
                           const SizedBox(height: 16),
-                        ],
-                        if (widget.onMedicationScheduleAdded != null) ...[
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: OutlinedButton.icon(
-                              key: const Key('ocr-add-medication-button'),
-                              onPressed: _showMedicationCreator,
-                              icon: const Icon(Icons.add_rounded),
-                              label: KeepWordsText(text.addMissingMedication),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
                         ],
                         _PreviewMedicationList(
                           medicationScheduleList: widget.medicationScheduleList,

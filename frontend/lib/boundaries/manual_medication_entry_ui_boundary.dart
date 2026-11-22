@@ -34,6 +34,8 @@ class ManualMedicationEntryUI extends StatefulWidget {
   final UserSetting userSetting;
   final Future<MedicationSaveResult> Function(ManualMedicationEntry entry)
   onSaveRequested;
+  // true이면 부모가 화면 이동과 임시 사진 정리를 맡는다. false/예외이면 입력을 유지한다.
+  final bool Function(List<ManualMedicationEntry>)? onReviewRequested;
   final ImagePicker? imagePicker;
   final Future<void> Function()? onSavesFinished;
 
@@ -45,6 +47,7 @@ class ManualMedicationEntryUI extends StatefulWidget {
     super.key,
     required this.userSetting,
     required this.onSaveRequested,
+    this.onReviewRequested,
     this.imagePicker,
     this.onSavesFinished,
   });
@@ -143,7 +146,7 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
   }
 
   // 함수이름: _buildSaveBar
-  // 함수역할: 저장 진행 중 중복 입력을 막는 고정 저장 버튼을 구성한다.
+  // 함수역할: 검토·저장 진행 중 중복 입력을 막는 고정 버튼을 구성한다.
   // 매개변수:
   // - 없음.
   // 반환값: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 쓰는 위젯 트리.
@@ -170,9 +173,15 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
                   strokeWidth: 2.5,
                 ),
               )
-            : const Icon(Icons.save_outlined),
+            : Icon(
+                widget.onReviewRequested != null
+                    ? Icons.fact_check_outlined
+                    : Icons.save_outlined,
+              ),
         label: KeepWordsText(
-          _isSaving
+          widget.onReviewRequested != null
+              ? (_isSaving ? _text.reviewing : _text.review)
+              : _isSaving
               ? _text.saving
               : _forms.length == 1
               ? _text.save
@@ -186,9 +195,9 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
   }
 
   // 함수이름: _saveAll
-  // 함수역할: 현재 경로에서 미완료 입력을 검증·순차 저장한다. 완료한 약은 유지하며, 갱신 실패 시 저장 요청 없이 갱신만 재시도할 수 있게 한다.
+  // 함수역할: 미완료 입력 전체를 검증한 뒤 검토 콜백에 넘기거나 기존 순차 저장을 수행한다.
   // 매개변수: 없음.
-  // 반환값: 저장·갱신에 모두 성공하면 true로 경로를 닫는다. 실패하면 안내 후 입력을 유지하며 Future<void>가 완료된다.
+  // 반환값: 검토 경로는 화면을 닫지 않는다. 기존 저장·갱신 성공 시에만 true로 닫으며 Future<void>가 완료된다.
   Future<void> _saveAll() async {
     if (!mounted ||
         _isSaving ||
@@ -207,6 +216,39 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
       return;
     }
     setState(() => _isSaving = true);
+    final onReviewRequested = widget.onReviewRequested;
+    if (onReviewRequested != null) {
+      final forms = pending.map((key) => key.currentState!).toList();
+      var accepted = false;
+      try {
+        final entries = List<ManualMedicationEntry>.unmodifiable(
+          forms.map((form) => form._readEntry()),
+        );
+        // 콜백 안에서 화면을 닫더라도 사진을 먼저 지우지 않도록 잠시 정리를 보류한다.
+        for (final form in forms) {
+          form._isImageTransferred = true;
+          form._isSaving = true;
+        }
+        accepted = onReviewRequested(entries);
+      } catch (_) {
+        // 인계 실패는 저장으로 우회하지 않고 입력과 사진 소유권을 돌려준다.
+      } finally {
+        if (!accepted) {
+          for (final form in forms) {
+            form._isImageTransferred = false;
+            form._isSaving = false;
+            if (!form.mounted) {
+              _ManualMedicationEntryUIState._discardPickedImage(
+                form._selectedImagePath,
+              );
+            }
+          }
+          if (mounted) setState(() => _isSaving = false);
+        }
+      }
+      // 인계 성공 뒤에도 잠금을 유지한다. 저장·갱신·화면 이동은 부모가 담당한다.
+      return;
+    }
     MedicationSaveResult? lastResult;
     GlobalKey<_ManualMedicationEntryUIState>? failedForm;
     var refreshFailed = false;
@@ -484,6 +526,8 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
   bool _isPickingImage = false;
   // 저장 콜백을 기다리는 동안에만 true. 화면 잠금용 _isSaving과 달리 저장 성공 뒤에는 바로 내려간다.
   bool _isSaveRequestPending = false;
+  // 검토 화면이 인수한 임시 사진은 입력 화면이 폐기되어도 남겨 둔다.
+  bool _isImageTransferred = false;
 
   // Function Name: _isEnglish
   // Description: Reads English selection from the supplied user settings.
@@ -518,7 +562,7 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
   @override
   void dispose() {
     // 저장 요청이 진행 중이면 저장 흐름이 아직 사진을 읽을 수 있으므로 _submit이 끝난 뒤에 지운다.
-    if (!_isSaveRequestPending) {
+    if (!_isSaveRequestPending && !_isImageTransferred) {
       _discardPickedImage(_selectedImagePath);
     }
     _medicationNameController.dispose();
@@ -1186,6 +1230,27 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
     return isFormValid;
   }
 
+  // 함수이름: _readEntry
+  // 함수역할: 검증한 입력을 독립된 값으로 읽어 검토와 기존 저장에 같은 정보를 전달한다.
+  // 매개변수: 없음.
+  // 반환값: 약품·복용 일정·선택 사진을 보존한 ManualMedicationEntry.
+  ManualMedicationEntry _readEntry() => ManualMedicationEntry(
+    medicationName: _medicationNameController.text.trim(),
+    dosageAmount: _dosageController.text.trim(),
+    dosageUnit: _dosageUnit,
+    startDate: _startDate,
+    endDate: _endDate,
+    scheduleSlotKeys: _selectedSlotKeys.toList(growable: false),
+    doseDays: _asNeeded
+        ? ''
+        : _customCycle
+        ? '${int.parse(_intervalController.text)}일마다'
+        : _doseDays,
+    dosingMode: _asNeeded ? 'as_needed' : 'scheduled',
+    localImagePath: _selectedImagePath,
+    catalogMedication: _catalogMedication,
+  );
+
   // 함수이름: _submit
   // 함수역할: 검증한 약 한 건을 저장한다. 실패·예외는 오류 안내와 재시도 상태로 바꾸고, 완료한 입력은 잠가 일괄 재시도에서 중복 저장을 막는다.
   // 매개변수: 없음.
@@ -1206,24 +1271,7 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
     MedicationSaveResult? result;
     _isSaveRequestPending = true;
     try {
-      result = await widget.onSaveRequested(
-        ManualMedicationEntry(
-          medicationName: _medicationNameController.text.trim(),
-          dosageAmount: _dosageController.text.trim(),
-          dosageUnit: _dosageUnit,
-          startDate: _startDate,
-          endDate: _endDate,
-          scheduleSlotKeys: _selectedSlotKeys.toList(growable: false),
-          doseDays: _asNeeded
-              ? ''
-              : _customCycle
-              ? '${int.parse(_intervalController.text)}일마다'
-              : _doseDays,
-          dosingMode: _asNeeded ? 'as_needed' : 'scheduled',
-          localImagePath: submittedImagePath,
-          catalogMedication: _catalogMedication,
-        ),
-      );
+      result = await widget.onSaveRequested(_readEntry());
     } catch (_) {
       // 저장 콜백이 예외로 끝나면 결과 없이 아래의 실패 안내로 넘어가 저장 중 상태를 해제한다.
     } finally {
@@ -1447,6 +1495,9 @@ class _ManualMedicationText {
   String slotLabel(String key) {
     return medicationSlotLabel(key, isEnglish: isEnglish);
   }
+
+  String get review => isEnglish ? 'Review medications' : '복약 정보 확인';
+  String get reviewing => isEnglish ? 'Reviewing...' : '확인 중...';
 
   // 함수이름: save
   // 함수역할: 현재 언어와 입력값에 맞춰 "복약 정보 저장" 문구를 제공한다.

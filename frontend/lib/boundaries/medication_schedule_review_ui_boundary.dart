@@ -12,18 +12,22 @@ import '../widgets/medbuddy_notice.dart';
 import '../widgets/medication_entry_fields.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/keep_words_text.dart';
+import '../widgets/expandable_medication_section.dart';
+import '../widgets/medication_review_image_gallery.dart';
+import '../widgets/responsive_card_header.dart';
 
 // 파일명: medication_schedule_review_ui_boundary.dart
 // 역할: 저장 전 여러 약의 복약 일정 비교·수정·검증을 제공한다.
 
-// Function Name: showMedicationScheduleReview
-// Description: Reviews one or more candidate schedules before saving and returns normalized confirmed entries.
-// Parameters: context (BuildContext): route host; initialSchedules (List<MedicationSchedule>): review candidates; userSetting (UserSetting): language/display settings.
-// Returns: Future<List<MedicationSchedule>?>: confirmed schedules, or null for empty input or cancellation.
+// 함수이름: showMedicationScheduleReview
+// 함수역할: 선택한 약의 사진과 복약 일정을 전체 검토 페이지에서 확인한다.
+// 매개변수: context: 경로 위치; initialSchedules: 검토할 일정; userSetting: 표시 설정; photos: 촬영 사진 목록.
+// 반환값: 확인한 일정 목록. 빈 입력이나 취소에는 null을 반환한다.
 Future<List<MedicationSchedule>?> showMedicationScheduleReview({
   required BuildContext context,
   required List<MedicationSchedule> initialSchedules,
   required UserSetting userSetting,
+  List<MedicationReviewPhoto> photos = const [],
 }) {
   if (initialSchedules.isEmpty) {
     return Future.value(null);
@@ -33,24 +37,12 @@ Future<List<MedicationSchedule>?> showMedicationScheduleReview({
       .map(_normalizeSchedule)
       .toList(growable: false);
 
-  return showModalBottomSheet<List<MedicationSchedule>>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: Colors.white,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    // 함수이름: showMedicationScheduleReview.builder callback
-    // 함수역할: 저장 전 여러 약의 복약 일정 비교·수정·검증에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
-    // 매개변수:
-    // - sheetContext (BuildContext): 현재 대화상자·하단 시트의 화면 종료와 테마 참조 위치.
-    // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-    builder: (sheetContext) => FractionallySizedBox(
-      heightFactor: 0.94,
-      child: _MedicationScheduleReviewSheet(
+  return Navigator.of(context).push<List<MedicationSchedule>>(
+    MaterialPageRoute(
+      builder: (routeContext) => _MedicationScheduleReviewPage(
         initialSchedules: normalizedSchedules,
         userSetting: userSetting,
+        photos: photos,
       ),
     ),
   );
@@ -82,46 +74,49 @@ Future<MedicationSchedule?> showMedicationScheduleEditor({
   );
 }
 
-// 클래스명: _MedicationScheduleReviewSheet
+// 클래스명: _MedicationScheduleReviewPage
 // 역할: 여러 약의 복용 일정 비교와 저장 전 확인을 담당한다.
 // 주요 책임:
 // - 여러 약의 복용 일정 비교와 저장 전 확인의 State가 사용할 화면 설정과 외부 의존성을 보관한다.
 // 속성:
 // - initialSchedules (List<MedicationSchedule>): 검토·표시·시간대 분류에 사용할 복약 일정 목록.
 // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-class _MedicationScheduleReviewSheet extends StatefulWidget {
+class _MedicationScheduleReviewPage extends StatefulWidget {
   final List<MedicationSchedule> initialSchedules;
   final UserSetting userSetting;
+  final List<MedicationReviewPhoto> photos;
 
-  // 함수이름: _MedicationScheduleReviewSheet
+  // 함수이름: _MedicationScheduleReviewPage
   // 함수역할: 여러 약의 복용 일정 비교와 저장 전 확인에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - initialSchedules (List<MedicationSchedule>): 검토·표시·시간대 분류에 사용할 복약 일정 목록.
   // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // 반환값: 입력 설정이 반영된 _MedicationScheduleReviewSheet 인스턴스.
-  const _MedicationScheduleReviewSheet({
+  // - photos (List<MedicationReviewPhoto>): 검토할 촬영 사진.
+  // 반환값: 입력 설정이 반영된 _MedicationScheduleReviewPage 인스턴스.
+  const _MedicationScheduleReviewPage({
     required this.initialSchedules,
     required this.userSetting,
+    required this.photos,
   });
 
   // 함수이름: createState
   // 함수역할: 여러 약의 복용 일정 비교와 저장 전 확인의 입력·표시 상태를 관리할 State 객체를 만든다.
   // 매개변수:
   // - 없음.
-  // 반환값: 새 _MedicationScheduleReviewSheetState 인스턴스.
+  // 반환값: 새 _MedicationScheduleReviewPageState 인스턴스.
   @override
-  State<_MedicationScheduleReviewSheet> createState() =>
-      _MedicationScheduleReviewSheetState();
+  State<_MedicationScheduleReviewPage> createState() =>
+      _MedicationScheduleReviewPageState();
 }
 
-// 클래스명: _MedicationScheduleReviewSheetState
+// 클래스명: _MedicationScheduleReviewPageState
 // 역할: 여러 약의 복용 일정 비교와 저장 전 확인의 화면 상태를 관리한다.
 // 주요 책임:
 // - 선택한 약의 편집 창 결과를 같은 위치에 반영하고 이전 검증 안내를 지운다.
 // 속성:
 // - _schedules (List<MedicationSchedule>): 검토·표시·시간대 분류에 사용할 복약 일정 목록.
-class _MedicationScheduleReviewSheetState
-    extends State<_MedicationScheduleReviewSheet> {
+class _MedicationScheduleReviewPageState
+    extends State<_MedicationScheduleReviewPage> {
   late List<MedicationSchedule> _schedules;
   String _validationMessage = '';
   bool _isEditing = false;
@@ -168,105 +163,109 @@ class _MedicationScheduleReviewSheetState
     final text = _MedicationScheduleReviewText(widget.userSetting.language);
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 20, 10),
-            child: Row(
-              children: [
-                IconButton(
-                  key: const Key('schedule-review-close'),
-                  tooltip: text.cancel,
-                  // 함수이름: build.onPressed callback
-                  // 함수역할: `Navigator.pop(context)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-                  // 매개변수:
-                  // - 없음.
-                  // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                  onPressed: () => _closeReview(),
-                  icon: const Icon(Icons.close),
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: KeepWordsText(
-                    text.reviewTitle,
-                    style: const TextStyle(
-                      color: MedBuddyColors.textStrong,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                ),
-              ],
+      backgroundColor: MedBuddyColors.pageBackground,
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: MedBuddyColors.outline)),
+          ),
+          child: FilledButton(
+            key: const Key('schedule-review-confirm'),
+            onPressed: _confirmReview,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(54),
+              backgroundColor: MedBuddyColors.primary,
+            ),
+            child: KeepWordsText(
+              text.confirmAndContinue,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+              ),
             ),
           ),
-          Expanded(
-            child: ListView(
-              key: const Key('schedule-review-list'),
-              padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
-              children: [
-                KeepWordsText(
-                  text.pillReviewDescription,
-                  style: const TextStyle(
-                    color: MedBuddyColors.textMuted,
-                    fontSize: 14,
-                    height: 1.45,
-                    letterSpacing: 0,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                MedBuddyNotice(
-                  icon: Icons.warning_amber_rounded,
-                  message: text.pillSafetyNotice,
-                ),
-                if (_validationMessage.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  _ScheduleValidationNotice(message: _validationMessage),
-                ],
-                const SizedBox(height: 18),
-                for (var index = 0; index < _schedules.length; index++) ...[
-                  _MedicationScheduleReviewCard(
-                    index: index,
-                    medicationSchedule: _schedules[index],
-                    userSetting: widget.userSetting,
-                    // 함수이름: build.onEditRequested callback
-                    // 함수역할: 선택한 약의 편집 창 결과를 같은 위치에 반영하고 이전 검증 안내를 지운다.
+        ),
+      ),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 20, 10),
+              child: Row(
+                children: [
+                  IconButton(
+                    key: const Key('schedule-review-close'),
+                    tooltip: text.cancel,
+                    // 함수이름: build.onPressed callback
+                    // 함수역할: `Navigator.pop(context)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
                     // 매개변수:
                     // - 없음.
-                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    onEditRequested: () => _editSchedule(index),
+                    // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
+                    onPressed: () => _closeReview(),
+                    icon: const Icon(Icons.arrow_back),
                   ),
-                  if (index < _schedules.length - 1) const SizedBox(height: 12),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: KeepWordsText(
+                      text.reviewTitle,
+                      style: const TextStyle(
+                        color: MedBuddyColors.textStrong,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                  ),
                 ],
-              ],
-            ),
-          ),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(top: BorderSide(color: MedBuddyColors.outline)),
-            ),
-            child: FilledButton(
-              key: const Key('schedule-review-confirm'),
-              onPressed: _confirmReview,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(54),
-                backgroundColor: MedBuddyColors.primary,
-              ),
-              child: KeepWordsText(
-                text.confirmAndSave,
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0,
-                ),
               ),
             ),
-          ),
-        ],
+            Expanded(
+              child: ListView(
+                key: const Key('schedule-review-list'),
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+                children: [
+                  MedBuddyNotice(
+                    icon: Icons.warning_amber_rounded,
+                    message: text.pillSafetyNotice,
+                  ),
+                  if (_validationMessage.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    _ScheduleValidationNotice(message: _validationMessage),
+                  ],
+                  const SizedBox(height: 12),
+                  if (widget.photos.isNotEmpty) ...[
+                    MedicationReviewImageGallery(
+                      photos: widget.photos,
+                      language: widget.userSetting.language,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  for (var index = 0; index < _schedules.length; index++) ...[
+                    _MedicationScheduleReviewCard(
+                      index: index,
+                      medicationSchedule: _schedules[index],
+                      userSetting: widget.userSetting,
+                      // 함수이름: build.onEditRequested callback
+                      // 함수역할: 선택한 약의 편집 창 결과를 같은 위치에 반영하고 이전 검증 안내를 지운다.
+                      // 매개변수:
+                      // - 없음.
+                      // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                      onEditRequested: () => _editSchedule(index),
+                    ),
+                    if (index < _schedules.length - 1)
+                      const SizedBox(height: 12),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -335,10 +334,10 @@ class _MedicationScheduleReviewSheetState
   }
 }
 
-// Class Name: _MedicationScheduleReviewCard
-// Role: One medication schedule for pre-save review.
-// Responsibilities: Summarizes duration, dosage and slots and delegates editing to the parent.
-// Attributes: index: candidate position; medicationSchedule: draft; userSetting: display settings; onEditRequested: open editor.
+// 클래스명: _MedicationScheduleReviewCard
+// 역할: 처방 검토와 같은 약별 접이식 표로 저장할 일정을 보여준다.
+// 주요 책임: 용량·기간·날짜·시간대를 표시하고 수정 동작을 상위에 전달한다.
+// 속성: index: 약 순번; medicationSchedule: 초안; userSetting: 표시 설정; onEditRequested: 수정 명령.
 class _MedicationScheduleReviewCard extends StatelessWidget {
   final int index;
   final MedicationSchedule medicationSchedule;
@@ -360,162 +359,181 @@ class _MedicationScheduleReviewCard extends StatelessWidget {
     required this.onEditRequested,
   });
 
-  // Function Name: build
-  // Description: Displays one candidate's period, dosage and slot summaries with its edit action.
-  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
-  // Returns: The described widget tree.
+  // 함수이름: build
+  // 함수역할: 사진 검토 약 한 건을 제목·수정·펼침 버튼과 2열 일정 표로 배치한다.
+  // 매개변수: context (BuildContext): 테마와 글자 배율을 읽을 위치.
+  // 반환값: 일정 편집과 펼침이 가능한 약품 카드.
   @override
   Widget build(BuildContext context) {
     final text = _MedicationScheduleReviewText(userSetting.language);
     final frequency = medicationSchedule.dailyFrequencyCount;
-    final slotLabels = medicationSchedule.slotKeys
-        .map(text.slotLabel)
-        .join(', ');
+    final slotLabels = medicationSchedule.slotSummaryLabelForLanguage(
+      userSetting.language,
+      emptySlotsLabel: text.reviewNeeded,
+    );
+    final frequencyLabel = medicationSchedule.isAsNeeded
+        ? (text.isEnglish ? 'As needed' : '필요시 복용')
+        : medicationSchedule.needsScheduleReview || frequency <= 0
+        ? text.reviewNeeded
+        : text.frequencyValue(frequency);
 
-    return Container(
-      key: Key('schedule-review-card-$index'),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: MedBuddyColors.outline),
-        borderRadius: MedBuddyRadii.small,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    // 함수이름: field
+    // 함수역할: 수정 가능한 표 셀에 라벨·값·선택적 복용 주기를 배치한다.
+    // 매개변수: suffix: 셀 식별자; label/value: 표시할 문구; extra: 보조 문구.
+    // 반환값: 복약 정보 수정창을 여는 셀.
+    Widget field(String suffix, String label, String value, {String? extra}) {
+      return InkWell(
+        key: Key('schedule-review-cell-$index-$suffix'),
+        onTap: onEditRequested,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: KeepWordsText(
-                  medicationSchedule.displayNameForLanguage(
-                    userSetting.language,
-                  ),
+              KeepWordsText(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: MedBuddyColors.textMuted,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 2),
+              KeepWordsText(
+                value.trim().isEmpty ? text.reviewNeeded : value,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: MedBuddyColors.textStrong,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (extra != null) ...[
+                const SizedBox(height: 4),
+                KeepWordsText(
+                  extra,
+                  textAlign: TextAlign.center,
                   style: const TextStyle(
-                    color: MedBuddyColors.textStrong,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    height: 1.3,
-                    letterSpacing: 0,
+                    color: MedBuddyColors.textMuted,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    final fields = [
+      field(
+        'dosage',
+        text.dosage,
+        medicationSchedule.dosageLabelForLanguage(userSetting.language),
+      ),
+      field(
+        'duration',
+        text.duration,
+        medicationSchedule.durationLabelForLanguage(userSetting.language),
+      ),
+      field(
+        'date',
+        text.startDate,
+        formatJsonDate(medicationSchedule.prescriptionDate) ?? '',
+      ),
+      field(
+        'slots',
+        text.scheduleSlots,
+        slotLabels,
+        extra: medicationSchedule.isAsNeeded ? null : frequencyLabel,
+      ),
+    ];
+
+    return Material(
+      key: Key('schedule-review-card-$index'),
+      color: MedBuddyColors.successSurface,
+      shape: RoundedRectangleBorder(
+        borderRadius: MedBuddyRadii.small,
+        side: const BorderSide(color: MedBuddyColors.outline),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ExpandableMedicationSection(
+        initiallyExpanded: true,
+        isEnglish: text.isEnglish,
+        toggleKey: Key('schedule-review-toggle-$index'),
+        headerBuilder: (toggle) => Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
+          child: ResponsiveCardHeader(
+            title: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${index + 1}',
+                  style: const TextStyle(
+                    color: MedBuddyColors.textMuted,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: KeepWordsText(
+                    medicationSchedule.displayNameForLanguage(
+                      userSetting.language,
+                    ),
+                    style: const TextStyle(
+                      color: MedBuddyColors.textStrong,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      height: 1.3,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  key: Key('schedule-review-edit-$index'),
+                  tooltip: text.edit,
+                  onPressed: onEditRequested,
+                  icon: const Icon(Icons.edit_outlined),
+                  color: MedBuddyColors.primaryDark,
+                ),
+                toggle,
+              ],
+            ),
+          ),
+        ),
+        details: Column(
+          children: [
+            for (var row = 0; row < 2; row++) ...[
+              const Divider(height: 1),
+              Table(
+                defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                border: const TableBorder(
+                  verticalInside: BorderSide(color: MedBuddyColors.outline),
+                ),
+                children: [
+                  TableRow(children: fields.skip(row * 2).take(2).toList()),
+                ],
+              ),
+            ],
+            if (!medicationSchedule.isAsNeeded &&
+                !readDoseCycle(medicationSchedule.intakeTime).isDaily)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 4, 10, 10),
+                child: KeepWordsText(
+                  '${text.doseDays}: ${text.doseDaysValue(_doseDaysOf(medicationSchedule.intakeTime))}',
+                  style: const TextStyle(
+                    color: MedBuddyColors.primaryDark,
+                    fontSize: 12,
                   ),
                 ),
               ),
-              IconButton(
-                key: Key('schedule-review-edit-$index'),
-                tooltip: text.edit,
-                onPressed: onEditRequested,
-                icon: const Icon(Icons.edit_outlined),
-                color: MedBuddyColors.primaryDark,
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _ScheduleSummaryRow(
-            label: text.startDate,
-            value: formatJsonDate(medicationSchedule.prescriptionDate) ?? '',
-            emptyValue: text.reviewNeeded,
-          ),
-          _ScheduleSummaryRow(
-            label: text.dosage,
-            value: medicationSchedule.dosage.trim().isEmpty
-                ? ''
-                : medicationSchedule.dosageLabelForLanguage(
-                    userSetting.language,
-                  ),
-            emptyValue: text.reviewNeeded,
-          ),
-          _ScheduleSummaryRow(
-            label: text.dailyFrequency,
-            value: medicationSchedule.isAsNeeded
-                ? (text.isEnglish ? 'As needed' : '필요시 복용')
-                : medicationSchedule.needsScheduleReview
-                ? ''
-                : frequency <= 0
-                ? ''
-                : text.frequencyValue(frequency),
-            emptyValue: text.reviewNeeded,
-          ),
-          _ScheduleSummaryRow(
-            label: text.duration,
-            value: medicationSchedule.medicationTime <= 0
-                ? ''
-                : text.durationValue(medicationSchedule.medicationTime),
-            emptyValue: text.reviewNeeded,
-          ),
-          if (!medicationSchedule.isAsNeeded)
-            _ScheduleSummaryRow(
-              label: text.scheduleSlots,
-              value: slotLabels,
-              emptyValue: text.reviewNeeded,
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-// Class Name: _ScheduleSummaryRow
-// Role: A labeled schedule-summary value.
-// Responsibilities: Shows a readable summary with a fallback for missing content.
-// Attributes: label (String): field name; value (String): summary; emptyValue (String): missing fallback.
-class _ScheduleSummaryRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final String emptyValue;
-
-  // 함수이름: _ScheduleSummaryRow
-  // 함수역할: 검토용 복약 항목의 라벨과 요약 값에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-  // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-  // - emptyValue (String): 값이나 약품 정보를 제공할 수 없을 때 사용할 대체 문구.
-  // 반환값: 입력 설정이 반영된 _ScheduleSummaryRow 인스턴스.
-  const _ScheduleSummaryRow({
-    required this.label,
-    required this.value,
-    required this.emptyValue,
-  });
-
-  // Function Name: build
-  // Description: Pairs a schedule field label with its value or missing-content fallback.
-  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
-  // Returns: The described widget tree.
-  @override
-  Widget build(BuildContext context) {
-    final displayValue = value.trim().isEmpty ? emptyValue : value.trim();
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 82,
-            child: KeepWordsText(
-              label,
-              style: const TextStyle(
-                color: MedBuddyColors.textMuted,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: KeepWordsText(
-              displayValue,
-              style: TextStyle(
-                color: value.trim().isEmpty
-                    ? MedBuddyColors.reminderAccent
-                    : MedBuddyColors.textStrong,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                height: 1.35,
-                letterSpacing: 0,
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1232,12 +1250,13 @@ class _MedicationScheduleReviewText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get reviewNeeded => isEnglish ? 'Review needed' : '확인 필요';
-  // 함수이름: confirmAndSave
-  // 함수역할: 현재 언어와 입력값에 맞춰 "확인하고 저장하기" 문구를 제공한다.
+  // 함수이름: confirmAndContinue
+  // 함수역할: 확인한 일정을 다음 결과 단계로 넘기는 문구를 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get confirmAndSave => isEnglish ? 'Confirm and save' : '확인하고 저장하기';
+  String get confirmAndContinue =>
+      isEnglish ? 'Confirm and continue' : '확인하고 계속하기';
 
   // 함수이름: frequencyValue
   // 함수역할: 현재 언어와 입력값에 맞춰 "$count회" 문구를 제공한다.

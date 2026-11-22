@@ -66,7 +66,7 @@ note bottom of MedicationSearchUI
 end note
 HomeScreen --> ManageUserSettingUI : 설정 분류·항목 위치
 ManageUserSettingUI --> UserSettingDestination
-HomeScreen --> MedicationHistoryUI : 본인 기록 / 공유 확인창 요청
+HomeScreen --> MedicationHistoryUI : 설정 출처의 기록 탭 / 별도 본인 공유 확인창
 MedicationHistoryUI --> MedicationHistoryControl : 기존 조회·공유 검증
 HomeScreen --> ManageChatList : 활성 보호자 연동 갱신
 HomeScreen --> CheckCaregiverMedicationUI : 환자 선택 후 기존 접근 재검증
@@ -88,6 +88,8 @@ note bottom of HomeScreen
 end note
 
 note bottom of MedicationHistoryUI
+  기록 목적지는 homeScheduleSource의 본인/연결 환자 범위를 따른다.
+  연결 환자의 일정·기록은 같은 선택 환자이며 읽기 전용이다.
   같은 세션의 최초 조회 성공 후 공유 확인창만 연다.
   이 본인 기록 진입에서는 읽기 전용·조회 실패·세션 변경 시 열지 않는다.
   공유·복용·삭제·설정 변경은 별도 명시적 동작이 필요하다.

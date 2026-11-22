@@ -39,6 +39,56 @@ Map<String, dynamic> _message(Object? history) => {
 // 반환값:
 // - 없음; 등록된 사례와 준비·정리 훅은 테스트 프레임워크에서 실행한다.
 void main() {
+  test('약 확인 요청의 범위를 읽고 삭제·손상 시 실행 정보를 제거한다', () {
+    final raw = {
+      ..._message(null),
+      'message_kind': 'medication_check_request',
+      'context': {
+        'medication_check_contexts': [
+          {
+            'schedule_date': '2026-11-14',
+            'slot_key': 'morning',
+            'total_count': 1,
+            'completed_count': 0,
+            'medications': [
+              {
+                'medication_id': 91,
+                'medication_name': '아침약',
+                'schedule_slot_keys': ['morning'],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    final message = ChatMessage.fromJson(raw);
+    expect(message.messageKind, ChatMessageKind.medicationCheckRequest);
+    expect(message.messageKind.wireName, 'medication_check_request');
+    expect(
+      message.medicationCheckContexts.single.medications.single.medicationId,
+      91,
+    );
+    expect(
+      message.copyWith(deletedForEveryone: true).medicationCheckContexts,
+      isEmpty,
+    );
+    expect(
+      ChatMessage.fromJson({
+        ...raw,
+        'hidden_for_me': true,
+      }).medicationCheckContexts,
+      isEmpty,
+    );
+    expect(
+      ChatMessage.fromJson({
+        ...raw,
+        'context': {
+          'medication_check_contexts': ['invalid'],
+        },
+      }).medicationCheckContexts,
+      isEmpty,
+    );
+  });
   // 함수이름: PRN chat context keeps its mode without scheduled slots
   // 함수역할:
   // - 필요시 문맥은 JSON 또는 시간대 교체 요청에 정기 시간대가 있어도 비우고 구형 정기 문맥은 기존 시간대를 유지하는지 검증한다.

@@ -18,6 +18,7 @@ import '../entities/medication_detail_entity.dart';
 import '../widgets/chat_medication_reference_tile.dart';
 import '../controls/manage_linked_chat_control.dart';
 import '../services/notification_service.dart';
+import '../services/dose_sync_service.dart';
 import '../entities/chat_message_entity.dart';
 import '../entities/chat_message_draft_entity.dart';
 import '../entities/medication_image_url_entity.dart';
@@ -222,6 +223,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   Timer? _medicationContextGuideTimer;
   List<ChatMedicationContext> _medicationContexts = const [];
   List<ChatScheduleContext> _scheduleContexts = const [];
+  final Set<String> _confirmedChatDoses = {};
   // 기능 메뉴가 아직 받지 못한 목록을 "없음"으로 안내하지 않도록 조회 상태를 따로 둔다.
   _ChatContextLoad _scheduleLoad = _ChatContextLoad.loading;
   List<ChatMedicationContext> _selectedMedicationContexts = const [];
@@ -807,6 +809,8 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
             _ChatQuickReply.discomfort => ChatMessageKind.medicationDiscomfort,
             _ => ChatMessageKind.text,
           }
+        : reply == _ChatQuickReply.taken
+        ? ChatMessageKind.medicationCheckRequest
         : ChatMessageKind.text;
     final medicationNames = medications
         // 함수이름: _sendQuickReply.map callback
@@ -826,6 +830,15 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       body: body,
       medications: medications,
       messageKind: messageKind,
+      slotKey:
+          messageKind == ChatMessageKind.medicationCheckRequest &&
+              medications
+                      .expand((item) => item.scheduleSlotKeys)
+                      .toSet()
+                      .length ==
+                  1
+          ? medications.expand((item) => item.scheduleSlotKeys).first
+          : null,
       clearMedicationSelection: true,
     );
   }
@@ -911,6 +924,173 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
         });
       }
     }
+  }
+
+  // 함수이름: _doseRequestContexts
+  // 함수역할: 현재 환자와 날짜에 해당하는 명시적 확인 요청만 완료 버튼으로 연결한다.
+  // 매개변수: message: 서버 메시지. 반환값: 버튼을 표시할 시간대 목록.
+  List<ChatScheduleContext> _doseRequestContexts(ChatMessage message) {
+    if (_history.linkUnavailable || message.linkId != _configuration.linkId) {
+      return const [];
+    }
+    final viewModel = context.read<MedBuddyViewModel?>();
+    if (viewModel != null &&
+        viewModel.patientHash != _configuration.currentUserHash) {
+      return const [];
+    }
+    return LinkedChatDoseRecorder.confirmationContexts(
+      message,
+      userHash: _configuration.currentUserHash,
+      patientHash: _configuration.patientHash,
+      day: doseScheduleDay(viewModel?.doseSync?.clock() ?? DateTime.now()),
+    );
+  }
+
+  // 함수이름: _chatDoseKey
+  // 함수역할: 이 화면에서 기록을 확인한 요청 약 하나를 날짜·시간대·약 ID로 구분한다.
+  // 매개변수: slot: 원본 요청, medication: 그 요청의 약. 반환값: 확인 기록 키.
+  static String _chatDoseKey(
+    ChatScheduleContext slot,
+    ChatMedicationContext medication,
+  ) => '${slot.scheduleDate}:${slot.slotKey}:${medication.medicationId}';
+
+  // 함수이름: _chatDoseCompleted
+  // 함수역할: 현재 기기 기록을 우선 사용해 같은 복용 요청의 중복 처리를 막는다.
+  // 매개변수: slot: 원본 요청의 약과 날짜. 반환값: 모든 요청 약의 해당 시간대 완료 여부.
+  bool _chatDoseCompleted(ChatScheduleContext slot) {
+    final sync = context.read<MedBuddyViewModel?>()?.doseSync;
+    if (sync != null &&
+        sync.owner == _configuration.currentUserHash &&
+        sync.hasCache) {
+      return slot.medications.every(
+        (medication) => sync.schedules.any(
+          (schedule) =>
+              schedule.medicationID == medication.medicationId.toString() &&
+              schedule.isSlotCompleted(slot.slotKey),
+        ),
+      );
+    }
+    return slot.medications.every(
+          (medication) =>
+              _confirmedChatDoses.contains(_chatDoseKey(slot, medication)),
+        ) ||
+        _scheduleContexts.any(
+          (current) =>
+              current.scheduleDate == slot.scheduleDate &&
+              current.slotKey == slot.slotKey &&
+              current.totalCount > 0 &&
+              current.completedCount == current.totalCount &&
+              slot.medications.every(
+                (medication) => current.medications.any(
+                  (item) => item.medicationId == medication.medicationId,
+                ),
+              ),
+        );
+  }
+
+  // 함수이름: _recordRequestedDose
+  // 함수역할: 원본 메시지·연동·현재 일정을 재검증하고 누른 시간대의 약만 공통 전송 대기열에 저장한다.
+  // 매개변수: message: 요청 메시지; slotKey: 누른 시간대. 반환값: 저장·안내 완료; 작성 중인 대화는 유지한다.
+  Future<void> _recordRequestedDose(ChatMessage message, String slotKey) async {
+    if (_isSending || _isSelectingMessages || _isDeletingMessages) return;
+    final current = _openableCard(message);
+    if (current == null) return;
+    final slot = _doseRequestContexts(
+      current,
+    ).where((item) => item.slotKey == slotKey).firstOrNull;
+    if (slot == null || _chatDoseCompleted(slot)) return;
+    final viewModel = context.read<MedBuddyViewModel?>();
+    setState(() {
+      _isRecordingTaken = true;
+      _sendErrorMessage = null;
+    });
+    try {
+      final contexts = await _doseRecorder.loadScheduleContexts(viewModel);
+      // 조회 중 날짜·계정·연동 또는 메시지가 바뀌면 이전 요청으로 기록하지 않는다.
+      final live = mounted ? _openableCard(current) : null;
+      if (live == null ||
+          !_doseRequestContexts(live).any(
+            (item) =>
+                item.slotKey == slot.slotKey &&
+                item.scheduleDate == slot.scheduleDate,
+          )) {
+        return;
+      }
+      final plan = LinkedChatDoseRecorder.plan(
+        [
+          for (final medication in slot.medications)
+            medication.withScheduleSlots([slot.slotKey]),
+        ],
+        slot.scheduleDate,
+        contexts,
+      );
+      if (plan.status != ChatDosePlanStatus.ready) {
+        setState(() => _sendErrorMessage = _text.selectionScheduleChanged);
+        return;
+      }
+      if (_chatDoseCompleted(slot)) return;
+      final response = await _doseRecorder.record(
+        plan.requests.single,
+        viewModel: viewModel,
+      );
+      if (!mounted) return;
+      if (response != null) _history.addMessage(response);
+      setState(() {
+        for (final medication in slot.medications) {
+          _confirmedChatDoses.add(_chatDoseKey(slot, medication));
+        }
+      });
+      await _refreshScheduleContexts();
+    } catch (_) {
+      if (mounted) setState(() => _sendErrorMessage = _text.takenSaveFailed);
+    } finally {
+      if (mounted) setState(() => _isRecordingTaken = false);
+    }
+  }
+
+  // 함수이름: _buildDoseRequestActions
+  // 함수역할: 요청된 시간대를 각각 표시하여 한 번의 누르기로 다른 시간대까지 완료되지 않게 한다.
+  // 매개변수: message: 표시할 메시지. 반환값: 환자용 완료 버튼 또는 동작 없음.
+  Widget? _buildDoseRequestActions(ChatMessage message) {
+    final slots = _doseRequestContexts(message);
+    if (slots.isEmpty) return null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final slot in slots)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: FilledButton.icon(
+              key: ValueKey(
+                'chat-confirm-dose-${message.messageId}-${slot.slotKey}',
+              ),
+              onPressed:
+                  _isSending ||
+                      _isSelectingMessages ||
+                      _isDeletingMessages ||
+                      _chatDoseCompleted(slot)
+                  ? null
+                  : () => _recordRequestedDose(message, slot.slotKey),
+              icon: Icon(
+                _chatDoseCompleted(slot) ? Icons.done_all : Icons.check,
+                size: 20,
+              ),
+              label: Text(
+                _text.doseRequestLabel(
+                  message.messageKind,
+                  slot.slotKey,
+                  completed: _chatDoseCompleted(slot),
+                  multipleSlots: slots.length > 1,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: MedBuddyColors.primary,
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   // 함수이름: _showChatActions
@@ -1076,7 +1256,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
               ),
             if (medications.isNotEmpty) ...[
               const SizedBox(height: 8),
-              KeepWordsText(medications.map((item) => item.medicationName).join(', ')),
+              KeepWordsText(
+                medications.map((item) => item.medicationName).join(', '),
+              ),
             ],
             if (hospitals) ...[
               const SizedBox(height: 8),
@@ -1190,9 +1372,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       return;
     }
     if (!selected.canRequestCheck) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: KeepWordsText(_text.onlyCaregiverCanRequest)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: KeepWordsText(_text.onlyCaregiverCanRequest)),
+      );
       return;
     }
     final sent = await _submitMessage(
@@ -1234,9 +1416,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       longitude: pharmacy.longitude,
     );
     if (!succeeded && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: KeepWordsText(_text.directionsUnavailable)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: KeepWordsText(_text.directionsUnavailable)),
+      );
     }
   }
 
@@ -1646,9 +1828,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() => _loadingMedicationId = null);
       if (!_isChatVisible || _history.linkUnavailable) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: KeepWordsText(_text.medicationDetailLoadFailed)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: KeepWordsText(_text.medicationDetailLoadFailed)),
+      );
     }
   }
 
@@ -1721,9 +1903,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
         try {
           await Clipboard.setData(ClipboardData(text: current.body));
           if (mounted) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: KeepWordsText(_text.messageCopied)));
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: KeepWordsText(_text.messageCopied)),
+            );
           }
         } on PlatformException {
           if (mounted) {
@@ -1839,7 +2021,8 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                   ],
                 ),
               ),
-              if (!canDeleteForEveryone) KeepWordsText(_text.privateDeletionOnly),
+              if (!canDeleteForEveryone)
+                KeepWordsText(_text.privateDeletionOnly),
             ],
           ),
           actions: [
@@ -2078,6 +2261,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   // - 없음.
   // 반환값: 연동 사용자 메시지와 복약 관련 첨부에 쓰는 위젯 트리.
   Widget _buildMessageArea() {
+    context.watch<MedBuddyViewModel?>();
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(color: MedBuddyColors.primary),
@@ -2276,6 +2460,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                           text: _text,
                           userSetting: _configuration.userSetting,
                           loadingMedicationId: _loadingMedicationId,
+                          doseActions: _buildDoseRequestActions(
+                            _messages[index],
+                          ),
                           onMedicationPressed: _openMedicationDetail,
                           onHistoryPressed: _canOpenMedicationHistory
                               ? _openMedicationHistory
@@ -2374,7 +2561,21 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
           mainAxisSize: MainAxisSize.min,
           children: [
             if (context.read<MedBuddyViewModel?>()?.doseSync case final sync?)
-              DoseSyncStatus(service: sync, isEnglish: _text.isEnglish),
+              ListenableBuilder(
+                listenable: sync,
+                builder: (context, child) =>
+                    sync.pendingCount == 0 && sync.lostRecordCount == 0
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        key: const ValueKey('chat-dose-sync-status'),
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: child,
+                      ),
+                child: DoseSyncStatus(
+                  service: sync,
+                  isEnglish: _text.isEnglish,
+                ),
+              ),
             if (_selectedMedicationContexts.isNotEmpty) ...[
               SizedBox(
                 height: selectedMedicationCardHeight,
@@ -3901,6 +4102,7 @@ class _MessageBubble extends StatelessWidget {
   final int? loadingMedicationId;
   final _LinkedChatText text;
   final UserSetting userSetting;
+  final Widget? doseActions;
   final ValueChanged<ChatMedicationContext> onMedicationPressed;
   final ValueChanged<ChatMessage>? onHistoryPressed;
   final ValueChanged<ChatMessage>? onSchedulePressed;
@@ -3933,6 +4135,7 @@ class _MessageBubble extends StatelessWidget {
     required this.loadingMedicationId,
     required this.text,
     required this.userSetting,
+    this.doseActions,
     required this.onMedicationPressed,
     required this.onHistoryPressed,
     required this.onSchedulePressed,
@@ -4115,6 +4318,7 @@ class _MessageBubble extends StatelessWidget {
                 letterSpacing: 0,
               ),
             ),
+            ?doseActions,
             if (message.showSafetyGuidance) ...[
               const SizedBox(height: 8),
               _MedicationSafetyGuidance(text: text),
@@ -4203,6 +4407,23 @@ class _LinkedChatText {
   // Returns: True when the normalized code begins with en.
   bool get isEnglish => isEnglishLanguage(language);
 
+  // Request kind defines the scope even when a whole slot contains just one drug.
+  String doseRequestLabel(
+    ChatMessageKind kind,
+    String slotKey, {
+    required bool completed,
+    required bool multipleSlots,
+  }) {
+    final slotLabel = medicationSlotLabel(slotKey, isEnglish: isEnglish);
+    if (kind == ChatMessageKind.medicationCheckRequest) {
+      final label = completed
+          ? (isEnglish ? 'Medication taken' : '약 복용 완료')
+          : (isEnglish ? 'Mark medication taken' : '약 복용하기');
+      return multipleSlots ? '$slotLabel: $label' : label;
+    }
+    return '$slotLabel ${completed ? (isEnglish ? 'recorded' : '기록 완료') : (isEnglish ? 'Taken' : '복용 완료')}';
+  }
+
   // 함수이름: sharedContentHeading
   // 함수역할: 일반 대화는 제목 없이 두고 공유 동작·첨부 종류에 맞는 제목과 아이콘을 선택한다.
   // 매개변수: message (ChatMessage): 표시할 메시지.
@@ -4210,7 +4431,8 @@ class _LinkedChatText {
   (String, IconData)? sharedContentHeading(ChatMessage message) {
     if (message.historyContext != null) return null;
     final action = switch (message.messageKind) {
-      ChatMessageKind.slotCheckRequest => (
+      ChatMessageKind.slotCheckRequest ||
+      ChatMessageKind.medicationCheckRequest => (
         isEnglish ? 'Medication check request' : '복약 확인 요청',
         Icons.fact_check_outlined,
       ),
@@ -4739,9 +4961,8 @@ class _LinkedChatText {
   // Description: Explains why the request action is disabled when no dose slot is requestable.
   // Parameters: None.
   // Returns: The localized no-requestable-slot reason.
-  String get noRequestableSchedule => isEnglish
-      ? 'No medication times to check today'
-      : '오늘 확인을 요청할 시간대가 없습니다';
+  String get noRequestableSchedule =>
+      isEnglish ? 'No medication times to check today' : '오늘 확인을 요청할 시간대가 없습니다';
   // Function Name: scheduleLoading
   // Description: Explains why dose actions remain unavailable while today's slots are loading.
   // Parameters: None.

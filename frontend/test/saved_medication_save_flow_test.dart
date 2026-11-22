@@ -131,11 +131,13 @@ class _RecordingSavedControl extends CheckSavedMedication {
 // Responsibilities:
 // - Record the looked-up schedules and delegate the answer to the test's callback.
 // Attributes:
-// - onRequest (Future<MedicationDetail?> Function(MedicationSchedule)): Scripted lookup answer.
+// - onRequest (Future<MedicationDetail?> Function(String)): Scripted lookup answer.
 // - requestedNames (List<String>): Medication names looked up, in order.
+// - requestedItemSeqs (List<String>): Exact catalog item codes looked up, in order.
 class _ScriptedDetailControl extends CheckMedicationDetail {
-  Future<MedicationDetail?> Function(MedicationSchedule schedule) onRequest;
+  Future<MedicationDetail?> Function(String query) onRequest;
   final requestedNames = <String>[];
+  final requestedItemSeqs = <String>[];
 
   // Function Name: _ScriptedDetailControl
   // Description:
@@ -158,7 +160,13 @@ class _ScriptedDetailControl extends CheckMedicationDetail {
     MedicationSchedule medicationSchedule,
   ) {
     requestedNames.add(medicationSchedule.medicationName);
-    return onRequest(medicationSchedule);
+    return onRequest(medicationSchedule.medicationName);
+  }
+
+  @override
+  Future<MedicationDetail?> requestCatalogMedicationDetail(String itemSeq) {
+    requestedItemSeqs.add(itemSeq);
+    return onRequest(itemSeq);
   }
 }
 
@@ -312,7 +320,7 @@ class _Harness {
   // - onLookup: Scripted catalog lookup answer.
   // Returns:
   // - _Harness: the initialized instance.
-  _Harness(Future<MedicationDetail?> Function(MedicationSchedule) onLookup)
+  _Harness(Future<MedicationDetail?> Function(String) onLookup)
     : lookup = _ScriptedDetailControl(onLookup) {
     model = MedBuddySavedMedicationViewModel(
       checkSavedMedication: saved,
@@ -433,6 +441,7 @@ void main() {
       isTrue,
     );
     expect(harness.lookup.requestedNames, isEmpty);
+    expect(harness.lookup.requestedItemSeqs, isEmpty);
     expect(harness.saved.savedDetails, isEmpty);
     expect(harness.changes, 0);
   });
@@ -546,7 +555,8 @@ void main() {
       final results = await request;
       expect(results, hasLength(2));
       expect(results.every((result) => !result.isCompleted), isTrue);
-      expect(harness.lookup.requestedNames, hasLength(1));
+      expect(harness.lookup.requestedItemSeqs, hasLength(1));
+      expect(harness.lookup.requestedNames, isEmpty);
       expect(harness.saved.savedDetails, isEmpty);
       expect(harness.saved.listRequests, 0);
       expect(harness.scheduleRefreshes, 0);
@@ -557,7 +567,7 @@ void main() {
   group('identified pill', () {
     // Function Name: test callback
     // Description:
-    // - Expected behavior: when the name lookup answers with another product, its text and
+    // - Expected behavior: when the catalog lookup answers with another product, its text and
     //   image are not stored under the item code the patient confirmed.
     // Parameters:
     // - None.
@@ -594,19 +604,14 @@ void main() {
 
     // Function Name: test callback
     // Description:
-    // - Expected behavior: an ambiguous name lookup is resolved with the candidate that has
-    //   the confirmed item code, so its usage and warning text are saved.
+    // - Expected behavior: the exact catalog lookup preserves the confirmed product's
+    //   usage and warning text without another name search.
     // Parameters:
     // - None.
     // Returns:
     // - Future<void>; completes when the assertions pass.
-    test('an ambiguous lookup is resolved by the chosen item code', () async {
-      final harness = _Harness(
-        (_) async => throw MedicationMatchReview([
-          _catalogDetail('299999999'),
-          _catalogDetail('200000001'),
-        ]),
-      );
+    test('the chosen item code is looked up without name search', () async {
+      final harness = _Harness((id) async => _catalogDetail(id));
       addTearDown(harness.model.dispose);
 
       await harness.model.saveIdentifiedPill(_chosenCandidate, _chosenSchedule);
@@ -617,24 +622,20 @@ void main() {
       expect(saved.efficacy, 'efficacy of 200000001');
       expect(saved.usageMethod, 'usage of 200000001');
       expect(saved.warning, 'warning of 200000001');
+      expect(harness.lookup.requestedItemSeqs, ['200000001']);
+      expect(harness.lookup.requestedNames, isEmpty);
     });
 
     // Function Name: test callback
     // Description:
-    // - Expected behavior: an ambiguous lookup without the confirmed item code saves the
-    //   candidate's own fields and none of the other products' text.
+    // - Expected behavior: a catalog miss preserves the candidate's own fields.
     // Parameters:
     // - None.
     // Returns:
     // - Future<void>; completes when the assertions pass.
-    test('an ambiguous lookup without the chosen item code keeps the '
+    test('a catalog miss keeps the '
         'candidate fields', () async {
-      final harness = _Harness(
-        (_) async => throw MedicationMatchReview([
-          _catalogDetail('299999999'),
-          _catalogDetail('288888888'),
-        ]),
-      );
+      final harness = _Harness((_) async => null);
       addTearDown(harness.model.dispose);
 
       await harness.model.saveIdentifiedPill(_chosenCandidate, _chosenSchedule);
@@ -755,12 +756,8 @@ void main() {
           MedicationSaveStatus.failed,
           MedicationSaveStatus.saved,
         ]);
-        expect(harness.lookup.requestedNames, [
-          'first pill',
-          'rejected pill',
-          'crashing pill',
-          'last pill',
-        ]);
+        expect(harness.lookup.requestedItemSeqs, ['1', '2', '3', '4']);
+        expect(harness.lookup.requestedNames, isEmpty);
         expect(harness.saved.listRequests, 1);
         expect(harness.scheduleRefreshes, 1);
         expect(harness.reminderSyncs, 1);
