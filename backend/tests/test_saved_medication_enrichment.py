@@ -277,6 +277,7 @@ async def test_timeout_dedup_and_concurrency_are_bounded(factory, monkeypatch):
     monkeypatch.setattr(enrichment, "fetch_public_details", blocked)
     monkeypatch.setattr(enrichment, "ENRICHMENT_TIMEOUT_SECONDS", 0.2)
     monkeypatch.setattr(enrichment, "MAX_PENDING_ENRICHMENTS", 3)
+    monkeypatch.setattr(enrichment, "MAX_PENDING_ENRICHMENTS_PER_OWNER", 10)
     dispatcher = enrichment.EnrichmentDispatcher()
     for target in targets:
         await dispatcher.dispatch(factory, target)
@@ -369,3 +370,65 @@ def test_regimen_change_queues_the_new_course_still_missing_details(factory):
         refused = BackgroundTasks()
         enrichment.queue_changed_medication_enrichment(refused, db, {"success": False, "id": response["id"]})
         assert not refused.tasks
+
+
+@pytest.mark.anyio
+async def test_summary_is_skipped_when_only_unsummarisable_fields_are_missing(factory, monkeypatch):
+    _, target = seed_target(
+        factory, efficacy="Saved effect", use_method="Saved use", warning_message="Saved warning",
+    )
+    _, large, generator = mock_provider(monkeypatch, approval=[{
+        "ITEM_SEQ": SEQ, "ITEM_NAME": "test-tablet", "EE_DOC_DATA": "Official effect",
+    }])
+    values = {}
+    await enrichment.fetch_public_details(target, values)
+    large.searchMedication.assert_awaited_once()
+    # Interaction, side effects and storage cannot come from the summary.
+    generator.summarize_advanced_item.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_answered_lookup_is_not_repeated_by_duplicate_saves(factory, monkeypatch):
+    _, target = seed_target(factory)
+    lookups = AsyncMock()
+    monkeypatch.setattr(enrichment, "fetch_public_details", lookups)
+    dispatcher = enrichment.EnrichmentDispatcher()
+    for _ in range(3):
+        await dispatcher.dispatch(factory, target)
+        await finish(dispatcher)
+    # The public data answered without filling the blanks: duplicate saves and replayed
+    # changes do not look the row up again inside the retry window.
+    assert lookups.await_count == 1
+    monkeypatch.setattr(enrichment, "ENRICHMENT_RETRY_SECONDS", 0.0)
+    await dispatcher.dispatch(factory, target)
+    await finish(dispatcher)
+    assert lookups.await_count == 2
+
+
+@pytest.mark.anyio
+async def test_one_account_cannot_fill_the_shared_queue(factory, monkeypatch):
+    own = [seed_target(factory, item_name=f"product-{i}")[1] for i in range(6)]
+    with factory() as db:
+        seed_account(db, "patient-b")
+        row = seed_medication(db, patient_hash="patient-b", item_seq=SEQ,
+                              **{field: "" for field in enrichment.DETAIL_FIELDS})
+        tasks = BackgroundTasks()
+        enrichment.queue_saved_medication_enrichment(
+            tasks, db, {"success": True, "id": row.id}, "patient-b", SEQ,
+        )
+        other = tasks.tasks[0].args[1]
+    release = asyncio.Event()
+
+    async def blocked(target, values):
+        await release.wait()
+
+    monkeypatch.setattr(enrichment, "fetch_public_details", blocked)
+    dispatcher = enrichment.EnrichmentDispatcher()
+    for target in own:
+        await dispatcher.dispatch(factory, target)
+    await dispatcher.dispatch(factory, other)
+    owners = [key[1] for key in dispatcher.jobs]
+    assert owners.count("patient-a") == enrichment.MAX_PENDING_ENRICHMENTS_PER_OWNER
+    assert owners.count("patient-b") == 1
+    release.set()
+    await finish(dispatcher)

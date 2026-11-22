@@ -72,6 +72,8 @@ logger = logging.getLogger(__name__)
 # 수락한 스트림을 자격 증명 만료로 닫을 때의 종료 코드. 인증 실패(4401)와 구분해
 # 클라이언트가 로그아웃하지 않고 새 토큰으로 다시 연결하게 한다.
 _CLOSE_CREDENTIAL_EXPIRED = 4440
+# 세션 상태를 연달아 확인하지 못한 횟수가 이만큼 되면 스트림을 닫고 다시 인증하게 한다.
+_MAX_FAILED_REVALIDATIONS = 3
 
 # Async routes await each blocking operation sequentially using the bounded
 # AnyIO worker pool. Cancellation drains each database operation before request
@@ -500,6 +502,7 @@ async def stream_chat_events(
         await websocket.send_json({"type": "chat_ready", "link_id": link_id})
         last_ping_at = 0.0
         last_validated_at = time.monotonic()
+        failed_revalidations = 0
         while True:
             receive_timeout = float(settings.CHAT_WEBSOCKET_IDLE_TIMEOUT_SECONDS)
             if credential_deadline is not None:
@@ -564,11 +567,19 @@ async def stream_chat_events(
                     logger.warning(
                         "Chat stream revalidation failed: %s", type(exc).__name__,
                     )
+                    # 확인이 계속 실패하면 취소된 세션도 토큰 만료(최대 1시간)까지 메시지를 받게
+                    # 된다. 세 번 연달아 확인하지 못하면 닫아 새 토큰으로 다시 연결하게 하고, 그
+                    # 연결의 인증에서 세션 상태를 다시 확인한다.
+                    failed_revalidations += 1
+                    if failed_revalidations >= _MAX_FAILED_REVALIDATIONS:
+                        await websocket.close(code=_CLOSE_CREDENTIAL_EXPIRED)
+                        return
                 else:
                     if not still_active:
                         await websocket.close(code=4404)
                         return
                     last_validated_at = now
+                    failed_revalidations = 0
             await websocket.send_json({"type": "pong"})
     except WebSocketDisconnect:
         pass

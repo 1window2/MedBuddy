@@ -34,6 +34,7 @@ class AuthenticatedPrincipal(BaseModel):
     anonymous: bool = False
     authentication_disabled: bool = False
     authenticated_at: datetime | None = None
+    issued_at: datetime | None = None
     expires_at: datetime | None = None
 
     # Function Name: from_verified_claims
@@ -93,16 +94,18 @@ class AuthenticatedPrincipal(BaseModel):
             sign_in_provider=sign_in_provider,
             anonymous=sign_in_provider == "anonymous",
             authenticated_at=authenticated_at,
+            issued_at=cls._expiry_from_claim(claims.get("iat")),
             expires_at=cls._expiry_from_claim(claims.get("exp")),
         )
 
     # Function Name: _expiry_from_claim
     # Description:
-    # - Reads the token expiry for long-lived connections. The verifier has already
-    #   rejected an expired token, so an absent or malformed claim yields None instead
-    #   of failing a request that only needs the identity.
+    # - Reads a token time claim (`exp` for long-lived connections, `iat` for checks against
+    #   the account's session revocation time). The verifier has already checked the token,
+    #   so an absent or malformed claim yields None instead of failing a request that only
+    #   needs the identity.
     # Parameters:
-    # - value (object): The verified token's `exp` claim, in seconds since the epoch.
+    # - value (object): The verified token's time claim, in seconds since the epoch.
     # Returns:
     # - Timezone-aware expiry, or None when the claim cannot be read as a time.
     @staticmethod

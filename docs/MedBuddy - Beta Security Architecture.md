@@ -271,7 +271,9 @@ shared in chat, has `HOSPITAL_SEARCH_DAILY_LIMIT`, and nearby pharmacy search ha
 `PHARMACY_API_DAILY_REQUEST_BUDGET`). A day ends at midnight in the
 service time zone (Asia/Seoul). One IP address is allowed twenty times the
 account quota, which bounds what scripted accounts can spend from one address.
-The per-address daily count is taken after sign-in is checked, so a request
+The per-address daily count is taken after sign-in and after the account's own
+daily count, so a request the account quota refuses does not spend the allowance
+other users of the address share, and a request
 that is refused before sign-in leaves only the per-minute address counter,
 which expires within a minute. Day-long counters for unauthenticated addresses
 could otherwise pile up until the counter store reached its memory cap; a full

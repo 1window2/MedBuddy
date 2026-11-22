@@ -273,7 +273,10 @@ class CheckSavedMedication {
       if (response.statusCode != 200) {
         return MedicationSaveResult(
           status: MedicationSaveStatus.failed,
-          message: ApiResponseParser.extractErrorDetail(responseBody),
+          // 422 본문은 FastAPI 검증 오류 목록이라 화면에 그대로 보이지 않게 고정 문구를 쓴다.
+          message: response.statusCode == 422
+              ? '약 정보를 저장할 수 없는 형식입니다. 입력한 내용을 확인해주세요.'
+              : ApiResponseParser.extractErrorDetail(responseBody),
           // 저장 API의 409는 계정당 저장 가능한 약 수를 넘었을 때만 쓰인다.
           // 422는 요청 검증 단계의 거절이라 저장 처리까지 가지 않았다.
           failureKind: switch (response.statusCode) {

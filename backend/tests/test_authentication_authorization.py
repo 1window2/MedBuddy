@@ -395,14 +395,14 @@ async def test_registered_principal_quota_uses_stable_identity_and_route_scope(
     assert principals[0].user_hash == principals[1].user_hash
     stable_identity = f"user:{principals[0].user_hash}"
     # 약 조회와 건강 추천은 하루 AI 비용 한도도 함께 세므로 같은 계정으로 한 번씩 더 기록되고,
-    # 인증 뒤에 같은 하루 한도를 주소 단위로도 한 번씩 센다.
+    # 그 계정 한도를 통과한 뒤에 같은 하루 한도를 주소 단위로도 한 번씩 센다.
     assert [call[:2] for call in rate_limit_store.calls] == [
         (stable_identity, "POST:/api/v1/medication/identify"),
-        ("ip:203.0.113.10", "daily:ai"),
         (stable_identity, "daily:ai"),
+        ("ip:203.0.113.10", "daily:ai"),
         (stable_identity, "GET:/api/v1/medication/health/recommendation"),
-        ("ip:203.0.113.10", "daily:ai"),
         (stable_identity, "daily:ai"),
+        ("ip:203.0.113.10", "daily:ai"),
     ]
     assert all(
         credentials.credentials not in stable_identity

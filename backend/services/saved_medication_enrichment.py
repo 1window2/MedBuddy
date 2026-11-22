@@ -40,6 +40,13 @@ _PROTECTED_FIELDS = (
 ENRICHMENT_TIMEOUT_SECONDS = 40.0
 MAX_CONCURRENT_ENRICHMENTS = 2
 MAX_PENDING_ENRICHMENTS = 32
+# One account must not hold the shared queue, and a row whose blanks the public data cannot fill
+# must not be looked up again on every duplicate save or replayed change.
+MAX_PENDING_ENRICHMENTS_PER_OWNER = 4
+ENRICHMENT_RETRY_SECONDS = 6 * 60 * 60
+_MAX_REMEMBERED_ATTEMPTS = 4096
+# The AI summary can only fill these fields.
+_SUMMARY_FIELDS = frozenset({"efficacy", "use_method", "warning_message"})
 
 
 def _missing(value: str | None) -> bool:
@@ -122,6 +129,9 @@ async def fetch_public_details(target: EnrichmentTarget, values: dict[str, str])
         item_seq=target.item_seq, item_name=name, raw_json=json.dumps(approval),
     )
     raw_detail = CheckCatalogMedicationDetail(None)._approval_detail(raw)
+    if not (target.missing.keys() - values.keys()) & _SUMMARY_FIELDS:
+        _merge(values, raw_detail, target.item_seq)
+        return
     try:
         summary = await control._summarize_advanced_item(name, approval)
         _merge(values, summary, target.item_seq)
@@ -154,19 +164,44 @@ class EnrichmentDispatcher:
     def __init__(self) -> None:
         self.jobs: dict[tuple, asyncio.Task] = {}
         self._gate = asyncio.Semaphore(MAX_CONCURRENT_ENRICHMENTS)
+        # Rows whose public lookup answered recently; a failed lookup is not remembered, so a
+        # later duplicate save can still retry it.
+        self._answered: dict[tuple, float] = {}
 
     async def dispatch(self, factory: sessionmaker, target: EnrichmentTarget) -> None:
         key = (factory.kw["bind"], target.owner, target.medication_id, target.item_seq,
                target.protected["regimen_revision"])
-        if key in self.jobs or len(self.jobs) >= MAX_PENDING_ENRICHMENTS:
+        now = asyncio.get_running_loop().time()
+        answered_at = self._answered.get(key)
+        if answered_at is not None and now - answered_at < ENRICHMENT_RETRY_SECONDS:
+            return
+        owner_jobs = sum(1 for job in self.jobs if job[1] == target.owner)
+        if (
+            key in self.jobs
+            or len(self.jobs) >= MAX_PENDING_ENRICHMENTS
+            or owner_jobs >= MAX_PENDING_ENRICHMENTS_PER_OWNER
+        ):
             return
         # BackgroundTasks must finish immediately so dependency teardown releases the
         # saving request's account lock. Do not inherit its database-admission context.
-        task = asyncio.create_task(self._run(factory, target), context=contextvars.Context())
+        task = asyncio.create_task(
+            self._run(factory, target, key), context=contextvars.Context(),
+        )
         self.jobs[key] = task
         task.add_done_callback(lambda completed: self.jobs.pop(key, None))
 
-    async def _run(self, factory: sessionmaker, target: EnrichmentTarget) -> None:
+    def _remember_answer(self, key: tuple) -> None:
+        now = asyncio.get_running_loop().time()
+        if len(self._answered) >= _MAX_REMEMBERED_ATTEMPTS:
+            self._answered = {
+                remembered: answered_at for remembered, answered_at in self._answered.items()
+                if now - answered_at < ENRICHMENT_RETRY_SECONDS
+            }
+            if len(self._answered) >= _MAX_REMEMBERED_ATTEMPTS:
+                self._answered.pop(next(iter(self._answered)))
+        self._answered[key] = now
+
+    async def _run(self, factory: sessionmaker, target: EnrichmentTarget, key: tuple) -> None:
         values: dict[str, str] = {}
         try:
             async with asyncio.timeout(ENRICHMENT_TIMEOUT_SECONDS):
@@ -177,6 +212,7 @@ class EnrichmentDispatcher:
                     _merge(values, detail, target.item_seq)
                     if not target.missing.keys() <= values.keys():
                         await fetch_public_details(target, values)
+                        self._remember_answer(key)
         except asyncio.CancelledError:
             raise
         except Exception as exc:

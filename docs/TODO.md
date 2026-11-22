@@ -123,6 +123,20 @@ Device checks on the release build. The last pass (2026-11-13) is summarised in 
 - [ ] Push tokens of a user disabled by the operator keep receiving pushes until the
       account is deleted, and the account owner has no "sign out other devices"
       action.
+- [ ] Owner check left by the 2026-11-22 security audit, in a separate non-production
+      Firebase project set up like production (never the production project): whether
+      an unverified email/password credential can be linked to an anonymous user, and
+      whether a later password reset or Google sign-in for that address lands on the
+      same uid. If it does, a caregiver link created while the uid was anonymous
+      survives the takeover; the backend keys accounts on the uid only.
+- [ ] Hardening leads from the same audit (no boundary violation found): push device
+      rows do not store the issue time of the registering session, so a registration
+      in the same second as a revocation survives the prune (needs a migration);
+      an open chat stream is re-checked only when the client pings (a modified,
+      silent client keeps receiving for up to about two and a half minutes after a
+      revocation); hospital and pharmacy shares in chat charge only the per-account
+      daily counter, not the per-address one; the notification inbox keeps caregiver
+      alert text in app-private plaintext preferences for 90 days after sign-out.
 
 ## P3: owner decisions and known limits
 
@@ -152,6 +166,10 @@ Device checks on the release build. The last pass (2026-11-13) is summarised in 
       check on the production catalogue and a decision on review flagging. On the
       local catalogue window it turned correct automatic matches into review lists
       without the true product, so it must not be applied as is.
+- [ ] Since 1.0.1, manual entry and pill identification always hand their results to the
+      shared result screen, so their own direct-save paths (`onSaveRequested`,
+      `_saveAll`, the pill batch save, `saveIdentifiedPills`) run only in tests. Remove
+      them with their tests after the release (code review 2026-11-22).
 - [ ] Rate-limit values (including 120 per minute for per-item deletes), retention of
       dose-sync and tombstone rows, and HTTP 403 wording and retry behaviour before App
       Check is enabled.

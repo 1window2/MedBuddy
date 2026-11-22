@@ -393,15 +393,28 @@ def register_push_token(
         get_session_revocation_boundary
     ),
 ) -> dict[str, object]:
+    sessions_valid_after = (
+        revocation.sessionsValidAfter(principal.subject) if revocation else None
+    )
+    # 인증 단계는 계정 상태를 최대 FIREBASE_REVOCATION_CACHE_SECONDS 동안 재사용한다. 그 사이
+    # 취소 전에 발급된 세션이 다시 등록하면 기기 행의 갱신 시각이 취소 뒤로 밀려 정리 대상에서
+    # 빠지므로, 방금 읽은 취소 기준보다 먼저 발급된 토큰의 등록은 받지 않는다.
+    if sessions_valid_after is not None and (
+        principal.issued_at is None
+        or principal.issued_at.replace(tzinfo=None) < sessions_valid_after
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="The Firebase bearer token is invalid or expired.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return manage_push_token.registerPushToken(
         principal.user_hash,
         request.token,
         request.platform,
         request.supports_caregiver_actions,
         supports_slot_check_actions=request.supports_slot_check_actions,
-        sessions_valid_after=(
-            revocation.sessionsValidAfter(principal.subject) if revocation else None
-        ),
+        sessions_valid_after=sessions_valid_after,
     )
 
 

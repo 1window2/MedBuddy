@@ -19,7 +19,7 @@ import re
 import time
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -53,6 +53,7 @@ from core.request_rate_limits import (
     resolve_daily_quota,
 )
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
+from entities.device_push_token_entity import _DevicePushToken
 from entities.nearby_hospital_entity import HospitalLocationPage
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from entities.user_account_entity import _UserAccount, utc_now
@@ -1467,6 +1468,12 @@ async def test_costly_routes_have_a_daily_quota_per_account_and_per_address(
         "GET:/api/v1/hospitals/nearby",
         "daily:hospital-search",
     ] * 3
+    # The search refused by user-a's own daily quota does not spend the address allowance
+    # that user-b shares: only the two admitted searches of user-a and user-b's one count.
+    address_daily = [
+        scope for scope, _ in pipeline.store.ip_calls() if scope == "daily:hospital-search"
+    ]
+    assert len(address_daily) == 3
     assert resolve_daily_quota("POST", "/api/v1/medication/analyze-prescription-text") == (
         RateLimitRule(settings.AI_REQUEST_DAILY_LIMIT, 86_400), "daily:ai",
     )
@@ -1703,3 +1710,66 @@ async def test_spent_pharmacy_budget_asks_to_wait_until_the_next_day(
     assert response.status_code == 503, response.text
     assert response.json()["detail"] == PHARMACY_BUDGET_EXHAUSTED_DETAIL
     assert int(response.headers["retry-after"]) > 5
+
+
+# Function Name: test_push_registration_with_a_pre_revocation_token_is_refused
+# Description:
+# - The verifier may reuse an account's revocation state for up to
+#   FIREBASE_REVOCATION_CACHE_SECONDS, so a session issued before the owner's revocation can still
+#   reach POST /auth/push-token. That registration is refused against the freshly read revocation
+#   time, so it cannot move its device row past the revocation and escape the later prune; the
+#   owner's next registration with a new session then turns the old device off.
+# Parameters:
+# - pipeline (_Pipeline): Application on replaced outer boundaries.
+# - monkeypatch (pytest.MonkeyPatch): Adds an issue time to the fake ID token claims.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_push_registration_with_a_pre_revocation_token_is_refused(
+    pipeline: _Pipeline,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = {"revoked_at": None, "iat": int(time.time()) - 600}
+
+    class _Revocation:
+        def sessionsValidAfter(self, subject: str) -> datetime | None:
+            return clock["revoked_at"]
+
+    pipeline.app.dependency_overrides[dependencies.get_session_revocation_boundary] = (
+        lambda: _Revocation()
+    )
+    original = _FakeFirebaseVerifier.verifyIdToken
+
+    def with_issue_time(self: _FakeFirebaseVerifier, token: str) -> dict[str, object]:
+        return {**original(self, token), "iat": clock["iat"]}
+
+    monkeypatch.setattr(_FakeFirebaseVerifier, "verifyIdToken", with_issue_time)
+    lost_phone = {"token": "lost-phone-fcm-token", "platform": "android"}
+
+    async with _client(pipeline.app) as client:
+        first = await client.post(
+            "/api/v1/auth/push-token", headers=_headers("owner"), json=lost_phone,
+        )
+        assert first.status_code == 200, first.text
+        # The owner revokes every session; the lost phone's session was issued before that.
+        revoked_at = datetime.now(UTC).replace(tzinfo=None, microsecond=0) + timedelta(seconds=1)
+        clock["revoked_at"] = revoked_at
+        refreshed = await client.post(
+            "/api/v1/auth/push-token", headers=_headers("owner"), json=lost_phone,
+        )
+        # The owner signs in again on a new phone with a session issued after the revocation.
+        clock["iat"] = int(revoked_at.replace(tzinfo=UTC).timestamp()) + 5
+        new_phone = await client.post(
+            "/api/v1/auth/push-token",
+            headers=_headers("owner"),
+            json={"token": "new-phone-fcm-token", "platform": "android"},
+        )
+
+    assert refreshed.status_code == 401
+    assert new_phone.status_code == 200, new_phone.text
+    with pipeline.factory() as db:
+        enabled = {
+            row.token: row.enabled
+            for row in db.query(_DevicePushToken).filter_by(user_hash=_user_hash("owner"))
+        }
+    assert enabled == {"lost-phone-fcm-token": False, "new-phone-fcm-token": True}

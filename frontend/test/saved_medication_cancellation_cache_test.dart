@@ -154,6 +154,51 @@ void main() {
     });
   }
 
+  // Failed saves explain the limit, the connection and a refused request in the app language;
+  // a validation reply's raw error list never reaches the screen.
+  test('save failures are explained in the app language', () async {
+    Future<String> message(
+      bool english,
+      Future<http.Response> Function() respond,
+    ) async {
+      fixture.english = english;
+      fixture.respond = respond;
+      return fixture.model.saveResultMessage(await fixture.save());
+    }
+
+    Future<http.Response> limit() async =>
+        _json({'detail': 'Medication limit reached'}, status: 409);
+    Future<http.Response> invalid() async => _json({
+      'detail': [
+        {
+          'type': 'missing',
+          'loc': ['body', 'item_name'],
+          'msg': 'Field required',
+        },
+      ],
+    }, status: 422);
+    Future<http.Response> offline() async =>
+        throw TimeoutException('Save acknowledgement timed out');
+
+    expect(
+      await message(true, limit),
+      contains('maximum number of medications'),
+    );
+    expect(await message(false, limit), contains('저장할 수 있는 약의 수를 넘었습니다'));
+    expect(
+      await message(true, offline),
+      'Check your internet connection and try again.',
+    );
+    expect(await message(false, offline), '인터넷 연결을 확인한 뒤 다시 시도해주세요.');
+    expect(
+      await message(true, invalid),
+      'Check the medication details and try again.',
+    );
+    final refused = await message(false, invalid);
+    expect(refused, '약 정보를 저장할 수 없는 형식입니다. 입력한 내용을 확인해주세요.');
+    expect(refused, isNot(contains('Field required')));
+  });
+
   for (final outcome in [
     'saved',
     'duplicate',
@@ -360,6 +405,7 @@ class _Fixture {
   int scheduleReads = 0;
   int listRefreshes = 0;
   int reminderRefreshes = 0;
+  bool english = true;
   Future<http.Response> Function() respond = () async =>
       _json({'detail': 'Medication limit reached'}, status: 409);
 
@@ -391,7 +437,7 @@ class _Fixture {
       checkMedicationDetail: CheckMedicationDetail(client: client),
       manualMedicationImageStore: ManualMedicationImageStore(),
       patientHash: _owner,
-      readEnglishSetting: () => true,
+      readEnglishSetting: () => english,
       fetchTodayMedicationSchedule: () async => scheduleReads++,
       suspendSchedule: () async {
         suspendCalls++;

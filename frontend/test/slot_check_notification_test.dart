@@ -359,7 +359,8 @@ void main() {
   // Returns:
   // - Future<void>: Completes the checks; an unexpected result fails the test.
   test('자정을 넘겨 도착한 요청은 버튼 없이 표시한다', () async {
-    SlotCheckNotificationService.clock = () => _now.add(const Duration(days: 1));
+    SlotCheckNotificationService.clock = () =>
+        _now.add(const Duration(days: 1));
     await medBuddyPushBackgroundHandler(RemoteMessage(data: _data()));
     expect(shown, hasLength(1));
     expect((shown.single['platformSpecifics'] as Map)['actions'], isNull);
@@ -433,6 +434,27 @@ void main() {
       jsonEncode(await db.query('operations')),
       isNot(contains('morning')),
     );
+  });
+
+  // 함수이름: 앱 화면 경로로 온 완료 동작은 기록하지 않는다
+  // 함수역할:
+  // - 진짜 '복용 완료' 버튼은 백그라운드 처리기로만 오므로, 공개 액티비티 경로(앱 화면 응답
+  //   처리기)로 같은 동작 ID가 오면 다른 앱이 만든 인텐트로 보고 기록·전송·화면 이동을 하지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
+  test('앱 화면 경로로 온 완료 동작은 기록하지 않는다', () async {
+    var navigated = false;
+    NotificationService.setNotificationSelectionHandler((_) {
+      navigated = true;
+    });
+    NotificationService.handleNotificationResponseForTest(_response());
+    await pumpEventQueue();
+    expect(await store.pending('patient'), isEmpty);
+    expect(platform.scheduled, 0);
+    expect(platform.posts, isEmpty);
+    expect(navigated, isFalse);
   });
 
   // 함수이름: 동시 중복 클릭·새 저장소 인스턴스·서버 ACK 뒤에도 한 요청만 유지한다

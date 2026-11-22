@@ -279,24 +279,36 @@ class MedBuddySavedMedicationViewModel {
   }
 
   // Function Name: saveResultMessage
-  // Description: Turns a save result into feedback in the app language. The server and control messages are
-  //   Korean or English regardless of the setting, so only Korean failure text is passed through.
+  // Description: Turns a save result into feedback in the app language. The limit and connection failures get
+  //   their own guidance; other server and control messages are Korean regardless of the setting, so only
+  //   Korean failure text is passed through.
   // Parameters: result: Save outcome. Returns: The feedback text.
-  String saveResultMessage(MedicationSaveResult result) =>
-      switch (result.status) {
-        MedicationSaveStatus.saved =>
-          _isEnglishSetting
-              ? 'Medication information saved.'
-              : '복약 정보가 성공적으로 저장되었습니다.',
-        MedicationSaveStatus.duplicate =>
-          _isEnglishSetting
-              ? 'This medication is already saved.'
-              : '이미 추가된 약입니다.',
-        MedicationSaveStatus.failed =>
-          _isEnglishSetting
-              ? 'Could not save medication information.'
-              : result.message,
-      };
+  String saveResultMessage(
+    MedicationSaveResult result,
+  ) => switch (result.status) {
+    MedicationSaveStatus.saved =>
+      _isEnglishSetting
+          ? 'Medication information saved.'
+          : '복약 정보가 성공적으로 저장되었습니다.',
+    MedicationSaveStatus.duplicate =>
+      _isEnglishSetting ? 'This medication is already saved.' : '이미 추가된 약입니다.',
+    MedicationSaveStatus.failed => switch (result.failureKind) {
+      MedicationSaveFailureKind.limitReached =>
+        _isEnglishSetting
+            ? 'You have saved the maximum number of medications. Delete ones you no longer take from your pillbox, then try again.'
+            : '저장할 수 있는 약의 수를 넘었습니다. 복약함에서 쓰지 않는 약을 지운 뒤 다시 시도해주세요.',
+      MedicationSaveFailureKind.network =>
+        _isEnglishSetting
+            ? 'Check your internet connection and try again.'
+            : '인터넷 연결을 확인한 뒤 다시 시도해주세요.',
+      MedicationSaveFailureKind.rejected when _isEnglishSetting =>
+        'Check the medication details and try again.',
+      _ =>
+        _isEnglishSetting
+            ? 'Could not save medication information.'
+            : result.message,
+    },
+  };
 
   // Function Name: saveMedicationInfo
   // Description: Saves medication details and optional schedule/photo, then conditionally refreshes dependent state.
