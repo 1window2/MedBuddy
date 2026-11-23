@@ -142,12 +142,23 @@ def normalized_product_name(name: str) -> str:
     return re.sub(r'[^a-z0-9가-힣]', '', _STRENGTH.sub(replace, _text(name)))
 
 
+# 식약처 품목명 끝에 붙는 괄호 하나(대개 "(덱시부프로펜디.씨)" 같은 성분명)다. 약봉투에는 보통 빠져 있다.
+_TRAILING_ANNOTATION = re.compile(r"\s*\([^()]*\)\s*$")
+
+
 # 함수이름: can_auto_match
-# 함수역할: 안전성 충돌이 없고 정규화 제품명이 정확히 같을 때만 자동 일치를 허용한다.
+# 함수역할: 안전성 충돌이 없고 정규화 제품명이 같을 때만 자동 일치를 허용한다. 후보 끝의 괄호 하나는 빼고도 비교한다.
 # 매개변수: original, candidate (str)는 원본 약명과 검색 후보다.
-# 반환값: bool. 단위·띄어쓰기 외의 제품명 차이는 False로 남겨 사용자 확인을 요구한다.
+# 반환값: bool. 단위·띄어쓰기·끝 괄호 외의 제품명 차이는 False로 남겨 사용자 확인을 요구한다.
 def can_auto_match(original: str, candidate: str) -> bool:
     # 유사도는 후보 찾기에만 사용한다. 단위·띄어쓰기 외의 보정은 사용자가 확인한다.
-    return not match_conflict(original, candidate) and (
-        normalized_product_name(original) == normalized_product_name(candidate)
-    )
+    if match_conflict(original, candidate):
+        return False
+    expected = normalized_product_name(original)
+    # 끝 괄호만 다른 품목("…(수출용)" 등)이 함께 검색되면 호출부의 "정확히 하나" 조건이 사용자 확인으로 돌린다.
+    # 함량은 위 충돌 검사에서 괄호를 포함한 전체 이름으로 이미 비교했다.
+    bare = _TRAILING_ANNOTATION.sub('', candidate)
+    return expected in {
+        normalized_product_name(candidate),
+        normalized_product_name(bare) if bare.strip() else None,
+    }

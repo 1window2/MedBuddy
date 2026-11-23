@@ -39,6 +39,8 @@ _DATE = re.compile(
     r"(?<!\d)(?:19|20)\d{2}\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}\s*일?(?!\d)"
 )
 _RRN = re.compile(r"(?<!\d)\d{6}\s*[-–—~ ]?\s*[\d*]{7}(?![\d*])")
+# 영수증에 흔한 "060101-3"(생년월일과 성별 숫자) 표기다. 뒤에 숫자나 별표가 이어지면 위 _RRN이 맡는다.
+_PARTIAL_RRN = re.compile(r"(?<![\d*])\d{6}\s*[-–—]\s*[1-8](?![\d*])")
 _PHONE = re.compile(
     r"(?<!\d)(?:\+82\s*[-. ]?\s*(?:\(0\)\s*)?(?:10|2|[3-6][1-5])|"
     r"01[016789]|0[2-6][1-5]?)\s*[-.) ]?\s*\d{3,4}\s*[-. ]?\s*\d{4}(?!\d)"
@@ -126,7 +128,8 @@ def deidentify_prescription_text(text: str) -> str:
                 raise PrescriptionPrivacyError(_REJECT_MESSAGE)
             private_section = False
 
-        if _ADDRESS.search(line) or _NAME_WITH_HONORIFIC.search(line) or _AGE_GENDER.search(line):
+        if (_ADDRESS.search(line) or _NAME_WITH_HONORIFIC.search(line) or _AGE_GENDER.search(line)
+                or _PARTIAL_RRN.search(line)):
             # 약봉투의 "홍길동 님", 약국 주소처럼 약 정보가 없는 식별 줄은 통째로 빼고 보낸다.
             # 같은 줄에 약 정보가 있으면 일부만 지울 수 없어 다시 촬영하도록 한다.
             if medication_row:

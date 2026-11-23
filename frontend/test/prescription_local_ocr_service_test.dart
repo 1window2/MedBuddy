@@ -231,6 +231,43 @@ void main() {
     );
   });
 
+  // 함수이름: 글자마다 띄운 라벨과 생년월일·성별 숫자 테스트
+  // 함수역할: 약제비 영수증의 "환 자 성 명 / 홍길동(060101-3)" 행(2026-11-23 실물 약봉투에서 전송됨)처럼
+  //   글자 사이에 공백이 들어간 라벨 뒤의 값과, 생년월일 6자리에 성별 숫자만 붙은 표기를 가리는지 검증한다.
+  // 매개변수: 없음. 반환값: 없음; 불일치 시 테스트 실패.
+  test('글자마다 띄운 라벨과 생년월일·성별 숫자 표기도 가린다', () {
+    const filter = PrescriptionPrivacyFilter();
+    for (final label in const [
+      '환 자 성 명',
+      '환자성 명',
+      '환 자 명',
+      '주 민 등 록 번 호',
+      '생 년 월 일',
+    ]) {
+      expect(filter.sensitiveLineFlags([label, '김가상', '아스피린정 100mg 1정']), [
+        true,
+        true,
+        false,
+      ], reason: label);
+    }
+    for (final text in const ['홍길동(060101-3)', '060101 - 4', '060101–2']) {
+      expect(filter.containsSensitiveInformation(text), isTrue, reason: text);
+    }
+    expect(filter.maskInlineIdentifiers('수령인 060101-3 확인'), '수령인 [주민번호 제거] 확인');
+    // 숫자나 별표가 더 이어지는 표기는 기존 주민번호 규칙대로 한 번에 가린다.
+    expect(
+      filter.maskInlineIdentifiers('보호자 900101-1****** 확인'),
+      '보호자 [주민번호 제거] 확인',
+    );
+    for (final text in const [
+      '교부번호 2025010200044',
+      '애니펜정400mg 1정씩 3회 3일분',
+      '212-21-55817',
+    ]) {
+      expect(filter.containsSensitiveInformation(text), isFalse, reason: text);
+    }
+  });
+
   // 함수이름: test callback
   // 함수역할:
   // - 복약 문구 속 전화번호·이메일·주민번호 원문을 제거하고 각 종류의 제거 표시로 바꾸는지 확인한다.

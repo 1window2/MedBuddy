@@ -219,9 +219,10 @@ class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
 class PrescriptionPrivacyFilter {
   static final RegExp _sensitiveLabelPattern = RegExp(
     // "성 명"은 앞 글자가 한글이 아닐 때만 라벨로 본다. "서방성 명…" 같은 약 문구를 지우지 않기 위해서다.
-    r'(환자\s*(명|성명|이름|번호|정보)|수진자(\s*(명|성명))?|(?<![가-힣])성\s*명|'
-    r'주민\s*(등록)?\s*번호|'
-    r'생년\s*월일|주소|전화\s*번호|연락처|휴대폰|보험\s*번호|'
+    // 영수증 표의 "환 자 성 명"처럼 글자마다 띄운 라벨도 찾는다. 서버 비식별화(prescription_privacy.py)와 같은 허용 범위다.
+    r'(환\s*자\s*(명|성\s*명|이\s*름|번\s*호|정\s*보)|수진자(\s*(명|성명))?|(?<![가-힣])성\s*명|'
+    r'주\s*민\s*(등\s*록)?\s*번\s*호|'
+    r'생\s*년\s*월\s*일|주소|전화\s*번호|연락처|휴대폰|보험\s*번호|'
     r'차트\s*번호|의무\s*기록\s*번호)',
     caseSensitive: false,
   );
@@ -257,6 +258,10 @@ class PrescriptionPrivacyFilter {
   static final RegExp _residentNumberPattern = RegExp(
     r'(?<!\d)\d{6}\s*[-–—~ ]?\s*[1-8][\d*]{6}(?![\d*])',
   );
+  // 영수증에 흔한 "060101-3"(생년월일과 성별 숫자) 표기다. 뒤에 숫자나 별표가 이어지면 위 패턴이 맡는다.
+  static final RegExp _partialResidentNumberPattern = RegExp(
+    r'(?<![\d*])\d{6}\s*[-–—]\s*[1-8](?![\d*])',
+  );
   static final RegExp _phonePattern = RegExp(
     r'(?<!\d)(?:01[016789]|0[2-6][1-5]?)\s*[-.) ]?\s*'
     r'\d{3,4}\s*[-. ]?\s*\d{4}(?!\d)',
@@ -287,6 +292,7 @@ class PrescriptionPrivacyFilter {
     return _sensitiveLabelPattern.hasMatch(text) ||
         _ageGenderPattern.hasMatch(text) ||
         _residentNumberPattern.hasMatch(text) ||
+        _partialResidentNumberPattern.hasMatch(text) ||
         _phonePattern.hasMatch(text) ||
         _emailPattern.hasMatch(text);
   }
@@ -444,6 +450,7 @@ class PrescriptionPrivacyFilter {
     // 날짜의 끝자리가 지역번호로 읽히지 않도록 생년월일을 연락처보다 먼저 센다.
     for (final pattern in [
       _residentNumberPattern,
+      _partialResidentNumberPattern,
       _birthDateValuePattern,
       _phonePattern,
       _emailPattern,
@@ -497,6 +504,7 @@ class PrescriptionPrivacyFilter {
   String maskInlineIdentifiers(String text) {
     return text
         .replaceAll(_residentNumberPattern, '[주민번호 제거]')
+        .replaceAll(_partialResidentNumberPattern, '[주민번호 제거]')
         .replaceAll(_phonePattern, '[연락처 제거]')
         .replaceAll(_emailPattern, '[이메일 제거]');
   }

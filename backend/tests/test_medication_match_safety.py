@@ -383,3 +383,79 @@ def test_identical_names_without_ids_keep_different_manufacturers() -> None:
     result = asyncio.run(control.requestMedicationDetail('테스트정'))
     assert result.requires_confirmation
     assert len(result.candidates) == 2
+
+
+# Function Name: test_catalog_ingredient_suffix_alone_does_not_block_auto_match
+# Description:
+# - Lets a pharmacy-bag name match the catalog name that differs only by the trailing ingredient
+#   parenthesis (real 2026-11-23 envelope: all five rows fell to manual confirmation before).
+# Parameters:
+# - original (str): Name as printed on the bag; candidate (str): MFDS item name.
+# Returns:
+# - None.
+@pytest.mark.parametrize('original,candidate', [
+    ('애니펜정400mg', '애니펜정400밀리그램(덱시부프로펜디.씨)'),
+    ('프로코푸정', '프로코푸정(레보드로프로피진)'),
+    ('셀리온정10mg', '셀리온정10밀리그램(베포타스틴베실산염)'),
+    ('슈다페드정', '슈다페드정(슈도에페드린염산염)'),
+    ('파모터정20mg', '파모터정20밀리그램(파모티딘)'),
+])
+def test_catalog_ingredient_suffix_alone_does_not_block_auto_match(original: str, candidate: str) -> None:
+    assert can_auto_match(original, candidate)
+
+
+# Function Name: test_suffix_rule_keeps_strength_form_and_name_checks
+# Description:
+# - Dropping the trailing parenthesis must not relax strength, form, base-name or inner-group differences.
+# Parameters:
+# - original (str): Bag name; candidate (str): catalog name that must still need confirmation.
+# Returns:
+# - None.
+@pytest.mark.parametrize('original,candidate', [
+    ('애니펜정400mg', '애니펜정300밀리그램(덱시부프로펜디.씨)'),
+    ('셀리온정', '셀리온정10밀리그램(베포타스틴베실산염)'),
+    ('테스트정', '테스트캡슐(성분)'),
+    ('에니펜정400mg', '애니펜정400밀리그램(덱시부프로펜디.씨)'),
+    ('파모터정20mg', '파모터정20밀리그램(파모티딘)(수출용)'),
+    ('테스트정', '(성분)'),
+])
+def test_suffix_rule_keeps_strength_form_and_name_checks(original: str, candidate: str) -> None:
+    assert not can_auto_match(original, candidate)
+
+
+# Function Name: test_export_variant_does_not_block_the_single_domestic_product
+# Description:
+# - With the domestic item and its export-only twin both found, only the domestic one matches,
+#   so the lookup confirms it without asking (the real 파모터정 result).
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_export_variant_does_not_block_the_single_domestic_product() -> None:
+    control = control_with_results([
+        detail('파모터정20밀리그램(파모티딘)', '200404690'),
+        detail('파모터정20밀리그램(파모티딘)(수출용)', '200404691'),
+    ])
+    result = asyncio.run(control.requestMedicationDetail(
+        '파모터정20밀리그램(파모티딘)', original_text='파모터정20mg',
+    ))
+    assert not result.requires_confirmation
+    assert [item.item_seq for item in result.data] == ['200404690']
+
+
+# Function Name: test_two_suffix_twins_still_need_confirmation
+# Description:
+# - Two products that both reduce to the bag name (for example a plain and an export-only item)
+#   stay a confirmation choice; the suffix rule never picks between them.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_two_suffix_twins_still_need_confirmation() -> None:
+    control = control_with_results([
+        detail('테스트정(성분)', '1'),
+        detail('테스트정(수출용)', '2'),
+    ])
+    result = asyncio.run(control.requestMedicationDetail('테스트정'))
+    assert result.requires_confirmation
+    assert len(result.candidates) == 2

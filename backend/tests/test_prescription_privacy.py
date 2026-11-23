@@ -98,6 +98,8 @@ def test_preserves_medication_and_explicit_prescription_dates(safe: str) -> None
     ("홍길동 님", None),
     ("36세 / 남", None),
     ("101동 202호", None),
+    ("홍길동(060101-3)", None),
+    ("홍길동 060101 - 4", None),
     ("1990-01-01", "[REDACTED]"),
 ])
 def test_identifying_lines_without_medication_are_left_out(private_line: str, leftover: str | None) -> None:
@@ -363,3 +365,22 @@ def test_overlong_line_is_refused_before_identifier_matching() -> None:
         deidentify_prescription_text(f"{_MEDICATION}\n" + "a" * (MAX_PRESCRIPTION_LINE_LENGTH + 1))
     many_lines = "\n".join([_MEDICATION] * 300)
     assert deidentify_prescription_text(many_lines).count("\n") == 299
+
+
+# Function Name: test_partial_resident_number_never_reaches_the_provider
+# Description:
+# - Treats the receipt-style birth date plus sex digit ("060101-3") as an identifier: a line holding it
+#   is left out, and one that also holds a medication row is refused (real 2026-11-23 envelope).
+#   A full number with a masked tail keeps its earlier inline redaction.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_partial_resident_number_never_reaches_the_provider() -> None:
+    safe = deidentify_prescription_text(f"{_MEDICATION}\n환자 홍길동(060101-3)\n{_DATE}")
+    assert "060101" not in safe and "홍길동" not in safe
+    with pytest.raises(PrescriptionPrivacyError):
+        deidentify_prescription_text(f"{_MEDICATION} 060101-3\n{_DATE}")
+    assert deidentify_prescription_text(f"{_MEDICATION} 900101-1******\n{_DATE}") == (
+        f"{_MEDICATION} [REDACTED]\n{_DATE}"
+    )
