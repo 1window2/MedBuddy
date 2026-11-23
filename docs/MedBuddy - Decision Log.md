@@ -480,11 +480,19 @@ date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again
   still confirms only when exactly one found product matches: an export-only twin
   ("…(파모티딘)(수출용)") keeps its inner parenthesis and does not count, while two items
   that both reduce to the bag name stay a manual choice.
+- **Also chosen (owner: rows should almost always end as "약품 확인됨"):** when no found
+  product matches the bag name itself, a product that differs from it by exactly one
+  Hangul vowel from the OCR confusion groups the name verifier already corrects with
+  (ㅐ/ㅔ, ㅗ/ㅜ/ㅡ, …) is confirmed if it is the only such product among every
+  conflict-free search result, not just the ranked shortlist. The "약명 보정 내역" notice
+  still shows these rows. A second vowel, a consonant or a vowel outside the groups
+  still asks.
 - **Alternatives:** confirming whenever the search returns a single product (the owner's
   first idea). Not chosen because a one-result search says nothing about a misread base
   name or a strength the bag does not print; the name must still match.
 - **To undo:** drop the `bare` comparison in
-  `backend/services/medication_match_safety.py`.
+  `backend/services/medication_match_safety.py` and the `can_auto_match_ocr_vowel_slip`
+  step in `backend/controls/check_medication_detail_control.py`.
 
 ## Earlier decisions
 

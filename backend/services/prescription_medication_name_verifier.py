@@ -20,7 +20,7 @@ from entities.medication_detail_entity import (
     _DrugBasicInfo,
     normalize_catalog_item_name,
 )
-from services.medication_match_safety import match_conflict
+from services.medication_match_safety import OCR_VOWEL_GROUPS, match_conflict
 from services.prescription_parser import strip_markdown_json_fence
 
 logger = logging.getLogger(__name__)
@@ -108,15 +108,7 @@ class PrescriptionMedicationNameVerifier:
     _HANGUL_MEDIAL_COUNT = 21
     _HANGUL_FINAL_COUNT = 28
     _HANGUL_BLOCK_SIZE = _HANGUL_MEDIAL_COUNT * _HANGUL_FINAL_COUNT
-    _OCR_VOWEL_GROUPS = (
-        (1, 5),  # ae/e: 애/에
-        (4, 20),  # eo/i: ㅓ, ㅣ
-        (4, 5),  # eo/e: ㅓ, ㅔ
-        (8, 13, 18),  # o/u/eu: ㅗ, ㅜ, ㅡ
-        (0, 4),  # a/eo: ㅏ, ㅓ
-        (8, 12),  # o/yo: ㅗ, ㅛ
-        (13, 17),  # u/yu: ㅜ, ㅠ
-    )
+    _OCR_VOWEL_GROUPS = OCR_VOWEL_GROUPS
 
     _STRENGTH_UNIT_VARIANTS = (
         ("mg", "밀리그램"),

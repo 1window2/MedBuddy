@@ -16,7 +16,7 @@ from services.medication_name_matching import (
 )
 from entities.medication_detail_entity import MedicationDetail
 from entities.medication_lookup_result import MedicationLookupResult
-from services.medication_match_safety import can_auto_match, match_conflict
+from services.medication_match_safety import can_auto_match, can_auto_match_ocr_vowel_slip, match_conflict
 from services.prescription_medication_name_verifier import (
     _CatalogMedicationName, _MedicationNameFallbackRequest,
     MedicationNameVerification, PrescriptionMedicationNameVerifier,
@@ -459,3 +459,53 @@ def test_two_suffix_twins_still_need_confirmation() -> None:
     result = asyncio.run(control.requestMedicationDetail('테스트정'))
     assert result.requires_confirmation
     assert len(result.candidates) == 2
+
+
+# Function Name: test_single_ocr_vowel_slip_matches_only_within_confusion_groups
+# Description:
+# - Accepts a bag name one commonly confused Hangul vowel away from the catalogue name (the same
+#   rule the prescription name verifier corrects with), and nothing looser.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_single_ocr_vowel_slip_matches_only_within_confusion_groups() -> None:
+    assert can_auto_match_ocr_vowel_slip('에니펜정400mg', '애니펜정400밀리그램(덱시부프로펜디.씨)')
+    assert can_auto_match_ocr_vowel_slip('에니코프캡슐300mg', '애니코프캡슐300mg')
+    assert can_auto_match_ocr_vowel_slip('셀리운정10mg', '셀리온정10밀리그램(베포타스틴베실산염)')
+    # 묶음 밖 모음, 두 글자 차이, 자음 차이, 함량 충돌은 맞추지 않는다.
+    assert not can_auto_match_ocr_vowel_slip('애나펜정400mg', '애니펜정400밀리그램')
+    assert not can_auto_match_ocr_vowel_slip('에니핀정400mg', '애니펜정400밀리그램')
+    assert not can_auto_match_ocr_vowel_slip('애니벤정400mg', '애니펜정400밀리그램')
+    assert not can_auto_match_ocr_vowel_slip('에니펜정300mg', '애니펜정400밀리그램')
+    assert not can_auto_match_ocr_vowel_slip('애니펜정400mg', '애니펜정400밀리그램')
+
+
+# Function Name: test_vowel_slip_confirms_one_product_and_defers_to_exact_names
+# Description:
+# - A lookup whose raw name has one OCR vowel slip confirms the single matching product, a product
+#   spelled exactly like the raw name wins over it, and two slip matches stay a manual choice.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_vowel_slip_confirms_one_product_and_defers_to_exact_names() -> None:
+    slip = control_with_results([detail('애니펜정400밀리그램(덱시부프로펜디.씨)', '1')])
+    result = asyncio.run(slip.requestMedicationDetail(
+        '애니펜정400밀리그램(덱시부프로펜디.씨)', original_text='에니펜정400mg',
+    ))
+    assert not result.requires_confirmation
+    assert [item.item_seq for item in result.data] == ['1']
+
+    exact_wins = control_with_results([
+        detail('애니펜정400밀리그램', '1'), detail('에니펜정400밀리그램', '2'),
+    ])
+    result = asyncio.run(exact_wins.requestMedicationDetail('에니펜정400mg'))
+    assert not result.requires_confirmation
+    assert [item.item_seq for item in result.data] == ['2']
+
+    two_slips = control_with_results([
+        detail('애니코프정', '1'), detail('에니쿠프정', '2'), detail('애니커프정', '3'),
+    ])
+    result = asyncio.run(two_slips.requestMedicationDetail('에니코프정'))
+    assert result.requires_confirmation
