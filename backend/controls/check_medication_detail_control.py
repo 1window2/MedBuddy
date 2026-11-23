@@ -25,7 +25,11 @@ from entities.medication_detail_entity import MedicationDetail
 from entities.medication_lookup_result import MedicationLookupResult
 from schemas.medication import MedicationResponse
 from services.local_medication_catalog import LocalMedicationCatalog
-from services.medication_match_safety import can_auto_match, match_conflict
+from services.medication_match_safety import (
+    can_auto_match,
+    can_auto_match_ocr_vowel_slip,
+    match_conflict,
+)
 from services.medication_name_matching import MedicationNameMatcher, MedicationTextNormalizer
 
 logger = logging.getLogger(__name__)
@@ -107,6 +111,8 @@ class CheckMedicationDetail:
         logger.info("Medication lookup generated %s candidate(s).", len(search_keywords))
 
         candidates_by_product: dict[str | tuple[str, str], MedicationDetail] = {}
+        # 순위 상한에 잘린 품목까지, 함량·제형 충돌이 없는 검색 결과 전체다. 모음 한 글자 보정의 유일성 판단에 쓴다.
+        safe_by_product: dict[str | tuple[str, str], MedicationDetail] = {}
         lookup_complete = True
         rejected = False
         exact: list[MedicationDetail] = []
@@ -119,6 +125,8 @@ class CheckMedicationDetail:
                     reference, item.item_name, allow_unknown_strength=True,
                 )]
                 rejected = rejected or len(safe) != len(found.details)
+                for item in safe:
+                    safe_by_product.setdefault(item.item_seq or (item.item_name, item.manufacturer), item)
                 ranked = self.name_matcher.rank_candidates(
                     reference, safe, lambda item: item.item_name, limit=5,
                     allow_unknown_strength=True,
@@ -146,6 +154,11 @@ class CheckMedicationDetail:
                 review_reason='strength_or_form' if rejected else 'not_found',
             )
 
+        # 원문과 그대로 맞는 품목이 없으면, 처방 약명 보정과 같은 OCR 모음 한 글자 차이로 맞는 품목이
+        # 정확히 하나일 때만 확정한다(예: "에니펜정"으로 읽힌 "애니펜정").
+        if not exact:
+            exact = [item for item in safe_by_product.values()
+                     if can_auto_match_ocr_vowel_slip(reference, item.item_name)]
         # 최대 8회×5개만 누적한다. 표시 개수 제한이 다른 동일명 품목의 존재를 지우면 안 된다.
         if len(exact) == 1 and lookup_complete:
             medication_details = exact

@@ -142,12 +142,68 @@ def normalized_product_name(name: str) -> str:
     return re.sub(r'[^a-z0-9가-힣]', '', _STRENGTH.sub(replace, _text(name)))
 
 
+# 식약처 품목명 끝에 붙는 괄호 하나(대개 "(덱시부프로펜디.씨)" 같은 성분명)다. 약봉투에는 보통 빠져 있다.
+_TRAILING_ANNOTATION = re.compile(r"\s*\([^()]*\)\s*$")
+
+
 # 함수이름: can_auto_match
-# 함수역할: 안전성 충돌이 없고 정규화 제품명이 정확히 같을 때만 자동 일치를 허용한다.
+# 함수역할: 안전성 충돌이 없고 정규화 제품명이 같을 때만 자동 일치를 허용한다. 후보 끝의 괄호 하나는 빼고도 비교한다.
 # 매개변수: original, candidate (str)는 원본 약명과 검색 후보다.
-# 반환값: bool. 단위·띄어쓰기 외의 제품명 차이는 False로 남겨 사용자 확인을 요구한다.
+# 반환값: bool. 단위·띄어쓰기·끝 괄호 외의 제품명 차이는 False로 남겨 사용자 확인을 요구한다.
 def can_auto_match(original: str, candidate: str) -> bool:
     # 유사도는 후보 찾기에만 사용한다. 단위·띄어쓰기 외의 보정은 사용자가 확인한다.
-    return not match_conflict(original, candidate) and (
-        normalized_product_name(original) == normalized_product_name(candidate)
-    )
+    if match_conflict(original, candidate):
+        return False
+    expected = normalized_product_name(original)
+    # 끝 괄호만 다른 품목("…(수출용)" 등)이 함께 검색되면 호출부의 "정확히 하나" 조건이 사용자 확인으로 돌린다.
+    # 함량은 위 충돌 검사에서 괄호를 포함한 전체 이름으로 이미 비교했다.
+    bare = _TRAILING_ANNOTATION.sub('', candidate)
+    return expected in {
+        normalized_product_name(candidate),
+        normalized_product_name(bare) if bare.strip() else None,
+    }
+
+
+# OCR이 자주 혼동하는 한글 중성 묶음이다. 처방 약명 보정(prescription_medication_name_verifier)과 같은 표를 쓴다.
+OCR_VOWEL_GROUPS = (
+    (1, 5),  # ㅐ/ㅔ
+    (4, 20),  # ㅓ/ㅣ
+    (4, 5),  # ㅓ/ㅔ
+    (8, 13, 18),  # ㅗ/ㅜ/ㅡ
+    (0, 4),  # ㅏ/ㅓ
+    (8, 12),  # ㅗ/ㅛ
+    (13, 17),  # ㅜ/ㅠ
+)
+
+
+# 함수이름: _one_ocr_vowel_apart
+# 함수역할: 두 비교 키가 한 글자의 중성만 OCR 혼동 묶음 안에서 다르고 나머지는 같은지 본다.
+# 매개변수: left, right (str)는 normalized_product_name 결과다.
+# 반환값: bool. 길이가 다르거나 두 글자 이상 다르면 False다.
+def _one_ocr_vowel_apart(left: str, right: str) -> bool:
+    if len(left) != len(right):
+        return False
+    differences = [(a, b) for a, b in zip(left, right) if a != b]
+    if len(differences) != 1:
+        return False
+    a, b = (ord(char) - 0xAC00 for char in differences[0])
+    if not (0 <= a <= 11171 and 0 <= b <= 11171):
+        return False
+    # 초성과 종성이 같고 중성만 다를 때만 본다.
+    if a // 588 != b // 588 or a % 28 != b % 28:
+        return False
+    medials = {(a % 588) // 28, (b % 588) // 28}
+    return any(medials <= set(group) for group in OCR_VOWEL_GROUPS)
+
+
+# 함수이름: can_auto_match_ocr_vowel_slip
+# 함수역할: 원문이 후보와 OCR 모음 한 글자만 다를 때 자동 일치를 허용한다. 호출부는 원문 그대로 맞는 후보가 없을 때만 쓴다.
+# 매개변수: original, candidate (str)는 원본 약명과 검색 후보다.
+# 반환값: bool. 함량·제형 충돌, 두 글자 이상 차이, 혼동 묶음 밖 모음은 False다.
+def can_auto_match_ocr_vowel_slip(original: str, candidate: str) -> bool:
+    if match_conflict(original, candidate):
+        return False
+    expected = normalized_product_name(original)
+    bare = _TRAILING_ANNOTATION.sub('', candidate)
+    names = [candidate] + ([bare] if bare.strip() else [])
+    return any(_one_ocr_vowel_apart(expected, normalized_product_name(name)) for name in names)
