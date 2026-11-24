@@ -123,12 +123,14 @@ class DataUseInfoUI extends StatelessWidget {
                       _text(
                         '처방전 사진의 글자 인식과 개인정보 제거는 기기에서 먼저 수행합니다. '
                             '현재 처방전 분석 경로는 원본 사진 대신 필터를 거친 텍스트를 서버로 보냅니다. '
-                            '서버는 약 정보 조회와 필요한 경우 Gemini를 이용한 텍스트 분석을 수행합니다. '
+                            '서버는 약 정보 조회와 필요한 경우 Gemini를 이용한 텍스트 분석을 수행하며, Gemini 장애 시에는 '
+                            '같은 텍스트를 Anthropic Claude로 분석할 수 있습니다. '
                             '자동 제거가 모든 개인정보를 찾아낸다고 보장할 수 없으므로 불필요한 개인정보는 '
                             '촬영 전에 가려주세요.',
                         'Prescription OCR and personal-data filtering run on your device first. The current '
                             'prescription analysis sends filtered text, not the original photo, to the server. '
-                            'The server looks up medication information and may use Gemini for text analysis. '
+                            'The server looks up medication information and may use Gemini for text analysis, or '
+                            'Anthropic Claude for the same text when Gemini is unavailable. '
                             'Automatic filtering cannot guarantee removal of every identifier; cover unnecessary '
                             'personal information before taking the photo.',
                       ),
@@ -141,13 +143,15 @@ class DataUseInfoUI extends StatelessWidget {
                       _text(
                         '낱알약 식별을 요청하면 선택한 알약 사진이 서버와 외부 AI인 Google Gemini로 '
                             '전송되어 분석될 수 있습니다. 건강 관리 추천을 요청하면 복용 중인 약 정보도 '
-                            '서버를 통해 Gemini에 전달되어 추천 생성에 사용됩니다. '
+                            '서버를 통해 Gemini에 전달되어 추천 생성에 사용됩니다. Gemini에 장애가 있으면 '
+                            '같은 사진과 정보가 대신 외부 AI인 Anthropic Claude로 전송되어 처리될 수 있습니다. '
                             '얼굴이나 신분증 등 불필요한 개인정보가 사진에 포함되지 않게 해주세요. '
                             'AI 분석과 추천은 틀릴 수 있으며 진단이나 처방을 대신하지 않습니다. '
                             'AI 식별이 필요하지 않으면 직접 등록을 이용할 수 있습니다.',
                         'Pill identification can send your selected pill photos through the server to Google Gemini '
                             'for analysis. Health recommendation requests also send medication information '
-                            'through the server to Gemini to generate recommendations. '
+                            'through the server to Gemini to generate recommendations. When Gemini is unavailable, '
+                            'the same photos and information may be sent to Anthropic Claude instead. '
                             'Keep faces, identity documents and other unnecessary personal data out of photos. '
                             'AI results can be wrong and do not replace diagnosis or prescriptions. '
                             'Manual entry is available when you do not need AI identification.',
