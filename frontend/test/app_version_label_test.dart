@@ -1,6 +1,8 @@
 // 파일명: app_version_label_test.dart
 // 역할: 설정 화면의 앱 버전 표시가 누락되지 않는지 검증한다.
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/widgets/app_version_label.dart';
@@ -29,5 +31,22 @@ void main() {
 
     expect(find.byKey(const ValueKey('appVersionLabel')), findsOneWidget);
     expect(find.text('MedBuddy v0.2.0'), findsOneWidget);
+  });
+
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 기대 동작: 빌드 정의가 없을 때 표시하는 기본 버전이 pubspec 버전과 같다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 불일치 시 테스트가 실패한다.
+  test('기본 표시 버전이 pubspec 버전과 같다', () {
+    final pubspec = File('pubspec.yaml').readAsStringSync();
+    final version = RegExp(
+      r'^version:\s*([^+\s]+)',
+      multiLine: true,
+    ).firstMatch(pubspec)!.group(1);
+
+    expect(medBuddyAppVersion, version);
   });
 }

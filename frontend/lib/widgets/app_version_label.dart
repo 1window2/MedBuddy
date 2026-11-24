@@ -7,7 +7,7 @@ import '../theme/medbuddy_theme.dart';
 
 const medBuddyAppVersion = String.fromEnvironment(
   'MEDBUDDY_APP_VERSION',
-  defaultValue: '1.0.0',
+  defaultValue: '1.0.1',
 );
 
 // 클래스명: AppVersionLabel
