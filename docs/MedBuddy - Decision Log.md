@@ -494,6 +494,32 @@ date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again
   `backend/services/medication_match_safety.py` and the `can_auto_match_ocr_vowel_slip`
   step in `backend/controls/check_medication_detail_control.py`.
 
+## 2026-11-24: Claude answers only when Gemini itself fails
+
+- **Chosen (owner):** Gemini returned 503s more often after a new model release. With
+  `ANTHROPIC_API_KEY` set in `deploy/backend.env`, prescription text structuring, pill
+  photo analysis, medication summaries and health recommendations fall back to Claude
+  (`claude-opus-5-5`, effort `low`) only on a Gemini 5xx, a Gemini 429, a connection
+  failure inside the Gemini SDK, or a deadline whose cancellation landed inside the
+  Gemini SDK (read from the traceback). The owner required that the fallback can never
+  change the Gemini path: the Gemini code is untouched, `services/gemini_outage_fallback.py`
+  wraps each boundary, a Gemini result is returned as is, every other error is re-raised
+  as the same object, and a separate Claude-backed copy of the same class answers an
+  outage. A failed copy, or less than 5 of the 40 seconds left since the Gemini call
+  started (the app waits 45), returns the original Gemini error. A blank key installs no
+  wrapper; a fallback module that cannot load leaves the Gemini boundary in place.
+- **Alternatives:** shortening the Gemini deadline so Claude always fits. Not chosen: it
+  would cut Gemini answers that arrive late but in time today. The key as a GitHub
+  repository secret: not used, because production is self-hosted and reads
+  `deploy/backend.env`; the Cloud Run workflow is disabled.
+- **Not covered:** the optional medication-name correction already treats any AI failure
+  as "no correction", so there is no outage to answer.
+- **Privacy:** Claude receives what Gemini receives on these paths (de-identified
+  prescription text, pill photos, public medication records). The privacy policy item in
+  `docs/TODO.md` must name both providers.
+- **To undo:** blank `ANTHROPIC_API_KEY` and restart, or remove the four
+  `_with_claude_fallback` calls in `backend/api/dependencies.py`.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the
