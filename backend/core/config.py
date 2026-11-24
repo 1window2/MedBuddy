@@ -30,6 +30,8 @@ _DEFAULT_API_CONTRACT_VERSION = (
 # - Reject unsafe production authentication, storage and rate-limiting combinations.
 # Attributes:
 # - GEMINI_API_KEY (str): Gemini API credential.
+# - ANTHROPIC_API_KEY (str): Claude API credential; empty disables the Gemini-outage fallback.
+# - CLAUDE_FALLBACK_MODEL / CLAUDE_FALLBACK_EFFORT (str): Claude model and effort used only after a Gemini outage.
 # - PUBLIC_DATA_API_KEY (str): Government public-data credential.
 # - BASIC_DRUG_API_BASE_URL (str): Consumer medication-information endpoint.
 # - ADVANCED_DRUG_API_BASE_URL (str): Drug approval-detail endpoint.
@@ -55,6 +57,10 @@ class Settings(BaseSettings):
     )
 
     GEMINI_API_KEY: str = ""
+    # Used only after Gemini itself times out or reports an outage; empty turns the fallback off.
+    ANTHROPIC_API_KEY: str = ""
+    CLAUDE_FALLBACK_MODEL: str = Field(default="claude-opus-5-5", min_length=1)
+    CLAUDE_FALLBACK_EFFORT: Literal["low", "medium", "high"] = "low"
     PUBLIC_DATA_API_KEY: str = ""
     APP_ENV: Literal["development", "test", "production"] = "development"
     RUNTIME_ROLE: Literal["api", "migration", "maintenance", "catalog_sync"] = (

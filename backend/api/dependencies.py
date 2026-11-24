@@ -7,6 +7,7 @@ from contextlib import AsyncExitStack
 from datetime import UTC, datetime, timedelta
 import logging
 from threading import Lock
+from typing import TypeVar
 
 from fastapi import Depends, Header, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -115,6 +116,9 @@ from repositories.medication_search_cache_repository import AsyncMedicationSearc
 from repositories.korean_holiday_cache import SessionScopedKoreanHolidayCache
 
 logger = logging.getLogger(__name__)
+_T = TypeVar("_T")
+_claude_fallback_lock = Lock()
+_claude_fallback_wrappers: dict[str, tuple[object, object]] = {}
 _medication_detail_cache: MedicationDetailCache | None = None
 _public_drug_transport = _PublicDrugTransport()
 _public_drug_small_api = PublicDrugSmallAPI(transport=_public_drug_transport)
@@ -902,6 +906,40 @@ async def close_gemini_clients() -> None:
             )
 
 
+# Function Name: _with_claude_fallback
+# Description:
+# - Wrap a Gemini boundary with the outage-only Claude fallback when ANTHROPIC_API_KEY is set; otherwise return it as is.
+# - The fallback module is imported here, inside a guard: if it cannot be imported or wrapped, the Gemini boundary is
+#   returned unchanged, so the fallback can never stop the Gemini path from serving.
+# - Shared boundaries reuse one wrapper per boundary object, so the Claude copy and its limits are shared too.
+# Parameters:
+# - primary (_T): Gemini boundary.
+# - kind (str): Boundary kind known to services.gemini_outage_fallback.
+# Returns:
+# - The wrapper, or the primary itself.
+def _with_claude_fallback(primary: _T, kind: str) -> _T:
+    if not settings.ANTHROPIC_API_KEY.strip():
+        return primary
+    with _claude_fallback_lock:
+        cached = _claude_fallback_wrappers.get(kind)
+        if cached is not None and cached[0] is primary:
+            return cached[1]
+        try:
+            from services.gemini_outage_fallback import wrap_with_claude_fallback
+
+            wrapper = wrap_with_claude_fallback(primary, kind)
+        except Exception as exc:
+            logger.error(
+                "Claude fallback unavailable for %s: %s",
+                kind,
+                type(exc).__name__,
+            )
+            return primary
+        if kind != "prescription_text":
+            _claude_fallback_wrappers[kind] = (primary, wrapper)
+        return wrapper  # type: ignore[return-value]
+
+
 # Function Name: get_input_prescription
 # Description:
 # - Binds OCR prescription parsing and local catalog verification to the request session, on the shared OCR Gemini client.
@@ -912,7 +950,12 @@ async def close_gemini_clients() -> None:
 def get_input_prescription(
     db: Session = Depends(get_db),
 ) -> InputPrescription:
-    return InputPrescription(db=db, client=_get_gemini_ocr_client())
+    control = InputPrescription(db=db, client=_get_gemini_ocr_client())
+    control.ocr_service_boundary = _with_claude_fallback(
+        control.ocr_service_boundary,
+        "prescription_text",
+    )
+    return control
 
 
 # Function Name: _get_pill_identification_boundaries
@@ -976,7 +1019,7 @@ def get_identify_pill() -> IdentifyPill:
 
     vision_boundary, catalog_boundary = _get_pill_identification_boundaries()
     return IdentifyPill(
-        vision_boundary=vision_boundary,
+        vision_boundary=_with_claude_fallback(vision_boundary, "pill_vision"),
         catalog_boundary=catalog_boundary,
         ranking_semaphore=_pill_ranking_semaphore,
     )
@@ -1002,7 +1045,10 @@ def get_check_medication_detail(
         public_drug_small_api=_public_drug_small_api,
         public_drug_large_api=_public_drug_large_api,
         pill_image_api=_pill_image_api,
-        summary_generator=_get_medication_summary_generator(),
+        summary_generator=_with_claude_fallback(
+            _get_medication_summary_generator(),
+            "medication_summary",
+        ),
     )
 
 
@@ -1141,7 +1187,10 @@ def get_check_health_recommendation(
 ) -> CheckHealthRecommendation:
     return CheckHealthRecommendation(
         db=db,
-        llm_service=_get_health_recommendation_llm_service(),
+        llm_service=_with_claude_fallback(
+            _get_health_recommendation_llm_service(),
+            "health_recommendation",
+        ),
     )
 
 

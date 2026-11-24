@@ -32,6 +32,8 @@ GEMINI_API_KEY=your_gemini_api_key
 PUBLIC_DATA_API_KEY=your_public_data_api_key
 # Optional: leave blank to reuse PUBLIC_DATA_API_KEY for hospital requests.
 HOSPITAL_API_KEY=
+# Optional: Claude key used only after a Gemini outage; blank turns the fallback off.
+ANTHROPIC_API_KEY=
 APP_ENV=development
 AUTH_MODE=disabled
 AUTO_CREATE_SCHEMA=true
@@ -59,6 +61,28 @@ python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 API documentation is available at `http://127.0.0.1:8000/docs`. This
 loopback-only server is for backend development and automated testing; the
 Android application does not use it as its default API endpoint.
+
+## Claude Fallback for Gemini Outages
+
+With `ANTHROPIC_API_KEY` set, prescription text structuring, pill photo
+analysis, medication summaries and health recommendations are answered by
+Claude (`CLAUDE_FALLBACK_MODEL`, default `claude-opus-5-5`, effort
+`CLAUDE_FALLBACK_EFFORT`, default `low`) when Gemini itself fails: a 5xx such as
+503, a 429, a connection failure inside the Gemini SDK, or a deadline that
+expired while the Gemini request was in flight. Nothing else triggers it.
+
+The Gemini code is unchanged. `services/gemini_outage_fallback.py` wraps each
+boundary: a Gemini answer is returned as is, every other error is re-raised as
+the same exception, and on an outage a separate Claude-backed copy of the same
+boundary class runs the same call, with the same validation and
+de-identification. If the copy fails, or less than 5 seconds remain of the 40
+seconds since the Gemini call started (the app waits 45), the original Gemini
+error is returned. With the key blank, the wrapper is not installed at all.
+The optional medication-name correction is not covered: it already treats any
+AI failure as "no correction".
+
+Claude receives the same data Gemini receives on these paths: de-identified
+prescription text, pill photos and public medication records.
 
 ## Nearby Care API Credentials
 
