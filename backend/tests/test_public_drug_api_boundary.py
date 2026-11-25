@@ -3,6 +3,7 @@
 #   from interactive failure caching.
 import os
 import sys
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -15,11 +16,13 @@ os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
 from boundaries.public_drug_api_boundary import (  # noqa: E402
+    PillImageAPI,
+    PublicDrugApiBudgetExhaustedError,
     PublicDrugLargeAPI,
     PublicDrugSmallAPI,
     _PublicDrugTransport,
 )
-from core.config import settings  # noqa: E402
+from core.config import Settings, settings  # noqa: E402
 
 
 # Function Name: test_small_api_search_medication_uses_basic_catalog_contract
@@ -299,3 +302,143 @@ async def test_catalog_retry_bypasses_interactive_failure_cache(
     assert request_count == 2
     assert items == [{"itemName": "sample"}]
     assert total_count == 1
+
+
+# Class Name: _CountingClient
+# Role: HTTP client double that records requested endpoints and answers one sample row.
+# Responsibilities:
+# - Count real provider requests so budget refusals can be shown to make none.
+# Attributes:
+# - urls (list[str]): Endpoints requested so far.
+class _CountingClient:
+    def __init__(self) -> None:
+        self.urls: list[str] = []
+
+    # Function Name: get
+    # Description: Records the endpoint and returns a successful one-row public API response.
+    # Parameters: url (str) is the endpoint; params (dict[str, object]) is unused.
+    # Returns: Response double with status 200.
+    async def get(self, url: str, *, params: dict[str, object]) -> object:
+        del params
+        self.urls.append(url)
+
+        # Class Name: _Response
+        # Role: Successful public API response double.
+        # Responsibilities: Return one sample item.
+        # Attributes: status_code (int): Always 200.
+        class _Response:
+            status_code = 200
+
+            def json(self) -> dict[str, object]:
+                return {"body": {"items": [{"itemName": "sample"}], "totalCount": 1}}
+
+        return _Response()
+
+
+# Function Name: _transport_with
+# Description: Build a transport whose HTTP client and budget day are test doubles.
+# Parameters: monkeypatch (pytest.MonkeyPatch); client (_CountingClient); today (list[date]) holds the current day.
+# Returns: _PublicDrugTransport using the doubles.
+def _transport_with(
+    monkeypatch: pytest.MonkeyPatch,
+    client: _CountingClient,
+    today: list[date],
+) -> _PublicDrugTransport:
+    transport = _PublicDrugTransport(date_clock=lambda: today[0])
+
+    async def fake_get_client() -> _CountingClient:
+        return client
+
+    monkeypatch.setattr(transport, "_get_client", fake_get_client)
+    return transport
+
+
+# Function Name: test_defaults_follow_the_approved_portal_accounts
+# Description:
+# - Pins the approval endpoint to the 08 operations approved for the operating account and the
+#   per-process budgets to 80% of each portal quota.
+# Parameters: None.
+# Returns: None.
+def test_defaults_follow_the_approved_portal_accounts() -> None:
+    fields = Settings.model_fields
+    assert fields["ADVANCED_DRUG_API_BASE_URL"].default.endswith(
+        "/DrugPrdtPrmsnInfoService08/getDrugPrdtPrmsnDtlInq08"
+    )
+    assert fields["BASIC_DRUG_API_DAILY_REQUEST_BUDGET"].default == 800_000
+    assert fields["ADVANCED_DRUG_API_DAILY_REQUEST_BUDGET"].default == 80_000
+    assert fields["PILL_IMAGE_API_DAILY_REQUEST_BUDGET"].default == 8_000
+
+
+# Function Name: test_daily_budget_is_counted_per_endpoint_and_refuses_without_a_request
+# Description:
+# - Each MFDS endpoint has its own counter; a spent budget refuses before any HTTP request,
+#   does not enter the failure cache, and a new application day starts from zero.
+# Parameters: monkeypatch (pytest.MonkeyPatch): Restores patched settings afterward.
+# Returns: None.
+@pytest.mark.anyio
+async def test_daily_budget_is_counted_per_endpoint_and_refuses_without_a_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "ADVANCED_DRUG_API_DAILY_REQUEST_BUDGET", 2)
+    monkeypatch.setattr(settings, "BASIC_DRUG_API_DAILY_REQUEST_BUDGET", 1)
+    client = _CountingClient()
+    today = [date(2026, 11, 25)]
+    transport = _transport_with(monkeypatch, client, today)
+    approval = settings.ADVANCED_DRUG_API_BASE_URL
+    basic = settings.BASIC_DRUG_API_BASE_URL
+
+    await transport.request_items(approval, {"item_name": "a"})
+    await transport.request_items(approval, {"item_name": "b"})
+    with pytest.raises(PublicDrugApiBudgetExhaustedError):
+        await transport.request_items(approval, {"item_name": "c"})
+    with pytest.raises(PublicDrugApiBudgetExhaustedError):
+        await transport.request_items(approval, {"pageNo": 1}, bypass_failure_cache=True)
+    assert client.urls == [approval, approval]
+
+    await transport.request_items(basic, {"itemName": "a"})
+    with pytest.raises(PublicDrugApiBudgetExhaustedError):
+        await transport.request_items(basic, {"itemName": "b"})
+    assert client.urls == [approval, approval, basic]
+    assert transport._failed_until == {}
+
+    today[0] = date(2026, 11, 26)
+    await transport.request_items(approval, {"item_name": "c"})
+    await transport.request_items(basic, {"itemName": "b"})
+    assert client.urls[-2:] == [approval, basic]
+
+
+# Function Name: test_unbudgeted_url_is_not_counted
+# Description: A URL outside the three MFDS endpoints is neither counted nor refused.
+# Parameters: monkeypatch (pytest.MonkeyPatch): Restores patched settings afterward.
+# Returns: None.
+@pytest.mark.anyio
+async def test_unbudgeted_url_is_not_counted(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "BASIC_DRUG_API_DAILY_REQUEST_BUDGET", 1)
+    client = _CountingClient()
+    transport = _transport_with(monkeypatch, client, [date(2026, 11, 25)])
+    other = "https://apis.data.go.kr/1471000/OtherService/getList"
+
+    for _ in range(3):
+        await transport.request_items(other, {"pageNo": 1}, bypass_failure_cache=True)
+
+    assert client.urls == [other, other, other]
+    assert transport._daily_requests == {}
+
+
+# Function Name: test_pill_image_lookup_returns_no_image_when_its_budget_is_spent
+# Description: The optional image enrichment degrades to "no image" once its budget is spent.
+# Parameters: monkeypatch (pytest.MonkeyPatch): Restores patched settings afterward.
+# Returns: None.
+@pytest.mark.anyio
+async def test_pill_image_lookup_returns_no_image_when_its_budget_is_spent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "PILL_IMAGE_API_ENABLED", True)
+    monkeypatch.setattr(settings, "PILL_IMAGE_API_DAILY_REQUEST_BUDGET", 1)
+    client = _CountingClient()
+    transport = _transport_with(monkeypatch, client, [date(2026, 11, 25)])
+    api = PillImageAPI(transport=transport)
+
+    await api.searchMedicationImage("first tablet")
+    assert await api.searchMedicationImage("second tablet") == ""
+    assert client.urls == [settings.PILL_IMAGE_API_BASE_URL]

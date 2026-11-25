@@ -161,6 +161,15 @@ PHARMACY_API_BASE_URL=https://apis.data.go.kr/B552657/ErmctInsttInfoInqireServic
 PHARMACY_API_TIMEOUT_SECONDS=12
 ```
 
+The MFDS medication services have per-process daily budgets at 80% of their portal
+quotas, reset at local midnight and on restart: `BASIC_DRUG_API_DAILY_REQUEST_BUDGET`
+800,000 (e약은요 operating account, 1,000,000 a day since 2026-11-23),
+`ADVANCED_DRUG_API_DAILY_REQUEST_BUDGET` 80,000 (drug-approval operating account,
+100,000 per operation; its approved operations are on `DrugPrdtPrmsnInfoService08`,
+the default endpoint) and `PILL_IMAGE_API_DAILY_REQUEST_BUDGET` 8,000 (pill
+identification development account, 10,000 a day). Set a budget to 8000 for a
+development account (10,000 a day). A spent budget is handled like a provider outage.
+
 The hospital feature additionally needs approval for the
 [NEMC hospital lookup service](https://www.data.go.kr/data/15000736/openapi.do).
 It uses `HOSPITAL_API_KEY` when set, otherwise `PUBLIC_DATA_API_KEY`. The service runs

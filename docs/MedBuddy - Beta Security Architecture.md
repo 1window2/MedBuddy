@@ -284,6 +284,9 @@ process; it is counted per provider operation (location, detail, department list
 matching the provider's quota, and a spent budget is answered with its own message and
 a wait until local midnight. One account's daily search quota can use at most a few
 thousand calls of it.
+The MFDS medication services have per-process daily budgets of the same kind (80% of
+each portal quota: e약은요 800,000, drug approval 80,000, pill images 8,000); a spent
+budget is refused before any provider request and handled like a provider outage.
 
 The in-app map requests map content through Naver Dynamic Map for the visible
 viewport. This does not expose the MedBuddy public-data credential, but the map
