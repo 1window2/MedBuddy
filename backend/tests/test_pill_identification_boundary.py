@@ -40,6 +40,12 @@ from boundaries.pill_identification_boundary import (
 )
 from support.fakes import FakeGeminiClient
 
+# Deadline for tests that do not exercise the analysis deadline itself. A full garbage
+# collection of the test process (about 2.5 million live objects late in the suite) paused it
+# for up to 0.65 s locally and longer on CI runners, which made a 1-second deadline expire
+# during instant work.
+_NO_DEADLINE_SECONDS = 30.0
+
 
 # Class Name: _PassthroughImageProcessingBoundary
 # Role: Image processor double that preserves input bytes for isolated vision-response tests.
@@ -581,7 +587,7 @@ async def test_visual_boundary_accepts_small_pill_with_usable_features() -> None
                 quality_issues=["pill occupies too little of the image"],
             )
         ),  # type: ignore[arg-type]
-        timeout_seconds=1,
+        timeout_seconds=_NO_DEADLINE_SECONDS,
     )
 
     features = await boundary.extractVisualFeatures(b"front")
@@ -609,7 +615,7 @@ async def test_visual_boundary_still_rejects_small_blurred_pill() -> None:
                 quality_issues=["pill is small and blurred"],
             )
         ),  # type: ignore[arg-type]
-        timeout_seconds=1,
+        timeout_seconds=_NO_DEADLINE_SECONDS,
     )
 
     with pytest.raises(PillImageQualityError, match="retake"):
@@ -634,7 +640,7 @@ async def test_visual_boundary_rejects_two_pills_even_when_one_is_small() -> Non
                 quality_issues=["two pills are visible and one pill is small"],
             )
         ),  # type: ignore[arg-type]
-        timeout_seconds=1,
+        timeout_seconds=_NO_DEADLINE_SECONDS,
     )
 
     with pytest.raises(PillImageQualityError, match="retake"):
@@ -660,7 +666,7 @@ async def test_visual_boundary_rejects_multiple_local_contours_before_ai() -> No
         client=object(),  # type: ignore[arg-type]
         image_processing_boundary=PillImageProcessingBoundary(),
         vision_api=vision_api,  # type: ignore[arg-type]
-        timeout_seconds=1,
+        timeout_seconds=_NO_DEADLINE_SECONDS,
     )
 
     with pytest.raises(PillImageQualityError, match="Multiple pills"):
@@ -690,7 +696,7 @@ async def test_visual_boundary_uses_the_local_pill_count_of_each_side(
         client=object(),  # type: ignore[arg-type]
         image_processing_boundary=_PassthroughImageProcessingBoundary(local_count),
         vision_api=vision_api,  # type: ignore[arg-type]
-        timeout_seconds=1,
+        timeout_seconds=_NO_DEADLINE_SECONDS,
     )
 
     if accepted:
@@ -718,7 +724,7 @@ async def test_visual_boundary_rejects_ai_multiple_pill_count() -> None:
         vision_api=_FakeVisionAPI(
             _valid_visual_payload(detected_pill_count=2)
         ),  # type: ignore[arg-type]
-        timeout_seconds=1,
+        timeout_seconds=_NO_DEADLINE_SECONDS,
     )
 
     with pytest.raises(PillImageQualityError, match="Multiple pills"):
@@ -740,7 +746,7 @@ async def test_visual_boundary_rejects_invalid_ai_pill_count() -> None:
         vision_api=_FakeVisionAPI(
             _valid_visual_payload(detected_pill_count="two")
         ),  # type: ignore[arg-type]
-        timeout_seconds=1,
+        timeout_seconds=_NO_DEADLINE_SECONDS,
     )
 
     with pytest.raises(PillVisionResponseError, match="invalid response"):
@@ -762,7 +768,7 @@ async def test_visual_boundary_preserves_front_and_back_features() -> None:
         client=object(),  # type: ignore[arg-type]
         image_processing_boundary=_PassthroughImageProcessingBoundary(),
         vision_api=vision_api,  # type: ignore[arg-type]
-        timeout_seconds=1,
+        timeout_seconds=_NO_DEADLINE_SECONDS,
     )
 
     features = await boundary.extractVisualFeatures(b"front", b"back")
@@ -792,7 +798,7 @@ async def test_visual_boundary_discards_back_features_without_back_photo() -> No
                 back_line="plus",
             )
         ),  # type: ignore[arg-type]
-        timeout_seconds=1,
+        timeout_seconds=_NO_DEADLINE_SECONDS,
     )
 
     features = await boundary.extractVisualFeatures(b"front")
@@ -821,7 +827,7 @@ async def test_visual_boundary_rejects_mismatched_front_and_back_photos() -> Non
                 side_consistency_confidence=0.95,
             )
         ),  # type: ignore[arg-type]
-        timeout_seconds=1,
+        timeout_seconds=_NO_DEADLINE_SECONDS,
     )
 
     with pytest.raises(PillImageQualityError, match="different pills"):
@@ -844,7 +850,7 @@ async def test_visual_boundary_marks_uncertain_side_consistency() -> None:
         vision_api=_FakeVisionAPI(
             _valid_visual_payload(side_consistency_confidence=0.45)
         ),  # type: ignore[arg-type]
-        timeout_seconds=1,
+        timeout_seconds=_NO_DEADLINE_SECONDS,
     )
 
     features = await boundary.extractVisualFeatures(b"front", b"back")
@@ -869,7 +875,7 @@ async def test_visual_boundary_rejects_poor_quality_result() -> None:
         vision_api=_FakeVisionAPI(
             _valid_visual_payload(quality="poor", quality_issues=["blur"])
         ),  # type: ignore[arg-type]
-        timeout_seconds=1,
+        timeout_seconds=_NO_DEADLINE_SECONDS,
     )
 
     with pytest.raises(PillImageQualityError, match="retake"):
@@ -891,7 +897,7 @@ async def test_visual_boundary_rejects_non_string_imprint() -> None:
         vision_api=_FakeVisionAPI(
             _valid_visual_payload(front_imprint=["YH"])
         ),  # type: ignore[arg-type]
-        timeout_seconds=1,
+        timeout_seconds=_NO_DEADLINE_SECONDS,
     )
 
     with pytest.raises(PillVisionResponseError, match="invalid response"):
@@ -912,7 +918,7 @@ async def test_visual_boundary_hides_upstream_failure_details() -> None:
         client=object(),  # type: ignore[arg-type]
         image_processing_boundary=_PassthroughImageProcessingBoundary(),
         vision_api=_FailingVisionAPI(),  # type: ignore[arg-type]
-        timeout_seconds=1,
+        timeout_seconds=_NO_DEADLINE_SECONDS,
     )
 
     with pytest.raises(PillVisionUnavailableError) as context:
@@ -932,7 +938,7 @@ async def test_single_pill_preserves_provider_timeout_without_retry(error: Excep
         client=object(),
         image_processing_boundary=_PassthroughImageProcessingBoundary(),
         vision_api=vision_api,
-        timeout_seconds=1,
+        timeout_seconds=_NO_DEADLINE_SECONDS,
     )
 
     with pytest.raises(TimeoutError, match="Pill visual analysis timed out"):
@@ -955,7 +961,7 @@ async def test_single_pill_logs_provider_status_without_private_details_or_retry
         client=object(),
         image_processing_boundary=_PassthroughImageProcessingBoundary(),
         vision_api=vision_api,
-        timeout_seconds=1,
+        timeout_seconds=_NO_DEADLINE_SECONDS,
     )
 
     with pytest.raises(PillVisionUnavailableError):
@@ -1069,11 +1075,11 @@ async def test_single_pill_caller_cancellation_is_not_reported_as_timeout(
         client=object(),
         image_processing_boundary=_PassthroughImageProcessingBoundary(),
         vision_api=vision_api,
-        timeout_seconds=1,
+        timeout_seconds=_NO_DEADLINE_SECONDS,
         max_concurrency=1,
     )
     request = asyncio.create_task(boundary.extractVisualFeatures(b"front"))
-    await asyncio.wait_for(entered.wait(), timeout=1)
+    await asyncio.wait_for(entered.wait(), timeout=_NO_DEADLINE_SECONDS)
     request.cancel()
     with pytest.raises(asyncio.CancelledError):
         await request
