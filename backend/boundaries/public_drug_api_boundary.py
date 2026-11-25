@@ -7,9 +7,12 @@ import hashlib
 import json
 import logging
 import time
+from collections.abc import Callable
+from datetime import date
 from typing import Any
 import httpx
 
+from core.application_clock import application_today
 from core.config import settings
 from entities.medication_image_url_entity import safe_medication_image_url
 
@@ -92,6 +95,37 @@ def read_public_image_url(item: dict[str, Any]) -> str:
     )
 
 
+# Class Name: PublicDrugApiBudgetExhaustedError
+# Role:
+# - Reports that an MFDS endpoint's daily call budget is spent, before any provider request is made.
+# Responsibilities:
+# - Subclass RuntimeError so callers keep treating it like any other provider failure.
+# Attributes:
+# - None beyond the exception message.
+class PublicDrugApiBudgetExhaustedError(RuntimeError):
+    """Raised when the per-process daily budget of an MFDS endpoint is spent."""
+
+
+# Function Name: _daily_budget_for
+# Description:
+# - Map a configured MFDS endpoint to its per-process daily call budget.
+# Parameters:
+# - url (str): Endpoint the transport is about to call.
+# Returns:
+# - Budget for the e약은요, drug-approval or pill-image endpoint; None for any other URL.
+def _daily_budget_for(url: str) -> int | None:
+    endpoint = url.rstrip("/")
+    budgets = (
+        (settings.BASIC_DRUG_API_BASE_URL, settings.BASIC_DRUG_API_DAILY_REQUEST_BUDGET),
+        (settings.ADVANCED_DRUG_API_BASE_URL, settings.ADVANCED_DRUG_API_DAILY_REQUEST_BUDGET),
+        (settings.PILL_IMAGE_API_BASE_URL, settings.PILL_IMAGE_API_DAILY_REQUEST_BUDGET),
+    )
+    for configured_url, budget in budgets:
+        if endpoint == configured_url.rstrip("/"):
+            return budget
+    return None
+
+
 # Class Name: _PublicDrugTransport
 # Role:
 # - Shares bounded HTTP access and response normalization across public-drug boundaries.
@@ -101,6 +135,7 @@ def read_public_image_url(item: dict[str, Any]) -> str:
 # - _client (AsyncClient | None): Lazily created HTTP pool.
 # - _semaphore (asyncio.Semaphore): Provider concurrency cap.
 # - _failed_until (dict[str, float]): Failure-key cooldown expirations.
+# - _daily_requests (dict[str, int]): Calls charged per endpoint on _budget_date.
 # - timeout_seconds (float): HTTP request timeout.
 class _PublicDrugTransport:
     """Shared HTTP and response-normalization implementation."""
@@ -110,14 +145,24 @@ class _PublicDrugTransport:
     # - 공공 약품 요청에 사용할 제한 시간, 지연 생성 클라이언트 잠금, 동시 호출 상한과 실패 캐시를 준비한다.
     # 매개변수:
     # - timeout_seconds (float): HTTP 요청 제한 시간(초); 기본값은 15초.
+    # - date_clock (Callable[[], date] | None): 하루 예산의 기준 날짜; 기본값은 서비스 시간대 오늘.
     # 반환값:
     # - 없음; 외부 요청은 실행하지 않는다.
-    def __init__(self, timeout_seconds: float = 15.0) -> None:
+    def __init__(
+        self,
+        timeout_seconds: float = 15.0,
+        *,
+        date_clock: Callable[[], date] | None = None,
+    ) -> None:
         self.timeout_seconds = timeout_seconds
         self._client: httpx.AsyncClient | None = None
         self._client_lock = asyncio.Lock()
         self._semaphore = asyncio.Semaphore(settings.PUBLIC_API_MAX_CONCURRENCY)
         self._failed_until: dict[str, float] = {}
+        # 식약처 할당량은 모든 사용자가 나눠 쓰므로 엔드포인트별 하루 호출 수를 프로세스 단위로 센다.
+        self._date_clock = date_clock or application_today
+        self._budget_date: date | None = None
+        self._daily_requests: dict[str, int] = {}
 
     # Function Name: request_items
     # Description:
@@ -143,6 +188,7 @@ class _PublicDrugTransport:
             raise RuntimeError(
                 "The public medication API is temporarily unavailable."
             )
+        self._charge_daily_budget(url)
 
         try:
             async with self._semaphore:
@@ -176,6 +222,36 @@ class _PublicDrugTransport:
         return self._normalize_items(body.get("items")), self._safe_int(
             body.get("totalCount")
         )
+
+    # Function Name: _charge_daily_budget
+    # Description:
+    # - Reset the counters on a new application day and charge one call to the endpoint's budget before the request.
+    # - The check and the increment run without an await in between, so concurrent requests cannot overspend.
+    # Parameters:
+    # - url (str): Endpoint about to be called; URLs without a configured budget are not counted.
+    # Returns:
+    # - None; raises PublicDrugApiBudgetExhaustedError, without counting the call, once the budget is spent.
+    def _charge_daily_budget(self, url: str) -> None:
+        budget = _daily_budget_for(url)
+        if budget is None:
+            return
+        today = self._date_clock()
+        if self._budget_date != today:
+            self._budget_date = today
+            self._daily_requests = {}
+        endpoint = url.rstrip("/")
+        used = self._daily_requests.get(endpoint, 0)
+        if used >= budget:
+            raise PublicDrugApiBudgetExhaustedError(
+                "The public medication API daily request budget is exhausted."
+            )
+        if used + 1 == budget:
+            logger.warning(
+                "Public medication API daily budget reached for %s (%s calls).",
+                endpoint.rsplit("/", 1)[-1],
+                budget,
+            )
+        self._daily_requests[endpoint] = used + 1
 
     # 함수이름: close
     # 함수역할:

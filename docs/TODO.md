@@ -97,12 +97,6 @@ Device checks on the release build. The last pass (2026-11-13) is summarised in 
       `MEDBUDDY_APP_DB_USER`/`MEDBUDDY_APP_DB_PASSWORD`, see Production Deployment);
       production needs the owner to add the two settings.
 - [ ] Keep at least one database dump off the production host.
-- [ ] MFDS eDrug (e약은요) and drug-approval operating accounts were requested on
-      2026-11-22 and are under review (development accounts: 10,000 calls a day,
-      still working meanwhile). MFDS lookups have no shared daily budget: one
-      `/identify` can make up to 16 provider calls and only per-account and per-IP
-      limits apply. Check the approved quotas and update this item once both are
-      approved.
 - [ ] Rate-limit store (128 MB, noeviction; a full store makes the limiter answer 503
       to everyone): read `INFO memory` and `DBSIZE` on rate-limit-redis, add an alert
       as `used_memory` nears `maxmemory`, and check whether Cloudflare forwards full

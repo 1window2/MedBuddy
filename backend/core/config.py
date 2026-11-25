@@ -36,6 +36,7 @@ _DEFAULT_API_CONTRACT_VERSION = (
 # - BASIC_DRUG_API_BASE_URL (str): Consumer medication-information endpoint.
 # - ADVANCED_DRUG_API_BASE_URL (str): Drug approval-detail endpoint.
 # - PILL_IMAGE_API_BASE_URL (str): MFDS pill-identification endpoint.
+# - BASIC_DRUG_API_DAILY_REQUEST_BUDGET / ADVANCED_DRUG_API_DAILY_REQUEST_BUDGET / PILL_IMAGE_API_DAILY_REQUEST_BUDGET (int): Per-process daily call budgets of the three MFDS endpoints.
 # - PILL_IMAGE_API_ENABLED (bool): Enables optional MFDS image enrichment.
 # - PILL_IMAGE_API_TIMEOUT_SECONDS (float): Maximum optional image lookup duration.
 # - PILL_IDENTIFICATION_MODEL_NAME (str): Visual feature extraction model.
@@ -107,12 +108,18 @@ class Settings(BaseSettings):
     )
     ADVANCED_DRUG_API_BASE_URL: str = (
         "https://apis.data.go.kr/1471000/"
-        "DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnDtlInq06"
+        "DrugPrdtPrmsnInfoService08/getDrugPrdtPrmsnDtlInq08"
     )
     PILL_IMAGE_API_BASE_URL: str = (
         "https://apis.data.go.kr/1471000/"
         "MdcinGrnIdntfcInfoService03/getMdcinGrnIdntfcInfoList03"
     )
+    # 식약처 API별 하루 호출 예산(프로세스 단위, 재시작하면 0부터). 공공데이터포털 할당량의 80%만
+    # 쓰고 20%는 재시작과 카탈로그 동기화 몫으로 남긴다. e약은요 운영계정은 하루 1,000,000건,
+    # 허가정보 운영계정은 오퍼레이션당 100,000건(2026-11-23 승인), 낱알식별 개발계정은 10,000건이다.
+    BASIC_DRUG_API_DAILY_REQUEST_BUDGET: int = Field(default=800_000, ge=1, le=10_000_000)
+    ADVANCED_DRUG_API_DAILY_REQUEST_BUDGET: int = Field(default=80_000, ge=1, le=1_000_000)
+    PILL_IMAGE_API_DAILY_REQUEST_BUDGET: int = Field(default=8_000, ge=1, le=1_000_000)
     PHARMACY_API_BASE_URL: str = (
         "https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService"
     )

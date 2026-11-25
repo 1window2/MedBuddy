@@ -520,6 +520,26 @@ date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again
 - **To undo:** blank `ANTHROPIC_API_KEY` and restart, or remove the four
   `_with_claude_fallback` calls in `backend/api/dependencies.py`.
 
+## 2026-11-25: MFDS daily budgets and the 08 drug-approval endpoint
+
+- **Chosen:** the owner's MFDS operating accounts were approved (checked on the portal
+  on 2026-11-25): e약은요 1,000,000 calls a day and drug approval 100,000 per operation.
+  Pill identification stays a development account (10,000 a day). Each endpoint now has a
+  per-process daily budget at 80% of its quota, like the hospital and pharmacy services:
+  `BASIC_DRUG_API_DAILY_REQUEST_BUDGET` 800,000, `ADVANCED_DRUG_API_DAILY_REQUEST_BUDGET`
+  80,000, `PILL_IMAGE_API_DAILY_REQUEST_BUDGET` 8,000. A spent budget refuses before any
+  request and reaches callers as the provider failure they already handle (the image
+  lookup returns no image). The counter resets at local midnight and on restart.
+- **Endpoint:** the operating account lists `DrugPrdtPrmsnInfoService08` operations; the
+  code called `DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnDtlInq06`. The default is now
+  `DrugPrdtPrmsnInfoService08/getDrugPrdtPrmsnDtlInq08`. A live comparison from the
+  production host with the same key returned the same 44 fields and identical values for
+  a name search and for the first catalogue page (42,719 rows in both).
+- **Alternatives:** a shared Redis counter across processes. Not chosen: one backend
+  process runs today, and the hospital and pharmacy budgets work the same way.
+- **To undo:** set `ADVANCED_DRUG_API_BASE_URL` back to the 07 URL, or raise a budget in
+  `deploy/backend.env` and restart.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the
