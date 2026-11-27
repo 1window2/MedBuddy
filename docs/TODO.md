@@ -4,22 +4,21 @@
 [1.0.1 notes](releases/v1.0.1.md). This
 file lists open items only, sorted by priority. Finished items were removed on
 2026-11-12; they remain in the git history, the release notes and the
-[decision log](MedBuddy%20-%20Decision%20Log.md). Changes are listed in the
-[1.0.0 notes](releases/v1.0.0.md).
+[decision log](MedBuddy%20-%20Decision%20Log.md). The graduation exhibition
+(2026-11-26 to 27) is over; work continues on the `v1.0.2` branch.
 
 | Priority | Meaning |
 | --- | --- |
-| P0 | Blocks the 1.0.0 release. |
-| P1 | To finish before 1.0.0: device checks of the main flows on the release build, and the exhibition. |
+| P0 | Blocks a public Google Play release. |
+| P1 | Device checks of the main flows on the release build. |
 | P2 | Security and operations hardening; owner checks. |
 | P3 | Owner decisions and known limits that matter only with more users or data. |
 | P4 | Not possible with the current devices, minor details and the product backlog. |
 
-## P0: blocking the 1.0.0 release
+## P0: blocking a Google Play release
 
-On 2026-11-13 the owner decided that P0 items do not block the graduation exhibition
-demo (2026-11-26 to 27): the demo runs on the GitHub APK without App Check, and
-nothing is distributed to the public. They still block a public 1.0.0 release.
+Releases are published only as the off-Play GitHub APK without App Check (owner's
+decision of 2026-11-13); nothing goes to Google Play until these items are done.
 
 - [ ] Google Play distribution with App Check (Play Integrity). The owner chose both
       Google Play and the GitHub APK on 2026-11-07, so the criteria below block 1.0.0;
@@ -56,13 +55,15 @@ nothing is distributed to the public. They still block a public 1.0.0 release.
         active.
 - [ ] Design: how the GitHub APK passes App Check once production requires it (Play
       Integrity recognises only Play-distributed builds).
-- [ ] A final privacy policy and consent for health data; the in-app data-use guide
+- [ ] A final privacy policy and consent for health data, naming both AI providers
+      (Gemini, and Anthropic Claude when Gemini fails); the in-app data-use guide
       does not replace them (Beta Scope). Owner and legal.
 
-## P1: before 1.0.0
+## P1: device checks
 
-Device checks on the release build. The last pass (2026-11-13) is summarised in the
-[1.0.0 notes](releases/v1.0.0.md#device-checks-2026-11-13).
+Device checks on the release build. The last full pass (2026-11-13) is summarised in
+the [1.0.0 notes](releases/v1.0.0.md#device-checks-2026-11-13); the 1.0.1 build was
+checked on the phone on 2026-11-23 ([1.0.1 notes](releases/v1.0.1.md)).
 
 - [ ] Medication reminder actions on a locked screen (needs the owner's PIN).
 - [ ] Undoing a dose from the home widget does not bring today's reminder back until
@@ -86,8 +87,6 @@ Device checks on the release build. The last pass (2026-11-13) is summarised in 
       several identified pills.
 - [ ] Message deletion between two devices: the 24-hour deadline.
 - [ ] Session: a 401 in chat signs out; ending the session with a pushed screen open.
-- [ ] Poster, and feedback gathered for the graduation exhibition (2026-11-26 to
-      11-27).
 
 ## P2: security and operations
 
@@ -102,8 +101,9 @@ Device checks on the release build. The last pass (2026-11-13) is summarised in 
       as `used_memory` nears `maxmemory`, and check whether Cloudflare forwards full
       IPv6 client addresses (quotas count an IPv6 address as its /64).
 - [ ] Signed workflow: whether the deployment review shows the dispatch inputs, which
-      branches the `beta-android` policy still allows (remove finished `beta/v0.2.x`
-      entries), and branch protection for `v1.0.1`.
+      and branch protection for the release branch `v1.0.2`. Since 2026-11-27 the
+      `beta-android` policy allows only `main`; the owner adds `v1.0.2` before the
+      first 1.0.2 signed build.
 - [ ] Push tokens of a user disabled by the operator keep receiving pushes until the
       account is deleted, and the account owner has no "sign out other devices"
       action.
@@ -121,6 +121,10 @@ Device checks on the release build. The last pass (2026-11-13) is summarised in 
       revocation); hospital and pharmacy shares in chat charge only the per-account
       daily counter, not the per-address one; the notification inbox keeps caregiver
       alert text in app-private plaintext preferences for 90 days after sign-out.
+
+- [ ] The Claude outage fallback (`34d57cd2`, 2026-11-24) is in the in-app data-use guide
+      but not yet in the user guide PDFs (sections 9.6 and the data-use pages name only
+      Gemini) or the UML diagrams. Update both with the next guide rebuild.
 
 ## P3: owner decisions and known limits
 
@@ -153,7 +157,7 @@ Device checks on the release build. The last pass (2026-11-13) is summarised in 
 - [ ] Since 1.0.1, manual entry and pill identification always hand their results to the
       shared result screen, so their own direct-save paths (`onSaveRequested`,
       `_saveAll`, the pill batch save, `saveIdentifiedPills`) run only in tests. Remove
-      them with their tests after the release (code review 2026-11-22).
+      them with their tests in 1.0.2 (code review 2026-11-22).
 - [ ] Rate-limit values (including 120 per minute for per-item deletes), retention of
       dose-sync and tombstone rows, and HTTP 403 wording and retry behaviour before App
       Check is enabled.
@@ -169,11 +173,6 @@ Device checks on the release build. The last pass (2026-11-13) is summarised in 
       volume).
 - [ ] Further APK size reduction (arm64 only, compressed native libraries or per-ABI
       splits) changes device support or update mechanics.
-- [ ] Widget on a 160 dpi screen (visual): the one-row widget (250 x 48 dp, patient,
-      normal text, missed dose) cuts the save-state line by 2 px when the missed-dose
-      note wraps to two lines (CI run 42317116065 on `e7bef59`). It fits on the
-      devices checked (420 dpi emulators, Galaxy Note10); 240 and 320 dpi are not
-      checked. A different row layout would change the widget's look.
 - [ ] Manual and pill-photo registration offer four rhythms (every day, every other
       day, once a week, once a month); others such as named weekdays need
       prescription registration.

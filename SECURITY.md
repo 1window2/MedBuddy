@@ -82,7 +82,9 @@ Security updates should be evaluated by impact:
 
 ## External Services
 
-MedBuddy uses Gemini and Korean public drug data APIs. Treat all API responses
+MedBuddy uses Gemini, Anthropic Claude (only when Gemini fails and
+`ANTHROPIC_API_KEY` is set; it receives the same de-identified data) and Korean
+public drug data APIs. Treat all API responses
 as untrusted input:
 
 - Validate structured model/API responses before using them.
@@ -223,7 +225,7 @@ Debug builds retain a local-demo exception, and `ApiConfig` limits it to
 `10.0.2.2` or loopback hosts on port 8000 when
 `MEDBUDDY_ALLOW_LOCAL_HTTP=true`. Profile and release builds require the public
 HTTPS backend contract. The beta backend runs FastAPI, PostgreSQL, Redis, and
-`cloudflared` on a dedicated team-controlled Ubuntu host. PostgreSQL and Redis
+`cloudflared` on a dedicated owner-controlled Ubuntu host. PostgreSQL and Redis
 remain on the private Docker network, FastAPI port 8000 is bound only to host
 loopback, and Cloudflare Tunnel is the only public ingress path. Router port
 forwarding, Tailscale Funnel, and direct-public Caddy ingress are not used.

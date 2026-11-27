@@ -2,8 +2,8 @@
 
 ## Decision Status
 
-- Status: production infrastructure provisioned and public HTTPS smoke-tested; authenticated Android device and final signed-release validation remain
-- Applies to: Android v0.2.0 beta and FastAPI production deployment
+- Status: in production; v1.0.1 is released off-Play without App Check enforcement (see the P0 items in `docs/TODO.md`)
+- Applies to: the Android app (current release v1.0.1) and the FastAPI production deployment
 - Replaces: alpha hash-based identity as an authorization mechanism
 - Preserves: existing Boundary-Control-Entity use-case controls and API routes
 
@@ -535,8 +535,9 @@ their source but every job has `if: false`. They cannot provision or invoke
 Cloud Run, Cloud SQL, Redis, VPC, Artifact Registry, or Secret Manager resources.
 
 The following revisions established the beta security and data boundary. This
-is not the full chain; the current head is `ab29d71c4e60`, adding version-checked
-user-setting writes after `f2c8a6d4e901`. That merge combined catalogue refresh
+is not the full chain; the current head is `a9d3c5e71f24` (see Production
+Deployment for the chain after `ab29d71c4e60`, which added version-checked
+user-setting writes after `f2c8a6d4e901`). That merge combined catalogue refresh
 state (`c5e1a7f3b902`) with SQLite resource-ID preservation and push
 registration-version guards (`d19e7c4b2a60`) without rewriting either history (see
 [Production Deployment](Production%20Deployment.md)).
@@ -582,7 +583,7 @@ secrets. It supplies `ANDROID_SIGNING_CERT_SHA256`,
 variables for Flutter compile-time configuration. Firebase API/app identifiers
 and certificate fingerprints are identifiers rather than credentials. The
 environment must require owner approval and an exact custom deployment policy
-for `main` and the active release branch (`v1.0.1`); entries for finished beta
+for `main` and the active release branch (`v1.0.2`); entries for finished beta
 branches should be removed from that policy. The workflow repeats that exact-ref
 gate before repository build code can receive signing material. Other beta
 branches and version-like tags cannot access the environment. A dispatch input

@@ -540,6 +540,18 @@ date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again
 - **To undo:** set `ADVANCED_DRUG_API_BASE_URL` back to the 07 URL, or raise a budget in
   `deploy/backend.env` and restart.
 
+## 2026-11-27: one release branch after the exhibition
+
+- **Chosen:** after the graduation exhibition the owner continues alone toward 1.0.2.
+  Every merged branch was deleted (`beta/v1.0.0`, `v1.0.1` and the 11-25 topic branches;
+  the release tags stay), and 1.0.2 is developed on `v1.0.2` from `main` (`96d005bc`).
+  The signed workflow's off-Play exception moved from exactly `v1.0.1` to exactly
+  `v1.0.2`, so `v1.0.1` can no longer produce signed builds. The `beta-android`
+  environment allows only `main` until the owner adds `v1.0.2`. The production checkout
+  moved from `v1.0.1` to `main` (same commit, no redeploy).
+- **To undo:** recreate a branch from the `v1.0.1` tag and point the exception back at it
+  in `release-android.yml` and `scripts/check_android_release_configuration.py`.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the
