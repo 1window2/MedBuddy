@@ -761,3 +761,75 @@ def test_short_contained_imprint_does_not_score_as_a_near_match() -> None:
     assert similarity("DW50O", "5") < 0.5
     # A one-character misread of the true imprint still ranks above the short imprints.
     assert similarity("DW50O", "DW500") > similarity("DW50O", "D")
+
+
+# Function Name: test_mfds_logo_and_score_line_words_are_not_imprint_text
+# Description:
+# - Drops the MFDS words for a logo or score line, so "SD" still matches a catalog imprint
+#   written as "마크분할선SD분할선마크분할선SD" (found on the phone with 슈다페드정).
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_mfds_logo_and_score_line_words_are_not_imprint_text() -> None:
+    normalize = IdentifyPill._normalize_imprint
+    assert normalize("마크분할선SD분할선마크분할선SD") == "SDSD"
+    assert normalize("B분할선1") == "B1"
+    assert normalize("십자분할선") == ""
+    assert normalize("경동") == "경동"
+
+    features = PillVisualFeatures(
+        shape="round", colors=("white",), front_imprint="SD", quality="good",
+    )
+    control = _control(
+        features,
+        (
+            _entry(
+                "197900575", "슈다페드정", color="하양",
+                print_front="마크분할선SD분할선마크분할선SD", print_back="마크분할선SD분할선마크분할선SD",
+            ),
+            _entry("other", "다른정", color="하양", print_front="SW", print_back=""),
+        ),
+    )
+
+    result = await control.requestPillIdentification(b"front", None)
+
+    assert result.candidates[0].item_seq == "197900575"
+    assert "imprint" in result.candidates[0].matched_attributes
+
+
+# Function Name: test_exact_imprint_on_an_adjacent_elongated_shape_still_ranks_first
+# Description:
+# - Gives oval and oblong half the shape score, so an exact "AG 400" on a 타원형 product
+#   outranks partial "400" imprints on 장방형 products (found on the phone with 애니펜정:
+#   before the fix it was not among the five candidates).
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_exact_imprint_on_an_adjacent_elongated_shape_still_ranks_first() -> None:
+    assert IdentifyPill._shape_score("oblong", "타원형") == 0.5
+    assert IdentifyPill._shape_score("oval", "장방형") == 0.5
+    assert IdentifyPill._shape_score("round", "타원형") == 0.0
+    assert IdentifyPill._shape_score("oblong", "장방형") == 1.0
+
+    features = PillVisualFeatures(
+        shape="oblong", colors=("pink",), front_imprint="AG 400", front_line="none", quality="good",
+    )
+    control = _control(
+        features,
+        (
+            _entry("201802579", "애니펜정400", shape="타원형", color="분홍", print_front="AG 400", print_back=""),
+            # The real competitors from the phone run (MFDS rows, same color, 장방형).
+            _entry("201403419", "목시플로정400", shape="장방형", color="분홍", print_front="마크", print_back="M400"),
+            _entry("201309618", "모록사신정400", shape="장방형", color="분홍", print_front="MF400", print_back="HM"),
+        ),
+    )
+
+    result = await control.requestPillIdentification(b"front", None)
+
+    assert result.candidates[0].item_seq == "201802579"
+    assert "imprint" in result.candidates[0].matched_attributes
+    assert "shape" not in result.candidates[0].matched_attributes

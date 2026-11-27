@@ -23,6 +23,7 @@ os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 from api.dependencies import get_identify_pill, get_registered_principal  # noqa: E402
 from boundaries.pill_identification_boundary import (  # noqa: E402
     MultiplePillImagePreprocessingResult,
+    PillImageQualityError,
     PillVisionBoundary,
     PillVisionResponseError,
 )
@@ -246,6 +247,31 @@ async def test_multiple_visual_boundary_rejects_overlapping_duplicate_boxes() ->
 
     with pytest.raises(PillVisionResponseError, match="overlapping"):
         await boundary.extractMultipleVisualFeatures(b"photo")
+
+
+# Function Name: test_multiple_visual_boundary_reports_an_empty_photo_as_a_quality_error
+# Description:
+# - "No pill in the photo" is a valid answer, so it becomes PillImageQualityError (HTTP 422,
+#   "retake") instead of a malformed-response error (HTTP 502, shown as a connection problem).
+#   Found on the phone with a photo of an empty palm; a non-list stays a response error.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_multiple_visual_boundary_reports_an_empty_photo_as_a_quality_error() -> None:
+    def boundary(payload: dict[str, Any]) -> PillVisionBoundary:
+        return PillVisionBoundary(
+            client=object(),  # type: ignore[arg-type]
+            image_processing_boundary=_CompositionProcessor(),  # type: ignore[arg-type]
+            vision_api=_MultipleVisionAPI(payload),  # type: ignore[arg-type]
+            timeout_seconds=1,
+        )
+
+    with pytest.raises(PillImageQualityError):
+        await boundary({"pills": []}).extractMultipleVisualFeatures(b"photo")
+    with pytest.raises(PillVisionResponseError):
+        await boundary({"pills": "none"}).extractMultipleVisualFeatures(b"photo")
 
 
 # Function Name: test_timed_out_multiple_pill_decode_keeps_its_capacity_slot

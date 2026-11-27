@@ -990,6 +990,7 @@ class PillVisionBoundary:
     # Function Name: _parse_multiple_visual_features
     # Description:
     # - Validate 1-10 observations, integer 0-1000 boxes, minimum area and per-pill features; reject pairwise overlap above 0.72 IoU.
+    # - An empty list is a valid answer about the photo (no pill), so it is a quality error, not a malformed response.
     # Parameters:
     # - response_text (str): Raw Gemini JSON for multiple-pill detection.
     # Returns:
@@ -1003,6 +1004,10 @@ class PillVisionBoundary:
         try:
             payload = json.loads(response_text)
             raw_pills = payload["pills"]
+            if isinstance(raw_pills, list) and not raw_pills:
+                raise PillImageQualityError(
+                    "No separate pills were found. Place the pills apart and retake the photo."
+                )
             if not isinstance(raw_pills, list) or not 1 <= len(raw_pills) <= 10:
                 raise ValueError
             observations: list[tuple[PillBoundingBox, PillVisualFeatures]] = []
@@ -1038,6 +1043,8 @@ class PillVisionBoundary:
                 )
                 features = self._to_features(feature_payload, has_back_image=False)
                 observations.append((box, features))
+        except PillImageQualityError:
+            raise
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise PillVisionResponseError(
                 "The multiple-pill analysis returned an invalid response."

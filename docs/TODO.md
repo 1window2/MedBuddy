@@ -88,9 +88,12 @@ checked on the phone on 2026-11-23 ([1.0.1 notes](releases/v1.0.1.md)).
 - [ ] Message deletion between two devices: the 24-hour deadline.
 - [ ] Session: a 401 in chat signs out; ending the session with a pushed screen open.
 
-- [ ] Photo dose recording on a phone with real pills: hand-held photos of plain and
-      imprinted tablets, two look-alike white tablets, a repeat photo, and an overnight
-      bedtime dose. The emulator check used a drawn sample photo and scripted analysis.
+- [ ] Photo dose recording with real pills held in a hand (camera, not gallery) and an
+      overnight bedtime dose. On 2026-11-28 the phone passed 17 cases against a test
+      instance with the real Gemini/Claude and MFDS catalog, using composite photos of
+      MFDS tablet images on a drawn palm (envelope medicines, missing, wrong product,
+      extra, OTC, white look-alikes, repeat, lunch/early/unclear slots, as-needed, 409,
+      empty photo).
 
 ## P2: security and operations
 

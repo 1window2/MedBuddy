@@ -3,6 +3,7 @@
 
 import asyncio
 import heapq
+import re
 import unicodedata
 from difflib import SequenceMatcher
 from functools import lru_cache
@@ -33,6 +34,14 @@ from entities.pill_identification_entity import (
 # - catalog_boundary (MFDSPillCatalogBoundary): Shared MFDS pill-reference catalog provider.
 # - candidate_limit (int): Maximum pill matches exposed to the user.
 # - _ranking_semaphore (asyncio.Semaphore): Shared concurrency gate for CPU-heavy catalog ranking.
+# MFDS imprint fields describe a logo ("마크") or a score line ("분할선", "십자분할선") in words.
+# They are not printed characters; score lines are compared through line_front/line_back.
+_IMPRINT_DESCRIPTOR_WORDS = re.compile("십자분할선|분할선|마크")
+# Elongated shapes a photo often cannot separate: MFDS 타원형 (ellipse) and 장방형 (capsule).
+_ADJACENT_SHAPES = {"oval": ("장방형", "장방정"), "oblong": ("타원형",)}
+_ADJACENT_SHAPE_SCORE = 0.5
+
+
 class IdentifyPill:
     """Identifies candidate products without treating a visual match as a diagnosis."""
 
@@ -392,12 +401,15 @@ class IdentifyPill:
     # - observed (str): Normalized shape label extracted from the image.
     # - catalog_shape (str): Registered MFDS pill shape label.
     # Returns:
-    # - 1.0 for an alias match; otherwise 0.0.
+    # - 1.0 for an alias match, 0.5 for the adjacent elongated shape (oval/oblong); otherwise 0.0.
     @classmethod
     def _shape_score(cls, observed: str, catalog_shape: str) -> float:
         normalized_catalog = cls._normalize_label(catalog_shape)
-        aliases = cls._SHAPE_ALIASES.get(observed, ())
-        return 1.0 if normalized_catalog in aliases else 0.0
+        if normalized_catalog in cls._SHAPE_ALIASES.get(observed, ()):
+            return 1.0
+        if normalized_catalog in _ADJACENT_SHAPES.get(observed, ()):
+            return _ADJACENT_SHAPE_SCORE
+        return 0.0
 
     # Function Name: _color_score
     # Description:
@@ -578,7 +590,8 @@ class IdentifyPill:
 
     # Function Name: _normalize_imprint
     # Description:
-    # - Applies NFKC normalization and uppercase, retaining at most 64 alphanumeric imprint characters.
+    # - Applies NFKC normalization and uppercase, drops the MFDS words for a logo or score line,
+    #   and retains at most 64 alphanumeric imprint characters.
     # Parameters:
     # - value (str): Raw pill imprint text, possibly blank.
     # Returns:
@@ -586,7 +599,7 @@ class IdentifyPill:
     @staticmethod
     @lru_cache(maxsize=131_072)
     def _normalize_imprint(value: str) -> str:
-        normalized = unicodedata.normalize("NFKC", value or "").upper()
+        normalized = _IMPRINT_DESCRIPTOR_WORDS.sub("", unicodedata.normalize("NFKC", value or "").upper())
         return "".join(character for character in normalized if character.isalnum())[:64]
 
     # Function Name: _normalize_label
@@ -648,7 +661,8 @@ def has_same_shape_and_colors(
     observed_colors = tuple(dict.fromkeys(color for color in colors if color))
     if shape in {"", "unknown"} or not observed_colors:
         return False
-    if IdentifyPill._shape_score(shape, entry.shape) < 1.0:
+    # The adjacent elongated shape counts too: a photo cannot tell MFDS 타원형 from 장방형.
+    if IdentifyPill._shape_score(shape, entry.shape) <= 0.0:
         return False
     catalog_colors = list(dict.fromkeys(
         IdentifyPill._normalize_label(color)

@@ -278,12 +278,16 @@ class PlanPhotoDose:
                 "medication_ids": [],
             })
             group["medication_ids"].append(mid)  # type: ignore[union-attr]
+        # 사진에 찍혀 따로 이유가 붙은 약(최근 복용 등)은 "아직 안 찍힌 약"이 아니다.
+        photographed = {int(row["medication_id"]) for row in pill_rows if row["medication_id"] is not None}
         for (day, key), group in groups.items():
             pending = {
                 int(m.id) for m in due[day]
                 if key in self._slot_keys(m) and key not in handled.get((day, int(m.id)), set())
             }
-            group["missing_medication_ids"] = sorted(pending - set(group["medication_ids"]))  # type: ignore[arg-type]
+            group["missing_medication_ids"] = sorted(  # type: ignore[arg-type]
+                pending - set(group["medication_ids"]) - photographed  # type: ignore[arg-type]
+            )
         ordered = sorted(groups.values(), key=lambda g: (g["schedule_date"], SLOT_ORDER.index(g["slot_key"])))
         as_needed_ids = sorted(mid for mid in assigned if decisions[mid].slot is None)
 
@@ -427,6 +431,10 @@ class PlanPhotoDose:
                 chosen, timing = early, "early"
             elif past and not future:
                 chosen, timing = past[-1], "late"
+            elif future and last_dose is not None and now - last_dose < self._scheduled_spacing(mine, future[0]):
+                # 방금 먹은 약이면 "이미 드셨어요"가 먼저다(다음 시간대의 최근 복용 간격 안). 그렇지 않으면
+                # "일정에서 직접 기록해 주세요"가 놓친 앞 칸에 같은 약을 또 기록하게 만든다.
+                return Decision("recently_taken", detail_at=last_dose)
             elif past and future:
                 return Decision("unclear_slot", detail_at=future[0].at)
             elif future:

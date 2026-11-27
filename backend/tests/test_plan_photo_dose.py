@@ -240,9 +240,14 @@ def test_each_medicine_goes_to_its_own_slot_in_one_photo(db: Session) -> None:
 def test_photo_of_an_already_taken_multi_slot_medicine_is_not_recorded_for_later(db: Session) -> None:
     a = medicine(db, "A1", ["morning", "evening"])
     taken(db, a, "morning", actual="08:10")
+    # 방금(2시간 안) 먹은 약은 다음 시각보다 "8:10에 이미 드셨어요"를 먼저 알린다(폰 테스트에서 확인).
     result = plan(db, "09:00", [pill(1, imprint=("A1",))])
-    assert statuses(result)[1] == ("too_early", a)
-    assert result["pills"][0]["detail_at"] == at("18:00").isoformat()
+    assert statuses(result)[1] == ("recently_taken", a)
+    assert result["pills"][0]["detail_at"] == at("08:10").isoformat()
+    # 간격이 지나면 다음 시각을 알린다.
+    later = plan(db, "10:30", [pill(1, imprint=("A1",))])
+    assert statuses(later)[1] == ("too_early", a)
+    assert later["pills"][0]["detail_at"] == at("18:00").isoformat()
 
 
 def test_early_dose_needs_enough_rest_since_the_previous_one(db: Session) -> None:
@@ -467,6 +472,21 @@ def test_shape_and_colour_lookalike_requires_the_full_colour_set() -> None:
     assert not has_same_shape_and_colors("unknown", ["white", "pink"], two_tone)
     repeated = PillCatalogEntry(item_seq="B1", item_name="y", shape="원형", color_primary="하양", color_secondary="하양")
     assert has_same_shape_and_colors("round", ["white"], repeated)
+    ellipse = PillCatalogEntry(item_seq="C1", item_name="z", shape="타원형", color_primary="분홍")
+    assert has_same_shape_and_colors("oblong", ["pink"], ellipse)
+    assert not has_same_shape_and_colors("round", ["pink"], ellipse)
+
+
+def test_plain_back_of_an_extra_tablet_on_an_adjacent_shape_is_extra_not_unknown(db: Session) -> None:
+    # 폰 테스트: 카탈로그 타원형 애니펜정의 두 알이 모두 장방형으로 읽혔다. 각인 면은 그 약으로 고르고,
+    # 각인 없는 면은 "내 약이 아닌 알약"이 아니라 정해진 양보다 많이 찍힌 같은 약이다.
+    a = medicine(db, "A1", ["morning"], look=("타원형", "분홍"))
+    result = plan(db, "08:00", [
+        # 각인 없는 알약은 동점 후보를 많이 받으므로 그 약도 후보에 든다.
+        pill(1, "A1", look=("oblong", ["pink"]), has_imprint=False),
+        pill(2, imprint=("A1",), look=("oblong", ["pink"])),
+    ])
+    assert statuses(result) == {1: ("extra", a), 2: ("matched", a)}
 
 
 # --- regressions from the implementation review ---------------------------------------------------
@@ -533,3 +553,32 @@ def test_regimen_revision_keys_must_be_medicine_ids() -> None:
             "pills": [{"index": 1}], "plan_token": "x" * 20, "operation_id": str(uuid4()),
             "expected": {"groups": [], "as_needed_medication_ids": [], "regimen_revisions": {"x": 0}},
         })
+
+
+def test_a_photographed_medicine_with_a_warning_is_not_listed_as_missing(db: Session) -> None:
+    # 폰 테스트: 아침에 먹은 B를 점심 사진에 다시 찍으면 "이미 드셨어요"로 막히는데, 같은 B가
+    # "아직 안 찍힌 점심 약"에도 나왔다. 사진에 있는 약은 안 찍힌 약 목록에 넣지 않는다.
+    alarm(db, "lunch", 12, 30)
+    a = medicine(db, "A1", ["morning", "lunch"])
+    b = medicine(db, "B1", ["morning", "lunch"])
+    c = medicine(db, "C1", ["morning", "lunch"])
+    taken(db, a, "morning", actual="08:05")
+    taken(db, b, "morning", actual="12:00")
+    taken(db, c, "morning", actual="08:05")
+    result = plan(db, "12:40", [pill(1, imprint=("A1",)), pill(2, imprint=("B1",))])
+    assert statuses(result) == {1: ("matched", a), 2: ("recently_taken", b)}
+    assert group_map(result) == {"lunch": [a]}
+    assert result["groups"][0]["missing_medication_ids"] == [c]
+
+
+def test_a_just_taken_medicine_is_recently_taken_not_unclear(db: Session) -> None:
+    # 폰 테스트: 아침을 놓치고 점심(12:30)에 A를 먹은 직후 다시 찍으면, 아침은 지났고 저녁은 멀어
+    # "언제 드실 약인지 알 수 없어요. 일정에서 직접 기록해 주세요"가 나와 아침 칸에 또 기록하게 했다.
+    alarm(db, "lunch", 12, 30)
+    a = medicine(db, "A1", ["morning", "lunch", "evening"])
+    b = medicine(db, "B1", ["morning", "evening"])
+    taken(db, a, "lunch", actual="12:35")
+    result = plan(db, "12:40", [pill(1, imprint=("A1",)), pill(2, imprint=("B1",))])
+    assert statuses(result) == {1: ("recently_taken", a), 2: ("unclear_slot", b)}
+    assert result["pills"][0]["detail_at"] == at("12:35").isoformat()
+

@@ -508,6 +508,9 @@ date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again
   outage. A failed copy, or less than 5 of the 40 seconds left since the Gemini call
   started (the app waits 45), returns the original Gemini error. A blank key installs no
   wrapper; a fallback module that cannot load leaves the Gemini boundary in place.
+  Since 2026-11-28 a pill-photo quality verdict from the copy ("no pill", "several pills")
+  is passed on as that answer (HTTP 422, retake) instead of the outage; the phone test
+  showed an empty-palm photo during a Gemini outage reported as a connection problem.
 - **Alternatives:** shortening the Gemini deadline so Claude always fits. Not chosen: it
   would cut Gemini answers that arrive late but in time today. The key as a GitHub
   repository secret: not used, because production is self-hosted and reads

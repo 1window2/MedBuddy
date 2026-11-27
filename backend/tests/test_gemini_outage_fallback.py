@@ -265,6 +265,35 @@ async def test_failed_fallback_surfaces_the_original_gemini_error(fallback: str)
     assert caught.value.__cause__ is cause
 
 
+# Function Name: test_a_photo_verdict_from_the_fallback_is_its_answer
+# Description:
+# - During a Gemini outage the Claude copy can judge the photo itself ("no pill"); that verdict
+#   propagates (HTTP 422 "retake") instead of the Gemini outage (HTTP 503, shown as a connection
+#   problem). Found on the phone with an empty-palm photo. Other kinds keep hiding every error.
+@pytest.mark.anyio
+async def test_a_photo_verdict_from_the_fallback_is_its_answer() -> None:
+    from boundaries.pill_identification_boundary import PillImageQualityError
+    from services.gemini_outage_fallback import wrap_with_claude_fallback
+
+    outage = _raised(RuntimeError("failed"), _gemini_error(503))
+    verdict = PillImageQualityError("No separate pills were found.")
+    wrapper = wrap_with_claude_fallback(object(), "pill_vision")
+    object.__setattr__(wrapper, "_primary", _Boundary(error=outage))
+    object.__setattr__(wrapper, "_methods", frozenset({"analyse"}))
+    object.__setattr__(wrapper, "_fallback", _Boundary(error=verdict))
+    with pytest.raises(PillImageQualityError) as caught:
+        await wrapper.analyse("photo")
+    assert caught.value is verdict
+
+    other = wrap_with_claude_fallback(object(), "health_recommendation")
+    object.__setattr__(other, "_primary", _Boundary(error=outage))
+    object.__setattr__(other, "_methods", frozenset({"analyse"}))
+    object.__setattr__(other, "_fallback", _Boundary(error=PillImageQualityError("x")))
+    with pytest.raises(RuntimeError) as hidden:
+        await other.analyse("text")
+    assert hidden.value is outage
+
+
 # Function Name: test_fallback_never_runs_past_the_app_wait
 @pytest.mark.anyio
 async def test_fallback_never_runs_past_the_app_wait(monkeypatch: pytest.MonkeyPatch) -> None:
