@@ -50,7 +50,7 @@ and [Production Deployment](docs/Production%20Deployment.md).
 
 ## Documentation
 
-- [Release notes](docs/releases/v1.0.1.md) and the [release TODO](docs/TODO.md)
+- [Release notes](docs/releases/v1.1.0.md) and the [release TODO](docs/TODO.md)
 - [Scope](docs/MedBuddy%20-%20Beta%20Scope.md), [security architecture](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md) and [decision log](docs/MedBuddy%20-%20Decision%20Log.md)
 - [Contributing](CONTRIBUTING.md) and [security policy](SECURITY.md)
 

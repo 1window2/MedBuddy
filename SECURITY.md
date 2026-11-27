@@ -2,8 +2,7 @@
 
 ## Project Status
 
-MedBuddy publishes Android releases off Play; `v1.0.1` is the current one, and
-1.1.0 is in development on that baseline. Play
+MedBuddy publishes Android releases off Play; `v1.1.0` is the current one. Play
 Integrity enforcement remains open; see
 [the release TODO](docs/TODO.md).
 
@@ -11,8 +10,8 @@ Integrity enforcement remains open; see
 
 | Version | Status | Security Handling |
 | --- | --- | --- |
-| `v1.1.0` source | In development | Security fixes are applied before 1.1.0 is published. |
-| `v1.0.1` | Current release | Critical fixes are evaluated for the supported release line. |
+| `v1.1.0` source and tag | Current release | Critical fixes are evaluated for the supported release line. |
+| `v1.0.1` | Superseded release | Receives no routine backports; the production server stays compatible with its clients. |
 | `v1.0.0` | Superseded release | Receives no routine backports; the production server stays compatible with its clients. |
 | `v0.2.5-beta`, `v0.2.4-beta`, `v0.2.3-beta`, `v0.2.2-beta`, `v0.2.1-beta`, `v0.2.0-beta`, `v0.1.1-beta` and `v0.1.0-beta` | Superseded betas | Receive no routine backports. The production server stays compatible with `v0.2.0-beta` clients. |
 | `v0.0.9-alpha` and earlier | Published alpha demos | Superseded demos receive no routine backports. |

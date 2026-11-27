@@ -1,11 +1,11 @@
 # MedBuddy Release TODO
 
-1.0.0 was released on 2026-11-13 and 1.0.1 on 2026-11-22 (`v1.0.1`), see the
-[1.0.1 notes](releases/v1.0.1.md). This
+1.0.0 was released on 2026-11-13, 1.0.1 on 2026-11-22 and 1.1.0 on 2026-11-28
+(`v1.1.0`), see the [1.1.0 notes](releases/v1.1.0.md). This
 file lists open items only, sorted by priority. Finished items were removed on
 2026-11-12; they remain in the git history, the release notes and the
 [decision log](MedBuddy%20-%20Decision%20Log.md). The graduation exhibition
-(2026-11-26 to 27) is over; work continues on the `v1.1.0` branch.
+(2026-11-26 to 27) is over.
 
 | Priority | Meaning |
 | --- | --- |

@@ -2,8 +2,8 @@
 
 ## Decision Status
 
-- Status: in production; v1.0.1 is released off-Play without App Check enforcement (see the P0 items in `docs/TODO.md`)
-- Applies to: the Android app (current release v1.0.1) and the FastAPI production deployment
+- Status: in production; v1.1.0 is released off-Play without App Check enforcement (see the P0 items in `docs/TODO.md`)
+- Applies to: the Android app (current release v1.1.0) and the FastAPI production deployment
 - Replaces: alpha hash-based identity as an authorization mechanism
 - Preserves: existing Boundary-Control-Entity use-case controls and API routes
 
