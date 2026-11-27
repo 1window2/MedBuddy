@@ -865,3 +865,32 @@ async def test_exact_imprint_survives_a_misread_colour_and_neighbours_are_not_im
     assert all("imprint" not in c.matched_attributes for c in result.candidates[1:])
     assert IdentifyPill._text_similarity("AG400", "AN400") < 0.9
 
+
+# Function Name: test_every_exact_imprint_candidate_stays_past_the_display_count
+# Description:
+# - Many products share an imprint; when the colour is misread, the right product scores below
+#   the others with the same imprint and must still be returned.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_every_exact_imprint_candidate_stays_past_the_display_count() -> None:
+    features = PillVisualFeatures(
+        shape="oblong", colors=("orange",), front_imprint="AG 400", front_line="none", quality="good",
+    )
+    same_imprint = tuple(
+        _entry(f"o{i}", f"주황정{i}", shape="장방형", color="주황", print_front="AG 400", print_back="")
+        for i in range(8)
+    )
+    control = _control(
+        features,
+        same_imprint + (_entry("201802579", "애니펜정400", shape="타원형", color="분홍", print_front="AG 400", print_back=""),),
+    )
+
+    result = await control.requestPillIdentification(b"front", None)
+
+    seqs = [c.item_seq for c in result.candidates]
+    assert "201802579" in seqs
+    assert all("imprint" in c.matched_attributes for c in result.candidates)
+

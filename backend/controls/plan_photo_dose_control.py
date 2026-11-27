@@ -634,11 +634,21 @@ class _Assigner:
         entry = self.catalog.get(self.item_seq_of.get(mid, ""))
         return entry is not None and has_same_shape_and_colors(pill.shape, list(pill.colors), entry)
 
+    # 함수이름: _look_contradicts
+    # 함수역할: 사진의 모양·색이 그 약의 카탈로그 모양·색과 분명히 다른지 본다. 카탈로그나 관찰 값이 없으면 다르다고 보지 않는다.
+    # 매개변수: pill: 알약; mid: 약 ID. 반환값: 다르면 True.
+    def _look_contradicts(self, pill: PhotoDosePill, mid: int) -> bool:
+        entry = self.catalog.get(self.item_seq_of.get(mid, ""))
+        if entry is None or pill.shape in {"", "unknown"} or not pill.colors:
+            return False
+        return not has_same_shape_and_colors(pill.shape, list(pill.colors), entry)
+
     def _available(self) -> list[int]:
         return [m for m in sorted(self.recordable) if self.remaining.get(m, 0) > 0]
 
     # 함수이름: _by_imprint
-    # 함수역할: 각인이 보이는 알약은 각인이 맞은 기록 가능 약이 하나일 때만 자동으로 고른다.
+    # 함수역할: 각인이 보이는 알약은 각인이 맞은 기록 가능 약이 하나이고 모양·색이 어긋나지 않을 때만 자동으로 고른다.
+    #   같은 각인을 쓰는 다른 제품이 많고(예: "AG 400" 15개) 색은 조명에 따라 잘못 읽히므로, 어긋나면 묻는다.
     # 매개변수: open_pills: 남은 알약 번호.
     # 반환값: 아직 정하지 못한 알약 번호.
     def _by_imprint(self, open_pills: list[int]) -> list[int]:
@@ -650,7 +660,9 @@ class _Assigner:
                 continue
             matches = [m for m in sorted(self.recordable) if self.item_seq_of.get(m) in set(pill.imprint_item_seqs)]
             own = [m for m in self.decisions if self.item_seq_of.get(m) in set(pill.imprint_item_seqs)]
-            if len(matches) == 1:
+            if len(matches) == 1 and self._look_contradicts(pill, matches[0]):
+                self._row(index, "needs_choice", options=matches)
+            elif len(matches) == 1:
                 self._take(index, matches[0], "imprint")
             elif len(matches) > 1:
                 self._row(index, "needs_choice", options=matches)

@@ -203,8 +203,12 @@ class IdentifyPill:
                 return "imprint" in candidate.matched_attributes, candidate.match_score
 
             last = rank_of(ranked_candidates[limit - 1])
+            # Every exact-imprint candidate stays: many products share an imprint ("AG 400"), and a
+            # misread colour must not push the right one past the display count.
             eligible = ranked_candidates[:limit] + [
-                c for c in ranked_candidates[limit:] if rank_of(c) == last
+                c
+                for c in ranked_candidates[limit:]
+                if rank_of(c) == last or "imprint" in c.matched_attributes
             ]
         else:
             eligible = []

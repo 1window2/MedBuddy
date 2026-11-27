@@ -582,3 +582,17 @@ def test_a_just_taken_medicine_is_recently_taken_not_unclear(db: Session) -> Non
     assert statuses(result) == {1: ("recently_taken", a), 2: ("unclear_slot", b)}
     assert result["pills"][0]["detail_at"] == at("12:35").isoformat()
 
+
+def test_an_exact_imprint_with_a_contradicting_look_is_asked_not_recorded(db: Session) -> None:
+    # 실제 손 사진 합성: 같은 각인을 쓰는 제품이 많고(예: "AG 400"), 조명 때문에 분홍 알약이 주황으로
+    # 읽힌다. 각인이 맞아도 모양·색이 어긋나면 자동으로 기록하지 않고 "이 약이 맞나요?"로 묻는다.
+    a = medicine(db, "A1", ["morning"], look=("타원형", "분홍"))
+    contradicting = plan(db, "08:00", [pill(1, imprint=("A1",), look=("round", ["orange"]))])
+    assert statuses(contradicting) == {1: ("needs_choice", None)}
+    assert contradicting["pills"][0]["options"] == [a]
+    matching = plan(db, "08:00", [pill(1, imprint=("A1",), look=("oblong", ["pink"]))])
+    assert statuses(matching) == {1: ("matched", a)}
+    answered = plan(db, "08:00", [pill(1, imprint=("A1",), look=("round", ["orange"]))],
+                    answers=[{"index": 1, "medication_id": a}])
+    assert statuses(answered) == {1: ("matched", a)}
+
