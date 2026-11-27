@@ -469,16 +469,14 @@ void main() {
         expect(find.text('약 관리'), findsOneWidget);
         expect(find.text('약 검색'), findsOneWidget);
         expect(find.text('근처 운영 병원·약국'), findsOneWidget);
-        // 큰 글씨에서는 버튼 줄이 내용만큼 자라 넘치는 대신 화면이 스크롤된다.
-        final scrollable = tester.state<ScrollableState>(
-          find
-              .descendant(
-                of: find.byKey(const ValueKey('homeDashboardScrollView')),
-                matching: find.byType(Scrollable),
-              )
-              .first,
-        );
-        expect(scrollable.position.maxScrollExtent, greaterThan(0));
+        // 홈은 글자 크기 설정과 관계없이 같은 배치를 쓰므로 2.0배에서도 버튼 줄이 자라지 않는다.
+        //   (좁은 화면에서 한 줄씩 놓이면 스크롤이 생길 수 있고, 넘침 없이 그려져야 한다.)
+        for (final key in _homeTileKeys) {
+          expect(
+            tester.getSize(find.byKey(ValueKey(key))).height,
+            lessThanOrEqualTo(112),
+          );
+        }
         // 350dp보다 좁은 화면에서는 버튼마다 가로 전체 한 줄을 쓴다.
         if (viewportCase.size.width < 350) {
           final tiles = [

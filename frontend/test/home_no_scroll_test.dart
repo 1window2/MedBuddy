@@ -235,7 +235,7 @@ void _expectEvenHomeRows(WidgetTester tester) {
     for (final row in _homeRows) [for (final key in row) rect(key)],
   ];
   final height = rows.first.first.height;
-  expect(height, greaterThanOrEqualTo(76));
+  expect(height, greaterThanOrEqualTo(60));
   final fullWidth = rows.first.first;
   for (final row in rows) {
     for (final tile in row) {

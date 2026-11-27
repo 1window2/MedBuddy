@@ -1501,11 +1501,12 @@ void main() {
               final cardRect = tester.getRect(card);
               for (final element in labels.evaluate()) {
                 final label = element.widget as Text;
-                expect(label.maxLines, isNull);
+                expect(label.maxLines, inInclusiveRange(2, 3));
                 expect(label.textScaler, isNull);
+                // 홈은 글자 크기 설정과 관계없이 같은 크기로 그린다.
                 expect(
                   MediaQuery.textScalerOf(element).scale(16),
-                  closeTo(16 * scale, 0.01),
+                  closeTo(16, 0.01),
                 );
                 final paragraph =
                     element.findRenderObject()! as RenderParagraph;
@@ -1594,7 +1595,8 @@ void main() {
     expect(find.text(subtitle), findsNothing);
     _expectTileHint(tester, 'homeHealthRecommendationCard', subtitle);
     final titleFinder = find.text('Health tips');
-    expect(tester.widget<Text>(titleFinder).maxLines, isNull);
+    // 제목은 두 줄까지 단어 단위로 줄바꿈하고, 넘치면 FittedBox 대신 글자 크기를 조금 줄인다.
+    expect(tester.widget<Text>(titleFinder).maxLines, 2);
     expect(
       find.ancestor(of: titleFinder, matching: find.byType(FittedBox)),
       findsNothing,
@@ -1766,7 +1768,8 @@ void main() {
           expect(label.overflow, TextOverflow.ellipsis);
           expect(label.textScaler, isNull);
           final paragraph = tester.renderObject<RenderParagraph>(guide);
-          expect(paragraph.textScaler.scale(12), closeTo(12 * scale, 0.01));
+          // 홈은 글자 크기 설정과 관계없이 같은 크기로 그린다.
+          expect(paragraph.textScaler.scale(12), closeTo(12, 0.01));
           final panel = tester.getRect(
             find.byKey(const ValueKey('homeEncouragementPanel')),
           );

@@ -110,139 +110,155 @@ class InputPrescriptionUI extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = _HomeText(userSetting.language);
 
-    return Scaffold(
-      backgroundColor: MedBuddyColors.pageBackground,
-      body: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            _HomeHeader(
-              text: text,
-              onNotificationsPressed: onNotificationsRequested,
-              onSearchPressed: onFeatureSearchRequested,
-              unreadCount: unreadNotificationCount,
-            ),
-            Expanded(
-              child: LayoutBuilder(
-                // 함수이름: 홈 스크롤 영역 builder
-                // 함수역할: 화면 너비에 맞춰 여백을 정한다. 큰 글씨에서는 기능 버튼이 내용 높이만큼 자란다.
-                // 매개변수: context (BuildContext), viewportConstraints (BoxConstraints): 화면 문맥과 사용 가능한 크기.
-                // 반환값: 복약 현황과 기능 카드가 배치된 스크롤 영역.
-                builder: (context, viewportConstraints) {
-                  final useCompactDashboard =
-                      viewportConstraints.maxWidth >= 350;
-                  // 기본 글씨의 흔한 휴대폰에서 보호자 안내까지 스크롤 없이 보이도록 세로 간격을 줄인다.
-                  final dashboardActionSpacing = useCompactDashboard
-                      ? viewportConstraints.maxHeight >= 600
-                            ? 14.0
-                            : 12.0
-                      : 20.0;
+    // 홈은 글자 크기 설정과 관계없이 같은 배치를 쓴다(버튼 크기·줄 높이가 바뀌지 않게). 다른 화면은 설정을 따른다.
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+      child: Scaffold(
+        backgroundColor: MedBuddyColors.pageBackground,
+        body: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              _HomeHeader(
+                text: text,
+                onNotificationsPressed: onNotificationsRequested,
+                onSearchPressed: onFeatureSearchRequested,
+                unreadCount: unreadNotificationCount,
+              ),
+              Expanded(
+                child: LayoutBuilder(
+                  // 함수이름: 홈 스크롤 영역 builder
+                  // 함수역할: 화면 너비에 맞춰 여백을 정한다. 큰 글씨에서는 기능 버튼이 내용 높이만큼 자란다.
+                  // 매개변수: context (BuildContext), viewportConstraints (BoxConstraints): 화면 문맥과 사용 가능한 크기.
+                  // 반환값: 복약 현황과 기능 카드가 배치된 스크롤 영역.
+                  builder: (context, viewportConstraints) {
+                    final useCompactDashboard =
+                        viewportConstraints.maxWidth >= 350;
+                    // 기본 글씨의 흔한 휴대폰에서 보호자 안내까지 스크롤 없이 보이도록 세로 간격을 줄인다.
+                    final dashboardActionSpacing = useCompactDashboard
+                        ? viewportConstraints.maxHeight >= 600
+                              ? 14.0
+                              : 12.0
+                        : 20.0;
 
-                  return SingleChildScrollView(
-                    key: const ValueKey('homeDashboardScrollView'),
-                    padding: EdgeInsets.fromLTRB(
-                      20,
-                      useCompactDashboard ? 10 : 16,
-                      20,
-                      useCompactDashboard ? 8 : 32,
-                    ),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          maxWidth: MedBuddySpacing.contentMaxWidth,
-                        ),
-                        child: _HomeFillLayout(
-                          availableHeight: math.max(
-                            0,
-                            viewportConstraints.maxHeight -
-                                (useCompactDashboard ? 18 : 48),
+                    return SingleChildScrollView(
+                      key: const ValueKey('homeDashboardScrollView'),
+                      padding: EdgeInsets.fromLTRB(
+                        20,
+                        useCompactDashboard ? 10 : 16,
+                        20,
+                        useCompactDashboard ? 8 : 32,
+                      ),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            maxWidth: MedBuddySpacing.contentMaxWidth,
                           ),
-                          sectionGap: dashboardActionSpacing,
-                          rowGap: 12,
-                          top:
-                              caregiverSummary ??
-                              _HomeEncouragementPanel(
-                                userSetting: userSetting,
-                                schedules: todayMedicationScheduleList,
-                                reminderSettings: medicationReminderSettings,
-                                completedCount: todayMedicationCompletedCount,
-                                totalCount: todayMedicationTotalCount,
-                                isLoading: isTodayScheduleLoading,
-                                hasError: hasTodayScheduleLoadError,
-                                nowProvider: nowProvider,
-                                compact: useCompactDashboard,
-                                onTap: onTodayScheduleRequested,
-                                onStatusUpdateRequested:
-                                    onMedicationSlotStatusRequested,
-                                isCompletionLoading:
-                                    isNextMedicationCompletionLoading,
-                              ),
-                          rows: _homeActionRows(
-                            narrow: viewportConstraints.maxWidth < 350,
-                            tiles: [
-                              _HomeTileData(
-                                key: const ValueKey(
-                                  'homeMedicationRegisterCard',
+                          child: _HomeFillLayout(
+                            availableHeight: math.max(
+                              0,
+                              viewportConstraints.maxHeight -
+                                  (useCompactDashboard ? 18 : 48),
+                            ),
+                            sectionGap: dashboardActionSpacing,
+                            rowGap: 12,
+                            top:
+                                caregiverSummary ??
+                                _HomeEncouragementPanel(
+                                  userSetting: userSetting,
+                                  schedules: todayMedicationScheduleList,
+                                  reminderSettings: medicationReminderSettings,
+                                  completedCount: todayMedicationCompletedCount,
+                                  totalCount: todayMedicationTotalCount,
+                                  isLoading: isTodayScheduleLoading,
+                                  hasError: hasTodayScheduleLoadError,
+                                  nowProvider: nowProvider,
+                                  compact: useCompactDashboard,
+                                  onTap: onTodayScheduleRequested,
+                                  onStatusUpdateRequested:
+                                      onMedicationSlotStatusRequested,
+                                  isCompletionLoading:
+                                      isNextMedicationCompletionLoading,
                                 ),
-                                icon: Icons.medication_outlined,
-                                title: text.medicationRegister,
-                                hint: text.medicationRegisterHint,
-                                tone: _HomeActionTone.primary,
-                                onTap: () => _openRegistration(context),
-                              ),
-                              _HomeTileData(
-                                key: const ValueKey('homeMedicationManageCard'),
-                                icon: Icons.inventory_2_outlined,
-                                title: text.medicationManage,
-                                hint: text.medicationManageHint,
-                                tone: _HomeActionTone.primary,
-                                onTap: () => _openMedicationManagement(context),
-                              ),
-                              _HomeTileData(
-                                key: const ValueKey('homeMedicationSearchCard'),
-                                icon: Icons.manage_search_rounded,
-                                title: text.medicationSearch,
-                                hint: text.medicationSearchHint,
-                                tone: _HomeActionTone.primary,
-                                onTap: () => _openMedicationSearch(context),
-                              ),
-                              _HomeTileData(
-                                key: const ValueKey(
-                                  'homeHealthRecommendationCard',
+                            rows: _homeActionRows(
+                              narrow: viewportConstraints.maxWidth < 350,
+                              // 좌우 여백 20씩을 뺀 버튼 영역 폭.
+                              width:
+                                  math.min(
+                                    viewportConstraints.maxWidth,
+                                    MedBuddySpacing.contentMaxWidth + 40,
+                                  ) -
+                                  40,
+                              tiles: [
+                                _HomeTileData(
+                                  key: const ValueKey(
+                                    'homeMedicationRegisterCard',
+                                  ),
+                                  icon: Icons.medication_outlined,
+                                  title: text.medicationRegister,
+                                  hint: text.medicationRegisterHint,
+                                  tone: _HomeActionTone.primary,
+                                  onTap: () => _openRegistration(context),
                                 ),
-                                icon: Icons.monitor_heart_outlined,
-                                title: text.healthRecommendation,
-                                hint: text.healthRecommendationSubtitle,
-                                tone: _HomeActionTone.mint,
-                                onTap: onHealthRecommendationRequested,
-                              ),
-                              _HomeTileData(
-                                key: const ValueKey('homeNearbyPharmacyCard'),
-                                icon: Icons.map_outlined,
-                                title: text.nearbyPharmacy,
-                                hint: text.nearbyPharmacySubtitle,
-                                tone: _HomeActionTone.lavender,
-                                onTap: onNearbyPharmacyRequested,
-                              ),
-                              _HomeTileData(
-                                key: const ValueKey('homeUserSettingsCard'),
-                                icon: Icons.settings_outlined,
-                                title: text.userSettings,
-                                hint: text.userSettingsSubtitle,
-                                tone: _HomeActionTone.butter,
-                                onTap: onUserSettingRequested,
-                              ),
-                            ],
+                                _HomeTileData(
+                                  key: const ValueKey(
+                                    'homeMedicationManageCard',
+                                  ),
+                                  icon: Icons.inventory_2_outlined,
+                                  title: text.medicationManage,
+                                  hint: text.medicationManageHint,
+                                  tone: _HomeActionTone.primary,
+                                  onTap: () =>
+                                      _openMedicationManagement(context),
+                                ),
+                                _HomeTileData(
+                                  key: const ValueKey(
+                                    'homeMedicationSearchCard',
+                                  ),
+                                  icon: Icons.manage_search_rounded,
+                                  title: text.medicationSearch,
+                                  hint: text.medicationSearchHint,
+                                  tone: _HomeActionTone.primary,
+                                  onTap: () => _openMedicationSearch(context),
+                                ),
+                                _HomeTileData(
+                                  key: const ValueKey(
+                                    'homeHealthRecommendationCard',
+                                  ),
+                                  icon: Icons.monitor_heart_outlined,
+                                  title: text.healthRecommendation,
+                                  hint: text.healthRecommendationSubtitle,
+                                  tone: _HomeActionTone.mint,
+                                  onTap: onHealthRecommendationRequested,
+                                ),
+                                _HomeTileData(
+                                  key: const ValueKey('homeNearbyPharmacyCard'),
+                                  icon: Icons.map_outlined,
+                                  title: text.nearbyPharmacy,
+                                  hint: text.nearbyPharmacySubtitle,
+                                  tone: _HomeActionTone.lavender,
+                                  onTap: onNearbyPharmacyRequested,
+                                ),
+                                _HomeTileData(
+                                  key: const ValueKey('homeUserSettingsCard'),
+                                  icon: Icons.settings_outlined,
+                                  title: text.userSettings,
+                                  hint: text.userSettingsSubtitle,
+                                  tone: _HomeActionTone.butter,
+                                  onTap: onUserSettingRequested,
+                                ),
+                              ],
+                            ),
+                            trailing: caregiverScheduleHint,
                           ),
-                          trailing: caregiverScheduleHint,
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -418,24 +434,35 @@ class _HomeTileData {
 // 반환값: 줄 위젯 목록.
 List<Widget> _homeActionRows({
   required bool narrow,
+  required double width,
   required List<_HomeTileData> tiles,
 }) {
+  // 여섯 버튼의 아이콘 칸은 같은 크기다. 가장 좁은 버튼(반쪽 버튼) 폭의 28%를 넘지 않게 한다.
+  final narrowestTile = narrow ? width : (width - _homeTileGap) / 2;
+  final iconCap = narrowestTile * 0.28;
   if (narrow) {
-    return [for (final tile in tiles) _HomeTile(data: tile, chevron: true)];
+    return [
+      for (final tile in tiles)
+        _HomeTile(data: tile, chevron: true, iconCap: iconCap),
+    ];
   }
   Widget pair(_HomeTileData left, _HomeTileData right) => Row(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Expanded(child: _HomeTile(data: left)),
+      Expanded(
+        child: _HomeTile(data: left, iconCap: iconCap),
+      ),
       const SizedBox(width: _homeTileGap),
-      Expanded(child: _HomeTile(data: right)),
+      Expanded(
+        child: _HomeTile(data: right, iconCap: iconCap),
+      ),
     ],
   );
   return [
-    _HomeTile(data: tiles[0], chevron: true),
+    _HomeTile(data: tiles[0], chevron: true, iconCap: iconCap),
     pair(tiles[1], tiles[2]),
     pair(tiles[3], tiles[4]),
-    _HomeTile(data: tiles[5], chevron: true),
+    _HomeTile(data: tiles[5], chevron: true, iconCap: iconCap),
   ];
 }
 
@@ -444,7 +471,8 @@ const double _homeTileGap = 12;
 
 // 클래스명: _HomeFillLayout
 // 역할: 위쪽 복약 현황 아래에 기능 버튼 줄을 같은 높이로 놓는다. 화면에 남는 높이를 줄마다 똑같이 나눠 쓰되
-//   한 줄은 76~112dp로 둔다. 글씨가 커서 내용이 더 높으면 가장 높은 줄에 맞추고 화면이 스크롤된다.
+//   한 줄은 60~112dp로 둔다. 홈은 글자 배율이 고정이라 줄이 글씨 때문에 자라지 않는다. 남는 높이가
+//   60dp 줄 네 개보다 작을 때만 화면이 스크롤된다.
 // 속성: top: 복약 현황; rows: 버튼 줄; trailing: 아래 안내(선택); availableHeight: 스크롤 영역 높이;
 //   sectionGap: 현황과 버튼 사이; rowGap: 버튼 줄 사이.
 class _HomeFillLayout extends MultiChildRenderObjectWidget {
@@ -491,7 +519,7 @@ class _RenderHomeFill extends RenderBox
     with
         ContainerRenderObjectMixin<RenderBox, _HomeFillParentData>,
         RenderBoxContainerDefaultsMixin<RenderBox, _HomeFillParentData> {
-  static const double minRowHeight = 76;
+  static const double minRowHeight = 60;
   static const double maxRowHeight = 112;
   static const double trailingGap = 8;
 
@@ -559,11 +587,6 @@ class _RenderHomeFill extends RenderBox
     return result;
   }
 
-  double _contentRowHeight(List<RenderBox> rows, double width) => rows.fold(
-    minRowHeight,
-    (height, row) => math.max(height, row.getMaxIntrinsicHeight(width)),
-  );
-
   @override
   double computeMinIntrinsicWidth(double height) => _children.fold(
     0,
@@ -584,12 +607,11 @@ class _RenderHomeFill extends RenderBox
 
   Size _measure(double width) {
     final children = _children;
-    final rows = children.sublist(1, 1 + _rowCount);
     final top = children.first.getMaxIntrinsicHeight(width);
     final trailing = _hasTrailing
         ? children.last.getMaxIntrinsicHeight(width) + trailingGap
         : 0.0;
-    final rowHeight = _contentRowHeight(rows, width);
+    final rowHeight = minRowHeight;
     return Size(
       width,
       top +
@@ -619,10 +641,8 @@ class _RenderHomeFill extends RenderBox
     final share =
         (_availableHeight - top.size.height - trailingHeight - gaps) /
         math.max(1, _rowCount);
-    final rowHeight = math.max(
-      share.clamp(minRowHeight, maxRowHeight).toDouble(),
-      _contentRowHeight(rows, width),
-    );
+    // 줄은 남은 높이를 나눠 쓴다. 글자는 고정 배율이고 아이콘·제목이 줄 높이에 맞춰 줄어든다.
+    final rowHeight = share.clamp(minRowHeight, maxRowHeight).toDouble();
     var y = 0.0;
     (top.parentData! as _HomeFillParentData).offset = Offset.zero;
     y += top.size.height + _sectionGap;
@@ -658,7 +678,13 @@ class _HomeTile extends StatelessWidget {
   final _HomeTileData data;
   final bool chevron;
 
-  const _HomeTile({required this.data, this.chevron = false});
+  final double iconCap;
+
+  const _HomeTile({
+    required this.data,
+    this.chevron = false,
+    this.iconCap = iconSize,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -680,49 +706,128 @@ class _HomeTile extends StatelessWidget {
           key: data.key,
           borderRadius: MedBuddyRadii.largeCard,
           onTap: data.onTap,
-          child: Container(
-            width: double.infinity,
-            padding: EdgeInsets.fromLTRB(14, 10, chevron ? 10 : 14, 10),
-            decoration: BoxDecoration(
-              borderRadius: MedBuddyRadii.largeCard,
-              border: Border.all(
-                color: primary
-                    ? MedBuddyColors.primary
-                    : MedBuddyColors.cardBorder,
-              ),
-            ),
-            child: Row(
-              children: [
-                _ActionIcon(
-                  icon: data.icon,
-                  tone: data.tone,
-                  color: accent,
-                  size: iconSize,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: KeepWordsText(
-                    data.title,
-                    style: TextStyle(
-                      color: foreground,
-                      fontSize: titleSize,
-                      height: 1.25,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                ),
-                if (chevron)
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: accent.withValues(alpha: 0.8),
-                    size: 30,
-                  ),
-              ],
+          child: LayoutBuilder(
+            builder: (context, constraints) => _tileBody(
+              constraints,
+              primary: primary,
+              foreground: foreground,
+              accent: accent,
             ),
           ),
         ),
       ),
+    );
+  }
+
+  // 함수이름: _tileBody
+  // 함수역할: 줄 높이·폭에 맞춰 아이콘을 줄이고(40~54), 제목은 두 줄 안에 들어가게 글자를 조금 줄인다.
+  // 매개변수: constraints: 타일 크기; primary/foreground/accent: 색.
+  // 반환값: 타일 내용.
+  Widget _tileBody(
+    BoxConstraints constraints, {
+    required bool primary,
+    required Color foreground,
+    required Color accent,
+  }) {
+    final height = constraints.hasBoundedHeight ? constraints.maxHeight : 76.0;
+    // 아이콘은 줄 높이와 가장 좁은 버튼 폭에 맞춰 40~54로 줄여 제목 칸을 남긴다(여섯 버튼 모두 같은 크기).
+    final icon = math
+        .min(height - 20, iconCap)
+        .clamp(40.0, iconSize)
+        .toDouble();
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(14, 10, chevron ? 10 : 14, 10),
+      decoration: BoxDecoration(
+        borderRadius: MedBuddyRadii.largeCard,
+        border: Border.all(
+          color: primary ? MedBuddyColors.primary : MedBuddyColors.cardBorder,
+        ),
+      ),
+      child: Row(
+        children: [
+          _ActionIcon(
+            icon: data.icon,
+            tone: data.tone,
+            color: accent,
+            size: icon,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _FitTitle(
+              data.title,
+              style: TextStyle(
+                color: foreground,
+                fontSize: titleSize,
+                height: 1.25,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
+              ),
+            ),
+          ),
+          if (chevron)
+            Icon(
+              Icons.chevron_right_rounded,
+              color: accent.withValues(alpha: 0.8),
+              size: 30,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// Class Name: _FitTitle
+// Role: 타일 제목. 두 줄 안에 들어가지 않으면 최소 13까지 글자를 줄이고, 그래도 넘치면 높이가 허락할 때만
+//   세 줄을 쓴다(단어 단위 줄바꿈 유지).
+class _FitTitle extends StatelessWidget {
+  static const double minFontSize = 13;
+
+  final String text;
+  final TextStyle style;
+
+  const _FitTitle(this.text, {required this.style});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        var size = style.fontSize ?? 19;
+        final direction = Directionality.of(context);
+        // KeepWordsText와 같은 글(단어 단위로 묶은 글)과 같은 기본 글꼴로 잰다.
+        final painted = keepKoreanWords(text);
+        final base = DefaultTextStyle.of(context).style.merge(style);
+        bool fits(double fontSize, int lines) {
+          final painter = TextPainter(
+            text: TextSpan(
+              text: painted,
+              style: base.copyWith(fontSize: fontSize),
+            ),
+            maxLines: lines,
+            textDirection: direction,
+            textScaler: MediaQuery.textScalerOf(context),
+          )..layout(maxWidth: constraints.maxWidth);
+          final result =
+              !painter.didExceedMaxLines &&
+              (!constraints.hasBoundedHeight ||
+                  painter.height <= constraints.maxHeight);
+          painter.dispose();
+          return result;
+        }
+
+        var lines = 2;
+        while (size > minFontSize && !fits(size, lines)) {
+          size -= 1;
+        }
+        // 아주 좁은 버튼에서 최소 크기로도 두 줄에 안 들어가면, 높이가 허락할 때만 세 줄을 쓴다.
+        if (!fits(size, lines) && fits(size, 3)) lines = 3;
+        return KeepWordsText(
+          text,
+          maxLines: lines,
+          overflow: TextOverflow.ellipsis,
+          style: style.copyWith(fontSize: size),
+        );
+      },
     );
   }
 }
@@ -837,8 +942,7 @@ class _HomeText {
   // Parameters:
   // - None.
   // Returns: The formatted display text or identifier described above.
-  String get healthRecommendation =>
-      isEnglish ? 'Health tips' : '건강 관리 추천';
+  String get healthRecommendation => isEnglish ? 'Health tips' : '건강 관리 추천';
   // Function Name: healthRecommendationSubtitle
   // Description: Provides localized wording for "Review food and activity guidance for your medications" using the current language and message inputs.
   // Parameters:
@@ -852,8 +956,7 @@ class _HomeText {
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get nearbyPharmacy =>
-      isEnglish ? 'Nearby care' : '근처 운영 병원·약국';
+  String get nearbyPharmacy => isEnglish ? 'Nearby care' : '근처 운영 병원·약국';
   // 함수이름: nearbyPharmacySubtitle
   // 함수역할: 2×2 기능 카드에서 주변 병원·약국의 운영시간 조회를 안내한다.
   // 매개변수:
