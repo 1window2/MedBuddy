@@ -40,7 +40,7 @@ class LLMService:
     def __init__(
         self,
         ai_client: genai.Client | None = None,
-        model_name: str = "gemini-3.1-flash-lite",
+        model_name: str = "gemini-3.5-flash-lite",
         timeout_seconds: float | None = None,
     ) -> None:
         resolved_timeout = (

@@ -479,7 +479,8 @@ date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again
   Strength and dosage-form conflicts are still checked on the full name, and the lookup
   still confirms only when exactly one found product matches: an export-only twin
   ("…(파모티딘)(수출용)") keeps its inner parenthesis and does not count, while two items
-  that both reduce to the bag name stay a manual choice.
+  that both reduce to the bag name stay a manual choice. Since 2026-11-28 (owner) an
+  export-only item never competes with a domestic exact match: the domestic one is chosen.
 - **Also chosen (owner: rows should almost always end as "약품 확인됨"):** when no found
   product matches the bag name itself, a product that differs from it by exactly one
   Hangul vowel from the OCR confusion groups the name verifier already corrects with
@@ -584,6 +585,27 @@ date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again
   `PillIdentificationCatalogRepository.list_by_item_sequences`). Receipts already written
   stay as ordinary `medication_care_operations` rows. The home split and the merged capture
   modes do not depend on it.
+
+## 2026-11-28: Gemini 3.5 Flash-Lite, Gemini retried first, Claude Haiku 5.5 as the fallback
+
+- **Chosen (owner):** every Gemini path (prescription text, pill photos, medication summaries,
+  health recommendations) moves from `gemini-3.1-flash-lite` to `gemini-3.5-flash-lite`. The
+  owner's account is on the free tier, where both have the same limits (15 RPM, 250K TPM) and
+  no charge; paid prices are $0.25/$1.50 (3.1) and $0.30/$2.50 (3.5) per 1M input/output tokens.
+  A same-input comparison on the QA instance (envelope text ×5, 12 real-palm composites with
+  54 pills, 9 drawn-palm composites) gave the same accuracy (imprints read 38 vs 39 of 47
+  fronts, no pill matched to another medicine, all pills detected) and lower latency for 3.5
+  (prescription 1.6 s vs 2.0 s, pill photo mean 4.4 s vs 6.3 s, max 12.7 s vs 19.8 s); summaries
+  and health recommendations answered normally (1.5 s vs 1.8 s, 1.7 s vs 2.2 s). 3.5 ignores
+  `temperature`, so wording varies slightly ("2일" or "2일분", both read as 2 days).
+- Gemini comes first: a fast Gemini failure (5xx, 429, connection) within 10 s is retried once
+  on Gemini after 1 s; only a second outage or a timeout goes to Claude.
+- The Claude fallback default becomes `claude-haiku-5-5` with effort `high` (was
+  `claude-opus-5-5`, `low`). Same comparison: same accuracy as Gemini, prescription 7.0 s,
+  pill photo 7.8 s, one invalid response in 21 photos; within the 40 s budget.
+- **To undo:** set the model defaults back (`core/config.py`, the three boundary defaults)
+  and `PILL_IDENTIFICATION_MODEL_NAME` in `deploy/backend.env`; remove the retry block in
+  `services/gemini_outage_fallback.py`.
 
 ## Earlier decisions
 

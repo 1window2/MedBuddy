@@ -34,6 +34,10 @@ _RATE_LIMITED = 429
 # counted from the moment the Gemini call started, with a margin for the response itself.
 _CALL_BUDGET_SECONDS = 40.0
 _MIN_FALLBACK_SECONDS = 5.0
+# Gemini comes first: a fast failure (5xx, 429, connection) within this many seconds gets one more
+# Gemini attempt after a short pause before Claude is asked. A timeout goes to Claude at once.
+_GEMINI_RETRY_WITHIN_SECONDS = 10.0
+_GEMINI_RETRY_DELAY_SECONDS = 1.0
 
 _client_lock = Lock()
 _claude_client: Any = None
@@ -184,7 +188,8 @@ class GeminiOutageFallback:
             return attribute
 
         async def guarded(*args: Any, **kwargs: Any) -> Any:
-            started_at = asyncio.get_running_loop().time()
+            loop = asyncio.get_running_loop()
+            started_at = loop.time()
             try:
                 return await attribute(*args, **kwargs)
             except Exception as primary_error:
@@ -192,6 +197,15 @@ class GeminiOutageFallback:
                 if reason is None:
                     raise
                 outage = primary_error
+            if reason != "gemini_timeout" and loop.time() - started_at < _GEMINI_RETRY_WITHIN_SECONDS:
+                await asyncio.sleep(_GEMINI_RETRY_DELAY_SECONDS)
+                try:
+                    return await attribute(*args, **kwargs)
+                except Exception as retry_error:
+                    retry_reason = gemini_outage_reason(retry_error)
+                    if retry_reason is None:
+                        raise
+                    outage, reason = retry_error, retry_reason
             remaining = _CALL_BUDGET_SECONDS - (asyncio.get_running_loop().time() - started_at)
             return await self._serve_with_claude(name, reason, outage, remaining, args, kwargs)
 

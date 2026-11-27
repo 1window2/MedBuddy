@@ -833,3 +833,35 @@ async def test_exact_imprint_on_an_adjacent_elongated_shape_still_ranks_first() 
     assert result.candidates[0].item_seq == "201802579"
     assert "imprint" in result.candidates[0].matched_attributes
     assert "shape" not in result.candidates[0].matched_attributes
+
+
+# Function Name: test_exact_imprint_survives_a_misread_colour_and_neighbours_are_not_imprint_matches
+# Description:
+# - Real-hand composites: a pink "AG 400" tablet read as orange dropped out behind orange
+#   "AN 400"-like products, which were also marked as imprint matches (one letter apart). Only
+#   the same text counts as imprint evidence, and it ranks above look-only scores.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_exact_imprint_survives_a_misread_colour_and_neighbours_are_not_imprint_matches() -> None:
+    features = PillVisualFeatures(
+        shape="oblong", colors=("orange",), front_imprint="AG 400", front_line="none", quality="good",
+    )
+    neighbours = tuple(
+        _entry(f"n{i}", f"이웃정{i}", shape="장방형", color="주황", print_front=f"A{c} 400", print_back="")
+        for i, c in enumerate("NBCDEFH")
+    )
+    control = _control(
+        features,
+        neighbours + (_entry("201802579", "애니펜정400", shape="타원형", color="분홍", print_front="AG 400", print_back=""),),
+    )
+
+    result = await control.requestPillIdentification(b"front", None)
+
+    assert result.candidates[0].item_seq == "201802579"
+    assert "imprint" in result.candidates[0].matched_attributes
+    assert all("imprint" not in c.matched_attributes for c in result.candidates[1:])
+    assert IdentifyPill._text_similarity("AG400", "AN400") < 0.9
+

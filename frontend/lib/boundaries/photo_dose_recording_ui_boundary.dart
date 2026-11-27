@@ -1949,9 +1949,10 @@ class _PhotoDoseText {
         : '아직 안 찍힌 ${slotName(group)} 약: $names';
   }
 
+  // 알아보지 못한 알약이 실제로 내 약일 수도 있으므로 "내 약이 아니다"라고 단정하지 않는다.
   String quiet(int count) => isEnglish
-      ? '$count pill(s) are not your medicines and will not be recorded.'
-      : '복약 중인 약이 아닌 알약 $count개는 기록하지 않아요.';
+      ? '$count pill(s) could not be matched to your medicines and will not be recorded. If one is yours, take the photo again.'
+      : '등록한 약으로 확인되지 않은 알약 $count개는 기록하지 않아요. 내 약이 맞다면 다시 찍어 주세요.';
 
   String doneSummary(PhotoDosePlan plan) {
     final parts = [

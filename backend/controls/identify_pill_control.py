@@ -40,6 +40,9 @@ _IMPRINT_DESCRIPTOR_WORDS = re.compile("십자분할선|분할선|마크")
 # Elongated shapes a photo often cannot separate: MFDS 타원형 (ellipse) and 장방형 (capsule).
 _ADJACENT_SHAPES = {"oval": ("장방형", "장방정"), "oblong": ("타원형",)}
 _ADJACENT_SHAPE_SCORE = 0.5
+# "imprint" evidence means the same text (or a substantial containment), not a one-character
+# neighbour: "AN 400" must not count as an imprint match for "AG 400".
+_IMPRINT_MATCH_SCORE = 0.9
 
 
 class IdentifyPill:
@@ -192,10 +195,17 @@ class IdentifyPill:
             MAX_RETURNED_PILL_CANDIDATES + 1,
         )
         if ranked_candidates:
-            cutoff = ranked_candidates[
-                min(self.candidate_limit, len(ranked_candidates)) - 1
-            ].match_score
-            eligible = [c for c in ranked_candidates if c.match_score >= cutoff]
+            # Keep the display count in rank order, plus later candidates tied with the last one
+            # (an exact imprint can rank above a higher look-only score, so filter by rank, not score).
+            limit = min(self.candidate_limit, len(ranked_candidates))
+
+            def rank_of(candidate: PillIdentificationCandidate) -> tuple[bool, float]:
+                return "imprint" in candidate.matched_attributes, candidate.match_score
+
+            last = rank_of(ranked_candidates[limit - 1])
+            eligible = ranked_candidates[:limit] + [
+                c for c in ranked_candidates[limit:] if rank_of(c) == last
+            ]
         else:
             eligible = []
         return PillIdentificationResult(
@@ -239,7 +249,10 @@ class IdentifyPill:
                 continue
             if not has_imprint:
                 score = min(score, 0.68)
+            # The same imprint text outranks look-only evidence: colour and shape are often misread
+            # (a pink tablet read as orange), the printed text rarely matches by chance.
             ranking_key = (
+                int("imprint" in matched_attributes),
                 round(score, 4),
                 int(bool(entry.image_url)),
                 entry.item_seq,
@@ -268,7 +281,7 @@ class IdentifyPill:
                 ),
                 print_front=entry.print_front,
                 print_back=entry.print_back,
-                match_score=ranking_key[0],
+                match_score=ranking_key[1],
                 matched_attributes=matched_attributes,
             )
             for ranking_key, entry, matched_attributes in top_matches
@@ -379,7 +392,7 @@ class IdentifyPill:
                 entry.print_back,
             )
             components.append((0.48, imprint_score))
-            if imprint_score >= 0.78:
+            if imprint_score >= _IMPRINT_MATCH_SCORE:
                 matched_attributes.append("imprint")
 
         if self._has_line_observation(features):
