@@ -10,9 +10,10 @@ record.
 
 - The schedule can update one medication dose or atomically check/uncheck every
   active medication in one time slot.
-- The loose-pill flow accepts either per-pill front/back photos or one image with
-  up to ten spatially distinct pills. One-image observations are numbered and
-  ranked independently against one shared catalog snapshot.
+- The loose-pill flow takes one image with up to ten spatially distinct pills
+  (since 1.1.0 there is no per-pill photo mode). Observations are numbered and
+  ranked independently against one shared catalog snapshot; a single pill can be
+  re-identified with a closer crop or a back photo.
 - Every pill candidate requires confirmation before it becomes a saved schedule.
 
 ## Chat Intake Confirmation

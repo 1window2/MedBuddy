@@ -83,7 +83,7 @@ void main() {
         expect(sourceRequests, 0);
 
         // 낱알약 식별은 촬영 방식 시트 없이 바로 작업을 전달한다.
-        final pill = find.text(english ? 'Identify a loose pill' : '낱알약 식별');
+        final pill = find.text(english ? 'Identify pills' : '낱알약 식별');
         await _tapTop(tester, pill);
         await tester.pumpAndSettle();
         expect(selected, [MedicationCaptureTask.pills]);

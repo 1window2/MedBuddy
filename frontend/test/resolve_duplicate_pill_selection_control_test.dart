@@ -2,7 +2,6 @@
 // 역할: 같은 알약 사진의 안내와 복약 일정 병합 조건을 검증한다.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/controls/resolve_duplicate_pill_selection_control.dart';
 import 'package:medbuddy_frontend/entities/identified_pill_save_request_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
@@ -84,7 +83,6 @@ void main() {
     ];
 
     expect(control.findDuplicateGroups(candidates), hasLength(1));
-    expect(control.uniqueCandidates(candidates), hasLength(2));
     expect(control.countEquivalentCandidates(candidates, candidates.first), 2);
   });
 
@@ -102,7 +100,6 @@ void main() {
 
     expect(plan.uniqueRequests, requests);
     expect(plan.sourceToRequestIndex, [0, 1, 2]);
-    expect(plan.mergedCount, 0);
   });
 
   // 함수이름: test 콜백
@@ -127,169 +124,12 @@ void main() {
 
     expect(plan.uniqueRequests, [first, other, differentDose]);
     expect(plan.sourceToRequestIndex, [0, 1, 0, 2, 0]);
-    expect(plan.mergedCount, 2);
     expect(
       control.buildPillSavePlan([first, other, _request()], mergeEquivalent: true).uniqueRequests,
       [first, other],
     );
   });
 
-  // 함수이름: test 콜백
-  // 함수역할:
-  // - 기대 동작: 모든 요청이 저장되면 모든 사진을 저장됨으로 요약한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
-  test('모든 요청이 저장되면 모든 사진을 저장됨으로 요약한다', () {
-    final plan = control.buildPillSavePlan([
-      _request(),
-      _request(),
-      _request(itemSeq: 'other-pill'),
-    ], mergeEquivalent: true);
-
-    final summary = control.summarizePillSaveResults(plan, [
-      _result(MedicationSaveStatus.saved),
-      _result(MedicationSaveStatus.duplicate),
-    ]);
-
-    expect(summary.requestStatuses, [
-      MedicationSaveStatus.saved,
-      MedicationSaveStatus.duplicate,
-    ]);
-    expect(summary.perSourceStatus, [
-      MedicationSaveStatus.saved,
-      MedicationSaveStatus.saved,
-      MedicationSaveStatus.duplicate,
-    ]);
-    expect(
-      [for (var index = 0; index < 3; index += 1) summary.isSourceStored(index)],
-      [true, true, true],
-    );
-    expect(summary.savedCount, 1);
-    expect(summary.duplicateCount, 1);
-    expect(summary.failedCount, 0);
-  });
-
-  // 함수이름: test 콜백
-  // 함수역할:
-  // - 기대 동작: 병합과 실패가 함께 있어도 저장된 사진과 실패한 사진을 구분한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
-  test('병합과 실패가 함께 있어도 저장된 사진과 실패한 사진을 구분한다', () {
-    final plan = control.buildPillSavePlan([
-      _request(),
-      _request(),
-      _request(itemSeq: 'other-pill'),
-    ], mergeEquivalent: true);
-
-    final otherFailed = control.summarizePillSaveResults(plan, [
-      _result(MedicationSaveStatus.saved),
-      _result(MedicationSaveStatus.failed),
-    ]);
-    expect(
-      [
-        for (var index = 0; index < 3; index += 1)
-          otherFailed.isSourceStored(index),
-      ],
-      [true, true, false],
-    );
-    expect(otherFailed.savedCount, 1);
-    expect(otherFailed.duplicateCount, 0);
-    expect(otherFailed.failedCount, 1);
-
-    final mergedFailed = control.summarizePillSaveResults(plan, [
-      _result(MedicationSaveStatus.failed),
-      _result(MedicationSaveStatus.saved),
-    ]);
-    expect(
-      [
-        for (var index = 0; index < 3; index += 1)
-          mergedFailed.isSourceStored(index),
-      ],
-      [false, false, true],
-    );
-    expect(mergedFailed.savedCount, 1);
-    expect(mergedFailed.failedCount, 1);
-  });
-
-  // 함수이름: test 콜백
-  // 함수역할:
-  // - 기대 동작: 모든 요청이 실패하면 어떤 사진도 저장됨으로 요약하지 않는다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
-  test('모든 요청이 실패하면 어떤 사진도 저장됨으로 요약하지 않는다', () {
-    final plan = control.buildPillSavePlan([
-      _request(),
-      _request(itemSeq: 'other-pill'),
-    ], mergeEquivalent: false);
-
-    final summary = control.summarizePillSaveResults(plan, [
-      _result(MedicationSaveStatus.failed),
-      _result(MedicationSaveStatus.failed),
-    ]);
-
-    expect(summary.isSourceStored(0), isFalse);
-    expect(summary.isSourceStored(1), isFalse);
-    expect(summary.savedCount, 0);
-    expect(summary.duplicateCount, 0);
-    expect(summary.failedCount, 2);
-  });
-
-  // 함수이름: test 콜백
-  // 함수역할:
-  // - 기대 동작: 결과가 모자란 요청은 실패로 처리하고 남는 결과와 범위 밖 사진은 무시한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
-  test('결과가 모자란 요청은 실패로 처리하고 남는 결과는 무시한다', () {
-    final plan = control.buildPillSavePlan([
-      _request(),
-      _request(itemSeq: 'other-pill'),
-    ], mergeEquivalent: false);
-
-    final missing = control.summarizePillSaveResults(plan, [
-      _result(MedicationSaveStatus.saved),
-    ]);
-    expect(missing.isSourceStored(0), isTrue);
-    expect(missing.isSourceStored(1), isFalse);
-    expect(missing.savedCount, 1);
-    expect(missing.failedCount, 1);
-
-    final none = control.summarizePillSaveResults(plan, const []);
-    expect(none.isSourceStored(0), isFalse);
-    expect(none.isSourceStored(1), isFalse);
-    expect(none.failedCount, 2);
-
-    final extra = control.summarizePillSaveResults(plan, [
-      _result(MedicationSaveStatus.failed),
-      _result(MedicationSaveStatus.saved),
-      _result(MedicationSaveStatus.saved),
-    ]);
-    expect(extra.requestStatuses, hasLength(2));
-    expect(extra.isSourceStored(0), isFalse);
-    expect(extra.isSourceStored(1), isTrue);
-    expect(extra.isSourceStored(2), isFalse);
-    expect(extra.isSourceStored(-1), isFalse);
-    expect(extra.savedCount, 1);
-    expect(extra.failedCount, 1);
-  });
-}
-
-// 함수이름: _result
-// 함수역할:
-// - 지정한 상태만 의미가 있는 저장 결과를 만든다.
-// 매개변수:
-// - status (MedicationSaveStatus): 요청 하나의 저장 성공·중복·실패 상태.
-// 반환값:
-// - 상태 이름을 메시지로 담은 저장 결과.
-MedicationSaveResult _result(MedicationSaveStatus status) {
-  return MedicationSaveResult(status: status, message: status.name);
 }
 
 // 함수이름: _candidate

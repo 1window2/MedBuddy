@@ -25,54 +25,46 @@ bool completeMedicationRegistrationReview(
 }
 
 // Function Name: openPillIdentification
-// Description: Opens pill recognition with the selected capture mode and the current account save callbacks.
-// Parameters: context (BuildContext): Navigator location; viewModel (MedBuddyViewModel): account and save owner; mode (PillCaptureMode): capture workflow.
+// Description: Opens pill recognition and hands the reviewed pills to the shared result screen of the current account.
+// Parameters: context (BuildContext): Navigator location; viewModel (MedBuddyViewModel): account and result owner.
 // Returns: Future<void> completed when the identification route closes.
 Future<void> openPillIdentification(
   BuildContext context,
   MedBuddyViewModel viewModel,
-  PillCaptureMode mode,
 ) => Navigator.of(context).push<void>(
   MaterialPageRoute<void>(
     builder: (_) => PillIdentificationUI(
       userSetting: viewModel.userSetting,
-      captureMode: mode,
       onReviewRequested: (requests) => completeMedicationRegistrationReview(
         context,
         () => viewModel.showPillMedicationRegistrationResults(requests),
       ),
-      onSaveRequested: viewModel.saveIdentifiedPill,
-      onBatchSaveRequested: viewModel.saveIdentifiedPills,
     ),
   ),
 );
 
 // Function Name: openManualMedicationEntry
-// Description: Opens manual entry with the current account's review and save callbacks. The review hand-off
-//   uses the entry route's own context, so it is accepted only while that screen is still open.
-// Parameters: context (BuildContext): Navigator location; viewModel (MedBuddyViewModel): account and save owner.
+// Description: Opens manual entry with the current account's review hand-off. The hand-off uses the entry
+//   route's own context, so it is accepted only while that screen is still open.
+// Parameters: context (BuildContext): Navigator location; viewModel (MedBuddyViewModel): account and result owner.
 // Returns: Future<void> completed when the entry route closes.
 Future<void> openManualMedicationEntry(
   BuildContext context,
   MedBuddyViewModel viewModel,
-) => Navigator.of(context).push<bool>(
-  MaterialPageRoute<bool>(
+) => Navigator.of(context).push<void>(
+  MaterialPageRoute<void>(
     builder: (routeContext) => ManualMedicationEntryUI(
       userSetting: viewModel.userSetting,
       onReviewRequested: (entries) => completeMedicationRegistrationReview(
         routeContext,
         () => viewModel.showManualMedicationRegistrationResults(entries),
       ),
-      // 여러 약을 저장해도 목록·일정·알림은 마지막에 한 번만 갱신한다.
-      onSaveRequested: (entry) =>
-          viewModel.saveManualMedication(entry, refreshAfterSave: false),
-      onSavesFinished: viewModel.refreshAfterMedicationSaves,
     ),
   ),
 );
 
 // Function Name: openMedicationRegistration
-// Description: Opens the registration choices and routes to manual entry, pill recognition or prescription capture; manual saves share one final refresh.
+// Description: Opens the registration choices and routes to manual entry, pill recognition or prescription capture.
 // Parameters: context (BuildContext): Provider and Navigator location.
 // Returns: Future<void> completed after the selected menu workflow; cancelling creates no medication.
 Future<void> openMedicationRegistration(
@@ -101,11 +93,7 @@ Future<void> openMedicationCaptureTask(
   MedicationCaptureTask task,
 ) => switch (task) {
   MedicationCaptureTask.manual => openManualMedicationEntry(context, viewModel),
-  MedicationCaptureTask.pills => openPillIdentification(
-    context,
-    viewModel,
-    PillCaptureMode.singlePhoto,
-  ),
+  MedicationCaptureTask.pills => openPillIdentification(context, viewModel),
   MedicationCaptureTask.photoDose => openPhotoDoseRecording(context, viewModel),
 };
 

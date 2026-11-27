@@ -10,7 +10,6 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/check_saved_medication_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_medication_detail_ui_boundary.dart';
-import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/medication_regimen_editor_ui_boundary.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
@@ -1221,13 +1220,8 @@ void main() {
     await tester.tap(find.text('낱알약 식별'));
     await tester.pumpAndSettle();
 
-    // 촬영 방식 시트 없이 한 장 촬영 식별 화면이 바로 열린다.
-    expect(
-      tester
-          .widget<PillIdentificationUI>(find.byType(PillIdentificationUI))
-          .captureMode,
-      PillCaptureMode.singlePhoto,
-    );
+    // 촬영 방식 시트 없이 알약 식별 화면이 바로 열린다.
+    expect(find.byType(PillIdentificationUI), findsOneWidget);
   });
 
   // 함수이름: testWidgets: '빈 저장 목록에서 처방전 분석을 선택하면 이미지 출처를 고른다'

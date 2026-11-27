@@ -1,0 +1,69 @@
+@startuml
+title 사진으로 복용 기록 (1.1.0)
+skinparam defaultFontName Nanum Gothic
+skinparam sequenceMessageAlign left
+actor Patient
+participant "PhotoDoseRecordingUI" as UI
+participant "MedBuddyViewModel" as VM
+participant "IdentifyPill (app)" as Identify
+participant "PhotoDoseControl (app)" as Control
+participant "multiple-candidates API\n+ IdentifyPill (server)" as PillAPI
+participant "photo-intake API\nPlanPhotoDose" as Plan
+database "Server DB" as DB
+
+== 시작 ==
+Patient -> UI: 약 등록 > 사진으로 복용 기록
+UI -> VM: hasOwnMedicinesForPhotoDose
+alt 본인 약 없음
+  UI --> Patient: "기록할 약이 아직 없어요" + [약 등록하기]
+end
+UI -> VM: flushPendingDoses() (최대 4초, 실패해도 계속)
+UI -> Identify: requestPillImage(camera) (갤러리 없음)
+Patient -> UI: 손에 든 알약 촬영
+
+== 분석과 계획 ==
+UI -> Identify: requestMultiplePillIdentification(photo)
+Identify -> PillAPI: POST /pill-identification/multiple-candidates
+PillAPI --> Identify: 알약별 경계 상자·관찰 특징·후보(각인 일치 표시)
+alt 알약 없음 (422)
+  UI --> Patient: "알약이 잘 보이지 않아요" + [다시 찍기]
+end
+UI -> Control: plan(pills: 후보 품목·각인 일치·각인 보임·모양·색)
+Control -> Plan: POST /schedule/photo-intake/plan (사진 없음)
+Plan -> DB: 본인 활성 약·어제·오늘 기록·알림 시각·카탈로그 모양·색
+Plan -> Plan: 약별 시간대(지금 창 > 조금 일찍 > 놓친 시간대),\n최근 복용 간격, 근거별 배정(답 > 각인 > 모양·색 묶음 > 질문)
+Plan --> Control: pills·groups·as_needed·write·ready + 서명한 plan_token(사진 시각)
+loop 물어볼 알약이 있는 동안
+  UI --> Patient: "이 약이 OO인가요?" / "어떤 약인가요?"
+  Patient -> UI: 네·아니에요·약 선택·모르겠어요
+  UI -> Control: plan(pills, answers, plan_token)
+  Control -> Plan: POST /schedule/photo-intake/plan
+  Plan --> Control: 같은 사진 시각으로 다시 계산한 계획
+end
+alt 기록할 약 없음
+  UI --> Patient: 주의 띠(이미 드심·아직 때가 아님 등) + 기록 안 함
+end
+
+== 확인과 기록 ==
+UI --> Patient: "아침 약을 드시는 게 맞나요?"\n사진 번호 상자·약 줄·주의 띠, [✕ 취소] [✓ 확인]
+Patient -> UI: 확인 (뜬 직후 0.4초 누름은 무시)
+UI -> VM: hasPendingDoseOverlap(plan)
+alt 같은 날짜·시간대·약의 미전송 기록 있음
+  UI --> Patient: "먼저 보내지 못한 기록이 있어요"
+end
+UI -> Control: confirm(operation_id, plan_token, expected = write)
+Control -> Plan: POST /schedule/photo-intake/confirm
+Plan -> DB: 영수증 조회 (같은 작업 ID면 처음 응답 반환)
+Plan -> Plan: 토큰의 사진 시각으로 다시 계산
+alt 기록 묶음이 다름 또는 토큰 만료
+  Plan --> Control: 409
+  UI --> Patient: "그사이 기록이 바뀌었어요" + [다시 찍기]
+else 같음
+  Plan -> DB: 한 트랜잭션: 시간대별 완료(복용 시각 = 사진 시각),\n필요시 1회, 영수증
+  Plan -> DB: 오늘 기록이면 보호자 완료·필요시 알림 outbox
+  Plan --> Control: success + 오늘 일정
+end
+UI -> VM: recordPhotoDose(result)
+VM -> VM: 오늘 일정 저장·화면 반영 → 알림 재조정 → 기록 화면 갱신 신호
+UI --> Patient: "복약을 완료했어요" + 남은 약 안내 + [홈으로]
+@enduml

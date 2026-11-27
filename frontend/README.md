@@ -73,14 +73,21 @@ to bounded per-patient requests when connected to an older backend. Patient
 aliases are synchronized on the caregiver-owned server link and cached locally
 for offline display.
 
-The experimental loose-pill flow introduced in v0.0.9 presents identification
-candidates with mandatory user confirmation. The v0.2.0 frontend can collect
-up to ten separate pill photo sets and processes at most two sets concurrently,
-preserving successful candidates when another set fails. Rate-limited items
-honor the server's bounded retry delay and retry independently while the UI
-reports completed and waiting counts. It follows a separate image-analysis
-path, does not save a candidate automatically, and requires a schedule review
-before a confirmed candidate is stored.
+The loose-pill flow presents identification candidates with mandatory user
+confirmation. One photo can hold up to ten separate pills; each numbered pill can
+be re-identified with a closer crop or a back photo. Since 1.1.0 there is no
+per-pill photo mode. It follows a separate image-analysis path, does not save a
+candidate automatically, and requires a schedule review before a confirmed
+candidate is stored.
+
+Photo dose recording (1.1.0, 약 등록 > 사진으로 복용 기록) photographs the pills in
+hand with the camera, reuses the one-photo identification, and sends only the
+candidates and observed features to `/schedule/photo-intake/plan`. The server
+matches them with the patient's own active medicines and chooses a slot per
+medicine; one confirmation calls `/schedule/photo-intake/confirm`, which records
+everything in one transaction at the photo time. Unsent offline dose records are
+flushed first, and an overlapping unsent record blocks the confirmation. Details:
+`docs/Photo Dose Recording.md`.
 
 Direct medication entry supports an optional locally owned medication image,
 name, dose and unit, start and end dates, and schedule slots. It produces the

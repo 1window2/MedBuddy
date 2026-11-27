@@ -101,6 +101,10 @@ as untrusted input:
 - Loose-pill photos follow a separate flow and may be sent to an external AI
   service for visible-attribute extraction. Do not persist or log those
   images.
+- Photo dose recording reuses that pill-photo flow. Its planning and
+  confirmation endpoints receive only candidate item numbers and observed
+  features, never the photo, are patient-only, and verify a short-lived
+  HMAC-signed plan token before writing.
 - Direct medication-entry images are optional and remain in app-owned local
   storage. They are not uploaded by the direct-entry flow. Delete unreferenced
   copies when an entry is abandoned or removed, without deleting gallery

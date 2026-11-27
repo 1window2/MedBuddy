@@ -6,7 +6,6 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:medbuddy_frontend/boundaries/health_recommendation_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/manual_medication_entry_ui_boundary.dart';
-import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_health_recommendation_control.dart';
 import 'package:medbuddy_frontend/controls/input_prescription_control.dart';
@@ -194,12 +193,7 @@ void main() {
     );
     await tester.tap(find.text('낱알약 식별'));
     await tester.pumpAndSettle();
-    final page = tester.widget<PillIdentificationUI>(
-      find.byType(PillIdentificationUI),
-    );
-    expect(page.captureMode, PillCaptureMode.singlePhoto);
-    expect(page.onSaveRequested, isNotNull);
-    expect(page.onBatchSaveRequested, isNotNull);
+    expect(find.byType(PillIdentificationUI), findsOneWidget);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(

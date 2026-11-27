@@ -1,6 +1,6 @@
 // 파일명: medbuddy_choice_sheet.dart
 // 역할: 두세 가지 중 하나를 고르는 아래쪽 시트. 큰 아이콘과 이름만 있는 큰 타일을 나란히 둔다.
-//   카메라·갤러리 선택과 알약 촬영 방식 선택이 함께 쓴다.
+//   카메라·갤러리 선택이 쓴다.
 
 import 'package:flutter/material.dart';
 

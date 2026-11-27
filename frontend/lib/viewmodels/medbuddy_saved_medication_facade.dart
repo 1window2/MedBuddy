@@ -128,12 +128,6 @@ extension MedBuddySavedMedicationFacade on MedBuddyViewModel {
     refreshAfterSave: refreshAfterSave,
   );
 
-  // Function Name: refreshAfterMedicationSaves
-  // Description: Delegates the single refresh after several saves made without one.
-  // Parameters: None. Returns: Completes when the list, schedule and reminders are refreshed.
-  Future<void> refreshAfterMedicationSaves() =>
-      _savedMedications.refreshAfterMedicationSaves();
-
   // Function Name: saveIdentifiedPill
   // Description: Delegate a confirmed identification candidate and schedule to the save owner.
   // Parameters: candidate (PillIdentificationCandidate): confirmed medication; medicationSchedule (MedicationSchedule): reviewed doses; refreshAfterSave (bool): refresh after persistence.
@@ -147,13 +141,6 @@ extension MedBuddySavedMedicationFacade on MedBuddyViewModel {
     medicationSchedule,
     refreshAfterSave: refreshAfterSave,
   );
-
-  // Function Name: saveIdentifiedPills
-  // Description: Delegates ordered batch registration.
-  // Parameters: requests: Confirmed candidates. Returns: Per-item results.
-  Future<List<MedicationSaveResult>> saveIdentifiedPills(
-    List<IdentifiedPillSaveRequest> requests,
-  ) => _savedMedications.saveIdentifiedPills(requests);
 
   // Function Name: fetchSavedMedicationInfo
   // Description: Refreshes the feature-owned list.

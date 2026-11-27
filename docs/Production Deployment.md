@@ -293,6 +293,14 @@ issuance, quota headroom, or physical-device acceptance. Those gates stay open.
 
 ## Start or Update Production
 
+### Photo dose recording rollout (1.1.0)
+
+No migration and no new configuration. Deploy the backend before distributing the
+1.1.0 app; an older server answers the two `/schedule/photo-intake/*` routes with 404.
+Plan tokens are signed with a per-process key, so a restart only invalidates plans
+that are still open (the app asks for a new photo). This relies on the current single
+backend worker; running several workers would need a shared signing key first.
+
 ### Settings ordering rollout (`ab29d71c4e60`)
 
 This revision adds `user_settings.revision`, initializing existing rows to

@@ -125,14 +125,12 @@ checked on the phone on 2026-11-23 ([1.0.1 notes](releases/v1.0.1.md)).
       daily counter, not the per-address one; the notification inbox keeps caregiver
       alert text in app-private plaintext preferences for 90 days after sign-out.
 
-- [ ] User guide and UML for 1.1.0: the home buttons (`약 등록`, `약 관리`, `약 검색`), the
-      약 등록 page, 사진으로 복용 기록 (new section, screenshots need a fake for the plan
-      endpoint) and 낱알약 식별 without the capture-mode choice.
-- [ ] Remove the per-pill photo mode (`PillCaptureMode.individualPhotos`) from
-      `PillIdentificationUI` and its tests; since 1.1.0 no menu opens it.
+- [ ] User guide for 1.1.0 (UML was updated on 2026-11-28): the home buttons (`약 등록`,
+      `약 관리`, `약 검색`), the 약 등록 page, 사진으로 복용 기록 (new section, screenshots
+      need a fake for the plan endpoint) and 낱알약 식별 without the capture-mode choice.
 - [ ] The Claude outage fallback (`34d57cd2`, 2026-11-24) is in the in-app data-use guide
-      but not yet in the user guide PDFs (sections 9.6 and the data-use pages name only
-      Gemini) or the UML diagrams. Update both with the next guide rebuild.
+      and the UML, but not yet in the user guide PDFs (sections 9.6 and the data-use pages
+      name only Gemini). Update with the next guide rebuild.
 
 ## P3: owner decisions and known limits
 
@@ -162,10 +160,6 @@ checked on the phone on 2026-11-23 ([1.0.1 notes](releases/v1.0.1.md)).
       check on the production catalogue and a decision on review flagging. On the
       local catalogue window it turned correct automatic matches into review lists
       without the true product, so it must not be applied as is.
-- [ ] Since 1.0.1, manual entry and pill identification always hand their results to the
-      shared result screen, so their own direct-save paths (`onSaveRequested`,
-      `_saveAll`, the pill batch save, `saveIdentifiedPills`) run only in tests. Remove
-      them with their tests in 1.1.0 (code review 2026-11-22).
 - [ ] Rate-limit values (including 120 per minute for per-item deletes), retention of
       dose-sync and tombstone rows, and HTTP 403 wording and retry behaviour before App
       Check is enabled.

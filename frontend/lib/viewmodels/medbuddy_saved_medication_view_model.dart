@@ -6,7 +6,6 @@ import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/manual_medication_entry_entity.dart';
 import '../entities/pill_identification_entity.dart';
-import '../entities/identified_pill_save_request_entity.dart';
 import '../entities/medication_image_url_entity.dart';
 import '../services/app_temp_file.dart';
 import '../services/manual_medication_image_store.dart';
@@ -395,18 +394,6 @@ class MedBuddySavedMedicationViewModel {
     await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
   }
 
-  // Function Name: refreshAfterMedicationSaves
-  // Description: Runs one shared refresh after a caller has saved multiple medications without per-save refresh.
-  // Parameters: None.
-  // Returns: Completion after list/schedule/reminder refresh and notification, unless disposed or invalidated.
-  Future<void> refreshAfterMedicationSaves() async {
-    if (_disposed) return;
-    final generation = _saveGeneration;
-    await _refreshAfterSaves(generation);
-    if (!_isCurrentSave(generation)) return;
-    _notifyViewModelListeners();
-  }
-
   // Function Name: saveManualMedication
   // Description: Preserves an explicitly selected catalog item, otherwise attempts lookup and falls back to manual data.
   // Parameters: entry: User-entered medication, schedule and photo; refreshAfterSave: Immediate-refresh policy; isRequestCurrent: Optional result-flow lifetime guard.
@@ -513,62 +500,6 @@ class MedBuddySavedMedicationViewModel {
       refreshAfterSave: refreshAfterSave,
       isRequestCurrent: isCurrent,
     );
-  }
-
-  // Function Name: saveIdentifiedPills
-  // Description: Saves pill requests sequentially, retaining each outcome and refreshing once if any save completes.
-  // Parameters: requests: Ordered candidate-and-schedule requests.
-  // Returns: An unmodifiable result list in input order; individual exceptions become failures and invalidated remaining work becomes cancelled.
-  Future<List<MedicationSaveResult>> saveIdentifiedPills(
-    List<IdentifiedPillSaveRequest> requests,
-  ) async {
-    final generation = _saveGeneration;
-    if (requests.isEmpty) {
-      return const [];
-    }
-
-    final results = <MedicationSaveResult>[];
-    for (final request in requests) {
-      if (!_isCurrentSave(generation)) {
-        results.add(_cancelledSaveResult());
-        continue;
-      }
-      try {
-        results.add(
-          await saveIdentifiedPill(
-            request.candidate,
-            request.medicationSchedule,
-            refreshAfterSave: false,
-          ),
-        );
-      } catch (_) {
-        results.add(
-          MedicationSaveResult(
-            status: MedicationSaveStatus.failed,
-            message: _isEnglishSetting
-                ? 'Could not save medication information.'
-                : '복약 정보를 저장하지 못했습니다.',
-          ),
-        );
-      }
-    }
-
-    if (!_isCurrentSave(generation)) return List.unmodifiable(results);
-    if (results.any(
-      /* 함수이름: any 콜백
-     * 함수역할: 일괄 저장 결과 중 실패가 아닌 결과가 있는지 확인한다.
-     * 매개변수:
-     * - result (MedicationSaveResult): 해당 입력 알약의 성공 식별 결과
-     * 반환값:
-     * - 해당 저장 결과가 실패 상태가 아니면 true.
-     */
-      (result) => result.status != MedicationSaveStatus.failed,
-    )) {
-      await _refreshAfterSaves(generation);
-    }
-    if (!_isCurrentSave(generation)) return List.unmodifiable(results);
-    _notifyViewModelListeners();
-    return List<MedicationSaveResult>.unmodifiable(results);
   }
 
   // Function Name: fetchSavedMedicationInfo

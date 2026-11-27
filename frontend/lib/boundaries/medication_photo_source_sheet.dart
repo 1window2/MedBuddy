@@ -20,18 +20,18 @@ Future<ImageSource?> showMedicationPhotoSourceOptions({
   final isEnglish = isEnglishLanguage(language);
   return showMedBuddyChoiceSheet<ImageSource>(
     context: context,
-    title: isEnglish ? 'How do you want to add the photo?' : '사진을 어떻게 가져올까요?',
+    title: isEnglish ? 'Add a photo' : '사진을 어떻게 가져올까요?',
     choices: [
       MedBuddyChoice(
         value: ImageSource.camera,
         icon: Icons.photo_camera_outlined,
-        label: isEnglish ? 'Take Photo' : '카메라로 촬영',
+        label: isEnglish ? 'Take photo' : '카메라로 촬영',
         tileKey: const ValueKey('photoSourceCamera'),
       ),
       MedBuddyChoice(
         value: ImageSource.gallery,
         icon: Icons.photo_library_outlined,
-        label: isEnglish ? 'Choose From Gallery' : '갤러리에서 선택',
+        label: isEnglish ? 'From gallery' : '갤러리에서 선택',
         tileKey: const ValueKey('photoSourceGallery'),
       ),
     ],

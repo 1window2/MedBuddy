@@ -5,7 +5,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/medication_search_ui_boundary.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -648,7 +647,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    PillCaptureMode? pillTaskRequested;
+    var pillTaskRequested = 0;
     var manualTaskRequested = false;
     var photoDoseRequested = 0;
     await tester.pumpWidget(
@@ -656,11 +655,11 @@ void main() {
         home: InputPrescriptionUI(
           userSetting: const UserSetting(language: 'ko'),
           // 함수이름: onPillIdentificationRequested 콜백
-          // 함수역할: 낱알약 식별 요청과 전달된 촬영 모드를 기록한다.
-          // 매개변수: mode (PillCaptureMode): 요청된 촬영 모드.
-          // 반환값: void: pillTaskRequested에 mode를 기록한다.
-          onPillIdentificationRequested: (mode) {
-            pillTaskRequested = mode;
+          // 함수역할: 낱알약 식별 요청 횟수를 기록한다.
+          // 매개변수: 없음.
+          // 반환값: void: pillTaskRequested를 늘린다.
+          onPillIdentificationRequested: () {
+            pillTaskRequested++;
           },
           // 함수이름: onPhotoDoseRequested 콜백
           // 함수역할: 홈에서 연 약 등록 화면의 사진으로 복용 기록 요청 횟수를 기록한다.
@@ -736,10 +735,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(photoDoseRequested, 1);
 
-    // 낱알약 식별은 촬영 방식 시트 없이 한 장 촬영 방식으로 바로 요청한다.
+    // 낱알약 식별은 촬영 방식 시트 없이 바로 요청한다.
     await tester.tap(find.text('낱알약 식별'));
     await tester.pump();
-    expect(pillTaskRequested, PillCaptureMode.singlePhoto);
+    expect(pillTaskRequested, 1);
     expect(find.byType(BottomSheet), findsNothing);
   });
 
@@ -776,9 +775,9 @@ void main() {
   });
 
   // 함수이름: testWidgets: 'home owns navigation into loose-pill identification'
-  // 함수역할: 실제 HomeScreen이 제공한 낱알약 식별 콜백을 singlePhoto 모드로 호출한다.
+  // 함수역할: 실제 HomeScreen이 제공한 낱알약 식별 콜백을 호출한다.
   // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
-  // 반환값: 반환값 없음; 식별 화면이 열리고 전달한 촬영 모드가 유지된다.
+  // 반환값: 반환값 없음; 식별 화면이 열린다.
   testWidgets('home owns navigation into loose-pill identification', (
     tester,
   ) async {
@@ -794,18 +793,10 @@ void main() {
     final inputBoundary = tester.widget<InputPrescriptionUI>(
       find.byType(InputPrescriptionUI),
     );
-    inputBoundary.onPillIdentificationRequested?.call(
-      PillCaptureMode.singlePhoto,
-    );
+    inputBoundary.onPillIdentificationRequested?.call();
     await tester.pumpAndSettle();
 
     expect(find.byType(PillIdentificationUI), findsOneWidget);
-    expect(
-      tester
-          .widget<PillIdentificationUI>(find.byType(PillIdentificationUI))
-          .captureMode,
-      PillCaptureMode.singlePhoto,
-    );
   });
 
   // 홈 선택창에서 고른 병원·약국만 해당 지도 화면으로 연결한다.
@@ -1198,10 +1189,10 @@ void main() {
           userSetting: const UserSetting(language: 'ko'),
           // 함수이름: onPillIdentificationRequested 콜백
           // 함수역할: 홈 카드 배치를 검사할 수 있도록 식별 진입 콜백을 제공하되 이동은 실행하지 않는다.
-          // 매개변수: mode (PillCaptureMode): 요청된 촬영 모드이며 이 대역에서는 소비하지 않는다.
+          // 매개변수: 없음.
           // 반환값: void: 외부 동작 없이 종료한다.
 
-          onPillIdentificationRequested: (mode) {},
+          onPillIdentificationRequested: () {},
           // Function Name: onTodayScheduleRequested callback
           // Description:
           // - Keep today-schedule navigation available in the fixture without performing the action.
@@ -1263,10 +1254,10 @@ void main() {
           userSetting: const UserSetting(language: 'ko'),
           // 함수이름: onPillIdentificationRequested 콜백
           // 함수역할: 홈 카드 배치를 검사할 수 있도록 식별 진입 콜백을 제공하되 이동은 실행하지 않는다.
-          // 매개변수: mode (PillCaptureMode): 요청된 촬영 모드이며 이 대역에서는 소비하지 않는다.
+          // 매개변수: 없음.
           // 반환값: void: 외부 동작 없이 종료한다.
 
-          onPillIdentificationRequested: (mode) {},
+          onPillIdentificationRequested: () {},
           // Function Name: onTodayScheduleRequested callback
           // Description:
           // - Keep today-schedule navigation available in the fixture without performing the action.
@@ -1335,10 +1326,10 @@ void main() {
           userSetting: const UserSetting(language: 'en'),
           // 함수이름: onPillIdentificationRequested 콜백
           // 함수역할: 홈 카드 배치를 검사할 수 있도록 식별 진입 콜백을 제공하되 이동은 실행하지 않는다.
-          // 매개변수: mode (PillCaptureMode): 요청된 촬영 모드이며 이 대역에서는 소비하지 않는다.
+          // 매개변수: 없음.
           // 반환값: void: 외부 동작 없이 종료한다.
 
-          onPillIdentificationRequested: (mode) {},
+          onPillIdentificationRequested: () {},
           // Function Name: onTodayScheduleRequested callback
           // Description:
           // - Keep today-schedule navigation available in the fixture without performing the action.
@@ -1371,10 +1362,10 @@ void main() {
     expect(find.text('빠른 기능'), findsNothing);
     expect(find.text('Quick Actions'), findsNothing);
     expect(find.text('Add medication'), findsOneWidget);
-    expect(find.text('My medications'), findsOneWidget);
-    expect(find.text('Find medication'), findsOneWidget);
+    expect(find.text('My meds'), findsOneWidget);
+    expect(find.text('Find meds'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
-    expect(find.text('Hospitals & pharmacies'), findsOneWidget);
+    expect(find.text('Nearby care'), findsOneWidget);
     // 설명은 화면에 보이지 않고 영어 화면 읽기 힌트로 제공된다.
     const registerHint =
         'Add a medicine from a prescription, a pill photo or by hand, or record a dose from a photo.';
@@ -2024,10 +2015,10 @@ InputPrescriptionUI _home({
     onMedicationSlotStatusRequested: onMedicationSlotStatusRequested,
     // 함수이름: onPillIdentificationRequested 콜백
     // 함수역할: 홈 카드 배치를 검사할 수 있도록 식별 진입 콜백을 제공하되 이동은 실행하지 않는다.
-    // 매개변수: mode (PillCaptureMode): 요청된 촬영 모드이며 이 대역에서는 소비하지 않는다.
+    // 매개변수: 없음.
     // 반환값: void: 외부 동작 없이 종료한다.
 
-    onPillIdentificationRequested: (mode) {},
+    onPillIdentificationRequested: () {},
     // Function Name: onTodayScheduleRequested callback
     // Description:
     // - Keep today-schedule navigation available in the fixture without performing the action.

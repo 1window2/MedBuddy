@@ -1,5 +1,5 @@
 // File Name: pill_identification_ui_boundary.dart
-// Role: UI boundaries and helpers for pill-photo identification, candidate comparison, duplicate resolution, and schedule saving.
+// Role: UI boundaries and helpers for pill-photo identification, candidate comparison, duplicate resolution, and schedule review.
 
 import 'dart:async';
 import 'dart:typed_data';
@@ -9,8 +9,6 @@ import '../widgets/medbuddy_page_header.dart';
 import '../widgets/medication_review_image_gallery.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../controls/check_saved_medication_control.dart';
-import '../controls/identify_pill_batch_control.dart';
 import '../controls/identify_pill_control.dart';
 import '../controls/resolve_duplicate_pill_selection_control.dart';
 import '../entities/identified_pill_save_request_entity.dart';
@@ -21,80 +19,41 @@ import '../entities/user_setting_entity.dart';
 import '../widgets/medbuddy_notice.dart';
 import '../theme/medbuddy_theme.dart';
 import 'medication_schedule_review_ui_boundary.dart';
-import 'medication_capture_options_ui_boundary.dart';
 import 'medication_photo_source_sheet.dart';
 import 'medication_image_viewer_boundary.dart';
 import '../widgets/keep_words_text.dart';
 
-// 타입명: IdentifiedPillSaveCallback
-// 역할: 사용자가 확인한 낱알약 후보와 복약 일정을 기존 저장 흐름으로 전달한다.
-// 함수이름: IdentifiedPillSaveCallback
-// 함수역할: 확인한 알약 후보와 검토한 복약 일정을 함께 저장하는 콜백 계약이다.
-// 매개변수:
-// - candidate (PillIdentificationCandidate): 사용자가 확인하거나 저장할 식별 후보 약품.
-// - medicationSchedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-// 반환값: Future<MedicationSaveResult>: 약품 저장 성공·중복·실패 상태.
-typedef IdentifiedPillSaveCallback =
-    Future<MedicationSaveResult> Function(
-      PillIdentificationCandidate candidate,
-      MedicationSchedule medicationSchedule,
-    );
-
-// 타입명: IdentifiedPillBatchSaveCallback
-// 역할: 사용자가 확인한 여러 낱알약과 일정을 한 번의 저장 흐름으로 전달한다.
-// 함수이름: IdentifiedPillBatchSaveCallback
-// 함수역할: 후보·일정 요청 목록을 일괄 저장하고 항목별 결과를 반환하는 콜백 계약이다.
-// 매개변수:
-// - requests (List<IdentifiedPillSaveRequest>): 확인된 후보 약품과 검토 일정을 묶은 저장 요청 목록.
-// 반환값: Future<List<MedicationSaveResult>>: 각 요청에 대응하는 저장 성공·중복·실패 결과 목록.
-typedef IdentifiedPillBatchSaveCallback =
-    Future<List<MedicationSaveResult>> Function(
-      List<IdentifiedPillSaveRequest> requests,
-    );
-
 // 클래스명: PillIdentificationUI
-// 역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장을 담당한다.
+// 역할: 한 장의 알약 사진에서 알약을 찾고 후보를 고른 뒤 복약 일정 검토를 거쳐 공통 결과 단계로 넘긴다.
 // 주요 책임:
-// - 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 State가 사용할 화면 설정과 외부 의존성을 보관한다.
+// - 화면 State가 사용할 설정과 외부 의존성을 보관한다.
 // 속성:
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
+// - userSetting (UserSetting): 언어·접근성·복약 알림 표시에 사용할 사용자 설정.
 // - control (IdentifyPill?): 화면의 조회·변경 요청을 처리할 컨트롤러.
-// - batchControl (IdentifyPillBatch?): 여러 알약 사진의 분석 순서·재시도 제어.
-// - onSaveRequested (IdentifiedPillSaveCallback?): 검증한 약품과 복약 정보를 저장할 콜백.
+// - onReviewRequested: 검토한 일정을 공통 결과 단계에 넘긴다. 이 콜백은 저장을 실행하지 않는다.
 class PillIdentificationUI extends StatefulWidget {
   final UserSetting userSetting;
-  final PillCaptureMode captureMode;
   final IdentifyPill? control;
-  final IdentifyPillBatch? batchControl;
-  final IdentifiedPillSaveCallback? onSaveRequested;
-  final IdentifiedPillBatchSaveCallback? onBatchSaveRequested;
   // 선택·중복 정리한 일정을 공통 결과 단계에 넘긴다. 이 콜백은 저장을 실행하지 않는다.
-  final bool Function(List<IdentifiedPillSaveRequest>)? onReviewRequested;
+  final bool Function(List<IdentifiedPillSaveRequest>) onReviewRequested;
 
   // 함수이름: PillIdentificationUI
-  // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장에 필요한 입력값과 표시 설정을 초기화한다.
+  // 함수역할: 알약 사진 식별과 후보 검토에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // - captureMode (PillCaptureMode): 한 장의 여러 알약 또는 개별 앞뒷면 입력 방식.
+  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시에 사용할 사용자 설정.
   // - control (IdentifyPill?): 화면의 조회·변경 요청을 처리할 컨트롤러.
-  // - batchControl (IdentifyPillBatch?): 여러 알약 사진의 분석 순서·재시도 제어.
-  // - onSaveRequested (IdentifiedPillSaveCallback?): 검증한 약품과 복약 정보를 저장할 콜백.
-  // - onBatchSaveRequested (IdentifiedPillBatchSaveCallback?): 선택한 약품 또는 분석 결과를 일괄 저장할 콜백.
+  // - onReviewRequested: 검토한 일정을 받으면 true를 반환하는 결과 단계 인계 콜백.
   // 반환값: 입력 설정이 반영된 PillIdentificationUI 인스턴스.
   const PillIdentificationUI({
     super.key,
     required this.userSetting,
-    this.captureMode = PillCaptureMode.individualPhotos,
     this.control,
-    this.batchControl,
-    this.onSaveRequested,
-    this.onBatchSaveRequested,
-    this.onReviewRequested,
+    required this.onReviewRequested,
   });
 
   // Function Name: createState
-  // Description: Creates the state object that coordinates front and back pill photos, candidate selection, and medication saving.
+  // Description: Creates the state object that coordinates the pill photo, candidate selection and schedule review.
   // Parameters:
   // - None.
   // Returns: A new _PillIdentificationUIState instance.
@@ -103,11 +62,10 @@ class PillIdentificationUI extends StatefulWidget {
 }
 
 // Class Name: _PillPhotoDraft
-// Role: One pill's photos, analysis and save draft.
-// Responsibilities: Keeps image inputs separate from analysis, selection and reviewed schedule so retries and partial saves can retain useful work.
-// Attributes: frontImage/backImage: source bytes; result/selectedItemSeq/errorMessage: analysis state; sourceRegion/croppedFrontImage: refinement input; reviewedSchedule/isSaved: reviewed persistence state; photoKey/visibleCandidateCount: presentation.
+// Role: One detected pill's photos, analysis and review draft.
+// Responsibilities: Keeps image inputs separate from analysis, selection and reviewed schedule so refinements and repeated reviews retain useful work.
+// Attributes: frontImage/backImage: source bytes; result/selectedItemSeq/errorMessage: analysis state; sourceRegion/croppedFrontImage: refinement input; reviewedSchedule: reviewed values; visibleCandidateCount: presentation.
 class _PillPhotoDraft {
-  final GlobalKey photoKey = GlobalKey();
   Uint8List? frontImage;
   Uint8List? backImage;
   PillIdentificationResult? result;
@@ -116,9 +74,8 @@ class _PillPhotoDraft {
   PillBoundingBox? sourceRegion;
   Uint8List? croppedFrontImage;
   int visibleCandidateCount = 5;
-  // 일정 검토에서 확인한 값과 저장 여부. 다시 확인할 때 입력을 되살리고 이미 저장한 약은 제외한다.
+  // 일정 검토에서 확인한 값. 다시 확인할 때 입력을 되살린다.
   MedicationSchedule? reviewedSchedule;
-  bool isSaved = false;
 
   // 함수이름: hasFrontImage
   // 함수역할: 필수 앞면 사진 바이트가 있는지 확인한다.
@@ -126,26 +83,6 @@ class _PillPhotoDraft {
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
   bool get hasFrontImage => frontImage != null;
-  // 함수이름: hasAnyImage
-  // 함수역할: 앞면 또는 뒷면 사진 중 하나라도 있는지 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get hasAnyImage => frontImage != null || backImage != null;
-
-  // Function Name: clearResult
-  // Description: Preserves source photos/region but clears cropped analysis, candidate/error, reviewed schedule and saved state, and resets the visible candidate limit to five.
-  // Parameters: None.
-  // Returns: None.
-  void clearResult() {
-    croppedFrontImage = null;
-    result = null;
-    selectedItemSeq = null;
-    errorMessage = '';
-    visibleCandidateCount = 5;
-    reviewedSchedule = null;
-    isSaved = false;
-  }
 }
 
 // 클래스명: _DuplicatePillResolution
@@ -155,12 +92,11 @@ class _PillPhotoDraft {
 enum _DuplicatePillResolution { mergeMatchingSchedules, keepSeparate }
 
 // 클래스명: _PillIdentificationUIState
-// 역할: 알약 사진·후보 선택·복약 저장의 화면 상태.
-// 주요 책임: 사진별 분석·재시도와 선택 상태를 유지하며 저장 진행·대기 제한을 반영하고 전체 확인과 일정 검토를 연결한다.
-// 속성: _control: 단일/전체 사진 식별; _batchControl: 여러 사진 작업·재시도; _isSaving: 저장 진행; _retryAfter: 재시도 대기 시간.
+// 역할: 알약 사진·후보 선택·일정 검토의 화면 상태.
+// 주요 책임: 알약별 분석·재분석과 선택 상태를 유지하고 전체 확인과 일정 검토를 연결한다.
+// 속성: _control: 전체 사진·알약 영역 식별; _multiplePillSourceImage/_multiplePillObservations: 촬영 사진과 찾은 알약 영역.
 class _PillIdentificationUIState extends State<PillIdentificationUI> {
   late final IdentifyPill _control;
-  late final IdentifyPillBatch _batchControl;
   late final bool _ownsControl;
   final ResolveDuplicatePillSelectionControl _duplicateSelectionControl =
       const ResolveDuplicatePillSelectionControl();
@@ -169,75 +105,26 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   List<MultiplePillObservation> _multiplePillObservations = const [];
   bool _isAnalyzing = false;
   bool _isSelectingImage = false;
-  bool _isSaving = false;
   bool _isConfirmingCandidates = false;
-  int _analysisCompletedCount = 0;
-  int _analysisTotalCount = 0;
-  int _retryingRequestCount = 0;
-  Duration? _retryAfter;
-  int? _selectingDraftIndex;
-  bool? _selectingFront;
   String _errorMessage = '';
   int? _refiningDraftIndex;
   Timer? _disclosureTimer;
   bool _showDisclosure = true;
 
-  // 함수이름: _usesSinglePhoto
-  // 함수역할: 한 사진에서 여러 알약을 찾는 전용 모드인지 확인한다.
-  // 매개변수: 없음.
-  // 반환값: captureMode가 singlePhoto이면 true.
-  bool get _usesSinglePhoto =>
-      widget.captureMode == PillCaptureMode.singlePhoto;
-
   // 함수이름: _isBusy
-  // 함수역할: 분석·사진 선택·저장·후보 확인 중인지 확인해 겹치는 작업을 막는다.
+  // 함수역할: 분석·사진 선택·후보 확인 중인지 확인해 겹치는 작업을 막는다.
   // 매개변수: 없음.
   // 반환값: 어느 작업이든 진행 중이면 true.
   bool get _isBusy =>
-      _isAnalyzing || _isSelectingImage || _isSaving || _isConfirmingCandidates;
+      _isAnalyzing || _isSelectingImage || _isConfirmingCandidates;
 
-  // Function Name: _isBatchSaved
-  // Description: Requires at least one batch job and checks each job's isSaved flag as the sole save-completion source.
-  // Parameters: None.
-  // Returns: True when all batch jobs are saved.
-  bool get _isBatchSaved =>
-      // 함수이름: _isBatchSaved.every callback
-      // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장에 대해 `draft.isSaved` 조건으로 컬렉션 항목을 판별한다.
-      // 매개변수:
-      // - draft (콜백 계약에서 추론): 앞·뒷면 사진과 결과·선택을 보관한 알약 작업 초안.
-      // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
-      _drafts.isNotEmpty && _drafts.every((draft) => draft.isSaved);
-
-  // 함수이름: _allDraftsReady
-  // 함수역할: 작업이 하나 이상 있고 모든 작업에 필수 앞면 사진이 있는지 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get _allDraftsReady =>
-      // 함수이름: _allDraftsReady.every callback
-      // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장에 대해 `draft.hasFrontImage` 조건으로 컬렉션 항목을 판별한다.
-      // 매개변수:
-      // - draft (콜백 계약에서 추론): 앞·뒷면 사진과 결과·선택을 보관한 알약 작업 초안.
-      // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
-      _drafts.isNotEmpty && _drafts.every((draft) => draft.hasFrontImage);
-
-  // 함수이름: _pendingDraftIndexes
-  // 함수역할: 앞면 사진은 있지만 분석 결과가 아직 없는 작업의 위치를 수집한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: List<int>: 앞면 사진이 있지만 결과가 없는 작업 인덱스 목록.
-  List<int> get _pendingDraftIndexes => [
-    for (var index = 0; index < _drafts.length; index += 1)
-      if (_drafts[index].hasFrontImage && _drafts[index].result == null) index,
-  ];
-
-  List<_PillPhotoDraft> get _selectedUnsavedDrafts => [
+  List<_PillPhotoDraft> get _selectedDrafts => [
     for (final draft in _drafts)
-      if (!draft.isSaved && draft.selectedItemSeq != null) draft,
+      if (draft.selectedItemSeq != null) draft,
   ];
 
   bool get _canConfirmSelections {
-    final selectedDrafts = _selectedUnsavedDrafts;
+    final selectedDrafts = _selectedDrafts;
     return selectedDrafts.isNotEmpty &&
         selectedDrafts.every(
           (draft) =>
@@ -248,7 +135,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   }
 
   // 함수이름: initState
-  // 함수역할: 단일 알약 컨트롤러의 소유 여부를 정하고 주입 또는 기본 일괄 분석 컨트롤러를 연결한다.
+  // 함수역할: 알약 식별 컨트롤러의 소유 여부를 정하고 안내 문구를 닫을 타이머를 시작한다.
   // 매개변수:
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
@@ -257,8 +144,6 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     super.initState();
     _ownsControl = widget.control == null;
     _control = widget.control ?? IdentifyPill();
-    _batchControl =
-        widget.batchControl ?? IdentifyPillBatch(singlePillControl: _control);
     _disclosureTimer = Timer(const Duration(seconds: 5), () {
       if (mounted) setState(() => _showDisclosure = false);
     });
@@ -279,27 +164,19 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   }
 
   // Function Name: build
-  // Description: Renders front and back pill photos, candidate selection, and medication saving from the current configuration and state.
+  // Description: Renders the pill photo, candidate selection and review action from the current configuration and state.
   // Parameters:
   // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for front and back pill photos, candidate selection, and medication saving.
+  // Returns: Widget tree for the pill photo, candidate selection and review action.
   @override
   Widget build(BuildContext context) {
     final text = _PillIdentificationText(widget.userSetting.language);
-    final pendingCount = _pendingDraftIndexes.length;
     // 함수이름: build.any callback
     // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장에 대해 `draft.result != null` 조건으로 컬렉션 항목을 판별한다.
     // 매개변수:
     // - draft (콜백 계약에서 추론): 앞·뒷면 사진과 결과·선택을 보관한 알약 작업 초안.
     // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
     final hasVisibleResults = _drafts.any((draft) => draft.result != null);
-    final showIdentifyAction =
-        !_usesSinglePhoto &&
-        (!hasVisibleResults ||
-            !_allDraftsReady ||
-            pendingCount > 0 ||
-            _isSelectingImage ||
-            _isAnalyzing);
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,
       body: SafeArea(
@@ -307,7 +184,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
         child: Column(
           children: [
             MedBuddyPageHeader(
-              title: text.modeTitle(_usesSinglePhoto),
+              title: text.title,
               subtitle: text.isEnglish
                   ? 'Find pill matches from photos.'
                   : '사진으로 알약 후보를 찾습니다.',
@@ -335,7 +212,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                           child: KeepWordsText(
                             hasVisibleResults
                                 ? text.detectedPillCount(_drafts.length)
-                                : text.photoSectionTitle(_usesSinglePhoto),
+                                : text.photoSectionTitle,
                             style: const TextStyle(
                               color: MedBuddyColors.textStrong,
                               fontSize: 18,
@@ -344,7 +221,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                             ),
                           ),
                         ),
-                        if (_usesSinglePhoto && hasVisibleResults) ...[
+                        if (hasVisibleResults) ...[
                           const SizedBox(width: 8),
                           Expanded(
                             flex: 2,
@@ -385,7 +262,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                     if (!hasVisibleResults) ...[
                       const SizedBox(height: 6),
                       KeepWordsText(
-                        text.photoSectionDescription(_usesSinglePhoto),
+                        text.photoSectionDescription,
                         style: const TextStyle(
                           color: MedBuddyColors.textMuted,
                           fontSize: 13,
@@ -394,71 +271,23 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                         ),
                       ),
                     ],
-                    SizedBox(
-                      height: _usesSinglePhoto && hasVisibleResults ? 8 : 16,
-                    ),
+                    SizedBox(height: hasVisibleResults ? 8 : 16),
                     if (_multiplePillSourceImage != null)
                       _MultiplePillObservationPreview(
                         imageBytes: _multiplePillSourceImage!,
                         observations: _multiplePillObservations,
                         description: text.multiplePhotoPreviewLabel,
                       )
-                    else if (_usesSinglePhoto)
-                      _buildAddPhotoActions(text)
                     else
-                      for (
-                        var index = 0;
-                        index < _drafts.length;
-                        index += 1
-                      ) ...[
-                        _buildPhotoDraft(index, text),
-                        if (index < _drafts.length - 1)
-                          const Divider(height: 32),
-                      ],
-                    if (!_usesSinglePhoto ||
-                        (_multiplePillSourceImage != null &&
-                            !hasVisibleResults)) ...[
+                      _buildAddPhotoActions(text),
+                    if (_multiplePillSourceImage != null &&
+                        !hasVisibleResults) ...[
                       const SizedBox(height: 14),
                       _buildAddPhotoActions(text),
                     ],
-                    // 함수이름: build.any callback
-                    // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장에 대해 `draft.hasAnyImage` 조건으로 컬렉션 항목을 판별한다.
-                    // 매개변수:
-                    // - draft (콜백 계약에서 추론): 앞·뒷면 사진과 결과·선택을 보관한 알약 작업 초안.
-                    // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
-                    if (!_allDraftsReady &&
-                        _drafts.any((draft) => draft.hasAnyImage))
-                      Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: KeepWordsText(
-                          text.frontPhotoRequiredForEveryPill,
-                          style: const TextStyle(
-                            color: MedBuddyColors.reminderAccent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            height: 1.35,
-                          ),
-                        ),
-                      ),
                     if (_errorMessage.isNotEmpty) ...[
                       const SizedBox(height: 14),
                       _ErrorNotice(message: _errorMessage),
-                    ],
-                    if (_isAnalyzing && _retryingRequestCount > 0) ...[
-                      const SizedBox(height: 10),
-                      Semantics(
-                        liveRegion: true,
-                        child: KeepWordsText(
-                          text.retryWaitNotice(_retryAfter),
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: MedBuddyColors.reminderAccent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            height: 1.35,
-                          ),
-                        ),
-                      ),
                     ],
                     if (hasVisibleResults) ...[
                       const SizedBox(height: 16),
@@ -468,7 +297,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                 ),
               ),
             ),
-            if (hasVisibleResults || showIdentifyAction)
+            if (hasVisibleResults)
               Container(
                 key: const Key('pill-review-footer'),
                 width: double.infinity,
@@ -479,237 +308,19 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                     top: BorderSide(color: MedBuddyColors.divider),
                   ),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (showIdentifyAction)
-                      _buildIdentifyButton(text, pendingCount),
-                    if (showIdentifyAction && hasVisibleResults)
-                      const SizedBox(height: 8),
-                    if (hasVisibleResults) _buildConfirmationButton(text),
-                  ],
-                ),
+                child: _buildConfirmationButton(text),
               ),
           ],
         ),
       ),
-    );
-  }
-
-  // 사진 입력과 분석 결과를 오가도 주요 동작은 화면 하단에 유지한다.
-  Widget _buildIdentifyButton(_PillIdentificationText text, int pendingCount) {
-    return FilledButton.icon(
-      key: const Key('identify-pill-button'),
-      onPressed: !_allDraftsReady || pendingCount == 0 || _isBusy
-          ? null
-          : _requestIdentification,
-      style: FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(56),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        backgroundColor: MedBuddyColors.primary,
-        disabledBackgroundColor: MedBuddyColors.outline,
-      ),
-      icon: _isAnalyzing
-          ? const SizedBox.square(
-              dimension: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.4,
-                color: Colors.white,
-              ),
-            )
-          : const Icon(Icons.search),
-      label: KeepWordsText(
-        _isAnalyzing
-            ? text.analysisProgress(
-                completedCount: _analysisCompletedCount,
-                totalCount: _analysisTotalCount,
-                isWaitingForRetry: _retryingRequestCount > 0,
-              )
-            : text.identifyPills(
-                _allDraftsReady ? pendingCount : _drafts.length,
-              ),
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-          fontSize: 17,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0,
-        ),
-      ),
-    );
-  }
-
-  // Function Name: _buildPhotoDraft
-  // Description: Displays one pill's front/back photo inputs and its own error state.
-  // Parameters: index (int): draft position; text (_PillIdentificationText): labels.
-  // Returns: The per-pill photo draft widget.
-  Widget _buildPhotoDraft(int index, _PillIdentificationText text) {
-    final draft = _drafts[index];
-    final frontSlotKey = index == 0
-        ? const Key('pill-front-image-slot')
-        : Key('pill-front-image-slot-$index');
-    final backSlotKey = index == 0
-        ? const Key('pill-back-image-slot')
-        : Key('pill-back-image-slot-$index');
-    final frontRemoveKey = index == 0
-        ? const Key('remove-pill-front-image-button')
-        : Key('remove-pill-front-image-button-$index');
-    final backRemoveKey = index == 0
-        ? const Key('remove-pill-back-image-button')
-        : Key('remove-pill-back-image-button-$index');
-
-    return Column(
-      key: draft.photoKey,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: KeepWordsText(
-                text.pillPhotoTitle(index + 1),
-                style: const TextStyle(
-                  color: MedBuddyColors.textStrong,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0,
-                ),
-              ),
-            ),
-            if (draft.result != null)
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: KeepWordsText(
-                  text.comparisonComplete,
-                  style: const TextStyle(
-                    color: MedBuddyColors.primaryDark,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            if (_drafts.length > 1)
-              IconButton(
-                key: Key('remove-pill-photo-set-$index'),
-                tooltip: text.removePillPhotoSet(index + 1),
-                // 함수이름: _buildPhotoDraft.onPressed callback
-                // 함수역할: 처리 중이 아니고 작업이 둘 이상일 때 지정 사진 작업을 제거한다.
-                // 매개변수:
-                // - 없음.
-                // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                onPressed: _isBusy ? null : () => _removePhotoDraft(index),
-                icon: const Icon(Icons.delete_outline),
-                color: MedBuddyColors.textMuted,
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _PillImageSlot(
-                key: frontSlotKey,
-                label: text.frontPhoto,
-                requiredLabel: text.requiredLabel,
-                imageBytes: draft.frontImage,
-                isLoading:
-                    _isSelectingImage &&
-                    _selectingDraftIndex == index &&
-                    _selectingFront == true,
-                removeButtonKey: frontRemoveKey,
-                removeTooltip: text.removePhoto(text.frontPhoto),
-                onRemove: draft.frontImage == null || _isBusy
-                    ? null
-                    // 함수이름: _buildPhotoDraft.onRemove callback
-                    // 함수역할: 지정 앞·뒷면 사진과 그 사진에 의존한 분석·저장 상태를 지운다.
-                    // 매개변수:
-                    // - 없음.
-                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    : () => _removeImage(index: index, isFront: true),
-                onTap: _isBusy
-                    ? null
-                    // 함수이름: _buildPhotoDraft.onTap callback
-                    // 함수역할: 사진 출처를 선택받아 대상 앞·뒷면을 교체하고 이전 다중 사진·분석 결과를 무효화한다.
-                    // 매개변수:
-                    // - 없음.
-                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    : () => _selectImage(
-                        draftIndex: index,
-                        isFront: true,
-                        text: text,
-                      ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _PillImageSlot(
-                key: backSlotKey,
-                label: text.backPhoto,
-                requiredLabel: text.optionalLabel,
-                imageBytes: draft.backImage,
-                isLoading:
-                    _isSelectingImage &&
-                    _selectingDraftIndex == index &&
-                    _selectingFront == false,
-                removeButtonKey: backRemoveKey,
-                removeTooltip: text.removePhoto(text.backPhoto),
-                onRemove: draft.backImage == null || _isBusy
-                    ? null
-                    // 함수이름: _buildPhotoDraft.onRemove callback
-                    // 함수역할: 지정 앞·뒷면 사진과 그 사진에 의존한 분석·저장 상태를 지운다.
-                    // 매개변수:
-                    // - 없음.
-                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    : () => _removeImage(index: index, isFront: false),
-                onTap: _isBusy
-                    ? null
-                    // 함수이름: _buildPhotoDraft.onTap callback
-                    // 함수역할: 사진 출처를 선택받아 대상 앞·뒷면을 교체하고 이전 다중 사진·분석 결과를 무효화한다.
-                    // 매개변수:
-                    // - 없음.
-                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    : () => _selectImage(
-                        draftIndex: index,
-                        isFront: false,
-                        text: text,
-                      ),
-              ),
-            ),
-          ],
-        ),
-        if (draft.errorMessage.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          _ErrorNotice(message: draft.errorMessage),
-        ],
-      ],
     );
   }
 
   // Function Name: _buildAddPhotoActions
-  // Description: Keeps individual-pill addition available from the start and makes whole-photo replacement secondary once results exist.
+  // Description: Offers the first photo, a retry for a photo without detected pills, or a secondary photo change.
   // Parameters: text (_PillIdentificationText): localized action labels.
-  // Returns: Photo-add or replacement controls.
+  // Returns: Photo-add, retry or replacement controls.
   Widget _buildAddPhotoActions(_PillIdentificationText text) {
-    if (!_usesSinglePhoto) {
-      return SizedBox(
-        width: double.infinity,
-        child: OutlinedButton.icon(
-          key: const Key('add-pill-photo-set-button'),
-          onPressed: _isBusy || _drafts.length >= IdentifyPillBatch.maxBatchSize
-              ? null
-              : _addPhotoDraft,
-          icon: const Icon(Icons.add),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(48),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          ),
-          label: KeepWordsText(
-            text.addAnotherPill,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 14),
-          ),
-        ),
-      );
-    }
     final hasPhoto = _multiplePillSourceImage != null;
     if (!hasPhoto) {
       return _MultiplePillPhotoFrame(
@@ -833,14 +444,14 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     );
   }
 
-  // Keeps the selection count and save state visible without scrolling the candidates.
+  // Keeps the selection count visible without scrolling the candidates.
   Widget _buildConfirmationButton(_PillIdentificationText text) {
     return OutlinedButton(
       key: const Key('confirm-pill-candidate-button'),
       onPressed: !_canConfirmSelections || _isBusy
           ? null
           // 함수이름: _buildConfirmationButton.onPressed callback
-          // 함수역할: 모든 사진의 선택을 모아 중복 처리 방식을 확인한 뒤 일정 검토·저장 또는 선택 안내를 진행한다.
+          // 함수역할: 모든 알약의 선택을 모아 중복 처리 방식을 확인한 뒤 일정 검토와 결과 단계 인계를 진행한다.
           // 매개변수:
           // - 없음.
           // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
@@ -854,29 +465,11 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          if (_isSaving)
-            const SizedBox.square(
-              dimension: 20,
-              child: CircularProgressIndicator(
-                key: Key('pill-save-progress-indicator'),
-                strokeWidth: 2.4,
-                color: MedBuddyColors.primary,
-              ),
-            )
-          else
-            Icon(
-              _isBatchSaved
-                  ? Icons.check_circle_outline
-                  : Icons.verified_outlined,
-            ),
+          const Icon(Icons.verified_outlined),
           const SizedBox(width: 8),
           Flexible(
             child: KeepWordsText(
-              _isSaving
-                  ? text.savingSelections
-                  : _isBatchSaved
-                  ? text.savedComplete
-                  : text.confirmSelections(_selectedUnsavedDrafts.length),
+              text.confirmSelections(_selectedDrafts.length),
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 16,
@@ -946,7 +539,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                 ),
                 // 함수이름: 영역 재분석 콜백
                 // 함수역할: 이 번호의 영역만 재분석한다. 매개변수: 없음. 반환값: 완료 Future.
-                onPressed: _isBusy || draft.isSaved
+                onPressed: _isBusy
                     ? null
                     : () => _refineDraft(index, text, addBack: false),
               ),
@@ -959,7 +552,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
               ),
               // 함수이름: 뒷면 추가 콜백
               // 함수역할: 동일 알약 여부를 확인받고 앞·뒷면을 비교한다. 매개변수: 없음. 반환값: 완료 Future.
-              onPressed: _isBusy || draft.isSaved
+              onPressed: _isBusy
                   ? null
                   : () => _refineDraft(index, text, addBack: true),
             ),
@@ -988,11 +581,9 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     required bool addBack,
   }) async {
     final draft = _drafts[index];
-    // 이미 저장한 약은 다시 분석하지 않는다. 다른 약으로 바꾸려면 후보를 다시 골라야 한다.
-    if (_isBusy || draft.isSaved) return;
+    if (_isBusy) return;
     setState(() {
       _isSelectingImage = true;
-      _selectingDraftIndex = index;
       _refiningDraftIndex = index;
       draft.errorMessage = '';
     });
@@ -1082,7 +673,6 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
         setState(() {
           _isSelectingImage = false;
           _refiningDraftIndex = null;
-          _selectingDraftIndex = null;
         });
       }
     }
@@ -1107,11 +697,13 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
         child: _EmptyResult(
           text: text,
           // 함수이름: _buildResultForDraft.onRetry callback
-          // 함수역할: 한 장 사진은 이 알약 영역만 다시 비교하고 개별 사진은 결과를 비워 재시도를 준비한다.
+          // 함수역할: 이 알약 영역만 다시 비교한다.
           // 매개변수:
           // - 없음.
           // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          onRetry: actionsEnabled ? () => _prepareRetry(index) : null,
+          onRetry: actionsEnabled
+              ? () => _refineDraft(index, text, addBack: false)
+              : null,
         ),
       );
     }
@@ -1152,13 +744,11 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
               onTap: actionsEnabled
                   ? () => setState(() {
                       if (draft.selectedItemSeq == candidate.itemSeq) {
-                        // Saved selections stay locked against accidental resubmission.
-                        if (!draft.isSaved) draft.selectedItemSeq = null;
+                        draft.selectedItemSeq = null;
                         return;
                       }
-                      // 다른 약을 고르면 이전 약의 검토값과 저장 표시는 더 이상 맞지 않는다.
+                      // 다른 약을 고르면 이전 약의 검토값은 더 이상 맞지 않는다.
                       draft.reviewedSchedule = null;
-                      draft.isSaved = false;
                       draft.selectedItemSeq = candidate.itemSeq;
                     })
                   : null,
@@ -1184,251 +774,11 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     );
   }
 
-  // 함수이름: _selectImage
-  // 함수역할: 유효하고 유휴 상태인 초안의 앞면 또는 뒷면 사진을 선택해 교체하고 이전 분석 결과를 무효화한다. 선택 취소·화면 종료·초안 제거 시 반영하지 않는다.
-  // 매개변수: draftIndex (int): 대상 초안 위치; isFront (bool): 앞면 여부; text (_PillIdentificationText): 안내 문구.
-  // 반환값: 사진 선택 및 결과 반영 완료.
-  Future<void> _selectImage({
-    required int draftIndex,
-    required bool isFront,
-    required _PillIdentificationText text,
-  }) async {
-    if (_isBusy || draftIndex < 0 || draftIndex >= _drafts.length) {
-      return;
-    }
-    final source = await showMedicationPhotoSourceOptions(
-      context: context,
-      language: widget.userSetting.language,
-    );
-    if (!mounted || source == null) {
-      return;
-    }
-    // 함수이름: _selectImage.setState callback
-    // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 입력·요청 상태를 `_isSelectingImage = true; _selectingDraftIndex = draftIndex; _selectingFront = isFront`로 갱신한다.
-    // 매개변수:
-    // - 없음.
-    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-    setState(() {
-      _isSelectingImage = true;
-      _selectingDraftIndex = draftIndex;
-      _selectingFront = isFront;
-    });
-
-    try {
-      final imageBytes = await _control.requestPillImage(source);
-      if (imageBytes == null || !mounted || draftIndex >= _drafts.length) {
-        return;
-      }
-      // Function Name: _selectImage.setState callback
-      // Description: Updates the local input or request state for front and back pill photos, candidate selection, and medication saving: `draft.frontImage = imageBytes; draft.backImage = imageBytes; draft.clearResult()`.
-      // Parameters:
-      // - None.
-      // Returns: No payload; applies the captured state changes.
-      setState(() {
-        final draft = _drafts[draftIndex];
-        if (isFront) {
-          draft.frontImage = imageBytes;
-        } else {
-          draft.backImage = imageBytes;
-        }
-        draft.clearResult();
-        _errorMessage = '';
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      // Function Name: _selectImage.setState callback
-      // Description: Updates the local input or request state for front and back pill photos, candidate selection, and medication saving: `_errorMessage = _stateErrorMessage(error, text.imageSelectionFailed)`.
-      // Parameters:
-      // - None.
-      // Returns: No payload; applies the captured state changes.
-      setState(() {
-        _errorMessage = _stateErrorMessage(error, text.imageSelectionFailed);
-      });
-    } finally {
-      if (mounted) {
-        // 함수이름: _selectImage.setState callback
-        // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 입력·요청 상태를 `_isSelectingImage = false; _selectingDraftIndex = null; _selectingFront = null`로 갱신한다.
-        // 매개변수:
-        // - 없음.
-        // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-        setState(() {
-          _isSelectingImage = false;
-          _selectingDraftIndex = null;
-          _selectingFront = null;
-        });
-      }
-    }
-  }
-
-  // 함수이름: _addPhotoDraft
-  // 함수역할: 빈 앞면·뒷면 입력 한 쌍을 추가하고 새 알약 영역으로 이동한다.
-  // 매개변수: 없음. 반환값: 없음. 사진 선택은 각 입력칸에서 별도로 진행한다.
-  void _addPhotoDraft() {
-    if (_isBusy ||
-        _usesSinglePhoto ||
-        _drafts.length >= IdentifyPillBatch.maxBatchSize) {
-      return;
-    }
-    final draft = _PillPhotoDraft();
-    setState(() {
-      _drafts.add(draft);
-      _errorMessage = '';
-    });
-    // 함수역할: 새 입력이 배치된 뒤 화면 안으로 이동한다. 매개변수: 프레임 시각. 반환값: 없음.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final targetContext = draft.photoKey.currentContext;
-      if (mounted && targetContext != null) {
-        Scrollable.ensureVisible(
-          targetContext,
-          alignment: 0.1,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-
-  // 함수이름: _removePhotoDraft
-  // 함수역할: 처리 중이 아니고 작업이 둘 이상일 때 지정 사진 작업을 제거한다.
-  // 매개변수:
-  // - index (int): 대상 약품·사진·행의 0부터 시작하는 목록 위치.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
-  void _removePhotoDraft(int index) {
-    if (_isBusy || _drafts.length <= 1) {
-      return;
-    }
-    // 함수이름: _removePhotoDraft.setState callback
-    // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 입력·요청 상태를 `_drafts.removeAt(index); _errorMessage = ''`로 갱신한다.
-    // 매개변수:
-    // - 없음.
-    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-    setState(() {
-      _drafts.removeAt(index);
-      _errorMessage = '';
-    });
-  }
-
-  // 함수이름: _requestIdentification
-  // 함수역할: 앞면 사진이 준비된 미분석 작업을 일괄 처리하고 진행·재시도·개별 실패 결과를 반영한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _requestIdentification() async {
-    final pendingIndexes = _pendingDraftIndexes;
-    // 버튼이 다시 그려지기 전의 두 번째 탭이 같은 사진을 한 번 더 분석 요청하지 않게 한다.
-    if (_isBusy || !_allDraftsReady || pendingIndexes.isEmpty) {
-      return;
-    }
-    final text = _PillIdentificationText(widget.userSetting.language);
-    // 함수이름: _requestIdentification.setState callback
-    // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 입력·요청 상태를 `_isAnalyzing = true; _errorMessage = ''`로 갱신한다.
-    // 매개변수:
-    // - 없음.
-    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-    setState(() {
-      _isAnalyzing = true;
-      _errorMessage = '';
-      _analysisCompletedCount = 0;
-      _analysisTotalCount = pendingIndexes.length;
-      _retryingRequestCount = 0;
-      _retryAfter = null;
-      for (final index in pendingIndexes) {
-        _drafts[index].errorMessage = '';
-      }
-    });
-
-    try {
-      final outcomes = await _batchControl.requestBatchIdentification(
-        [
-          for (final index in pendingIndexes)
-            PillImagePair(
-              frontImage: _drafts[index].frontImage!,
-              backImage: _drafts[index].backImage,
-            ),
-        ],
-        // 함수이름: _requestIdentification.onProgress callback
-        // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장에서 캡처된 작업 `setState(() {_analysisCompletedCount = progress.completedCount; _analysisTotalCount = progress.totalCount; _retryingRequestCount = progress.re...`을 실행한다.
-        // 매개변수:
-        // - progress (콜백 계약에서 추론): 일괄 분석의 완료·전체·재시도 개수와 재시도 대기 정보.
-        // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-        onProgress: (progress) {
-          if (!mounted) {
-            return;
-          }
-          // 함수이름: _requestIdentification.setState callback
-          // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 입력·요청 상태를 `_analysisCompletedCount = progress.completedCount; _analysisTotalCount = progress.totalCount; _retryingRequestCount = progress.retryingRequestCount`로 갱신한다.
-          // 매개변수:
-          // - 없음.
-          // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-          setState(() {
-            _analysisCompletedCount = progress.completedCount;
-            _analysisTotalCount = progress.totalCount;
-            _retryingRequestCount = progress.retryingRequestCount;
-            _retryAfter = progress.retryAfter ?? _retryAfter;
-          });
-        },
-      );
-      if (!mounted) {
-        return;
-      }
-      // 함수이름: _requestIdentification.setState callback
-      // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 입력·요청 상태를 `draft.result = result; draft.selectedItemSeq = null; draft.errorMessage = ''`로 갱신한다.
-      // 매개변수:
-      // - 없음.
-      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-      setState(() {
-        for (final outcome in outcomes) {
-          final draft = _drafts[pendingIndexes[outcome.index]];
-          final result = outcome.result;
-          if (result != null) {
-            draft.result = result;
-            draft.selectedItemSeq = null;
-            draft.errorMessage = '';
-          } else {
-            draft.result = null;
-            draft.selectedItemSeq = null;
-            draft.errorMessage = _stateErrorMessage(
-              outcome.error ?? StateError('Unknown pill batch failure.'),
-              text.requestFailed,
-            );
-          }
-        }
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      // 함수이름: _requestIdentification.setState callback
-      // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 입력·요청 상태를 `_errorMessage = _stateErrorMessage(error, text.requestFailed)`로 갱신한다.
-      // 매개변수:
-      // - 없음.
-      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-      setState(() {
-        _errorMessage = _stateErrorMessage(error, text.requestFailed);
-      });
-    } finally {
-      if (mounted) {
-        // 함수이름: _requestIdentification.setState callback
-        // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 입력·요청 상태를 `_isAnalyzing = false; _retryingRequestCount = 0; _retryAfter = null`로 갱신한다.
-        // 매개변수:
-        // - 없음.
-        // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-        setState(() {
-          _isAnalyzing = false;
-          _retryingRequestCount = 0;
-          _retryAfter = null;
-        });
-      }
-    }
-  }
-
   // 함수이름: _selectMultiplePillPhoto
   // 함수역할: 처리 중이 아니면 여러 알약이 담긴 사진을 선택하고 번호별 식별을 요청한다.
   // 매개변수: text는 현재 언어의 안내 문구이다. 반환값: 사진 선택·분석 완료.
   Future<void> _selectMultiplePillPhoto(_PillIdentificationText text) async {
-    if (_isBusy || !_usesSinglePhoto) {
+    if (_isBusy) {
       return;
     }
     final source = await showMedicationPhotoSourceOptions(
@@ -1485,14 +835,12 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     _PillIdentificationText text,
   ) async {
     // Function Name: _analyzeMultiplePillPhoto.setState callback
-    // Description: Updates the local input or request state for front and back pill photos, candidate selection, and medication saving: `_isAnalyzing = true; _analysisCompletedCount = 0; _analysisTotalCount = 1`.
+    // Description: Marks analysis as running and replaces earlier drafts with the new photo.
     // Parameters:
     // - None.
     // Returns: No payload; applies the captured state changes.
     setState(() {
       _isAnalyzing = true;
-      _analysisCompletedCount = 0;
-      _analysisTotalCount = 1;
       _errorMessage = '';
       _multiplePillSourceImage = image;
       _multiplePillObservations = const [];
@@ -1524,7 +872,6 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                 ..sourceRegion = observation.boundingBox
                 ..result = observation.identification,
           ]);
-        _analysisCompletedCount = 1;
       });
     } catch (error) {
       if (mounted) {
@@ -1547,50 +894,6 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
         setState(() => _isAnalyzing = false);
       }
     }
-  }
-
-  // 함수이름: _removeImage
-  // 함수역할: 지정 앞·뒷면 사진과 그 사진에 의존한 분석·저장 상태를 지운다.
-  // 매개변수:
-  // - index (int): 대상 약품·사진·행의 0부터 시작하는 목록 위치.
-  // - isFront (bool): 뒷면 대신 필수 앞면 사진을 다룰지 여부.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
-  void _removeImage({required int index, required bool isFront}) {
-    // 함수이름: _removeImage.setState callback
-    // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 입력·요청 상태를 `draft.frontImage = null; draft.backImage = null; draft.clearResult()`로 갱신한다.
-    // 매개변수:
-    // - 없음.
-    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-    setState(() {
-      final draft = _drafts[index];
-      if (isFront) {
-        draft.frontImage = null;
-      } else {
-        draft.backImage = null;
-      }
-      draft.clearResult();
-      _errorMessage = '';
-    });
-  }
-
-  // Function Name: _prepareRetry
-  // Description: Recompares only the selected pill region of a multi-pill photo, or clears a single draft's result for retry.
-  // Parameters:
-  // - index (int): Zero-based position of the target medication, photo, or row.
-  // Returns: None; updates state or performs the documented action.
-  void _prepareRetry(int index) {
-    if (_multiplePillSourceImage != null) {
-      // 한 장 사진에서는 이 번호의 영역만 다시 비교해 다른 알약의 결과와 선택을 유지한다.
-      final text = _PillIdentificationText(widget.userSetting.language);
-      _refineDraft(index, text, addBack: false);
-      return;
-    }
-    // 함수이름: _prepareRetry.setState callback
-    // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 입력·요청 상태를 `_drafts[index].clearResult()`로 갱신한다.
-    // 매개변수:
-    // - 없음.
-    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-    setState(() => _drafts[index].clearResult());
   }
 
   // 함수이름: _selectedCandidate
@@ -1646,12 +949,12 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   }
 
   // 함수이름: _reviewCandidates
-  // 함수역할: 미저장 사진의 선택 후보를 모아 중복 처리 방식을 확인하고 저장 검토로 넘긴다. 저장 콜백이 없으면 선택 결과만 안내한다.
+  // 함수역할: 선택한 후보를 모아 중복 처리 방식을 확인하고 일정 검토로 넘긴다.
   // 매개변수: text (_PillIdentificationText): 선택·중복 확인 안내 문구.
-  // 반환값: 선택 누락·취소 시 중단하며 검토·저장 또는 안내가 끝나면 완료되는 Future<void>.
+  // 반환값: 선택 누락·취소 시 중단하며 검토와 인계가 끝나면 완료되는 Future<void>.
   Future<void> _reviewCandidates(_PillIdentificationText text) async {
     if (!_canConfirmSelections) return;
-    final pendingDrafts = _selectedUnsavedDrafts;
+    final pendingDrafts = _selectedDrafts;
     final candidates = <PillIdentificationCandidate>[];
     for (final draft in pendingDrafts) {
       final candidate = _selectedCandidate(draft);
@@ -1679,63 +982,11 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       duplicateResolution = selectedResolution;
     }
 
-    final onSaveRequested = widget.onSaveRequested;
-    final onBatchSaveRequested = widget.onBatchSaveRequested;
-    if (widget.onReviewRequested != null ||
-        onSaveRequested != null ||
-        onBatchSaveRequested != null) {
-      await _reviewAndSaveCandidates(
-        drafts: pendingDrafts,
-        candidates: candidates,
-        onSaveRequested: onSaveRequested,
-        onBatchSaveRequested: onBatchSaveRequested,
-        duplicateResolution: duplicateResolution,
-        text: text,
-      );
-      return;
-    }
-
-    final confirmedCandidates =
-        duplicateResolution == _DuplicatePillResolution.mergeMatchingSchedules
-        ? _duplicateSelectionControl.uniqueCandidates(candidates)
-        : candidates;
-
-    // 저장 콜백이 없는 독립 실행 화면도 사용자가 선택한 중복 처리 방식을 반영한다.
-    await showDialog<void>(
-      context: context,
-      // 함수이름: _confirmCandidates.builder callback
-      // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
-      // 매개변수:
-      // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-      // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-      builder: (context) => AlertDialog(
-        title: KeepWordsText(text.confirmedTitle),
-        content: KeepWordsText(
-          confirmedCandidates.length == 1
-              ? text.confirmedMessage(confirmedCandidates.first.itemName)
-              : text.confirmedBatchMessage(
-                  confirmedCandidates
-                      // 함수이름: _confirmCandidates.map callback
-                      // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 변환값을 `candidate.itemName` 규칙으로 계산한다.
-                      // 매개변수:
-                      // - candidate (콜백 계약에서 추론): 사용자가 확인하거나 저장할 식별 후보 약품.
-                      // 반환값: 컬렉션 연산에 전달할 변환값.
-                      .map((candidate) => candidate.itemName)
-                      .toList(),
-                ),
-        ),
-        actions: [
-          TextButton(
-            // Function Name: _confirmCandidates.onPressed callback
-            // Description: Closes this route with the selection or cancellation encoded by `Navigator.pop(context)`.
-            // Parameters:
-            // - None.
-            // Returns: No callback payload; any selection is delivered through the route result.
-            onPressed: () => Navigator.pop(context),
-            child: Text(text.close),
-          ),
-        ],
-      ),
+    await _reviewAndHandOffCandidates(
+      drafts: pendingDrafts,
+      candidates: candidates,
+      duplicateResolution: duplicateResolution,
+      text: text,
     );
   }
 
@@ -1812,15 +1063,13 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     );
   }
 
-  // Function Name: _reviewAndSaveCandidates
-  // Description: Provides provisional schedules for all selected candidates, reviews them together and sends confirmed schedules to persistence, reporting saved, duplicate and failed counts.
-  // Parameters: drafts (List<_PillPhotoDraft>): unsaved drafts aligned with candidates; candidates: confirmed identities; onSaveRequested/onBatchSaveRequested: optional persistence callbacks; duplicateResolution: merge-or-keep policy; text: result labels.
-  // Returns: Future completing after review and any save attempt.
-  Future<void> _reviewAndSaveCandidates({
+  // Function Name: _reviewAndHandOffCandidates
+  // Description: Provides provisional schedules for all selected candidates, reviews them together and hands the confirmed schedules to the shared result step.
+  // Parameters: drafts (List<_PillPhotoDraft>): selected drafts aligned with candidates; candidates: confirmed identities; duplicateResolution: merge-or-keep policy; text: result labels.
+  // Returns: Future completing after review and the hand-off attempt.
+  Future<void> _reviewAndHandOffCandidates({
     required List<_PillPhotoDraft> drafts,
     required List<PillIdentificationCandidate> candidates,
-    required IdentifiedPillSaveCallback? onSaveRequested,
-    required IdentifiedPillBatchSaveCallback? onBatchSaveRequested,
     required _DuplicatePillResolution duplicateResolution,
     required _PillIdentificationText text,
   }) async {
@@ -1828,7 +1077,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       context: context,
       initialSchedules: [
         for (var index = 0; index < candidates.length; index += 1)
-          // 저장에 실패해 다시 확인할 때는 앞서 검토한 값을 그대로 보여 준다.
+          // 인계가 거절돼 다시 확인할 때는 앞서 검토한 값을 그대로 보여 준다.
           drafts[index].reviewedSchedule ??
               MedicationSchedule(
                 medicationName: candidates[index].itemName,
@@ -1843,7 +1092,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
               ),
       ],
       userSetting: widget.userSetting,
-      photos: _reviewPhotos(drafts, candidates),
+      photos: _reviewPhotos(),
     );
     if (!mounted || reviewedSchedules == null) {
       return;
@@ -1863,128 +1112,33 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
           medicationSchedule: reviewedSchedules[index],
         ),
     ];
-    // 보낼 요청과 사진별 대응은 Control이 정한다. 화면은 그 결과를 사진별 저장 표시에만 반영한다.
+    // 보낼 요청과 중복 병합은 Control이 정한다.
     final savePlan = _duplicateSelectionControl.buildPillSavePlan(
       reviewedRequests,
       mergeEquivalent:
           duplicateResolution ==
           _DuplicatePillResolution.mergeMatchingSchedules,
     );
-    final requests = savePlan.uniqueRequests;
-
-    final onReviewRequested = widget.onReviewRequested;
-    if (onReviewRequested != null) {
-      if (!onReviewRequested(requests) && mounted) {
-        _showSnackBar(text.medicationSaveFailed);
-      }
-      return;
+    if (!widget.onReviewRequested(savePlan.uniqueRequests) && mounted) {
+      _showSnackBar(text.medicationSaveFailed);
     }
-
-    // 함수이름: _reviewAndSaveCandidates.setState callback
-    // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 입력·요청 상태를 `_isSaving = true`로 갱신한다.
-    // 매개변수:
-    // - 없음.
-    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-    setState(() => _isSaving = true);
-    var results = <MedicationSaveResult>[];
-    try {
-      if (onBatchSaveRequested != null) {
-        results = await onBatchSaveRequested(requests);
-      } else {
-        for (final request in requests) {
-          results.add(
-            await onSaveRequested!(
-              request.candidate,
-              request.medicationSchedule,
-            ),
-          );
-        }
-      }
-    } catch (_) {
-      // 예외 전에 받은 결과는 그대로 두어 이미 저장된 약을 다시 보내지 않고, 결과가 없는 요청은 요약에서 실패로 처리한다.
-    } finally {
-      if (mounted) {
-        // 함수이름: _reviewAndSaveCandidates.setState callback
-        // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 입력·요청 상태를 `_isSaving = false`로 갱신한다.
-        // 매개변수:
-        // - 없음.
-        // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-        setState(() => _isSaving = false);
-      }
-    }
-    if (!mounted) {
-      return;
-    }
-
-    final summary = _duplicateSelectionControl.summarizePillSaveResults(
-      savePlan,
-      results,
-    );
-    // 함수이름: _reviewAndSaveCandidates.setState callback
-    // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 입력·요청 상태를 `drafts[index].isSaved = summary.isSourceStored(index)`로 갱신한다.
-    // 매개변수:
-    // - 없음.
-    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-    setState(() {
-      // 병합 여부와 관계없이 사진마다 대응 요청의 결과를 따른다. 실패한 약만 다음 확인 대상으로 남는다.
-      for (var index = 0; index < drafts.length; index += 1) {
-        drafts[index].isSaved = summary.isSourceStored(index);
-      }
-    });
-
-    final firstResultMessage = results.isEmpty
-        ? ''
-        : results.first.message.trim();
-    final resultMessage = summary.requestStatuses.length == 1
-        ? switch (summary.requestStatuses.first) {
-            MedicationSaveStatus.saved => text.medicationSaved,
-            MedicationSaveStatus.duplicate => text.medicationAlreadySaved,
-            MedicationSaveStatus.failed =>
-              firstResultMessage.isEmpty
-                  ? text.medicationSaveFailed
-                  : firstResultMessage,
-          }
-        : text.batchSaveSummary(
-            savedCount: summary.savedCount,
-            duplicateCount: summary.duplicateCount,
-            failedCount: summary.failedCount,
-          );
-    _showSnackBar(
-      text.withMergedDuplicateSummary(resultMessage, savePlan.mergedCount),
-    );
   }
 
   // 함수이름: _reviewPhotos
-  // 함수역할: 검토 중인 알약에 대응하는 촬영 사진만 모으고 앞뒷면을 한 장의 보기로 묶는다.
-  // 매개변수: drafts: 선택한 미저장 사진 초안; candidates: 같은 순서의 확인한 약품.
-  // 반환값: 전체 사진 방식은 원본 한 장, 개별 촬영 방식은 약마다 앞뒷면 보기 목록.
-  List<MedicationReviewPhoto> _reviewPhotos(
-    List<_PillPhotoDraft> drafts,
-    List<PillIdentificationCandidate> candidates,
-  ) {
+  // 함수역할: 검토 화면에 촬영한 원본 사진 한 장을 보여 준다.
+  // 매개변수: 없음.
+  // 반환값: 원본 사진 보기 목록. 사진이 없으면 빈 목록.
+  List<MedicationReviewPhoto> _reviewPhotos() {
     final sourceImage = _multiplePillSourceImage;
-    if (_usesSinglePhoto && sourceImage != null) {
-      return [
-        MedicationReviewPhoto(
-          title: _PillIdentificationText(widget.userSetting.language).isEnglish
-              ? 'Pill photo'
-              : '촬영한 알약 사진',
-          aspectRatio: 4 / 3,
-          imageBuilder: (context) => _PillReviewPhotoPair(front: sourceImage),
-        ),
-      ];
-    }
+    if (sourceImage == null) return const [];
     return [
-      for (var index = 0; index < drafts.length; index++)
-        if (drafts[index].hasAnyImage)
-          MedicationReviewPhoto(
-            title: candidates[index].itemName,
-            aspectRatio: 4 / 3,
-            imageBuilder: (context) => _PillReviewPhotoPair(
-              front: drafts[index].frontImage,
-              back: drafts[index].backImage,
-            ),
-          ),
+      MedicationReviewPhoto(
+        title: _PillIdentificationText(widget.userSetting.language).isEnglish
+            ? 'Pill photo'
+            : '촬영한 알약 사진',
+        aspectRatio: 4 / 3,
+        imageBuilder: (context) => _PillReviewPhoto(image: sourceImage),
+      ),
     ];
   }
 
@@ -2045,49 +1199,38 @@ class _MultiplePillPhotoFrame extends StatelessWidget {
   );
 }
 
-// 클래스명: _PillReviewPhotoPair
-// 역할: 같은 알약의 실제 촬영 앞면과 뒷면을 한 화면에 보여준다.
-// 주요 책임: 없는 면은 만들지 않고 한 면만 있으면 전체 폭으로 표시한다.
-// 속성: front/back (Uint8List?): 원본 촬영 이미지 바이트.
-class _PillReviewPhotoPair extends StatelessWidget {
-  final Uint8List? front;
-  final Uint8List? back;
+// 클래스명: _PillReviewPhoto
+// 역할: 검토 화면에 촬영한 원본 알약 사진을 보여준다.
+// 주요 책임: 비율을 유지해 표시하고 로드 실패만 아이콘으로 대체한다.
+// 속성: image (Uint8List): 원본 촬영 이미지 바이트.
+class _PillReviewPhoto extends StatelessWidget {
+  final Uint8List image;
 
-  // 함수이름: _PillReviewPhotoPair
-  // 함수역할: 검토할 알약의 선택적 앞뒷면 사진을 보관한다.
-  // 매개변수: front/back: 실제 촬영 사진; 촬영하지 않은 면은 null.
-  // 반환값: 알약 한 건의 사진 보기.
-  const _PillReviewPhotoPair({this.front, this.back});
+  // 함수이름: _PillReviewPhoto
+  // 함수역할: 검토할 원본 사진을 보관한다.
+  // 매개변수: image: 실제 촬영 사진.
+  // 반환값: 사진 보기.
+  const _PillReviewPhoto({required this.image});
 
   // 함수이름: build
-  // 함수역할: 존재하는 사진을 비율 유지하며 나란히 배치하고 로드 실패만 아이콘으로 대체한다.
+  // 함수역할: 사진을 비율 유지하며 배치하고 로드 실패만 아이콘으로 대체한다.
   // 매개변수: context: 화면 표시 위치.
-  // 반환값: 한 면 또는 양면 사진이 있는 흰색 사진 영역.
+  // 반환값: 사진이 있는 흰색 사진 영역.
   @override
   Widget build(BuildContext context) {
-    final images = [?front, ?back];
     return ColoredBox(
       color: Colors.white,
-      child: Row(
-        children: [
-          for (var index = 0; index < images.length; index++) ...[
-            if (index > 0) const SizedBox(width: 4),
-            Expanded(
-              child: Image.memory(
-                images[index],
-                key: ValueKey('pill-review-photo-side-$index'),
-                fit: BoxFit.contain,
-                gaplessPlayback: true,
-                errorBuilder: (context, error, stack) => const Center(
-                  child: Icon(
-                    Icons.broken_image_outlined,
-                    color: MedBuddyColors.textMuted,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
+      child: Image.memory(
+        image,
+        key: const ValueKey('pill-review-photo-side-0'),
+        fit: BoxFit.contain,
+        gaplessPlayback: true,
+        errorBuilder: (context, error, stack) => const Center(
+          child: Icon(
+            Icons.broken_image_outlined,
+            color: MedBuddyColors.textMuted,
+          ),
+        ),
       ),
     );
   }
@@ -2287,173 +1430,6 @@ class _MultiplePillBoxPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _MultiplePillBoxPainter oldDelegate) =>
       oldDelegate.observations != observations;
-}
-
-// Class Name: _PillImageSlot
-// Role: Represents front or back pill-photo selection, loading, and removal.
-// Responsibilities:
-// - Composes front or back pill-photo selection, loading, and removal using the display values and actions supplied by its parent.
-// Attributes:
-// - label (String): Wording identifying a field, choice, or action.
-// - requiredLabel (String): Wording identifying a field, choice, or action.
-// - imageBytes (Uint8List?): Camera frame or image bytes used for analysis or preview.
-// - isLoading (bool): Whether to show the in-progress state.
-class _PillImageSlot extends StatelessWidget {
-  final String label;
-  final String requiredLabel;
-  final Uint8List? imageBytes;
-  final bool isLoading;
-  final Key removeButtonKey;
-  final String removeTooltip;
-  final VoidCallback? onRemove;
-  final VoidCallback? onTap;
-
-  // Function Name: _PillImageSlot
-  // Description: Initializes front or back pill-photo selection, loading, and removal with the supplied configuration.
-  // Parameters:
-  // - key (Key?): Widget identity used to distinguish elements and preserve state.
-  // - label (String): Wording identifying a field, choice, or action.
-  // - requiredLabel (String): Wording identifying a field, choice, or action.
-  // - imageBytes (Uint8List?): Camera frame or image bytes used for analysis or preview.
-  // - isLoading (bool): Whether to show the in-progress state.
-  // - removeButtonKey (Key): Widget identity of the photo removal button.
-  // - removeTooltip (String): Tooltip or accessibility wording describing an icon action.
-  // - onRemove (VoidCallback?): Callback removing a photo or attachment selection.
-  // - onTap (VoidCallback?): Callback executing the item's documented primary action.
-  // Returns: Initialized _PillImageSlot instance.
-  const _PillImageSlot({
-    super.key,
-    required this.label,
-    required this.requiredLabel,
-    required this.imageBytes,
-    required this.isLoading,
-    required this.removeButtonKey,
-    required this.removeTooltip,
-    required this.onRemove,
-    required this.onTap,
-  });
-
-  // Function Name: build
-  // Description: Renders front or back pill-photo selection, loading, and removal from the current configuration and state.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for front or back pill-photo selection, loading, and removal.
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: MedBuddyRadii.small,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: MedBuddyRadii.small,
-        child: Container(
-          // 큰 글씨에서도 앞면·필수 표시와 삭제 버튼이 사진 영역을 밀어내지 않는다.
-          height:
-              174.0 +
-              (MediaQuery.textScalerOf(context).scale(16) - 16).clamp(0, 48) *
-                  2,
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            borderRadius: MedBuddyRadii.small,
-            border: Border.all(
-              color: imageBytes == null
-                  ? MedBuddyColors.outline
-                  : MedBuddyColors.primary,
-              width: imageBytes == null ? 1.4 : 2,
-            ),
-          ),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Wrap(
-                      spacing: 6,
-                      runSpacing: 2,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: MedBuddyColors.textStrong,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0,
-                          ),
-                        ),
-                        Text(
-                          requiredLabel,
-                          style: const TextStyle(
-                            color: MedBuddyColors.textSubtle,
-                            fontSize: 11,
-                            letterSpacing: 0,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (imageBytes != null)
-                    SizedBox.square(
-                      dimension: 48,
-                      child: IconButton(
-                        key: removeButtonKey,
-                        tooltip: removeTooltip,
-                        padding: EdgeInsets.zero,
-                        iconSize: 19,
-                        color: MedBuddyColors.textMuted,
-                        onPressed: onRemove,
-                        icon: const Icon(Icons.close),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: MedBuddyRadii.small,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      if (imageBytes == null)
-                        const ColoredBox(
-                          color: MedBuddyColors.surfaceSubtle,
-                          child: Center(
-                            child: Icon(
-                              Icons.add_a_photo_outlined,
-                              color: MedBuddyColors.primary,
-                              size: 34,
-                            ),
-                          ),
-                        )
-                      else
-                        Image.memory(
-                          imageBytes!,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          cacheWidth: 900,
-                        ),
-                      if (isLoading)
-                        const ColoredBox(
-                          color: Color(0xB3FFFFFF),
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              key: Key('pill-image-loading-indicator'),
-                              strokeWidth: 2.4,
-                              color: MedBuddyColors.primary,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 // Class Name: _PillCandidateCard
@@ -2901,11 +1877,9 @@ class _PillIdentificationText {
   // - None.
   // Returns: True when the documented condition holds; false otherwise.
   bool get isEnglish => isEnglishLanguage(language);
-  // 함수이름: modeTitle
-  // 함수역할: 선택한 촬영 방식의 화면 제목을 번역한다. 매개변수: singlePhoto. 반환값: 제목.
-  String modeTitle(bool singlePhoto) => singlePhoto
-      ? (isEnglish ? 'Identify loose pills' : '낱알약 식별')
-      : (isEnglish ? 'Pills individually' : '알약 하나씩 찾기');
+  // 함수이름: title
+  // 함수역할: 화면 제목을 번역한다. 매개변수: 없음. 반환값: 제목.
+  String get title => isEnglish ? 'Identify loose pills' : '낱알약 식별';
 
   // 함수이름: safetyNotice
   // 함수역할: 사진 처리와 후보 결과의 한계를 간결하게 안내한다. 매개변수: 없음. 반환값: 안내.
@@ -2914,20 +1888,15 @@ class _PillIdentificationText {
       : '사진은 외부 AI로 분석되며 MedBuddy에 저장되지 않아요. 후보는 포장 정보나 약사에게 확인하세요.';
 
   // 함수이름: photoSectionTitle
-  // 함수역할: 해당 방식에서 필요한 사진만 안내한다. 매개변수: singlePhoto. 반환값: 구역 제목.
-  String photoSectionTitle(bool singlePhoto) => singlePhoto
-      ? (isEnglish ? 'Add a photo of your pills' : '알약 사진을 추가하세요')
-      : (isEnglish ? 'Add the front of each pill' : '알약 앞면 사진을 추가하세요');
+  // 함수역할: 필요한 사진을 안내한다. 매개변수: 없음. 반환값: 구역 제목.
+  String get photoSectionTitle =>
+      isEnglish ? 'Add a photo of your pills' : '알약 사진을 추가하세요';
 
   // 함수이름: photoSectionDescription
-  // 함수역할: 다른 방식의 설명을 제외한 촬영 조건을 안내한다. 매개변수: singlePhoto. 반환값: 설명.
-  String photoSectionDescription(bool singlePhoto) => singlePhoto
-      ? (isEnglish
-            ? 'One pill or several, up to 10 in one photo, not overlapping. You can add a back photo for each pill afterwards.'
-            : '한 알이든 여러 알이든 한 장에 찍어 주세요. 최대 10개까지, 서로 겹치지 않게요. 찍은 뒤 알약마다 뒷면을 더할 수 있어요.')
-      : (isEnglish
-            ? 'Add the back if needed. Up to 10 pills, photographed separately.'
-            : '필요하면 뒷면도 추가해주세요. 최대 10개까지 각각 촬영할 수 있어요.');
+  // 함수역할: 촬영 조건을 안내한다. 매개변수: 없음. 반환값: 설명.
+  String get photoSectionDescription => isEnglish
+      ? 'One pill or several, up to 10 in one photo, not overlapping. You can add a back photo for each pill afterwards.'
+      : '한 알이든 여러 알이든 한 장에 찍어 주세요. 최대 10개까지, 서로 겹치지 않게요. 찍은 뒤 알약마다 뒷면을 더할 수 있어요.';
 
   // 함수이름: detectedPillCount
   // 함수역할: 촬영 안내 대신 확인할 알약 수를 표시한다. 매개변수: count. 반환값: 결과 제목.
@@ -2943,32 +1912,6 @@ class _PillIdentificationText {
   // 함수역할: 기존 전체 사진을 교체하는 보조 명령을 번역한다. 매개변수: 없음. 반환값: 버튼 문구.
   String get changePhoto => isEnglish ? 'Change photo' : '사진 변경';
 
-  // 함수이름: pillPhotoTitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "알약 $number 사진" 문구를 제공한다.
-  // 매개변수:
-  // - number (int): 문구나 목록에 표시할 항목 수 또는 일련번호.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String pillPhotoTitle(int number) =>
-      isEnglish ? 'Pill $number photo' : '알약 $number 사진';
-  // 함수이름: comparisonComplete
-  // 함수역할: 현재 언어와 입력값에 맞춰 "비교 완료" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get comparisonComplete => isEnglish ? 'Compared' : '비교 완료';
-  // 함수이름: removePillPhotoSet
-  // 함수역할: 현재 언어와 입력값에 맞춰 "알약 $number 사진 묶음 삭제" 문구를 제공한다.
-  // 매개변수:
-  // - number (int): 문구나 목록에 표시할 항목 수 또는 일련번호.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String removePillPhotoSet(int number) =>
-      isEnglish ? 'Remove pill $number photo set' : '알약 $number 사진 묶음 삭제';
-  // 함수이름: addAnotherPill
-  // 함수역할: 현재 언어와 입력값에 맞춰 "알약 한 개 더 추가" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get addAnotherPill => isEnglish ? 'Add another pill' : '알약 한 개 더 추가';
   // Function Name: retryMultiplePillPhoto
   // Description: Provides localized wording for "Analyze this photo again" using the current language and message inputs.
   // Parameters:
@@ -2979,39 +1922,7 @@ class _PillIdentificationText {
   // Accessibility label only; the photo has no visible explanatory paragraph.
   String get multiplePhotoPreviewLabel =>
       isEnglish ? 'Analyzed pill photo' : '분석한 알약 사진';
-  // 함수이름: frontPhotoRequiredForEveryPill
-  // 함수역할: 현재 언어와 입력값에 맞춰 "비교를 시작하려면 모든 알약에 앞면 사진을 추가해주세요." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get frontPhotoRequiredForEveryPill => isEnglish
-      ? 'Add a front photo for every pill before starting the comparison.'
-      : '비교를 시작하려면 모든 알약에 앞면 사진을 추가해주세요.';
 
-  // Function Name: frontPhoto
-  // Description: Provides localized wording for "Front" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get frontPhoto => isEnglish ? 'Front' : '앞면';
-  // Function Name: backPhoto
-  // Description: Provides localized wording for "Back" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get backPhoto => isEnglish ? 'Back' : '뒷면';
-  // Function Name: requiredLabel
-  // Description: Provides localized wording for "Required" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get requiredLabel => isEnglish ? 'Required' : '필수';
-  // Function Name: optionalLabel
-  // Description: Provides localized wording for "Optional" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get optionalLabel => isEnglish ? 'Optional' : '선택';
   // Function Name: camera
   // Description: Provides localized wording for "Take a photo" using the current language and message inputs.
   // Parameters:
@@ -3024,57 +1935,6 @@ class _PillIdentificationText {
   // - None.
   // Returns: The formatted display text or identifier described above.
   String get gallery => isEnglish ? 'Choose from gallery' : '갤러리에서 선택';
-  // 함수이름: identifyPills
-  // 함수역할: 고정 버튼에 표시할 짧은 후보 찾기 문구와 알약 수를 제공한다.
-  // 매개변수:
-  // - count (int): 문구나 목록에 표시할 항목 수 또는 일련번호.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String identifyPills(int count) {
-    final normalizedCount = count < 1 ? 1 : count;
-    return isEnglish
-        ? 'Find matches ($normalizedCount)'
-        : '알약 $normalizedCount개 후보 찾기';
-  }
-
-  // 함수이름: analysisProgress
-  // 함수역할: 현재 언어와 입력값에 맞춰 "자동 재시도 대기 중 · $completedCount/$safeTotal 완료" 문구를 제공한다.
-  // 매개변수:
-  // - completedCount (int): 완료한 복약 횟수.
-  // - totalCount (int): 예정된 전체 복약 횟수 또는 처리 항목 수.
-  // - isWaitingForRetry (bool): 자동 재시도 대기 단계인지 여부.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String analysisProgress({
-    required int completedCount,
-    required int totalCount,
-    required bool isWaitingForRetry,
-  }) {
-    final safeTotal = totalCount < 1 ? 1 : totalCount;
-    if (isWaitingForRetry) {
-      return isEnglish
-          ? 'Waiting to retry · $completedCount/$safeTotal completed'
-          : '자동 재시도 대기 중 · $completedCount/$safeTotal 완료';
-    }
-    return isEnglish
-        ? 'Comparing pills · $completedCount/$safeTotal completed'
-        : '알약 비교 중 · $completedCount/$safeTotal 완료';
-  }
-
-  // 함수이름: retryWaitNotice
-  // 함수역할: 현재 언어와 입력값에 맞춰 "요청이 많아 잠시 기다린 뒤 실패 항목만 자동으로 다시 시도합니다." 문구를 제공한다.
-  // 매개변수:
-  // - retryAfter (Duration?): 재시도 전에 기다려야 할 시간.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String retryWaitNotice(Duration? retryAfter) {
-    final seconds = retryAfter?.inSeconds;
-    if (seconds == null || seconds < 1) {
-      return isEnglish
-          ? 'Request traffic is high. Failed items will retry automatically.'
-          : '요청이 많아 잠시 기다린 뒤 실패 항목만 자동으로 다시 시도합니다.';
-    }
-    return isEnglish
-        ? 'Retrying failed items automatically in up to $seconds seconds.'
-        : '최대 $seconds초 뒤 실패 항목만 자동으로 다시 시도합니다.';
-  }
 
   // 함수이름: candidateTitleForPill
   // 함수역할: 현재 언어와 입력값에 맞춰 "알약 $pillNumber · 가능한 후보 $count개" 문구를 제공한다.
@@ -3093,13 +1953,6 @@ class _PillIdentificationText {
   String candidateResultsAnnouncement(int count) => isEnglish
       ? 'Pill identification completed. $count possible matches.'
       : '알약 식별이 완료되었습니다. 가능한 후보는 $count개입니다.';
-  // Function Name: removePhoto
-  // Description: Provides localized wording for "Remove $label photo" using the current language and message inputs.
-  // Parameters:
-  // - label (String): Wording identifying a field, choice, or action.
-  // Returns: The formatted display text or identifier described above.
-  String removePhoto(String label) =>
-      isEnglish ? 'Remove $label photo' : '$label 사진 삭제';
   // Function Name: lowConfidenceNotice
   // Description: Provides one concise caution for an uncertain pill group.
   // Parameters:
@@ -3174,54 +2027,6 @@ class _PillIdentificationText {
       : count == 0
       ? '선택한 알약 0개'
       : '선택한 알약 $count개 검토 후 저장';
-  // 함수이름: savedComplete
-  // 함수역할: 현재 언어와 입력값에 맞춰 "저장 완료" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get savedComplete => isEnglish ? 'Saved' : '저장 완료';
-  // Function Name: savingSelections
-  // Description: Reports that confirmed pill selections are being saved.
-  // Parameters: None.
-  // Returns: The localized saving status.
-  String get savingSelections => isEnglish ? 'Saving...' : '저장 중...';
-  // Function Name: confirmedTitle
-  // Description: Provides localized wording for "Candidate selected" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get confirmedTitle => isEnglish ? 'Candidate selected' : '후보 선택 완료';
-  // Function Name: confirmedMessage
-  // Description: Provides localized wording for "$name was selected as a possible match. This is not a diagnosis; verify it with the package or a pharmacist." using the current language and message inputs.
-  // Parameters:
-  // - name (String): Medication or account name shown to the user.
-  // Returns: The formatted display text or identifier described above.
-  String confirmedMessage(String name) => isEnglish
-      ? '$name was selected as a possible match. This is not a diagnosis; verify it with the package or a pharmacist.'
-      : '$name을(를) 가능한 후보로 선택했습니다. 확정 결과가 아니므로 포장 정보 또는 약사에게 확인하세요.';
-  // 함수이름: confirmedBatchMessage
-  // 함수역할: 현재 언어와 입력값에 맞춰 ")}을(를) 가능한 후보로 선택했습니다. 확정 결과가 아니므로 각 포장 정보 또는 약사에게 확인하세요." 문구를 제공한다.
-  // 매개변수:
-  // - names (List<String>): 요약·전송 문구에 포함할 약품 이름 목록.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String confirmedBatchMessage(List<String> names) => isEnglish
-      ? '${names.join(', ')} were selected as possible matches. These are not confirmed results; verify each package or ask a pharmacist.'
-      : '${names.join(', ')}을(를) 가능한 후보로 선택했습니다. 확정 결과가 아니므로 각 포장 정보 또는 약사에게 확인하세요.';
-  // 함수이름: medicationSaved
-  // 함수역할: 현재 언어와 입력값에 맞춰 "복약 정보를 저장했습니다." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get medicationSaved =>
-      isEnglish ? 'Medication plan saved.' : '복약 정보를 저장했습니다.';
-  // 함수이름: medicationAlreadySaved
-  // 함수역할: 현재 언어와 입력값에 맞춰 "같은 복약 정보가 이미 저장되어 있습니다." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get medicationAlreadySaved => isEnglish
-      ? 'The same medication plan is already saved.'
-      : '같은 복약 정보가 이미 저장되어 있습니다.';
   // 함수이름: medicationSaveFailed
   // 함수역할: 현재 언어와 입력값에 맞춰 "복약 정보를 저장하지 못했습니다." 문구를 제공한다.
   // 매개변수:
@@ -3229,41 +2034,7 @@ class _PillIdentificationText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get medicationSaveFailed =>
       isEnglish ? 'Could not save the medication plan.' : '복약 정보를 저장하지 못했습니다.';
-  // 함수이름: batchSaveSummary
-  // 함수역할: 현재 언어와 입력값에 맞춰 "저장 $savedCount개, 기존 정보 $duplicateCount개, 실패 $failedCount개입니다." 문구를 제공한다.
-  // 매개변수:
-  // - savedCount (int): 저장에 성공한 항목 수.
-  // - duplicateCount (int): 중복으로 감지되거나 병합한 항목 수.
-  // - failedCount (int): 저장 또는 처리에 실패한 항목 수.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String batchSaveSummary({
-    required int savedCount,
-    required int duplicateCount,
-    required int failedCount,
-  }) => isEnglish
-      ? 'Saved $savedCount, already saved $duplicateCount, failed $failedCount.'
-      : '저장 $savedCount개, 기존 정보 $duplicateCount개, 실패 $failedCount개입니다.';
-  // 함수이름: withMergedDuplicateSummary
-  // 함수역할: 현재 언어와 입력값에 맞춰 "동일한 복약 일정 $mergedCount개를 하나로 묶었습니다. $resultMessage" 문구를 제공한다.
-  // 매개변수:
-  // - resultMessage (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-  // - mergedCount (int): 중복으로 감지되거나 병합한 항목 수.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String withMergedDuplicateSummary(String resultMessage, int mergedCount) {
-    if (mergedCount < 1) {
-      return resultMessage;
-    }
-    return isEnglish
-        ? 'Merged $mergedCount identical schedule${mergedCount == 1 ? '' : 's'}. $resultMessage'
-        : '동일한 복약 일정 $mergedCount개를 하나로 묶었습니다. $resultMessage';
-  }
 
-  // Function Name: close
-  // Description: Provides localized wording for "Close" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get close => isEnglish ? 'Close' : '닫기';
   // Function Name: noCandidates
   // Description: Provides localized wording for "No reliable candidates were found. Retake both sides more clearly." using the current language and message inputs.
   // Parameters:

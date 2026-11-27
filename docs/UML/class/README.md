@@ -2,14 +2,43 @@
 
 이 폴더에는 주요 책임과 계약을 보여주는 전체 구조 및 발표용 단계별 클래스 다이어그램을 함께 관리한다.
 같은 이름의 `.puml`은 설계 원본이고 `.png`는 그 렌더링 이미지다.
-현재 기준은 기존 1.0.0 설계에 `bbbdef53` 이후 v1.0.1 준비 구현을 더한 것이다
-(아래 최신 "2026-11-16 v1.0.1 준비 구현" 절). 커밋 진행 중 HEAD 이동과 무관하게
-이 기준 커밋부터 작업 파일까지를 대조했다.
-이전 원본·PNG 재생성 기록은 아래에 이력으로 보존한다.
-이번 대상과 검증 결과는 별도 절에 구분하며 변경하지 않은 그림은 유지한다.
-v1.0.1은 2026-11-22에 출시됐다. 출시 직전에 더해진 Gemini 장애 시 Claude 대체 응답(`34d57cd2`)은 아직 그림에 없다.
-원본과 그림이 다르면 텍스트 원본을 기준으로 한다. 이번 원본의 PNG 갱신 여부는
-아래 최신 검증 절을 따르며, 과거 렌더링 성공을 새 원본의 검증으로 간주하지 않는다.
+현재 기준은 v1.0.1 설계에 1.1.0 "사진으로 복용 기록"과 촬영 방식 통합을 더한 것이다
+(아래 최신 "2026-11-28 v1.1.0" 절). Gemini 장애 시 Claude 대체 응답(`34d57cd2`)도
+이번에 전체 그림에 넣었다. 이전 원본·PNG 재생성 기록은 아래에 이력으로 보존한다.
+원본과 그림이 다르면 텍스트 원본을 기준으로 한다.
+
+## 2026-11-28 v1.1.0 사진으로 복용 기록
+
+- 사진으로 복용 기록(UC-39): 손에 든 알약 한 장을 본인 활성 약과 맞추고 약마다
+  시간대를 정해 확인 한 번으로 기록한다. 앱은 사진 대신 후보·특징만 보내고 서버
+  `PlanPhotoDose`가 읽기 전용 계획과 사진 시각으로 다시 계산한 원자적 기록을 맡는다.
+  `03`, `ClassDiagram`, 새 시퀀스 `PhotoDoseRecording`, 전체 시퀀스 5C에 반영했다.
+- 촬영 방식 통합: 알약별 사진 일괄 식별(`IdentifyPillBatch`)을 지우고 한 장 다중 식별만
+  남겼다. 앞·뒷면 단일 식별은 한 장 결과의 특정 알약 재식별(UC-20)로만 쓴다.
+  `ClassDiagram`, 전체 시퀀스 4절, UC-20·UC-26을 고쳤다.
+- 직접 등록·낱알 화면의 직접 저장 경로를 지웠다. 두 화면은 검토한 요청을 공통 결과 단계에 넘기기만 한다.
+- 기능 찾기 목적지 29개(`photoDose` 추가)와 홈의 약 등록·관리·검색 분리를 `01`, `08`에 반영했다.
+- Claude 대체 응답: `GeminiOutageFallback`이 처방 텍스트·낱알 시각·허가정보 요약·건강 추천
+  경계를 감싸고 Gemini 장애일 때만 `ClaudeGenerateContentClient` 사본으로 다시 호출한다.
+
+| 흐름 | 원본 |
+| --- | --- |
+| 사진으로 복용 기록 (신규) | [PhotoDoseRecording](../sequence/PhotoDoseRecording.puml) |
+| 전체 흐름 4절·5C | [OverallSystemSequenceDiagram](../sequence/OverallSystemSequenceDiagram.puml) |
+| 등록과 복용 기록 구분 메모 | [MedicationRegistrationReview](../sequence/MedicationRegistrationReview.puml) |
+| 직접 등록의 결과 단계 인계 (직접 저장 경로 삭제) | [MedicationCareHistory](../sequence/MedicationCareHistory.puml) |
+
+자연어 설명은 [사진으로 복용 기록](../../Photo%20Dose%20Recording.md)과
+[유스케이스](../usecase/UseCaseDescription.md)를 따른다.
+
+### 이번 검증 범위
+
+- 로컬 PlantUML과 Nanum Gothic으로 전체 원본에 `-charset UTF-8 -checkonly -failfast2`를
+  실행했다. 종료 코드는 0이다.
+- 바뀐 원본 9개(`01`, `03`, `08`, `ClassDiagram`, 시퀀스 4개, 유스케이스)를
+  `PLANTUML_LIMIT_SIZE=16384`로 렌더링하고 대응 PNG만 교체했다. 크기가 4096이나 16384에
+  잘린 그림은 없다(`ClassDiagram` 16000 폭, 전체 시퀀스 16000 높이는 원본의 `scale max` 값).
+  외부 렌더링 서버로 원본을 보내지 않았다.
 
 ## 2026-11-16 v1.0.1 준비 구현
 
@@ -80,7 +109,7 @@ v1.0.1은 2026-11-22에 출시됐다. 출시 직전에 더해진 Gemini 장애 �
 - `02_PrescriptionAnalysis.puml` / `02_PrescriptionAnalysis.png`
   - 처방전 촬영, 로컬 OCR, 서버 분석, 사용자 검토 흐름을 보여준다.
 - `03_MedicationManagement.puml` / `03_MedicationManagement.png`
-  - 약 상세정보, 저장된 복약 정보, 오늘 일정과 알림, 적용일별 처방 변경·월 달력·기록 정정·외부 텍스트 공유 구조를 보여준다.
+  - 약 상세정보, 저장된 복약 정보, 오늘 일정과 알림, 적용일별 처방 변경·월 달력·기록 정정·외부 텍스트 공유, 사진으로 복용 기록 구조를 보여준다.
 - `04_CaregiverNotifications.puml` / `04_CaregiverNotifications.png`
   - 환자·보호자 연동, 조건부 채팅 탭과 대화 목록, 알림 전달과 계정별 로컬 알림함 구조를 보여준다.
   - 서버의 미복약 감지와 완료·미복약 Outbox 처리, 완료 채팅 기록 생성을 구분한다.
@@ -97,7 +126,7 @@ v1.0.1은 2026-11-22에 출시됐다. 출시 직전에 더해진 Gemini 장애 �
   - 공통 병원·약국 지도 UI와 별도 병원 조회·공휴일 확인, 서버가 검증한 채팅 공유 문맥과 운영 상태 스냅샷을 보여준다.
 - `08_FeatureSearch.puml` / `08_FeatureSearch.png`
   - 로컬 검색 UI·매칭 Control·정적 목적지 Entity와 기존 화면 연결 경계를 보여준다.
-  - 28개 목적지의 전체 목록은 [기능 찾기 문서](../../Feature%20Search.md)를 따른다.
+  - 29개 목적지의 전체 목록은 [기능 찾기 문서](../../Feature%20Search.md)를 따른다.
 
 ## Rendering
 

@@ -199,7 +199,7 @@ for cache scope, widget publication and recovery behavior.
 ## Local feature navigation
 
 `FeatureSearchUI` owns only transient query and result presentation. `FindAppFeature`
-matches 27 static `FeatureSearchEntry` destinations using Korean/English names,
+matches 29 static `FeatureSearchEntry` destinations using Korean/English names,
 aliases and intent groups; no account data, external AI or search persistence is
 involved. It is not a seventh feature-state owner inside `MedBuddyViewModel`.
 

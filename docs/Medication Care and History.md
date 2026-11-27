@@ -172,8 +172,8 @@ network delivery. Opening the alert navigates to the linked patient's schedule.
   clamped to server receipt time; later future intake times are rejected.
 - An intake can occur after its scheduled date. Correction does not silently move
   that record to another scheduled dose.
-- The existing completion, undo, chat and offline-sync paths update the same
-  report state. A history write is confirmed only after the server acknowledges
+- The existing completion, undo, chat, offline-sync and photo dose recording
+  (`/schedule/photo-intake/confirm`, 1.1.0) paths update the same report state. A history write is confirmed only after the server acknowledges
   it; this editor is not a second offline queue.
 
 ## Ownership and API Contracts
@@ -191,7 +191,8 @@ Caregivers can query only actively linked patients; writes remain patient-only.
 
 An identical successful operation replays its original response. Reusing an
 operation ID for different content or writing an outdated revision returns a
-conflict. `medication_care_operations` stores successful receipts;
+conflict. `medication_care_operations` stores successful receipts, including
+photo dose recording receipts (no single medication ID);
 `medication_care_audits` stores before/after snapshots. Both are committed with
 the underlying change. The history API returns current report state, not an
 audit-browser view. These are not a new source of clinical verification.

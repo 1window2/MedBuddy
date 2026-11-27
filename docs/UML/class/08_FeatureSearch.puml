@@ -51,13 +51,17 @@ package "기존 목적 화면·제어 경계" {
   class CheckMedicationDetail <<Control>>
   class ManageChatList <<Control>>
   class CheckCaregiverMedicationUI <<UI>>
+  class PillIdentificationUI <<UI>>
+  class PhotoDoseRecordingUI <<UI>>
 }
 
 HomeScreen --> FeatureSearchUI : 열기 / 선택한 AppFeature 반환
 FeatureSearchUI --> FindAppFeature : 로컬 검색
 FindAppFeature --> FeatureSearchEntry : 정적 목록 매칭·정렬
-FeatureSearchEntry --> AppFeature : 허용된 목적지 28개
+FeatureSearchEntry --> AppFeature : 허용된 목적지 29개
 HomeScreen --> MedicationSearchUI : 약 검색 목적지
+HomeScreen --> PillIdentificationUI : 낱알약 식별 (한 장 촬영 바로 열기)
+HomeScreen --> PhotoDoseRecordingUI : 사진으로 복용 기록 (본인만)
 MedicationSearchUI --> CheckMedicationDetail : 약명 제출 후 기존 조회 API
 note bottom of MedicationSearchUI
   로컬 기능 찾기와 약품 조회는 별개의 검색이다.

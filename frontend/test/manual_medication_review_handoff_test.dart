@@ -10,16 +10,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:medbuddy_frontend/boundaries/manual_medication_entry_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/medication_search_ui_boundary.dart';
-import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/entities/manual_medication_entry_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
-const _saved = MedicationSaveResult(
-  status: MedicationSaveStatus.saved,
-  message: '',
-);
 const _catalogMedication = MedicationDetail(
   itemSeq: 'review-catalog-id',
   itemName: 'Catalog medication',
@@ -144,9 +139,7 @@ Future<void> _settlePhotoIO(WidgetTester tester) async {
 
 Future<GlobalKey<NavigatorState>> _mount(
   WidgetTester tester, {
-  bool Function(List<ManualMedicationEntry>)? review,
-  Future<MedicationSaveResult> Function(ManualMedicationEntry)? save,
-  Future<void> Function()? refresh,
+  required bool Function(List<ManualMedicationEntry>) review,
   ImagePicker? picker,
   String language = 'ko',
   double width = 390,
@@ -156,16 +149,6 @@ Future<GlobalKey<NavigatorState>> _mount(
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  var unexpectedSaves = 0;
-  var unexpectedRefreshes = 0;
-  addTearDown(() {
-    expect(unexpectedSaves, 0, reason: 'Review must not persist entries');
-    expect(
-      unexpectedRefreshes,
-      0,
-      reason: 'Review must not refresh saved data',
-    );
-  });
   final navigator = GlobalKey<NavigatorState>();
   await tester.pumpWidget(
     MaterialApp(
@@ -186,17 +169,6 @@ Future<GlobalKey<NavigatorState>> _mount(
           userSetting: UserSetting(language: language),
           imagePicker: picker,
           onReviewRequested: review,
-          onSaveRequested:
-              save ??
-              (_) async {
-                unexpectedSaves++;
-                return _saved;
-              },
-          onSavesFinished:
-              refresh ??
-              () async {
-                unexpectedRefreshes++;
-              },
         ),
       ),
     ),
@@ -582,47 +554,4 @@ void main() {
     expect(calls, 1);
     expect(tester.takeException(), isNull);
   });
-
-  testWidgets(
-    'without review callback batch save, refresh and cleanup remain',
-    (tester) async {
-      final photos = _Photos();
-      final photo = photos.create('saved');
-      final events = <String>[];
-      final entries = <ManualMedicationEntry>[];
-      await _mount(
-        tester,
-        picker: _PhotoPicker()..path = photo.path,
-        save: (entry) async {
-          entries.add(entry);
-          events.add(entry.medicationName);
-          return _saved;
-        },
-        refresh: () async => events.add('refresh'),
-      );
-      expect(find.text('복약 정보 저장'), findsOneWidget);
-      await _enter(tester, 'name', 'First');
-      await _enter(tester, 'dosage', '0.5');
-      await _tap(tester, _field('dose-days-격일'));
-      await _pickPhoto(tester);
-      await _tap(tester, _field('add'));
-      expect(find.text('전체 복약 정보 저장'), findsOneWidget);
-      await _enter(tester, 'name', 'Second', 1);
-      final request = tester.widget<FilledButton>(_field('save')).onPressed!;
-      request();
-      request();
-      await tester.pump();
-      await tester.pumpAndSettle();
-      expect(events, ['First', 'Second', 'refresh']);
-      expect(entries[0].localImagePath, photo.path);
-      expect(entries[0].dosageAmount, '0.5');
-      expect(entries[0].doseDays, '격일');
-      expect(entries[0].scheduleSlotKeys, ['morning']);
-      expect(entries[1].localImagePath, isEmpty);
-      expect(find.byType(ManualMedicationEntryUI), findsNothing);
-      expect(find.text('Origin'), findsOneWidget);
-      await _waitForDeletion(tester, photo);
-      expect(tester.takeException(), isNull);
-    },
-  );
 }

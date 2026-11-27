@@ -171,15 +171,6 @@ class PhotoDoseGroup {
     medicationIds: _ints(json['medication_ids']),
     missingMedicationIds: _ints(json['missing_medication_ids']),
   );
-
-  // 함수이름: toWriteJson
-  // 함수역할: 확인 요청에 보낼 기록 묶음을 만든다.
-  // 매개변수: 없음. 반환값: JSON map.
-  Map<String, dynamic> toWriteJson() => {
-    'schedule_date': scheduleDate,
-    'slot_key': slotKey,
-    'medication_ids': medicationIds,
-  };
 }
 
 // 클래스명: PhotoDoseAsNeeded

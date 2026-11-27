@@ -54,13 +54,11 @@ The following implemented flows form the inherited beta verification baseline:
    dose-completion delivery, and idempotent server-scheduled missed-deadline
    delivery with a local/demo Android fallback.
 7. Patient-scoped health recommendations.
-8. Default single- and multi-pill candidate identification with explicit user
-   confirmation, up to ten separately photographed pills, bounded two-request
-   concurrency, bounded request-limit retry that preserves completed results,
-   per-pill partial failure, and schedule review before save. One-photo detection
-   supports tie-aware candidate expansion, per-pill original-region reanalysis,
-   user-paired back photos, and explicit uncertainty instead of probability-like
-   percentages.
+8. One-photo pill candidate identification (up to ten separate pills) with explicit
+   user confirmation and schedule review before save. Detection supports tie-aware
+   candidate expansion, per-pill original-region reanalysis, user-paired back photos,
+   and explicit uncertainty instead of probability-like percentages. Since 1.1.0
+   there is no separate per-pill photo mode.
 9. Direct medication entry with optional app-owned local image, dose and unit,
    start/end dates, and schedule slots using the shared saved-medication model.
 10. Nearby-pharmacy lookup using foreground location, backend-held
@@ -86,6 +84,11 @@ The following implemented flows form the inherited beta verification baseline:
     lookup, bounded provider queries and radius expansion, date/status filters,
     partial-result and calendar uncertainty, and server-verified hospital chat
     sharing. Hospital information requires telephone confirmation before visiting.
+13. Photo dose recording (1.1.0): a camera photo of the pills in hand is matched on
+    the server with the patient's own active medicines (imprint, or a look-alike
+    group whose dose count balances; anything weaker is asked), each medicine gets
+    its own slot, and one confirmation records everything atomically at the photo
+    time. No photo is sent to the planning endpoints; caregivers cannot use it.
 
 Linked chat also includes unread counts and boundaries, recipient read receipts,
 notification entry with role/recipient validation, and durable notification jobs.

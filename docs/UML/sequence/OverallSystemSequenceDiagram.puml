@@ -42,7 +42,7 @@ box "Flutter Frontend"
     control "LinkedChatHistoryViewModel" as ChatHistory
     control "LinkedChatComposerViewModel" as ChatComposer
     control "LinkedChatDoseRecorder" as ChatDose
-    control "Frontend Controller\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nIdentifyPillBatch\nCheckNearbyPharmacy\nManageLinkedChat\nMedicationHistoryControl\nShareMedicationHistory\nFindAppFeature 등" as FrontControl
+    control "Frontend Controller\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nIdentifyPill\nPhotoDoseControl\nCheckNearbyPharmacy\nManageLinkedChat\nMedicationHistoryControl\nShareMedicationHistory\nFindAppFeature 등" as FrontControl
     participant "Frontend Service\nPrescriptionLocalOcrService\nPrescriptionOcrReadingOrder\nPrescriptionFrameAnalyzer\nPrescriptionCameraOrientationService\nPrescriptionImageCropService\nDeviceLocationBoundary\nNotificationService\nCaregiverPatientLocalStateService\nLinkedChatRealtimeService\nAsNeededPendingStore 등" as FrontService
     participant "AuthenticatedApiClient" as ApiClient
 end box
@@ -50,7 +50,7 @@ end box
 box "FastAPI Backend"
     participant "API Router\napi.router\napi.pharmacy_router\napi.chat_router" as Router
     participant "AppCheckTokenVerifier" as AppCheckVerifier
-    control "Backend Control\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nCheckNearbyPharmacy\nManageLinkedChat\nManageMedicationCare\nSyncDose 등" as BackControl
+    control "Backend Control\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nCheckNearbyPharmacy\nManageLinkedChat\nManageMedicationCare\nPlanPhotoDose\nSyncDose 등" as BackControl
     control "QueueMissedDoseAlerts" as MissedControl
     control "ProcessCaregiverAlertOutbox" as OutboxControl
     participant "CaregiverAlertOutboxWorker" as OutboxWorker
@@ -528,40 +528,29 @@ opt 사용자가 분석 약을 저장하는 경우
     ViewModel --> UI : 저장 결과와 갱신된 일정 상태 출력
 end
 
-== 4. 단일·다중 낱알 약 후보 식별 ==
+== 4. 한 장 다중 낱알 약 후보 식별 ==
 
-opt 사용자가 낱알 약 식별을 선택하는 경우
-    User -> UI : 한 장 촬영 또는 알약별 촬영 방식 선택
-    UI --> User : 선택한 방식의 촬영 화면과 사진 입력칸
-    alt 단일 낱알 식별
-        User -> UI : 앞면 필수 및 선택적 뒷면 이미지 입력
-        UI -> FrontControl : IdentifyPill.requestPillIdentification(front, back)
-    else 알약별 사진 일괄 식별
-        User -> UI : 최대 10개 항목에 앞면 필수·뒷면 선택 이미지 입력
-        UI -> FrontControl : IdentifyPillBatch.requestBatchIdentification(inputs)
-        loop 입력 순서를 보존하며 최대 2개 동시 실행
-            FrontControl -> FrontControl : IdentifyPill.requestPillIdentification(front, back)
-        end
-    else 한 장의 다중 낱알 식별
-        User -> UI : 최대 10개의 분리된 알약을 한 장에 입력
-        UI -> FrontControl : IdentifyPill.requestMultiplePillIdentification(image)
-        FrontControl -> ApiClient : POST /pill-identification/multiple-candidates
-        ApiClient -> Router : 다중 낱알 이미지 분석 요청
-        Router -> BackControl : IdentifyPill.requestMultiplePillIdentification()
-        BackControl -> BackService : PillVisionBoundary.extractMultipleVisualFeatures()
-        BackService -> BackService : 구도 보존 전처리
-        BackService -> Gemini : 한 장의 알약 객체와 시각 특징 요청
-        Gemini --> BackService : 최대 10개 정규화 상자와 관찰 특징
-        BackService -> BackService : 응답 좌표·개수·중복 상자 검증
-        BackControl -> BackService : MFDSPillCatalogBoundary.getCatalog() 1회
-        loop 번호가 부여된 각 물리 관찰
-            BackControl -> BackControl : 후보 독립 순위화
-        end
-        BackControl --> FrontControl : MultiplePillIdentificationResult
-        FrontControl --> UI : 원본 사진 번호 상자와 번호별 후보
+opt 사용자가 낱알약 식별을 선택하는 경우
+    User -> UI : 서로 떨어진 알약 최대 10개를 한 장에 촬영 또는 선택
+    UI -> FrontControl : IdentifyPill.requestMultiplePillIdentification(image)
+    FrontControl -> ApiClient : POST /pill-identification/multiple-candidates
+    ApiClient -> Router : 다중 낱알 이미지 분석 요청
+    Router -> BackControl : IdentifyPill.requestMultiplePillIdentification()
+    BackControl -> BackService : PillVisionBoundary.extractMultipleVisualFeatures()
+    BackService -> BackService : 구도 보존 전처리
+    BackService -> Gemini : 한 장의 알약 객체와 시각 특징 요청
+    Gemini --> BackService : 최대 10개 정규화 상자와 관찰 특징
+    BackService -> BackService : 응답 좌표·개수·중복 상자 검증
+    BackControl -> BackService : MFDSPillCatalogBoundary.getCatalog() 1회
+    loop 번호가 부여된 각 물리 관찰
+        BackControl -> BackControl : 후보 독립 순위화
     end
-
-    loop 단일 또는 알약별 사진 입력마다 (한 장 다중 경로 제외)
+    BackControl --> FrontControl : MultiplePillIdentificationResult
+    FrontControl --> UI : 원본 사진 번호 상자와 번호별 후보
+    opt 특정 알약의 사진 보완
+        User -> UI : 알약 영역 조정 또는 뒷면 사진 추가
+        UI -> FrontService : PillImageCropService로 선택 영역 보완
+        UI -> FrontControl : IdentifyPill.requestPillIdentification(front, back)
         FrontControl -> ApiClient : POST /pill-identification/candidates
         ApiClient -> Router : 낱알 이미지 분석 요청
         Router -> BackControl : IdentifyPill.requestPillIdentification()
@@ -598,20 +587,10 @@ opt 사용자가 낱알 약 식별을 선택하는 경우
         BackControl -> BackControl : 결정론적 Candidate Ranking
         BackControl --> Router : PillIdentificationResult
         Router --> ApiClient : 후보와 Match Score
-        ApiClient --> FrontControl : 항목별 후보 또는 실패
-    end
-    FrontControl --> UI : 입력 순서의 후보와 부분 실패 출력
-    opt 특정 알약의 사진 보완
-        User -> UI : 알약 영역 조정 또는 뒷면 사진 추가
-        UI -> FrontService : PillImageCropService로 선택 영역 보완
-        UI -> FrontControl : IdentifyPill.requestPillIdentification(front, back)
-        FrontControl -> ApiClient : POST /pill-identification/candidates
-        ApiClient -> Router : 해당 알약 재식별 요청
-        Router -> BackControl : 단일 낱알 식별 경로 재사용
         alt 재식별 성공
-            BackControl --> UI : 해당 알약 후보 갱신
+            ApiClient --> UI : 해당 알약 후보 갱신
         else 재식별 실패
-            BackControl --> UI : 기존 후보와 사용자 선택 유지
+            ApiClient --> UI : 기존 후보와 사용자 선택 유지
         end
     end
     User -> UI : 실제 약과 일치하는 후보 확인
@@ -833,6 +812,43 @@ opt 환자의 필요시 확인 알림 (기본 꺼짐)
     FrontControl -> LocalNotification : 일회 예약; 정기 일정·복용 action·미루기 없음
 end
 ref over UI,Database : AsNeededCaregiverNotification.puml: 대기 보존·구독·멱등·발송 재검증·개발 감시
+
+== 5C. 사진으로 복용 기록 (1.1.0) ==
+
+opt 환자가 약 등록 > 사진으로 복용 기록을 고른 경우
+    UI -> ViewModel : 본인 약 확인, flushPendingDoses()
+    Patient -> MediaService : 손에 든 알약 촬영 (카메라만)
+    UI -> FrontControl : IdentifyPill.requestMultiplePillIdentification(image)
+    note right of FrontControl : 4절의 한 장 다중 식별 경로를 그대로 쓴다.
+    UI -> FrontControl : PhotoDoseControl.plan(후보 품목·각인 일치·모양·색)
+    FrontControl -> ApiClient : POST /schedule/photo-intake/plan (사진 없음)
+    ApiClient -> Router : 환자 본인 범위만
+    Router -> BackControl : PlanPhotoDose.plan()
+    BackControl -> Database : 본인 활성 약·어제·오늘 기록·알림 시각·카탈로그 모양·색
+    BackControl -> BackControl : 약별 시간대·최근 복용 간격·근거별 배정
+    BackControl --> UI : 계획 + 사진 시각을 서명한 15분 토큰
+    loop 물어볼 알약이 남은 동안
+        Patient -> UI : 네·아니에요·약 선택·모르겠어요
+        UI -> BackControl : 같은 토큰으로 plan 재계산
+    end
+    UI --> Patient : 사진 번호 상자·약 줄·주의 띠, [취소] [확인]
+    Patient -> UI : 확인
+    UI -> ViewModel : hasPendingDoseOverlap(plan)
+    UI -> FrontControl : PhotoDoseControl.confirm(operation_id, token, expected)
+    FrontControl -> ApiClient : POST /schedule/photo-intake/confirm
+    Router -> BackControl : PlanPhotoDose.confirm()
+    alt 같은 작업 ID 영수증 있음
+        BackControl --> UI : 처음 응답 재반환
+    else 사진 시각으로 다시 계산한 기록 묶음이 다름 / 토큰 만료
+        BackControl --> UI : 409, 다시 찍기 안내
+    else 같음
+        BackControl -> Database : 한 transaction: 시간대 완료·필요시 1회(복용 시각 = 사진 시각)·영수증·보호자 Outbox
+        BackControl --> UI : success + 오늘 일정
+        UI -> ViewModel : recordPhotoDose(): 일정 반영 → 알림 재조정 → 기록 갱신 신호
+        UI --> Patient : 복약을 완료했어요
+    end
+end
+ref over UI,Database : PhotoDoseRecording.puml: 질문·주의·409·재시도 상세
 
 == 6. 환자 복약 알림 설정 ==
 
@@ -1238,7 +1254,9 @@ UI --> User : 약명, 용량·단위, 복용기간, 정기/필요시 방식\n정
 User -> UI : 필수 정보 입력 및 저장 선택
 note over UI,ViewModel : Save work captures account and save generation.\nClear/dispose blocks subsequent requests, photo attachment and refresh.\nAn already accepted server write is not undone by cancelling the local flow.
 UI -> UI : 필수값·날짜 범위 검증; 정기는 주기·시간대와\n매일·격일·주 1회·월 1회 복용일 안내, 필요시는 정기 시간대 없이 저장
-UI -> ViewModel : saveManualMedication(entry)
+UI -> ViewModel : showManualMedicationRegistrationResults(entries)
+User -> UI : 공통 결과 화면에서 하나씩 저장 또는 전체 저장
+UI -> ViewModel : 결과 행마다 saveManualMedication(entry)
 ViewModel -> FrontControl : MedicationSchedule로 약 상세정보 보완 요청
 FrontControl -> ApiClient : 입력 약의 상세정보 보완 조회
 ApiClient -> Router : 기존 약 상세 조회 요청

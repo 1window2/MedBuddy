@@ -31,16 +31,16 @@ opt 약 검색으로 품목 선택
   Entry -> Entry: 선택 품목 보관; 이름 변경 시 연결 해제
 end
 Patient -> Entry: 전체 저장
-Entry -> Entry: 아직 완료되지 않은 모든 항목 검증
+Entry -> Entry: 모든 항목 검증
 opt 전체 입력 유효
-  loop 남은 약을 순서대로 저장 (실패하면 중단)
-    Entry -> Front: onSaveRequested(ManualMedicationEntry)
+  Entry -> Front: onReviewRequested(entries) → 공통 결과 화면 (저장 아님)
+  Patient -> Front: 하나씩 저장 / 전체 저장
+  loop 남은 약을 순서대로 저장 (실패 행은 남기고 다음 행 시도)
     Front -> Front: 이름 일치 선택 품목 재사용; 없으면 기존 보완 조회
     Front -> Saved: 기존 단일 저장 요청
     Saved -> DB: 항목별 중복·한도 검사 후 저장
     Saved --> Front: 성공 / 중복 / 실패
-    Front --> Entry: 항목 결과
-    Entry -> Entry: 성공·중복은 완료로 보관; 실패 항목은 재시도 유지
+    Front -> Front: 성공·중복은 완료로 잠금; 실패 행은 재시도 유지
   end
 end
 note over Entry,DB

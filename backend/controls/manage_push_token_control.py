@@ -1,7 +1,6 @@
 # 파일명: manage_push_token_control.py
 # 역할: 인증된 사용자의 FCM 기기 토큰 등록과 해제를 처리한다.
 
-import logging
 import secrets
 from datetime import datetime
 
@@ -9,8 +8,6 @@ from sqlalchemy.orm import Session
 
 from entities.device_push_token_entity import _DevicePushToken
 from entities.patient_hash_entity import normalize_patient_hash
-
-logger = logging.getLogger(__name__)
 
 
 # 클래스명: ManagePushToken

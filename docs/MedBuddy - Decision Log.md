@@ -572,8 +572,15 @@ date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again
 - **Alternatives:** a separate home button for photo recording (rejected by the owner's
   placement); client-side matching over the existing outbox (rejected in review: non-atomic,
   loses the photo time, and lets an unsent undo reverse the record).
-- **To undo:** remove the 사진으로 복용 기록 tile (`includePhotoDose`), the two
-  `/schedule/photo-intake/*` routes and `PlanPhotoDose`; nothing else depends on them.
+- **To undo:** remove the 사진으로 복용 기록 tile (`includePhotoDose`), the `photoDose`
+  feature-search destination and its data-use paragraph, the app side
+  (`PhotoDoseRecordingUI`, `PhotoDoseControl`, `photo_dose_plan_entity.dart` and the view
+  model's `hasOwnMedicinesForPhotoDose`, `flushPendingDoses`, `hasPendingDoseOverlap`,
+  `recordPhotoDose`), the two `/schedule/photo-intake/*` routes, `PlanPhotoDose`,
+  `schemas/photo_dose.py`, and the helpers added for it (`has_same_shape_and_colors`,
+  `PillIdentificationCatalogRepository.list_by_item_sequences`). Receipts already written
+  stay as ordinary `medication_care_operations` rows. The home split and the merged capture
+  modes do not depend on it.
 
 ## Earlier decisions
 

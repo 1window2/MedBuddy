@@ -1125,14 +1125,6 @@ class _MedicationScheduleReviewText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get reviewTitle => isEnglish ? 'Review medication plan' : '복약 정보 확인';
-  // 함수이름: pillReviewDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "선택한 알약 후보의 복용 일정을 설정해주세요." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get pillReviewDescription => isEnglish
-      ? 'Set a medication plan for the selected pill candidate.'
-      : '선택한 알약 후보의 복용 일정을 설정해주세요.';
   // 함수이름: pillSafetyNotice
   // 함수역할: 현재 언어와 입력값에 맞춰 "알약 사진만으로 실제 복용량과 기간을 알 수 없습니다. 아래 값은 임시 기본값이므로 처방전이나 약 봉투를 확인한 뒤 저장해주세요." 문구를 제공한다.
   // 매개변수:
@@ -1264,12 +1256,6 @@ class _MedicationScheduleReviewText {
   // - count (int): 문구나 목록에 표시할 항목 수 또는 일련번호.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String frequencyValue(int count) => isEnglish ? '$count times' : '$count회';
-  // 함수이름: durationValue
-  // 함수역할: 현재 언어와 입력값에 맞춰 "$days일" 문구를 제공한다.
-  // 매개변수:
-  // - days (int): 복용 기간의 일수 또는 이를 표현한 원본 문구.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String durationValue(int days) => isEnglish ? '$days days' : '$days일';
   // 함수이름: incompleteSchedule
   // 함수역할: 현재 언어와 입력값에 맞춰 "$medicationName의 시작일, 복용량, 횟수, 기간과 시간대를 모두 확인해주세요." 문구를 제공한다.
   // 매개변수:

@@ -33,7 +33,6 @@ import 'package:medbuddy_frontend/viewmodels/medbuddy_feature_updates.dart';
 import 'package:medbuddy_frontend/views/home_screen.dart';
 import 'package:medbuddy_frontend/boundaries/feature_search_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/manual_medication_entry_ui_boundary.dart';
-import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/link_patient_caregiver_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_caregiver_medication_ui_boundary.dart';
@@ -665,15 +664,10 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const Key('feature-pillIdentification')));
       await tester.pumpAndSettle();
-      // 촬영 방식 시트 없이 한 장 촬영 식별 화면이 검색 화면 위에 바로 열린다.
+      // 촬영 방식 시트 없이 알약 식별 화면이 검색 화면 위에 바로 열린다.
       expect(find.byType(BottomSheet), findsNothing);
       expect(find.byType(FeatureSearchUI, skipOffstage: false), findsOneWidget);
-      expect(
-        tester
-            .widget<PillIdentificationUI>(find.byType(PillIdentificationUI))
-            .captureMode,
-        PillCaptureMode.singlePhoto,
-      );
+      expect(find.byType(PillIdentificationUI), findsOneWidget);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       await tester.enterText(
@@ -1538,9 +1532,9 @@ void main() {
                 onTodayScheduleRequested: _noop,
                 // 함수이름: onPillIdentificationRequested 콜백
                 // 함수역할: 촬영 요청을 받아도 배치 검사 중에는 화면을 이동하지 않는다.
-                // 매개변수: mode (PillCaptureMode): 선택한 촬영 방식이며 여기서는 사용하지 않는다.
+                // 매개변수: 없음.
                 // 반환값: void; 부작용 없음.
-                onPillIdentificationRequested: (mode) {},
+                onPillIdentificationRequested: () {},
                 // 함수이름: onUserSettingRequested 콜백
                 // 함수역할: 설정 항목이 선택된 횟수를 기록한다.
                 // 매개변수: 없음.

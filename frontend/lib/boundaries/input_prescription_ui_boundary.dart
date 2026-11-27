@@ -37,7 +37,7 @@ class InputPrescriptionUI extends StatelessWidget {
   final Widget? caregiverSummary;
   final Widget? caregiverScheduleHint;
   final DateTime Function()? nowProvider;
-  final ValueChanged<PillCaptureMode>? onPillIdentificationRequested;
+  final VoidCallback? onPillIdentificationRequested;
   final VoidCallback? onManualMedicationRequested;
   // 약 등록 화면의 사진으로 복용 기록. null이면 그 버튼을 보이지 않는다.
   final void Function(BuildContext pageContext)? onPhotoDoseRequested;
@@ -65,7 +65,7 @@ class InputPrescriptionUI extends StatelessWidget {
   // - isTodayScheduleLoading, hasTodayScheduleLoadError (bool): 조회 진행과 실패 여부. 실패를 약 없음으로 표시하지 않는다.
   // - caregiverSummary, caregiverScheduleHint (Widget?): 본인 복약 요약을 대신할 가족 현황과 대시보드 아래에 추가할 가족 일정 안내.
   // - nowProvider (DateTime Function()?): 일정 판단용 시계. 생략하면 기기 시각을 사용한다.
-  // - onPillIdentificationRequested (ValueChanged<PillCaptureMode>?): 선택한 촬영 방식으로 알약 식별을 여는 동작.
+  // - onPillIdentificationRequested (VoidCallback?): 알약 식별을 여는 동작.
   // - onManualMedicationRequested (VoidCallback?): 직접 약 입력을 여는 동작.
   // - onRegistrationSourceRequested (Future<void> Function(BuildContext, PrescriptionImageSource)?): 등록 화면의 문맥과 선택한 사진 출처를 받아 등록 흐름을 진행하는 동작.
   // - onTodayScheduleRequested (VoidCallback?): 오늘 복약 일정 진입 동작.
@@ -260,7 +260,7 @@ class InputPrescriptionUI extends StatelessWidget {
         onTaskSelected: (pageContext, task) async {
           switch (task) {
             case MedicationCaptureTask.pills:
-              onPillIdentificationRequested?.call(PillCaptureMode.singlePhoto);
+              onPillIdentificationRequested?.call();
             case MedicationCaptureTask.manual:
               onManualMedicationRequested?.call();
             case MedicationCaptureTask.photoDose:
@@ -821,27 +821,17 @@ class _HomeText {
   // 함수이름: medicationManage
   // 함수역할: 약 관리 버튼 이름과 화면 읽기 설명을 제공한다.
   // 매개변수: 없음. 반환값: 문구.
-  String get medicationManage => isEnglish ? 'My medications' : '약 관리';
+  String get medicationManage => isEnglish ? 'My meds' : '약 관리';
   String get medicationManageHint => isEnglish
       ? 'View and manage saved medications.'
       : '등록한 약과 복용 기간을 확인하고 관리해요.';
   // 함수이름: medicationSearch
   // 함수역할: 약 검색 버튼 이름과 화면 읽기 설명을 제공한다.
   // 매개변수: 없음. 반환값: 문구.
-  String get medicationSearch => isEnglish ? 'Find medication' : '약 검색';
+  String get medicationSearch => isEnglish ? 'Find meds' : '약 검색';
   String get medicationSearchHint => isEnglish
       ? 'Look up medication information by name.'
       : '약 이름으로 약품 정보를 찾아요.';
-  // 함수이름: prescriptionAnalysis
-  // 함수역할: 처방전·알약 식별·직접 등록을 포함하는 홈 진입점의 이름을 번역한다.
-  // 매개변수: 없음. 반환값: 현재 언어의 카드 제목.
-  String get prescriptionAnalysis =>
-      isEnglish ? 'Add or manage medication' : '약 등록·관리';
-  // 함수이름: prescriptionAnalysisSubtitle
-  // 함수역할: 약 정보 입력과 식별 방법을 카드 설명으로 안내한다.
-  // 매개변수: 없음. 반환값: 현재 언어의 카드 설명.
-  String get prescriptionAnalysisSubtitle =>
-      isEnglish ? 'Add or manage your medications' : '약을 등록하고 저장한 약을 관리해요';
   // Function Name: healthRecommendation
   // Description: Provides localized wording for "Health Recommendations" using the current language and message inputs.
   // Parameters:
@@ -863,7 +853,7 @@ class _HomeText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get nearbyPharmacy =>
-      isEnglish ? 'Hospitals & pharmacies' : '근처 운영 병원·약국';
+      isEnglish ? 'Nearby care' : '근처 운영 병원·약국';
   // 함수이름: nearbyPharmacySubtitle
   // 함수역할: 2×2 기능 카드에서 주변 병원·약국의 운영시간 조회를 안내한다.
   // 매개변수:

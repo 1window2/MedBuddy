@@ -1292,12 +1292,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onRegistrationSourceRequested: (pageContext, source) =>
           startPrescriptionFromRegistration(pageContext, viewModel, source),
       // 함수이름: _buildHomeInput.onPillIdentificationRequested callback
-      // 함수역할: 선택한 촬영 방식으로 알약 화면을 열고 기존 저장 동작을 연결한다.
-      // 매개변수:
-      // - mode (PillCaptureMode): 한 장 또는 개별 앞뒷면 촬영 방식.
+      // 함수역할: 알약 식별 화면을 열고 검토한 알약을 공통 결과 화면으로 넘긴다.
+      // 매개변수: 없음.
       // 반환값: 없음. 알약 식별 화면으로 이동한다.
-      onPillIdentificationRequested: (mode) =>
-          openPillIdentification(context, viewModel, mode),
+      onPillIdentificationRequested: () =>
+          openPillIdentification(context, viewModel),
       // 약 등록 화면의 사진으로 복용 기록. 등록 화면 위에 열고, 완료하면 홈으로 돌아온다.
       onPhotoDoseRequested: (pageContext) =>
           unawaited(openPhotoDoseRecording(pageContext, viewModel)),
@@ -1555,11 +1554,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             !_sameSession(viewModel, owner)) {
           return;
         }
-        await openPillIdentification(
-          searchContext,
-          viewModel,
-          PillCaptureMode.singlePhoto,
-        );
+        await openPillIdentification(searchContext, viewModel);
       case AppFeature.photoDose:
         if (!mounted ||
             !searchContext.mounted ||

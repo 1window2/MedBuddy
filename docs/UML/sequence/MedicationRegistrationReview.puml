@@ -31,6 +31,7 @@ else Busy/disposed/stale flow
 Results --> Input: false; keep input route
 end
 note over Results,UI: Pill/manual results do not request prescription-change radar.\nReview acceptance and candidate selection are not writes.
+note over Input,Review: 같은 약 등록 화면의 "사진으로 복용 기록"은 등록이 아니라 복용 기록이다(PhotoDoseRecording.puml).
 
 User -> UI: Save one / save all
 loop Requested unfinished rows, sequentially for save all

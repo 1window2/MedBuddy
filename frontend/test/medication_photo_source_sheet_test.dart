@@ -61,7 +61,7 @@ void main() {
         await tester.tap(find.text('select photo'));
         await tester.pumpAndSettle();
         final row = find.ancestor(
-          of: find.text('Take Photo'),
+          of: find.text('Take photo'),
           matching: find.byType(InkWell),
         );
         final select = tester.widget<InkWell>(row).onTap!;

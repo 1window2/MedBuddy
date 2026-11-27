@@ -9,19 +9,13 @@ import '../theme/medbuddy_theme.dart';
 import '../widgets/keep_words_text.dart';
 
 // 파일명: medication_capture_options_ui_boundary.dart
-// 역할: 약 등록 화면(약봉투·처방전, 사진으로 복용 기록, 낱알약 식별, 직접 등록)과 사진 출처·촬영 방식 선택을 제공한다.
+// 역할: 약 등록 화면(약봉투·처방전, 사진으로 복용 기록, 낱알약 식별, 직접 등록)과 사진 출처 선택을 제공한다.
 
 // 클래스명: MedicationCaptureTask
 // 역할: 약 등록 화면에서 고르는 작업.
 // 주요 책임: 낱알약 식별(한 장에 한 알 또는 여러 알)·직접 등록·사진으로 복용 기록을 구분한다.
 // 속성: pills/manual/photoDose: 작업 값. 처방전 출처는 별도 열거형을 사용한다.
 enum MedicationCaptureTask { pills, manual, photoDose }
-
-// 클래스명: PillCaptureMode
-// 역할: 알약 사진 입력 방식 구분.
-// 주요 책임: 한 사진의 여러 알약과 알약별 앞뒷면 촬영 흐름을 구별한다.
-// 속성: singlePhoto/individualPhotos: 입력 모드.
-enum PillCaptureMode { singlePhoto, individualPhotos }
 
 // 클래스명: PrescriptionImageSource
 // 역할: 처방전 사진을 가져올 출처.
@@ -310,7 +304,7 @@ class _MedicationCaptureText {
   // 함수이름: prescriptionTask
   // 함수역할: "약봉투·처방전 등록" 문구를 제공한다. 매개변수: 없음. 반환값: 문구.
   String get prescriptionTask =>
-      isEnglish ? 'Prescription or medication envelope' : '약봉투·처방전 등록';
+      isEnglish ? 'Scan prescription' : '약봉투·처방전 등록';
   // 함수이름: prescriptionTaskSubtitle
   // 함수역할: 화면 읽기용 설명. 매개변수: 없음. 반환값: 문구.
   String get prescriptionTaskSubtitle => isEnglish
@@ -319,7 +313,7 @@ class _MedicationCaptureText {
   // 함수이름: photoDoseTask
   // 함수역할: "사진으로 복용 기록" 문구를 제공한다. 매개변수: 없음. 반환값: 문구.
   String get photoDoseTask =>
-      isEnglish ? 'Record a dose from a photo' : '사진으로 복용 기록';
+      isEnglish ? 'Record dose by photo' : '사진으로 복용 기록';
   // 함수이름: photoDoseTaskSubtitle
   // 함수역할: 화면 읽기용 설명. 매개변수: 없음. 반환값: 문구.
   String get photoDoseTaskSubtitle => isEnglish
@@ -327,7 +321,7 @@ class _MedicationCaptureText {
       : '먹기 전에 손에 든 약을 찍으면 복용을 기록합니다.';
   // 함수이름: pillTask
   // 함수역할: "낱알약 식별" 문구를 제공한다. 매개변수: 없음. 반환값: 문구.
-  String get pillTask => isEnglish ? 'Identify a loose pill' : '낱알약 식별';
+  String get pillTask => isEnglish ? 'Identify pills' : '낱알약 식별';
   // 함수이름: pillTaskSubtitle
   // 함수역할: 화면 읽기용 설명. 매개변수: 없음. 반환값: 문구.
   String get pillTaskSubtitle => isEnglish
