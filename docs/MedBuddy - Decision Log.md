@@ -542,12 +542,14 @@ date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again
 
 ## 2026-11-27: one release branch after the exhibition
 
-- **Chosen:** after the graduation exhibition the owner continues alone toward 1.0.2.
+- **Chosen:** after the graduation exhibition the owner continues alone toward 1.1.0
+  (first planned as 1.0.2; renamed the same day because the home screen and the
+  pill-photo dose recording change enough for a minor version).
   Every merged branch was deleted (`beta/v1.0.0`, `v1.0.1` and the 11-25 topic branches;
-  the release tags stay), and 1.0.2 is developed on `v1.0.2` from `main` (`96d005bc`).
+  the release tags stay), and 1.1.0 is developed on `v1.1.0` from `main` (`96d005bc`).
   The signed workflow's off-Play exception moved from exactly `v1.0.1` to exactly
-  `v1.0.2`, so `v1.0.1` can no longer produce signed builds. The `beta-android`
-  environment allows only `main` until the owner adds `v1.0.2`. The production checkout
+  `v1.1.0`, so `v1.0.1` can no longer produce signed builds. The owner set the
+  `beta-android` environment to `main` and `v1.1.0`. The production checkout
   moved from `v1.0.1` to `main` (same commit, no redeploy).
 - **To undo:** recreate a branch from the `v1.0.1` tag and point the exception back at it
   in `release-android.yml` and `scripts/check_android_release_configuration.py`.

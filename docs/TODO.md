@@ -5,7 +5,7 @@
 file lists open items only, sorted by priority. Finished items were removed on
 2026-11-12; they remain in the git history, the release notes and the
 [decision log](MedBuddy%20-%20Decision%20Log.md). The graduation exhibition
-(2026-11-26 to 27) is over; work continues on the `v1.0.2` branch.
+(2026-11-26 to 27) is over; work continues on the `v1.1.0` branch.
 
 | Priority | Meaning |
 | --- | --- |
@@ -101,9 +101,8 @@ checked on the phone on 2026-11-23 ([1.0.1 notes](releases/v1.0.1.md)).
       as `used_memory` nears `maxmemory`, and check whether Cloudflare forwards full
       IPv6 client addresses (quotas count an IPv6 address as its /64).
 - [ ] Signed workflow: whether the deployment review shows the dispatch inputs, which
-      and branch protection for the release branch `v1.0.2`. Since 2026-11-27 the
-      `beta-android` policy allows only `main`; the owner adds `v1.0.2` before the
-      first 1.0.2 signed build.
+      and branch protection for the release branch `v1.1.0`. Since 2026-11-27 the
+      `beta-android` policy allows `main` and `v1.1.0`.
 - [ ] Push tokens of a user disabled by the operator keep receiving pushes until the
       account is deleted, and the account owner has no "sign out other devices"
       action.
@@ -157,7 +156,7 @@ checked on the phone on 2026-11-23 ([1.0.1 notes](releases/v1.0.1.md)).
 - [ ] Since 1.0.1, manual entry and pill identification always hand their results to the
       shared result screen, so their own direct-save paths (`onSaveRequested`,
       `_saveAll`, the pill batch save, `saveIdentifiedPills`) run only in tests. Remove
-      them with their tests in 1.0.2 (code review 2026-11-22).
+      them with their tests in 1.1.0 (code review 2026-11-22).
 - [ ] Rate-limit values (including 120 per minute for per-item deletes), retention of
       dose-sync and tombstone rows, and HTTP 403 wording and retry behaviour before App
       Check is enabled.

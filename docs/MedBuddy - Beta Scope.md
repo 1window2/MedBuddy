@@ -4,7 +4,7 @@
 
 - Scope review: 2026-09-30
 - Stable functional baseline: `v1.0.1`
-- Target release tag: `v1.0.2`
+- Target release tag: `v1.1.0`
 - Target platform: Android
 - iOS: deferred until after the Android public-release decision, no earlier than
   October 2026. The repository has no iOS project yet; the lone
