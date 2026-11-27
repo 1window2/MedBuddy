@@ -6,6 +6,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/medication_search_ui_boundary.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -157,7 +158,7 @@ void main() {
   for (final width in [280.0, 390.0]) {
     for (final scale in [1.0, 2.0]) {
       // Function Name: linked-patient guidance layout test
-      // Description: Keep guidance below all four cards and reachable at large text sizes.
+      // Description: Keep guidance below all six cards and reachable at large text sizes.
       // Parameters: tester - widget rendering and interaction harness.
       // Returns: Completion of layout and tap assertions; mismatches fail the test.
       testWidgets('linked-patient guidance follows cards at $width/$scale', (
@@ -189,7 +190,9 @@ void main() {
         await tester.pumpAndSettle();
         final hint = find.byKey(hintKey);
         for (final cardKey in [
-          'homePrescriptionAnalysisCard',
+          'homeMedicationRegisterCard',
+          'homeMedicationManageCard',
+          'homeMedicationSearchCard',
           'homeHealthRecommendationCard',
           'homeNearbyPharmacyCard',
           'homeUserSettingsCard',
@@ -635,7 +638,8 @@ void main() {
   }
 
   // 함수이름: 약 등록·식별 진입 테스트
-  // 함수역할: 중복 카드 없이 공통 메뉴에서 처방전·알약 식별·직접 등록에 접근하는지 확인한다.
+  // 함수역할: 중복 카드 없이 약 등록 화면에서 처방전·사진으로 복용 기록·알약 식별·직접 등록에 접근하고,
+  //   약 검색은 홈 버튼에서 바로 여는지 확인한다.
   // 매개변수: tester: 위젯 테스트 도구. 반환값: 진입 동작 검증 완료.
   testWidgets('home groups medication input and identification in one entry', (
     tester,
@@ -644,20 +648,25 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    var pillTaskRequested = false;
+    PillCaptureMode? pillTaskRequested;
     var manualTaskRequested = false;
+    var photoDoseRequested = 0;
     await tester.pumpWidget(
       MaterialApp(
         home: InputPrescriptionUI(
           userSetting: const UserSetting(language: 'ko'),
           // 함수이름: onPillIdentificationRequested 콜백
-          // 함수역할: 선택한 촬영 모드는 사용하지 않고 낱알약 식별 요청 여부를 기록한다.
-          // 매개변수: mode (PillCaptureMode): 요청된 촬영 모드이며 이 대역에서는 소비하지 않는다.
-          // 반환값: void: pillTaskRequested를 true로 바꾼다.
-
+          // 함수역할: 낱알약 식별 요청과 전달된 촬영 모드를 기록한다.
+          // 매개변수: mode (PillCaptureMode): 요청된 촬영 모드.
+          // 반환값: void: pillTaskRequested에 mode를 기록한다.
           onPillIdentificationRequested: (mode) {
-            pillTaskRequested = true;
+            pillTaskRequested = mode;
           },
+          // 함수이름: onPhotoDoseRequested 콜백
+          // 함수역할: 홈에서 연 약 등록 화면의 사진으로 복용 기록 요청 횟수를 기록한다.
+          // 매개변수: pageContext (BuildContext): 등록 화면 문맥이며 이 대역에서는 사용하지 않는다.
+          // 반환값: void.
+          onPhotoDoseRequested: (_) => photoDoseRequested++,
           // 함수이름: onManualMedicationRequested 콜백
           // 함수역할:
           // - 약 직접 등록 요청을 기록해 해당 사용자 명령의 전달 여부를 검사한다.
@@ -701,11 +710,17 @@ void main() {
       find.byKey(const ValueKey('homePillIdentificationCard')),
       findsNothing,
     );
-    await tester.tap(find.text('약 등록·관리'));
-    await tester.pumpAndSettle();
+    // 약 등록·약 관리·약 검색은 중간 메뉴 없이 홈의 버튼 세 개로 나뉜다.
     expect(find.text('약 관리'), findsOneWidget);
+    expect(find.text('약 검색'), findsOneWidget);
     expect(find.text('약봉투·처방전 등록'), findsNothing);
-    await tester.tap(find.text('약 등록'));
+    await tester.tap(find.byKey(const ValueKey('homeMedicationSearchCard')));
+    await tester.pumpAndSettle();
+    expect(find.byType(MedicationSearchUI), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('homeMedicationRegisterCard')));
     await tester.pumpAndSettle();
 
     expect(find.text('약봉투·처방전 등록'), findsOneWidget);
@@ -714,12 +729,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(manualTaskRequested, isTrue);
 
-    await tester.tap(find.text('낱알약 식별'));
+    // 홈에서 연 등록 화면에만 사진으로 복용 기록이 있다.
+    final photoDose = find.byKey(const ValueKey('registrationPhotoDoseTile'));
+    expect(photoDose, findsOneWidget);
+    await tester.tap(photoDose);
     await tester.pumpAndSettle();
-    expect(pillTaskRequested, isFalse);
-    await tester.tap(find.text('여러 알약 한 번에 찾기'));
+    expect(photoDoseRequested, 1);
+
+    // 낱알약 식별은 촬영 방식 시트 없이 한 장 촬영 방식으로 바로 요청한다.
+    await tester.tap(find.text('낱알약 식별'));
     await tester.pump();
-    expect(pillTaskRequested, isTrue);
+    expect(pillTaskRequested, PillCaptureMode.singlePhoto);
+    expect(find.byType(BottomSheet), findsNothing);
   });
 
   // 함수이름: 홈 알림함 진입 테스트
@@ -847,11 +868,15 @@ void main() {
     expect(find.text('일정'), findsOneWidget);
     expect(find.text('복약 기록'), findsOneWidget);
     expect(find.text('내 정보'), findsOneWidget);
-    expect(find.text('약 등록·관리'), findsOneWidget);
+    expect(find.text('약 등록'), findsOneWidget);
+    expect(find.text('약 관리'), findsOneWidget);
+    expect(find.text('약 검색'), findsOneWidget);
     expect(find.text('낱알약 식별'), findsNothing);
     expect(find.text('건강 관리 추천'), findsOneWidget);
     expect(find.text('근처 운영 병원·약국'), findsOneWidget);
-    expect(find.text('가까운 병원·약국의 운영시간을 확인해요'), findsOneWidget);
+    // 설명은 화면에 보이지 않고 화면 읽기 힌트로만 남는다.
+    expect(find.text('가까운 병원·약국의 운영시간을 확인해요'), findsNothing);
+    _expectTileHint(tester, 'homeNearbyPharmacyCard', '가까운 병원·약국의 운영시간을 확인해요');
     expect(find.text('환경설정'), findsOneWidget);
     expect(find.byKey(const ValueKey('homeMedicationTipCard')), findsNothing);
     expect(find.text('복약 팁'), findsNothing);
@@ -913,7 +938,7 @@ void main() {
   });
 
   // 함수이름: testWidgets: 'medication cabinet refreshes whenever it is revisited'
-  // 함수역할: 홈의 약 등록·관리 메뉴에서 복약함에 진입하고 뒤로 나온 뒤 다시 진입한다.
+  // 함수역할: 홈의 약 관리 버튼으로 복약함에 진입하고 뒤로 나온 뒤 다시 진입한다.
   // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
   // 반환값: 반환값 없음; 저장 약 조회 횟수가 첫 진입 1회에서 재진입 2회로 늘어난다.
   testWidgets('medication cabinet refreshes whenever it is revisited', (
@@ -933,17 +958,13 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('약 등록·관리'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('약 관리'));
+    await tester.tap(find.byKey(const ValueKey('homeMedicationManageCard')));
     await tester.pumpAndSettle();
     expect(checkSavedMedication.requestCount, 1);
 
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('약 등록·관리'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('약 관리'));
+    await tester.tap(find.byKey(const ValueKey('homeMedicationManageCard')));
     await tester.pumpAndSettle();
 
     expect(checkSavedMedication.requestCount, 2);
@@ -966,9 +987,7 @@ void main() {
         child: const MaterialApp(home: HomeScreen()),
       ),
     );
-    await tester.tap(find.text('약 등록·관리'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('약 관리'));
+    await tester.tap(find.byKey(const ValueKey('homeMedicationManageCard')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('saved-medication-select')));
     await tester.pumpAndSettle();
@@ -1301,9 +1320,9 @@ void main() {
   });
 
   // 함수이름: testWidgets: '영어 설정은 메인 화면 제목과 설명에 함께 반영된다'
-  // 함수역할: 영어 설정의 홈에서 약 등록·관리, 환경설정, 주변 병원·약국 제목과 소개 문구를 확인한다.
+  // 함수역할: 영어 설정의 홈에서 약 등록·약 관리·약 검색, 환경설정, 주변 병원·약국 제목과 소개 문구를 확인한다.
   // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
-  // 반환값: 반환값 없음; 지정한 영어 제목·설명은 표시되고 한글·영문 빠른 기능 제목은 표시되지 않는다.
+  // 반환값: 반환값 없음; 영어 제목은 표시되고 설명은 영어 화면 읽기 힌트로 제공되며 빠른 기능 제목은 표시되지 않는다.
   testWidgets('영어 설정은 메인 화면 제목과 설명에 함께 반영된다', (tester) async {
     tester.view.physicalSize = const Size(390, 1000);
     tester.view.devicePixelRatio = 1;
@@ -1351,14 +1370,35 @@ void main() {
     expect(find.text('Start your medication plan with ease'), findsOneWidget);
     expect(find.text('빠른 기능'), findsNothing);
     expect(find.text('Quick Actions'), findsNothing);
-    expect(find.text('Add or manage medication'), findsOneWidget);
-    expect(find.text('Add or manage your medications'), findsOneWidget);
+    expect(find.text('Add medication'), findsOneWidget);
+    expect(find.text('My medications'), findsOneWidget);
+    expect(find.text('Find medication'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
-    expect(find.text('Nearby Hospitals & Pharmacies'), findsOneWidget);
+    expect(find.text('Hospitals & pharmacies'), findsOneWidget);
+    // 설명은 화면에 보이지 않고 영어 화면 읽기 힌트로 제공된다.
+    const registerHint =
+        'Add a medicine from a prescription, a pill photo or by hand, or record a dose from a photo.';
+    expect(find.text(registerHint), findsNothing);
+    _expectTileHint(tester, 'homeMedicationRegisterCard', registerHint);
+    _expectTileHint(
+      tester,
+      'homeMedicationManageCard',
+      'View and manage saved medications.',
+    );
+    _expectTileHint(
+      tester,
+      'homeMedicationSearchCard',
+      'Look up medication information by name.',
+    );
+    _expectTileHint(
+      tester,
+      'homeUserSettingsCard',
+      'Adjust text, language and notifications',
+    );
   });
 
   // 함수이름: 큰 글씨 카드 회귀 테스트
-  // 함수역할: 두 배 확대에서도 제목을 강제로 분리하거나 설명을 숨기지 않는지 검사한다.
+  // 함수역할: 두 배 확대에서도 제목을 강제로 분리하지 않고 설명을 화면 읽기 힌트로 유지하는지 검사한다.
   // 매개변수: tester (WidgetTester): 홈 화면을 구성하는 테스트 도구.
   // 반환값: 모든 접근성 검증이 완료되는 Future<void>.
   testWidgets('large grid preserves inherited scale and action wording', (
@@ -1387,14 +1427,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final prescriptionTitle = tester.widget<Text>(find.text('약 등록·관리'));
-    final reminderTitle = tester.widget<Text>(find.text('환경설정'));
-    expect(prescriptionTitle.textScaler, isNull);
-    expect(reminderTitle.textScaler, isNull);
+    for (final title in ['약 등록', '약 관리', '약 검색', '환경설정']) {
+      expect(tester.widget<Text>(find.text(title)).textScaler, isNull);
+    }
     expect(find.text('건강 관리 추천'), findsOneWidget);
     expect(find.text('환경설정'), findsOneWidget);
-    expect(find.text('약을 등록하고 저장한 약을 관리해요'), findsOneWidget);
-    expect(find.text('글자 크기·언어·알림을 설정해요'), findsOneWidget);
+    // 설명은 화면에서 빠졌지만 큰 글씨에서도 화면 읽기 힌트로 남는다.
+    _expectTileHint(
+      tester,
+      'homeMedicationRegisterCard',
+      '약봉투·알약 사진·직접 입력으로 약을 등록하거나, 사진으로 복용을 기록해요.',
+    );
+    _expectTileHint(tester, 'homeUserSettingsCard', '글자 크기·언어·알림을 설정해요');
     expect(tester.takeException(), isNull);
   });
 
@@ -1408,7 +1452,7 @@ void main() {
     for (final scale in const [1.3, 2.0]) {
       for (final language in const ['ko', 'en']) {
         // 함수이름: 화면 크기·언어별 큰 글씨 테스트
-        // 함수역할: 제목·설명·화살표가 유지되고, 카드 안에서 글씨가 잘리지 않는지 확인한다.
+        // 함수역할: 제목과 가로 전체 버튼의 화살표가 유지되고, 카드 안에서 글씨가 잘리지 않는지 확인한다.
         // 매개변수: tester (WidgetTester): 화면 배치와 실제 텍스트 영역을 검사하는 도구.
         // 반환값: 선택한 화면·배율·언어 조합의 검증을 마치는 Future<void>.
         testWidgets(
@@ -1434,24 +1478,34 @@ void main() {
             );
             await tester.pumpAndSettle();
             const keys = [
-              'homePrescriptionAnalysisCard',
+              'homeMedicationRegisterCard',
+              'homeMedicationManageCard',
+              'homeMedicationSearchCard',
               'homeUserSettingsCard',
               'homeHealthRecommendationCard',
               'homeNearbyPharmacyCard',
             ];
+            // 가로 전체를 쓰는 버튼(약 등록·환경설정, 좁은 화면에서는 모두)만 화살표를 둔다.
+            const fullWidthKeys = {
+              'homeMedicationRegisterCard',
+              'homeUserSettingsCard',
+            };
             for (final key in keys) {
               final card = find.byKey(ValueKey(key));
               final labels = find.descendant(
                 of: card,
                 matching: find.byType(Text),
               );
-              expect(labels, findsNWidgets(2));
+              // 설명은 화면 읽기 힌트로만 남으므로 보이는 글은 제목 하나다.
+              expect(labels, findsOneWidget);
               expect(
                 find.descendant(
                   of: card,
-                  matching: find.byIcon(Icons.arrow_forward_rounded),
+                  matching: find.byIcon(Icons.chevron_right_rounded),
                 ),
-                findsOneWidget,
+                viewport.width < 350 || fullWidthKeys.contains(key)
+                    ? findsOneWidget
+                    : findsNothing,
               );
               final cardRect = tester.getRect(card);
               for (final element in labels.evaluate()) {
@@ -1480,14 +1534,23 @@ void main() {
             }
             if (viewport.width >= 350) {
               final first = tester.getRect(
-                find.byKey(const ValueKey('homePrescriptionAnalysisCard')),
+                find.byKey(const ValueKey('homeMedicationManageCard')),
               );
               final second = tester.getRect(
-                find.byKey(const ValueKey('homeHealthRecommendationCard')),
+                find.byKey(const ValueKey('homeMedicationSearchCard')),
               );
               expect(first.top, second.top);
               expect(first.height, second.height);
               expect(first.right, lessThan(second.left));
+              final health = tester.getRect(
+                find.byKey(const ValueKey('homeHealthRecommendationCard')),
+              );
+              final nearby = tester.getRect(
+                find.byKey(const ValueKey('homeNearbyPharmacyCard')),
+              );
+              expect(health.top, nearby.top);
+              expect(health.height, first.height);
+              expect(health.right, lessThan(nearby.left));
               // 기본 큰 글씨의 카드가 불필요한 세로 고정 비율로 늘어나지 않게 한다.
               if (scale == 1.3 && language == 'ko' && viewport.width == 390) {
                 expect(first.height, lessThan(first.width * 1.25));
@@ -1520,9 +1583,9 @@ void main() {
   }
 
   // Function Name: testWidgets: 'compact subtitles wrap without shrinking inside FittedBox'
-  // Description: Render the compact English home and inspect its food/activity guidance subtitle.
+  // Description: Render the compact English home and inspect its food/activity guidance description.
   // Parameters: tester (WidgetTester): widget rendering, input and frame control.
-  // Returns: No value; the subtitle allows two lines at font size 11, has no FittedBox ancestor, and renders without exception.
+  // Returns: No value; the description is a semantics hint rather than visible text, the title has no line cap or FittedBox ancestor, and the screen renders without exception.
   testWidgets('compact subtitles wrap without shrinking inside FittedBox', (
     tester,
   ) async {
@@ -1534,14 +1597,15 @@ void main() {
       ),
     );
 
-    final subtitleFinder = find.text(
-      'Review food and activity guidance for your medications',
-    );
-    final subtitle = tester.widget<Text>(subtitleFinder);
-    expect(subtitle.maxLines, 2);
-    expect(subtitle.style?.fontSize, 11);
+    // 설명은 더 이상 화면 글이 아니라 화면 읽기 힌트이므로, 줄 수·글자 크기 대신 힌트와
+    //   보이는 제목이 FittedBox로 줄어들지 않는지를 본다.
+    const subtitle = 'Review food and activity guidance for your medications';
+    expect(find.text(subtitle), findsNothing);
+    _expectTileHint(tester, 'homeHealthRecommendationCard', subtitle);
+    final titleFinder = find.text('Health tips');
+    expect(tester.widget<Text>(titleFinder).maxLines, isNull);
     expect(
-      find.ancestor(of: subtitleFinder, matching: find.byType(FittedBox)),
+      find.ancestor(of: titleFinder, matching: find.byType(FittedBox)),
       findsNothing,
     );
     expect(tester.takeException(), isNull);
@@ -1988,5 +2052,16 @@ InputPrescriptionUI _home({
     // Returns:
     // - No value; the action is intentionally inert.
     onUserSettingRequested: () {},
+  );
+}
+
+// 함수이름: _expectTileHint
+// 함수역할: 홈 기능 버튼의 설명이 화면 읽기 힌트로 제공되는지 확인한다.
+// 매개변수: tester (WidgetTester): 테스트 도구; key (String): 버튼 키; hint (String): 기대 힌트.
+// 반환값: 없음. 힌트가 다르면 테스트가 실패한다.
+void _expectTileHint(WidgetTester tester, String key, String hint) {
+  expect(
+    tester.getSemantics(find.byKey(ValueKey(key))),
+    isSemantics(hint: hint, isButton: true),
   );
 }

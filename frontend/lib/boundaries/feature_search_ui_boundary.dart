@@ -209,6 +209,7 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
     AppFeature.medicationCabinet => _FeatureCategory.medications,
     AppFeature.schedule ||
     AppFeature.asNeeded ||
+    AppFeature.photoDose ||
     AppFeature.medicationHistory ||
     AppFeature.historySharing ||
     AppFeature.homeSchedule => _FeatureCategory.records,
@@ -291,6 +292,7 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
     AppFeature.medicationSearch => Icons.search,
     AppFeature.prescription => Icons.document_scanner_outlined,
     AppFeature.pillIdentification => Icons.image_search_outlined,
+    AppFeature.photoDose => Icons.photo_camera_rounded,
     AppFeature.schedule ||
     AppFeature.asNeeded ||
     AppFeature.homeSchedule => Icons.calendar_month_outlined,
@@ -322,7 +324,7 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
 // 주요 책임: 기능을 사용 목적별로 묶는 고정 범주를 제공한다.
 // 속성: ko/en (String): 한국어·영어 범주명.
 enum _FeatureCategory {
-  medications('약 등록·관리', 'Add & manage medications'),
+  medications('약 등록·관리·검색', 'Medications'),
   records('복용 일정·기록', 'Schedules & records'),
   family('가족 연결·채팅', 'Family & chat'),
   health('병원·약국·건강', 'Healthcare & pharmacies'),

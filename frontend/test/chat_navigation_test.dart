@@ -665,14 +665,14 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const Key('feature-pillIdentification')));
       await tester.pumpAndSettle();
-      expect(find.byType(FeatureSearchUI), findsOneWidget);
-      await tester.tap(find.text('알약 하나씩 찾기'));
-      await tester.pumpAndSettle();
+      // 촬영 방식 시트 없이 한 장 촬영 식별 화면이 검색 화면 위에 바로 열린다.
+      expect(find.byType(BottomSheet), findsNothing);
+      expect(find.byType(FeatureSearchUI, skipOffstage: false), findsOneWidget);
       expect(
         tester
             .widget<PillIdentificationUI>(find.byType(PillIdentificationUI))
             .captureMode,
-        PillCaptureMode.individualPhotos,
+        PillCaptureMode.singlePhoto,
       );
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
@@ -894,7 +894,7 @@ void main() {
         source == 'self' ? findsNothing : findsOneWidget,
       );
       expect(
-        find.byKey(const Key('homePrescriptionAnalysisCard')),
+        find.byKey(const Key('homeMedicationRegisterCard')),
         findsOneWidget,
       );
       expect(api.calls, source == 'self' ? 0 : 1);
@@ -1515,7 +1515,7 @@ void main() {
     for (final language in ['ko', 'en']) {
       // 함수이름: settings and pharmacy coexist in 2x2 $scale $language
       // 함수역할:
-      // - 화면 크기·글씨·언어가 달라도 처방전·건강 및 약국·설정 항목의 두 열 정렬을 유지하고, 설정과 약국 선택이 각각 해당 콜백만 호출하는지 검증한다.
+      // - 화면 크기·글씨·언어가 달라도 약 등록·약 관리·약 검색·건강·약국·설정 버튼의 줄과 두 열 정렬을 유지하고, 설정과 약국 선택이 각각 해당 콜백만 호출하는지 검증한다.
       // 매개변수:
       // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
       // 반환값:
@@ -1565,7 +1565,11 @@ void main() {
         final health = find.byKey(
           const ValueKey('homeHealthRecommendationCard'),
         );
-        final scan = find.byKey(const ValueKey('homePrescriptionAnalysisCard'));
+        final register = find.byKey(
+          const ValueKey('homeMedicationRegisterCard'),
+        );
+        final manage = find.byKey(const ValueKey('homeMedicationManageCard'));
+        final search = find.byKey(const ValueKey('homeMedicationSearchCard'));
         final reminder = find.byKey(const ValueKey('homeUserSettingsCard'));
         expect(pharmacy, findsOneWidget);
         expect(reminder, findsOneWidget);
@@ -1573,10 +1577,27 @@ void main() {
           find.byKey(const ValueKey('homePillIdentificationCard')),
           findsNothing,
         );
-        expect(tester.getTopLeft(scan).dy, tester.getTopLeft(health).dy);
-        expect(tester.getTopLeft(reminder).dy, tester.getTopLeft(pharmacy).dy);
-        expect(tester.getTopLeft(pharmacy).dx, tester.getTopLeft(scan).dx);
-        expect(tester.getTopLeft(reminder).dx, tester.getTopLeft(health).dx);
+        // 줄 배치: [약 등록] [약 관리 | 약 검색] [건강 관리 추천 | 병원·약국] [환경설정].
+        expect(tester.getTopLeft(manage).dy, tester.getTopLeft(search).dy);
+        expect(tester.getTopLeft(health).dy, tester.getTopLeft(pharmacy).dy);
+        expect(
+          tester.getTopLeft(health).dy,
+          greaterThan(tester.getBottomLeft(manage).dy),
+        );
+        expect(
+          tester.getTopLeft(reminder).dy,
+          greaterThan(tester.getBottomLeft(pharmacy).dy),
+        );
+        // 두 열의 왼쪽·오른쪽 가장자리가 맞고, 가로 전체 버튼은 두 열을 모두 덮는다.
+        for (final left in [manage, health, reminder]) {
+          expect(tester.getTopLeft(left).dx, tester.getTopLeft(register).dx);
+        }
+        expect(tester.getTopLeft(pharmacy).dx, tester.getTopLeft(search).dx);
+        expect(
+          tester.getTopRight(reminder).dx,
+          tester.getTopRight(pharmacy).dx,
+        );
+        expect(tester.getTopRight(register).dx, tester.getTopRight(search).dx);
         expect(
           tester.getSize(pharmacy).height,
           tester.getSize(reminder).height,

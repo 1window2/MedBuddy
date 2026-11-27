@@ -16,19 +16,22 @@ import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 // 반환값: 없음. 기능 검색 테스트 등록.
 void main() {
   // 함수이름: test: '약 등록과 복약 기록의 경로는 현재 메뉴 구조와 일치한다'
-  // 함수역할: 기능별 정의에서 약 등록·약 관리·복약 기록·공유 경로를 현재 메뉴 구조와 대조한다.
+  // 함수역할: 기능별 정의에서 약 등록·약 관리·약 검색·복약 기록·공유 경로를 현재 메뉴 구조와 대조한다.
   // 매개변수: 없음.
   // 반환값: 각 기능이 홈 등록 메뉴 또는 하단 복약 기록의 정확한 한국어 경로를 갖는다.
   test('약 등록과 복약 기록의 경로는 현재 메뉴 구조와 일치한다', () {
     final entries = {for (final e in FindAppFeature.entries) e.feature: e};
-    for (final feature in [
-      AppFeature.manualMedication,
-      AppFeature.prescription,
-      AppFeature.pillIdentification,
+    // 홈의 약 등록·약 관리·약 검색 버튼과 약 등록 화면의 각 작업 버튼 이름을 그대로 따른다.
+    for (final (feature, path) in [
+      (AppFeature.manualMedication, '홈 > 약 등록 > 직접 등록'),
+      (AppFeature.prescription, '홈 > 약 등록 > 약봉투·처방전 등록'),
+      (AppFeature.pillIdentification, '홈 > 약 등록 > 낱알약 식별'),
+      (AppFeature.photoDose, '홈 > 약 등록 > 사진으로 복용 기록'),
     ]) {
-      expect(entries[feature]!.pathKo, '홈 > 약 등록·관리 > 약 등록');
+      expect(entries[feature]!.pathKo, path);
     }
-    expect(entries[AppFeature.medicationCabinet]!.pathKo, '홈 > 약 등록·관리 > 약 관리');
+    expect(entries[AppFeature.medicationCabinet]!.pathKo, '홈 > 약 관리');
+    expect(entries[AppFeature.medicationSearch]!.pathKo, '홈 > 약 검색');
     expect(entries[AppFeature.medicationHistory]!.pathKo, '하단 메뉴 > 복약 기록');
     expect(entries[AppFeature.historySharing]!.pathKo, '하단 메뉴 > 복약 기록 > 공유');
   });

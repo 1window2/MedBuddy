@@ -1298,6 +1298,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // 반환값: 없음. 알약 식별 화면으로 이동한다.
       onPillIdentificationRequested: (mode) =>
           openPillIdentification(context, viewModel, mode),
+      // 약 등록 화면의 사진으로 복용 기록. 등록 화면 위에 열고, 완료하면 홈으로 돌아온다.
+      onPhotoDoseRequested: (pageContext) =>
+          unawaited(openPhotoDoseRecording(pageContext, viewModel)),
       // 함수이름: _buildHomeInput.onManualMedicationRequested callback
       // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에서 캡처된 작업 `openManualMedicationEntry(context, viewModel)`을 실행한다.
       // 매개변수:
@@ -1547,23 +1550,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           source,
         );
       case AppFeature.pillIdentification:
-        final task = await showPillCaptureModeOptions(
-          searchContext,
-          viewModel.userSetting.isEnglish,
-        );
         if (!mounted ||
             !searchContext.mounted ||
-            task == null ||
             !_sameSession(viewModel, owner)) {
           return;
         }
         await openPillIdentification(
           searchContext,
           viewModel,
-          task == MedicationCaptureTask.multiplePills
-              ? PillCaptureMode.singlePhoto
-              : PillCaptureMode.individualPhotos,
+          PillCaptureMode.singlePhoto,
         );
+      case AppFeature.photoDose:
+        if (!mounted ||
+            !searchContext.mounted ||
+            !_sameSession(viewModel, owner)) {
+          return;
+        }
+        await openPhotoDoseRecording(searchContext, viewModel);
       case AppFeature.dataUse:
         await Navigator.push<void>(
           context,

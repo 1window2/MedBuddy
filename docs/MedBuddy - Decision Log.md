@@ -554,6 +554,27 @@ date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again
 - **To undo:** recreate a branch from the `v1.0.1` tag and point the exception back at it
   in `release-android.yml` and `scripts/check_android_release_configuration.py`.
 
+## 2026-11-28: Photo dose recording and a flatter home (1.1.0)
+
+- **Chosen:** a photo of the pills in hand records the dose. The server plans (which of the
+  user's own medicines, which slot) and records in one transaction after one large
+  confirmation; the app draws the screens. The rules went through two independent design
+  reviews; the final rules and the table of what changed are in
+  [Photo Dose Recording](Photo%20Dose%20Recording.md).
+- **Home:** `약 등록·관리` became three green buttons (`약 등록`, `약 관리`, `약 검색`); every
+  home button shows only a large icon and its name (descriptions stay for screen readers);
+  rows share one height that fills the screen without scrolling at normal text. The owner
+  picked the layout from emulator previews.
+- **Registration:** 사진으로 복용 기록 sits second on the 약 등록 page as the only solid green
+  button (recording, not registration). 낱알약 식별 no longer asks how to photograph: one
+  photo finds one or several pills, and each found pill can still get a closer or back
+  photo. The camera/gallery and other two-way choices are large tiles.
+- **Alternatives:** a separate home button for photo recording (rejected by the owner's
+  placement); client-side matching over the existing outbox (rejected in review: non-atomic,
+  loses the photo time, and lets an unsent undo reverse the record).
+- **To undo:** remove the 사진으로 복용 기록 tile (`includePhotoDose`), the two
+  `/schedule/photo-intake/*` routes and `PlanPhotoDose`; nothing else depends on them.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the

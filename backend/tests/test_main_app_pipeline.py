@@ -122,6 +122,8 @@ EXPECTED_API_ROUTES = frozenset({
     ("POST", "/api/v1/medication/prescription/change-radar"),
     ("POST", "/api/v1/medication/save"),
     ("POST", "/api/v1/medication/schedule/completion-operations"),
+    ("POST", "/api/v1/medication/schedule/photo-intake/confirm"),
+    ("POST", "/api/v1/medication/schedule/photo-intake/plan"),
     ("PATCH", "/api/v1/medication/schedule/slot/{slot_key}/status"),
     ("GET", "/api/v1/medication/schedule/today"),
     ("GET", "/api/v1/medication/schedule/today/info"),

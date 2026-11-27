@@ -88,6 +88,10 @@ checked on the phone on 2026-11-23 ([1.0.1 notes](releases/v1.0.1.md)).
 - [ ] Message deletion between two devices: the 24-hour deadline.
 - [ ] Session: a 401 in chat signs out; ending the session with a pushed screen open.
 
+- [ ] Photo dose recording on a phone with real pills: hand-held photos of plain and
+      imprinted tablets, two look-alike white tablets, a repeat photo, and an overnight
+      bedtime dose. The emulator check used a drawn sample photo and scripted analysis.
+
 ## P2: security and operations
 
 - [ ] A Postgres role without superuser rights for the API and catalog jobs (security
@@ -121,6 +125,11 @@ checked on the phone on 2026-11-23 ([1.0.1 notes](releases/v1.0.1.md)).
       daily counter, not the per-address one; the notification inbox keeps caregiver
       alert text in app-private plaintext preferences for 90 days after sign-out.
 
+- [ ] User guide and UML for 1.1.0: the home buttons (`약 등록`, `약 관리`, `약 검색`), the
+      약 등록 page, 사진으로 복용 기록 (new section, screenshots need a fake for the plan
+      endpoint) and 낱알약 식별 without the capture-mode choice.
+- [ ] Remove the per-pill photo mode (`PillCaptureMode.individualPhotos`) from
+      `PillIdentificationUI` and its tests; since 1.1.0 no menu opens it.
 - [ ] The Claude outage fallback (`34d57cd2`, 2026-11-24) is in the in-app data-use guide
       but not yet in the user guide PDFs (sections 9.6 and the data-use pages name only
       Gemini) or the UML diagrams. Update both with the next guide rebuild.

@@ -629,3 +629,42 @@ class IdentifyPill:
         top_score = candidates[0].match_score
         runner_up_score = candidates[1].match_score if len(candidates) > 1 else 0.0
         return top_score >= 0.84 and (top_score - runner_up_score) >= 0.06
+
+
+# Function Name: has_same_shape_and_colors
+# Description:
+# - Tells whether a catalogue product looks the same as an observed pill: the observed shape is one of
+#   the product's shape aliases and the observed colors are exactly the product's colors (no missing
+#   or extra color). Imprints are not compared; this marks a look-alike to ask about, not a match.
+# Parameters:
+# - shape (str): Observed shape label such as "round"; "unknown" or empty never matches.
+# - colors (list[str]): Observed color labels such as ["white"]; an empty list never matches.
+# - entry (PillCatalogEntry): Catalogue row of a registered medicine.
+# Returns:
+# - True only when both the shape and the full color set agree.
+def has_same_shape_and_colors(
+    shape: str, colors: list[str], entry: PillCatalogEntry,
+) -> bool:
+    observed_colors = tuple(dict.fromkeys(color for color in colors if color))
+    if shape in {"", "unknown"} or not observed_colors:
+        return False
+    if IdentifyPill._shape_score(shape, entry.shape) < 1.0:
+        return False
+    catalog_colors = list(dict.fromkeys(
+        IdentifyPill._normalize_label(color)
+        for color in (entry.color_primary, entry.color_secondary)
+        if IdentifyPill._normalize_label(color)
+    ))
+    if len(catalog_colors) != len(observed_colors):
+        return False
+    remaining = list(catalog_colors)
+    for observed in observed_colors:
+        aliases = IdentifyPill._COLOR_ALIASES.get(observed, ())
+        match = next(
+            (color for color in remaining if any(alias in color for alias in aliases)),
+            None,
+        )
+        if match is None:
+            return False
+        remaining.remove(match)
+    return True

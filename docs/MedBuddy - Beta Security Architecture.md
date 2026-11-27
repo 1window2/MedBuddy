@@ -149,6 +149,14 @@ Router --> AuthenticatedApiClient : JSON response
    the backend explicitly enables that authenticated provider.
 7. Linked-chat history, message, read, unread-count, and WebSocket routes repeat
    the same active-link authorization.
+8. Photo dose recording (`/schedule/photo-intake/plan` and `/confirm`) always resolves
+   the signed-in account itself; a caregiver cannot plan or record for a patient. The
+   requests carry no photo, only candidate product numbers and shape/colour labels from
+   the pill analysis, and every answer is checked against the account's own active
+   medicines. The photo time travels in a plan token signed with a per-process key
+   (HMAC-SHA256, 15-minute lifetime), so the client cannot choose the time it is judged
+   at; a restart invalidates open plans and the app asks for a new photo. Confirm
+   recomputes the plan and writes only when the write set equals what the user saw.
 
 ## Irreversible Account Deletion
 

@@ -1,13 +1,15 @@
 // File Name: input_prescription_ui_boundary.dart
 // Role: UI boundaries and helpers for the home medication dashboard and medication input entry points.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'medication_search_ui_boundary.dart';
 import '../widgets/medbuddy_wordmark.dart';
 
 import 'medication_capture_options_ui_boundary.dart';
 import 'check_saved_medication_ui_boundary.dart';
-import '../widgets/medbuddy_option_sheet.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
@@ -37,6 +39,8 @@ class InputPrescriptionUI extends StatelessWidget {
   final DateTime Function()? nowProvider;
   final ValueChanged<PillCaptureMode>? onPillIdentificationRequested;
   final VoidCallback? onManualMedicationRequested;
+  // 약 등록 화면의 사진으로 복용 기록. null이면 그 버튼을 보이지 않는다.
+  final void Function(BuildContext pageContext)? onPhotoDoseRequested;
   final Future<void> Function(BuildContext, PrescriptionImageSource)?
   onRegistrationSourceRequested;
   final VoidCallback? onTodayScheduleRequested;
@@ -85,6 +89,7 @@ class InputPrescriptionUI extends StatelessWidget {
     this.nowProvider,
     required this.onPillIdentificationRequested,
     this.onManualMedicationRequested,
+    this.onPhotoDoseRequested,
     this.onRegistrationSourceRequested,
     required this.onTodayScheduleRequested,
     this.onMedicationSlotStatusRequested,
@@ -120,12 +125,10 @@ class InputPrescriptionUI extends StatelessWidget {
             Expanded(
               child: LayoutBuilder(
                 // 함수이름: 홈 스크롤 영역 builder
-                // 함수역할: 화면 너비에 맞춰 여백을 정하고 접근성 배율을 카드에 전달한다.
+                // 함수역할: 화면 너비에 맞춰 여백을 정한다. 큰 글씨에서는 기능 버튼이 내용 높이만큼 자란다.
                 // 매개변수: context (BuildContext), viewportConstraints (BoxConstraints): 화면 문맥과 사용 가능한 크기.
                 // 반환값: 복약 현황과 기능 카드가 배치된 스크롤 영역.
                 builder: (context, viewportConstraints) {
-                  final textScale =
-                      MediaQuery.textScalerOf(context).scale(16) / 16;
                   final useCompactDashboard =
                       viewportConstraints.maxWidth >= 350;
                   // 기본 글씨의 흔한 휴대폰에서 보호자 안내까지 스크롤 없이 보이도록 세로 간격을 줄인다.
@@ -148,175 +151,90 @@ class InputPrescriptionUI extends StatelessWidget {
                         constraints: const BoxConstraints(
                           maxWidth: MedBuddySpacing.contentMaxWidth,
                         ),
-                        child: Column(
-                          children: [
-                            caregiverSummary ??
-                                _HomeEncouragementPanel(
-                                  userSetting: userSetting,
-                                  schedules: todayMedicationScheduleList,
-                                  reminderSettings: medicationReminderSettings,
-                                  completedCount: todayMedicationCompletedCount,
-                                  totalCount: todayMedicationTotalCount,
-                                  isLoading: isTodayScheduleLoading,
-                                  hasError: hasTodayScheduleLoadError,
-                                  nowProvider: nowProvider,
-                                  compact: useCompactDashboard,
-                                  onTap: onTodayScheduleRequested,
-                                  onStatusUpdateRequested:
-                                      onMedicationSlotStatusRequested,
-                                  isCompletionLoading:
-                                      isNextMedicationCompletionLoading,
+                        child: _HomeFillLayout(
+                          availableHeight: math.max(
+                            0,
+                            viewportConstraints.maxHeight -
+                                (useCompactDashboard ? 18 : 48),
+                          ),
+                          sectionGap: dashboardActionSpacing,
+                          rowGap: 12,
+                          top:
+                              caregiverSummary ??
+                              _HomeEncouragementPanel(
+                                userSetting: userSetting,
+                                schedules: todayMedicationScheduleList,
+                                reminderSettings: medicationReminderSettings,
+                                completedCount: todayMedicationCompletedCount,
+                                totalCount: todayMedicationTotalCount,
+                                isLoading: isTodayScheduleLoading,
+                                hasError: hasTodayScheduleLoadError,
+                                nowProvider: nowProvider,
+                                compact: useCompactDashboard,
+                                onTap: onTodayScheduleRequested,
+                                onStatusUpdateRequested:
+                                    onMedicationSlotStatusRequested,
+                                isCompletionLoading:
+                                    isNextMedicationCompletionLoading,
+                              ),
+                          rows: _homeActionRows(
+                            narrow: viewportConstraints.maxWidth < 350,
+                            tiles: [
+                              _HomeTileData(
+                                key: const ValueKey(
+                                  'homeMedicationRegisterCard',
                                 ),
-                            SizedBox(height: dashboardActionSpacing),
-                            LayoutBuilder(
-                              // 함수이름: 빠른 기능 영역 builder
-                              // 함수역할: 좁은 화면은 한 열, 일반 화면은 두 열로 배치하며 큰 글씨의 행 높이는 내용에 맞춘다.
-                              // 매개변수: context (BuildContext), constraints (BoxConstraints): 문맥과 실제 콘텐츠 너비.
-                              // 반환값: 글씨 크기에 따라 설명이 사라지지 않는 기능 카드 목록.
-                              builder: (context, constraints) {
-                                final useGrid = constraints.maxWidth >= 310;
-                                final useLargeTextGridLayout = textScale > 1.1;
-                                final homeActions = <Widget>[
-                                  _HomeActionCard(
-                                    cardKey: const ValueKey(
-                                      'homePrescriptionAnalysisCard',
-                                    ),
-                                    icon: Icons.medication_outlined,
-                                    title: text.prescriptionAnalysis,
-                                    subtitle: text.prescriptionAnalysisSubtitle,
-                                    tone: _HomeActionTone.primary,
-                                    compact: useGrid,
-                                    largeTextGridLayout: useLargeTextGridLayout,
-                                    onTap: () =>
-                                        _showAnalysisTaskOptions(context),
-                                  ),
-                                  _HomeActionCard(
-                                    cardKey: const ValueKey(
-                                      'homeHealthRecommendationCard',
-                                    ),
-                                    icon: Icons.monitor_heart_outlined,
-                                    title: text.healthRecommendation,
-                                    subtitle: text.healthRecommendationSubtitle,
-                                    tone: _HomeActionTone.mint,
-                                    compact: useGrid,
-                                    largeTextGridLayout: useLargeTextGridLayout,
-                                    onTap: onHealthRecommendationRequested,
-                                  ),
-                                  _HomeActionCard(
-                                    cardKey: const ValueKey(
-                                      'homeNearbyPharmacyCard',
-                                    ),
-                                    icon: Icons.map_outlined,
-                                    title: text.nearbyPharmacy,
-                                    subtitle: text.nearbyPharmacySubtitle,
-                                    tone: _HomeActionTone.lavender,
-                                    compact: useGrid,
-                                    largeTextGridLayout: useLargeTextGridLayout,
-                                    onTap: onNearbyPharmacyRequested,
-                                  ),
-                                  _HomeActionCard(
-                                    cardKey: const ValueKey(
-                                      'homeUserSettingsCard',
-                                    ),
-                                    icon: Icons.settings_outlined,
-                                    title: text.userSettings,
-                                    subtitle: text.userSettingsSubtitle,
-                                    tone: _HomeActionTone.butter,
-                                    compact: useGrid,
-                                    largeTextGridLayout: useLargeTextGridLayout,
-                                    onTap: onUserSettingRequested,
-                                  ),
-                                ];
-
-                                if (!useGrid) {
-                                  return Column(
-                                    children: [
-                                      for (
-                                        int index = 0;
-                                        index < homeActions.length;
-                                        index++
-                                      ) ...[
-                                        homeActions[index],
-                                        if (index != homeActions.length - 1)
-                                          const SizedBox(height: 14),
-                                      ],
-                                    ],
-                                  );
-                                }
-
-                                if (useLargeTextGridLayout) {
-                                  // 두 행만 내용 높이를 측정해 설명을 보존하고 같은 행의 카드 높이를 맞춘다.
-                                  const gap = 10.0;
-                                  final cardWidth =
-                                      (constraints.maxWidth - gap) / 2;
-                                  return Column(
-                                    children: [
-                                      for (
-                                        int index = 0;
-                                        index < 4;
-                                        index += 2
-                                      ) ...[
-                                        if (index > 0)
-                                          const SizedBox(height: gap),
-                                        ConstrainedBox(
-                                          constraints: BoxConstraints(
-                                            minHeight: cardWidth / 1.25,
-                                          ),
-                                          child: IntrinsicHeight(
-                                            child: Row(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.stretch,
-                                              children: [
-                                                Expanded(
-                                                  child: homeActions[index],
-                                                ),
-                                                const SizedBox(width: gap),
-                                                Expanded(
-                                                  child: homeActions[index + 1],
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  );
-                                }
-
-                                return Column(
-                                  children: [
-                                    GridView.count(
-                                      crossAxisCount: 2,
-                                      primary: false,
-                                      shrinkWrap: true,
-                                      padding: EdgeInsets.zero,
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      crossAxisSpacing: useCompactDashboard
-                                          ? 10
-                                          : 14,
-                                      mainAxisSpacing: useCompactDashboard
-                                          ? 10
-                                          : 14,
-                                      // 138dp holds a two-line title and a two-line description up to
-                                      // 1.1x text (about 137dp); wider cards keep that height on 411dp phones.
-                                      childAspectRatio: useCompactDashboard
-                                          ? ((constraints.maxWidth - 10) /
-                                                    2 /
-                                                    138)
-                                                .clamp(1.0, 1.35)
-                                          : 1,
-                                      children: homeActions,
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                            if (caregiverScheduleHint != null) ...[
-                              SizedBox(height: useCompactDashboard ? 4 : 14),
-                              caregiverScheduleHint!,
+                                icon: Icons.medication_outlined,
+                                title: text.medicationRegister,
+                                hint: text.medicationRegisterHint,
+                                tone: _HomeActionTone.primary,
+                                onTap: () => _openRegistration(context),
+                              ),
+                              _HomeTileData(
+                                key: const ValueKey('homeMedicationManageCard'),
+                                icon: Icons.inventory_2_outlined,
+                                title: text.medicationManage,
+                                hint: text.medicationManageHint,
+                                tone: _HomeActionTone.primary,
+                                onTap: () => _openMedicationManagement(context),
+                              ),
+                              _HomeTileData(
+                                key: const ValueKey('homeMedicationSearchCard'),
+                                icon: Icons.manage_search_rounded,
+                                title: text.medicationSearch,
+                                hint: text.medicationSearchHint,
+                                tone: _HomeActionTone.primary,
+                                onTap: () => _openMedicationSearch(context),
+                              ),
+                              _HomeTileData(
+                                key: const ValueKey(
+                                  'homeHealthRecommendationCard',
+                                ),
+                                icon: Icons.monitor_heart_outlined,
+                                title: text.healthRecommendation,
+                                hint: text.healthRecommendationSubtitle,
+                                tone: _HomeActionTone.mint,
+                                onTap: onHealthRecommendationRequested,
+                              ),
+                              _HomeTileData(
+                                key: const ValueKey('homeNearbyPharmacyCard'),
+                                icon: Icons.map_outlined,
+                                title: text.nearbyPharmacy,
+                                hint: text.nearbyPharmacySubtitle,
+                                tone: _HomeActionTone.lavender,
+                                onTap: onNearbyPharmacyRequested,
+                              ),
+                              _HomeTileData(
+                                key: const ValueKey('homeUserSettingsCard'),
+                                icon: Icons.settings_outlined,
+                                title: text.userSettings,
+                                hint: text.userSettingsSubtitle,
+                                tone: _HomeActionTone.butter,
+                                onTap: onUserSettingRequested,
+                              ),
                             ],
-                          ],
+                          ),
+                          trailing: caregiverScheduleHint,
                         ),
                       ),
                     ),
@@ -330,81 +248,48 @@ class InputPrescriptionUI extends StatelessWidget {
     );
   }
 
-  // 함수이름: _showAnalysisTaskOptions
-  // 함수역할: 공통 선택 화면에서 처방전 분석, 낱알약 식별, 직접 등록 작업을 선택하게 한다. 처방전 분석을 선택하면 카메라와 갤러리 중 이미지 출처를 추가로 선택하게 한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _showAnalysisTaskOptions(BuildContext context) async {
-    final isEnglish = userSetting.isEnglish;
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) => MedBuddyOptionSheet(
-        children: [
-          MedBuddyOptionTile(
-            icon: Icons.add_circle_outline,
-            title: isEnglish ? 'Add medication' : '약 등록',
-            subtitle: isEnglish
-                ? 'Add a medication or identify a pill.'
-                : '약봉투, 알약 사진 또는 직접 입력으로 등록해요.',
-            onTap: () => Navigator.pop(sheetContext, 'register'),
-          ),
-          const SizedBox(height: 10),
-          MedBuddyOptionTile(
-            icon: Icons.inventory_2_outlined,
-            title: isEnglish ? 'Manage medications' : '약 관리',
-            subtitle: isEnglish
-                ? 'View and manage saved medications.'
-                : '등록한 약과 복용 기간을 확인하고 관리해요.',
-            onTap: () => Navigator.pop(sheetContext, 'manage'),
-          ),
-          const SizedBox(height: 10),
-          MedBuddyOptionTile(
-            icon: Icons.search,
-            title: isEnglish ? 'Find medication' : '약 검색',
-            subtitle: isEnglish
-                ? 'Look up medication information by name.'
-                : '약 이름으로 약품 정보를 찾아요.',
-            onTap: () => Navigator.pop(sheetContext, 'search'),
-          ),
-        ],
-      ),
-    );
-    if (!context.mounted || action == null) return;
-    if (action == 'search') {
-      await Navigator.of(context).push<void>(
+  // 함수이름: _openRegistration
+  // 함수역할: 약 등록 화면을 연다. 홈에서 열 때만 사진으로 복용 기록을 함께 보인다.
+  // 매개변수: context (BuildContext): 화면 이동 위치.
+  // 반환값: 등록 화면이 닫히면 완료되는 Future<void>.
+  Future<void> _openRegistration(BuildContext context) =>
+      showMedicationCaptureTaskOptions(
+        context: context,
+        userSetting: userSetting,
+        includePhotoDose: onPhotoDoseRequested != null,
+        onTaskSelected: (pageContext, task) async {
+          switch (task) {
+            case MedicationCaptureTask.pills:
+              onPillIdentificationRequested?.call(PillCaptureMode.singlePhoto);
+            case MedicationCaptureTask.manual:
+              onManualMedicationRequested?.call();
+            case MedicationCaptureTask.photoDose:
+              onPhotoDoseRequested?.call(pageContext);
+          }
+        },
+        onSourceSelected: (pageContext, source) async =>
+            onRegistrationSourceRequested?.call(pageContext, source),
+      );
+
+  // 함수이름: _openMedicationManagement
+  // 함수역할: 저장한 약 관리 화면을 연다.
+  // 매개변수: context (BuildContext): 화면 이동 위치.
+  // 반환값: 화면이 닫히면 완료.
+  Future<void> _openMedicationManagement(BuildContext context) =>
+      Navigator.of(context).push<void>(
+        MaterialPageRoute(builder: (_) => const CheckSavedMedicationUI()),
+      );
+
+  // 함수이름: _openMedicationSearch
+  // 함수역할: 약 이름 검색 화면을 연다.
+  // 매개변수: context (BuildContext): 화면 이동 위치.
+  // 반환값: 화면이 닫히면 완료.
+  Future<void> _openMedicationSearch(BuildContext context) =>
+      Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => MedicationSearchUI(userSetting: userSetting),
         ),
       );
-      return;
-    }
-    if (action == 'manage') {
-      await Navigator.of(context).push<void>(
-        MaterialPageRoute(builder: (_) => const CheckSavedMedicationUI()),
-      );
-      return;
-    }
-    await showMedicationCaptureTaskOptions(
-      context: context,
-      userSetting: userSetting,
-      onTaskSelected: (pageContext, task) async {
-        if (task == MedicationCaptureTask.multiplePills ||
-            task == MedicationCaptureTask.individualPills) {
-          onPillIdentificationRequested?.call(
-            task == MedicationCaptureTask.multiplePills
-                ? PillCaptureMode.singlePhoto
-                : PillCaptureMode.individualPhotos,
-          );
-        } else if (task == MedicationCaptureTask.manual) {
-          onManualMedicationRequested?.call();
-        }
-      },
-      onSourceSelected: (pageContext, source) async =>
-          onRegistrationSourceRequested?.call(pageContext, source),
-    );
-  }
 }
 
 // Class Name: _HomeHeader
@@ -444,9 +329,9 @@ class _HomeHeader extends StatelessWidget {
       color: MedBuddyColors.pageBackground,
       padding: EdgeInsets.fromLTRB(
         22,
-        MediaQuery.of(context).padding.top + 10,
+        MediaQuery.of(context).padding.top + 24,
         20,
-        4,
+        10,
       ),
       child: Center(
         child: ConstrainedBox(
@@ -506,186 +391,338 @@ class _HomeHeader extends StatelessWidget {
 // Attributes: primary/mint/lavender/butter: visual variants.
 enum _HomeActionTone { primary, mint, lavender, butter }
 
-// Class Name: _HomeActionCard
-// Role: Represents a home quick action with its icon and title.
-// Responsibilities:
-// - Composes a home quick action with its icon and title using the display values and actions supplied by its parent.
-// Attributes:
-// - cardKey (Key?): Widget identity used to distinguish elements and preserve state.
-// - icon (IconData): Icon shown in normal or selected state.
-// - title (String): Heading shown for the screen, section, or item.
-// - subtitle (String): Supporting explanation or account detail below the primary label.
-class _HomeActionCard extends StatelessWidget {
-  final Key? cardKey;
+// 클래스명: _HomeTileData
+// 역할: 홈 기능 버튼 하나의 내용. 설명(hint)은 화면에 보이지 않고 화면 읽기로만 읽는다.
+class _HomeTileData {
+  final Key key;
   final IconData icon;
   final String title;
-  final String subtitle;
+  final String hint;
   final _HomeActionTone tone;
-  final bool compact;
-  final bool largeTextGridLayout;
   final VoidCallback? onTap;
 
-  // Function Name: _HomeActionCard
-  // Description: Configures a home action whose full title and description remain available at normal and large text sizes.
-  // Parameters: cardKey: identity; icon/title/subtitle: content; tone: action colors; compact: grid layout; largeTextGridLayout: unrestricted wrapping; onTap: optional action.
-  // Returns: A _HomeActionCard.
-  const _HomeActionCard({
-    this.cardKey,
+  const _HomeTileData({
+    required this.key,
     required this.icon,
     required this.title,
-    required this.subtitle,
+    required this.hint,
     required this.tone,
-    this.compact = false,
-    this.largeTextGridLayout = false,
     required this.onTap,
   });
+}
 
-  // Function Name: build
-  // Description: Applies action-specific colors and displays the full description in either list or two-column layout.
-  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
-  // Returns: The described widget tree.
+// 함수이름: _homeActionRows
+// 함수역할: 홈 기능 버튼을 줄로 묶는다. 약 등록은 맨 위 가로 전체, 그 아래 두 줄은 두 개씩, 환경설정은 맨 아래
+//   가로 전체다. 좁은 화면은 한 줄에 하나씩 놓는다. 모든 줄은 _HomeFillLayout이 같은 높이로 맞춘다.
+// 매개변수: narrow (bool): 좁은 화면 여부; tiles: 약 등록·관리·검색, 건강, 병원·약국, 설정 순.
+// 반환값: 줄 위젯 목록.
+List<Widget> _homeActionRows({
+  required bool narrow,
+  required List<_HomeTileData> tiles,
+}) {
+  if (narrow) {
+    return [for (final tile in tiles) _HomeTile(data: tile, chevron: true)];
+  }
+  Widget pair(_HomeTileData left, _HomeTileData right) => Row(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Expanded(child: _HomeTile(data: left)),
+      const SizedBox(width: _homeTileGap),
+      Expanded(child: _HomeTile(data: right)),
+    ],
+  );
+  return [
+    _HomeTile(data: tiles[0], chevron: true),
+    pair(tiles[1], tiles[2]),
+    pair(tiles[3], tiles[4]),
+    _HomeTile(data: tiles[5], chevron: true),
+  ];
+}
+
+// 버튼 사이 가로·세로 간격. 줄 사이 간격(rowGap)과 같아야 한다.
+const double _homeTileGap = 12;
+
+// 클래스명: _HomeFillLayout
+// 역할: 위쪽 복약 현황 아래에 기능 버튼 줄을 같은 높이로 놓는다. 화면에 남는 높이를 줄마다 똑같이 나눠 쓰되
+//   한 줄은 76~112dp로 둔다. 글씨가 커서 내용이 더 높으면 가장 높은 줄에 맞추고 화면이 스크롤된다.
+// 속성: top: 복약 현황; rows: 버튼 줄; trailing: 아래 안내(선택); availableHeight: 스크롤 영역 높이;
+//   sectionGap: 현황과 버튼 사이; rowGap: 버튼 줄 사이.
+class _HomeFillLayout extends MultiChildRenderObjectWidget {
+  final double availableHeight;
+  final double sectionGap;
+  final double rowGap;
+  final int rowCount;
+  final bool hasTrailing;
+
+  _HomeFillLayout({
+    required Widget top,
+    required List<Widget> rows,
+    Widget? trailing,
+    required this.availableHeight,
+    required this.sectionGap,
+    required this.rowGap,
+  }) : rowCount = rows.length,
+       hasTrailing = trailing != null,
+       super(children: [top, ...rows, ?trailing]);
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderHomeFill(
+    availableHeight: availableHeight,
+    sectionGap: sectionGap,
+    rowGap: rowGap,
+    rowCount: rowCount,
+    hasTrailing: hasTrailing,
+  );
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderHomeFill renderObject) {
+    renderObject
+      ..availableHeight = availableHeight
+      ..sectionGap = sectionGap
+      ..rowGap = rowGap
+      ..rowCount = rowCount
+      ..hasTrailing = hasTrailing;
+  }
+}
+
+class _HomeFillParentData extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderHomeFill extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _HomeFillParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _HomeFillParentData> {
+  static const double minRowHeight = 76;
+  static const double maxRowHeight = 112;
+  static const double trailingGap = 8;
+
+  _RenderHomeFill({
+    required double availableHeight,
+    required double sectionGap,
+    required double rowGap,
+    required int rowCount,
+    required bool hasTrailing,
+  }) : _availableHeight = availableHeight,
+       _sectionGap = sectionGap,
+       _rowGap = rowGap,
+       _rowCount = rowCount,
+       _hasTrailing = hasTrailing;
+
+  double _availableHeight;
+  set availableHeight(double value) {
+    if (value == _availableHeight) return;
+    _availableHeight = value;
+    markNeedsLayout();
+  }
+
+  double _sectionGap;
+  set sectionGap(double value) {
+    if (value == _sectionGap) return;
+    _sectionGap = value;
+    markNeedsLayout();
+  }
+
+  double _rowGap;
+  set rowGap(double value) {
+    if (value == _rowGap) return;
+    _rowGap = value;
+    markNeedsLayout();
+  }
+
+  int _rowCount;
+  set rowCount(int value) {
+    if (value == _rowCount) return;
+    _rowCount = value;
+    markNeedsLayout();
+  }
+
+  bool _hasTrailing;
+  set hasTrailing(bool value) {
+    if (value == _hasTrailing) return;
+    _hasTrailing = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _HomeFillParentData) {
+      child.parentData = _HomeFillParentData();
+    }
+  }
+
+  List<RenderBox> get _children {
+    final result = <RenderBox>[];
+    var child = firstChild;
+    while (child != null) {
+      result.add(child);
+      child = childAfter(child);
+    }
+    return result;
+  }
+
+  double _contentRowHeight(List<RenderBox> rows, double width) => rows.fold(
+    minRowHeight,
+    (height, row) => math.max(height, row.getMaxIntrinsicHeight(width)),
+  );
+
+  @override
+  double computeMinIntrinsicWidth(double height) => _children.fold(
+    0,
+    (width, child) => math.max(width, child.getMinIntrinsicWidth(height)),
+  );
+
+  @override
+  double computeMaxIntrinsicWidth(double height) => _children.fold(
+    0,
+    (width, child) => math.max(width, child.getMaxIntrinsicWidth(height)),
+  );
+
+  @override
+  double computeMinIntrinsicHeight(double width) => _measure(width).height;
+
+  @override
+  double computeMaxIntrinsicHeight(double width) => _measure(width).height;
+
+  Size _measure(double width) {
+    final children = _children;
+    final rows = children.sublist(1, 1 + _rowCount);
+    final top = children.first.getMaxIntrinsicHeight(width);
+    final trailing = _hasTrailing
+        ? children.last.getMaxIntrinsicHeight(width) + trailingGap
+        : 0.0;
+    final rowHeight = _contentRowHeight(rows, width);
+    return Size(
+      width,
+      top +
+          _sectionGap +
+          rowHeight * _rowCount +
+          _rowGap * math.max(0, _rowCount - 1) +
+          trailing,
+    );
+  }
+
+  @override
+  void performLayout() {
+    final width = constraints.maxWidth;
+    final children = _children;
+    final top = children.first;
+    final rows = children.sublist(1, 1 + _rowCount);
+    final trailing = _hasTrailing ? children.last : null;
+    top.layout(BoxConstraints.tightFor(width: width), parentUsesSize: true);
+    trailing?.layout(
+      BoxConstraints.tightFor(width: width),
+      parentUsesSize: true,
+    );
+    final trailingHeight = trailing == null
+        ? 0.0
+        : trailing.size.height + trailingGap;
+    final gaps = _sectionGap + _rowGap * math.max(0, _rowCount - 1);
+    final share =
+        (_availableHeight - top.size.height - trailingHeight - gaps) /
+        math.max(1, _rowCount);
+    final rowHeight = math.max(
+      share.clamp(minRowHeight, maxRowHeight).toDouble(),
+      _contentRowHeight(rows, width),
+    );
+    var y = 0.0;
+    (top.parentData! as _HomeFillParentData).offset = Offset.zero;
+    y += top.size.height + _sectionGap;
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].layout(BoxConstraints.tightFor(width: width, height: rowHeight));
+      (rows[i].parentData! as _HomeFillParentData).offset = Offset(0, y);
+      y += rowHeight + (i == rows.length - 1 ? 0 : _rowGap);
+    }
+    if (trailing != null) {
+      y += trailingGap;
+      (trailing.parentData! as _HomeFillParentData).offset = Offset(0, y);
+      y += trailing.size.height;
+    }
+    size = constraints.constrain(Size(width, y));
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) =>
+      defaultPaint(context, offset);
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      defaultHitTestChildren(result, position: position);
+}
+
+// 클래스명: _HomeTile
+// 역할: 큰 아이콘(왼쪽)과 이름(오른쪽)만 있는 홈 기능 버튼.
+// 속성: data: 내용; chevron: 오른쪽 화살표 표시. 아이콘 칸과 글씨 크기는 모든 버튼이 같다.
+class _HomeTile extends StatelessWidget {
+  static const double iconSize = 54;
+  static const double titleSize = 19;
+
+  final _HomeTileData data;
+  final bool chevron;
+
+  const _HomeTile({required this.data, this.chevron = false});
+
   @override
   Widget build(BuildContext context) {
-    final background = tone == _HomeActionTone.primary
-        ? MedBuddyColors.primary
-        : MedBuddyColors.surface;
-    final foreground = tone == _HomeActionTone.primary
-        ? Colors.white
-        : MedBuddyColors.textStrong;
-    final secondary = tone == _HomeActionTone.primary
-        ? Colors.white.withValues(alpha: 0.9)
-        : MedBuddyColors.textMuted;
-    final accent = switch (tone) {
+    final primary = data.tone == _HomeActionTone.primary;
+    final foreground = primary ? Colors.white : MedBuddyColors.textStrong;
+    final accent = switch (data.tone) {
       _HomeActionTone.primary => Colors.white,
       _HomeActionTone.mint => MedBuddyColors.primaryDark,
       _HomeActionTone.lavender => MedBuddyColors.infoBlue,
       _HomeActionTone.butter => MedBuddyColors.reminderAccent,
     };
-
-    return Material(
-      color: background,
-      borderRadius: MedBuddyRadii.largeCard,
-      child: InkWell(
+    return Semantics(
+      button: true,
+      hint: data.hint,
+      child: Material(
+        color: primary ? MedBuddyColors.primary : MedBuddyColors.surface,
         borderRadius: MedBuddyRadii.largeCard,
-        onTap: onTap,
-        child: Container(
-          key: cardKey,
-          width: double.infinity,
-          constraints: compact ? null : const BoxConstraints(minHeight: 102),
-          padding: compact
-              ? const EdgeInsets.all(10)
-              : const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          decoration: BoxDecoration(
-            borderRadius: MedBuddyRadii.largeCard,
-            border: Border.all(
-              color: tone == _HomeActionTone.primary
-                  ? MedBuddyColors.primary
-                  : MedBuddyColors.cardBorder,
+        child: InkWell(
+          key: data.key,
+          borderRadius: MedBuddyRadii.largeCard,
+          onTap: data.onTap,
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.fromLTRB(14, 10, chevron ? 10 : 14, 10),
+            decoration: BoxDecoration(
+              borderRadius: MedBuddyRadii.largeCard,
+              border: Border.all(
+                color: primary
+                    ? MedBuddyColors.primary
+                    : MedBuddyColors.cardBorder,
+              ),
+            ),
+            child: Row(
+              children: [
+                _ActionIcon(
+                  icon: data.icon,
+                  tone: data.tone,
+                  color: accent,
+                  size: iconSize,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: KeepWordsText(
+                    data.title,
+                    style: TextStyle(
+                      color: foreground,
+                      fontSize: titleSize,
+                      height: 1.25,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ),
+                if (chevron)
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: accent.withValues(alpha: 0.8),
+                    size: 30,
+                  ),
+              ],
             ),
           ),
-          child: compact
-              ? _buildCompactContent(foreground, secondary, accent)
-              : _buildListContent(foreground, secondary, accent),
         ),
       ),
-    );
-  }
-
-  // Function Name: _buildCompactContent
-  // Description: Retains icon, arrow, title and description with natural wrapping rather than shrinking text into a fixed height.
-  // Parameters: foreground/secondary/accent (Color): title, description and icon colors.
-  // Returns: The content-sized compact-card body.
-  Widget _buildCompactContent(Color foreground, Color secondary, Color accent) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            _ActionIcon(icon: icon, tone: tone, color: accent, size: 40),
-            const Spacer(),
-            _ActionArrow(color: accent),
-          ],
-        ),
-        const SizedBox(height: 7),
-        KeepWordsText(
-          title,
-          maxLines: largeTextGridLayout ? null : 2,
-          overflow: largeTextGridLayout
-              ? TextOverflow.clip
-              : TextOverflow.ellipsis,
-          style: TextStyle(
-            color: foreground,
-            fontSize: 14,
-            height: 1.15,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 4),
-        KeepWordsText(
-          subtitle,
-          maxLines: largeTextGridLayout ? null : 2,
-          overflow: largeTextGridLayout
-              ? TextOverflow.clip
-              : TextOverflow.ellipsis,
-          style: TextStyle(
-            color: secondary,
-            fontSize: 11,
-            height: 1.25,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // Function Name: _buildListContent
-  // Description: Keeps the title and description complete in a narrow single-column action row.
-  // Parameters: foreground/secondary/accent (Color): title, description and icon colors.
-  // Returns: A list-style body that grows with its content.
-  Widget _buildListContent(Color foreground, Color secondary, Color accent) {
-    return Row(
-      children: [
-        _ActionIcon(icon: icon, tone: tone, color: accent, size: 48),
-        const SizedBox(width: 15),
-        Expanded(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              KeepWordsText(
-                title,
-                maxLines: largeTextGridLayout ? null : 1,
-                overflow: largeTextGridLayout
-                    ? TextOverflow.clip
-                    : TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: foreground,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 4),
-              KeepWordsText(
-                subtitle,
-                maxLines: largeTextGridLayout ? null : 2,
-                overflow: largeTextGridLayout
-                    ? TextOverflow.clip
-                    : TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: secondary,
-                  fontSize: 12,
-                  height: 1.3,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 10),
-        _ActionArrow(color: accent),
-      ],
     );
   }
 }
@@ -739,39 +776,7 @@ class _ActionIcon extends StatelessWidget {
         },
         borderRadius: BorderRadius.circular(size * 0.32),
       ),
-      child: Icon(icon, color: color, size: size * 0.6),
-    );
-  }
-}
-
-// Class Name: _ActionArrow
-// Role: A noninteractive forward cue on a home action card.
-// Responsibilities: Indicates navigation without introducing a separate button background.
-// Attributes: color (Color): card-matched arrow color.
-class _ActionArrow extends StatelessWidget {
-  final Color color;
-
-  // Function Name: _ActionArrow
-  // Description: Stores the arrow color.
-  // Parameters:
-  // - color (Color): Arrow color matching the card's accent.
-  // Returns: Initialized _ActionArrow instance.
-  const _ActionArrow({required this.color});
-
-  // Function Name: build
-  // Description: Draws the arrow without a background so it reads as a hint, not a second button.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location.
-  // Returns: A 30dp box holding the arrow icon.
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox.square(
-      dimension: 30,
-      child: Icon(
-        Icons.arrow_forward_rounded,
-        color: color.withValues(alpha: 0.75),
-        size: 20,
-      ),
+      child: Icon(icon, color: color, size: size * 0.62),
     );
   }
 }
@@ -806,6 +811,27 @@ class _HomeText {
   String get userSettingsSubtitle => isEnglish
       ? 'Adjust text, language and notifications'
       : '글자 크기·언어·알림을 설정해요';
+  // 함수이름: medicationRegister
+  // 함수역할: 약 등록 버튼 이름과 화면 읽기 설명을 제공한다.
+  // 매개변수: 없음. 반환값: 문구.
+  String get medicationRegister => isEnglish ? 'Add medication' : '약 등록';
+  String get medicationRegisterHint => isEnglish
+      ? 'Add a medicine from a prescription, a pill photo or by hand, or record a dose from a photo.'
+      : '약봉투·알약 사진·직접 입력으로 약을 등록하거나, 사진으로 복용을 기록해요.';
+  // 함수이름: medicationManage
+  // 함수역할: 약 관리 버튼 이름과 화면 읽기 설명을 제공한다.
+  // 매개변수: 없음. 반환값: 문구.
+  String get medicationManage => isEnglish ? 'My medications' : '약 관리';
+  String get medicationManageHint => isEnglish
+      ? 'View and manage saved medications.'
+      : '등록한 약과 복용 기간을 확인하고 관리해요.';
+  // 함수이름: medicationSearch
+  // 함수역할: 약 검색 버튼 이름과 화면 읽기 설명을 제공한다.
+  // 매개변수: 없음. 반환값: 문구.
+  String get medicationSearch => isEnglish ? 'Find medication' : '약 검색';
+  String get medicationSearchHint => isEnglish
+      ? 'Look up medication information by name.'
+      : '약 이름으로 약품 정보를 찾아요.';
   // 함수이름: prescriptionAnalysis
   // 함수역할: 처방전·알약 식별·직접 등록을 포함하는 홈 진입점의 이름을 번역한다.
   // 매개변수: 없음. 반환값: 현재 언어의 카드 제목.
@@ -822,7 +848,7 @@ class _HomeText {
   // - None.
   // Returns: The formatted display text or identifier described above.
   String get healthRecommendation =>
-      isEnglish ? 'Health Recommendations' : '건강 관리 추천';
+      isEnglish ? 'Health tips' : '건강 관리 추천';
   // Function Name: healthRecommendationSubtitle
   // Description: Provides localized wording for "Review food and activity guidance for your medications" using the current language and message inputs.
   // Parameters:
@@ -837,7 +863,7 @@ class _HomeText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get nearbyPharmacy =>
-      isEnglish ? 'Nearby Hospitals & Pharmacies' : '근처 운영 병원·약국';
+      isEnglish ? 'Hospitals & pharmacies' : '근처 운영 병원·약국';
   // 함수이름: nearbyPharmacySubtitle
   // 함수역할: 2×2 기능 카드에서 주변 병원·약국의 운영시간 조회를 안내한다.
   // 매개변수:

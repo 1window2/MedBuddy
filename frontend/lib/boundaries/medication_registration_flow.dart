@@ -1,6 +1,8 @@
 // File Name: medication_registration_flow.dart
 // Role: Connects the shared registration menu to manual entry, pill recognition and prescription analysis.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +11,7 @@ import '../viewmodels/medbuddy_view_model.dart';
 import 'guided_prescription_camera_ui_boundary.dart';
 import 'manual_medication_entry_ui_boundary.dart';
 import 'medication_capture_options_ui_boundary.dart';
+import 'photo_dose_recording_ui_boundary.dart';
 import 'pill_identification_ui_boundary.dart';
 
 // 검토한 입력을 결과 상태가 받은 경우에만 등록 경로를 닫고 홈이 소유한 공통 결과 화면을 드러낸다.
@@ -72,28 +75,59 @@ Future<void> openManualMedicationEntry(
 // Description: Opens the registration choices and routes to manual entry, pill recognition or prescription capture; manual saves share one final refresh.
 // Parameters: context (BuildContext): Provider and Navigator location.
 // Returns: Future<void> completed after the selected menu workflow; cancelling creates no medication.
-Future<void> openMedicationRegistration(BuildContext context) async {
+Future<void> openMedicationRegistration(
+  BuildContext context, {
+  bool includePhotoDose = false,
+}) async {
   final viewModel = context.read<MedBuddyViewModel>();
   await showMedicationCaptureTaskOptions(
     context: context,
     userSetting: viewModel.userSetting,
-    onTaskSelected: (pageContext, task) async {
-      if (task == MedicationCaptureTask.manual) {
-        await openManualMedicationEntry(pageContext, viewModel);
-      } else {
-        await openPillIdentification(
-          pageContext,
-          viewModel,
-          task == MedicationCaptureTask.multiplePills
-              ? PillCaptureMode.singlePhoto
-              : PillCaptureMode.individualPhotos,
-        );
-      }
-    },
+    includePhotoDose: includePhotoDose,
+    onTaskSelected: (pageContext, task) =>
+        openMedicationCaptureTask(pageContext, viewModel, task),
     onSourceSelected: (pageContext, source) =>
         startPrescriptionFromRegistration(pageContext, viewModel, source),
   );
 }
+
+// 함수이름: openMedicationCaptureTask
+// 함수역할: 약 등록 화면에서 고른 작업을 연다. 작업을 빠짐없이 나눠 새 작업이 다른 화면으로 새지 않게 한다.
+// 매개변수: context: 등록 화면 위치; viewModel: 앱 상태; task: 고른 작업.
+// 반환값: 작업 화면이 닫히면 완료.
+Future<void> openMedicationCaptureTask(
+  BuildContext context,
+  MedBuddyViewModel viewModel,
+  MedicationCaptureTask task,
+) => switch (task) {
+  MedicationCaptureTask.manual => openManualMedicationEntry(context, viewModel),
+  MedicationCaptureTask.pills => openPillIdentification(
+    context,
+    viewModel,
+    PillCaptureMode.singlePhoto,
+  ),
+  MedicationCaptureTask.photoDose => openPhotoDoseRecording(context, viewModel),
+};
+
+// 함수이름: openPhotoDoseRecording
+// 함수역할: 사진으로 복용 기록 화면을 연다. 기록 큐 전송·겹침 확인·기록 뒤 갱신은 앱 상태에 맡긴다.
+// 매개변수: context: 여는 위치; viewModel: 앱 상태.
+// 반환값: 화면이 닫히면 완료.
+Future<void> openPhotoDoseRecording(
+  BuildContext context,
+  MedBuddyViewModel viewModel,
+) => Navigator.of(context).push<void>(
+  MaterialPageRoute<void>(
+    builder: (routeContext) => PhotoDoseRecordingUI(
+      userSetting: viewModel.userSetting,
+      hasOwnMedicines: viewModel.hasOwnMedicinesForPhotoDose,
+      onBeforePlan: viewModel.flushPendingDoses,
+      hasPendingOverlap: viewModel.hasPendingDoseOverlap,
+      onRecorded: viewModel.recordPhotoDose,
+      onRegisterRequested: () => unawaited(openMedicationRegistration(context)),
+    ),
+  ),
+);
 
 // 함수이름: startPrescriptionFromRegistration
 // 함수역할: 카메라 확정 또는 갤러리 선택으로 분석을 시작하고, 분석 상태가 바뀔 때만 홈 화면을 드러낸다.

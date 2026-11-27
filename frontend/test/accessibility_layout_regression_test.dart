@@ -117,6 +117,16 @@ class _AccessibilityHealthRecommendationControl
   }
 }
 
+// 홈 기능 버튼 키. 화면에 놓이는 순서(약 등록, 약 관리, 약 검색, 건강 관리 추천, 근처 운영 병원·약국, 환경설정)와 같다.
+const _homeTileKeys = [
+  'homeMedicationRegisterCard',
+  'homeMedicationManageCard',
+  'homeMedicationSearchCard',
+  'homeHealthRecommendationCard',
+  'homeNearbyPharmacyCard',
+  'homeUserSettingsCard',
+];
+
 // Function Name: main
 // Description:
 // - Register regression cases for compact-screen layout, large text, scrolling, and semantic-label
@@ -374,7 +384,7 @@ void main() {
             find.byKey(const ValueKey('homeEncouragementPanel')),
           );
           final firstActionRect = tester.getRect(
-            find.byKey(const ValueKey('homePrescriptionAnalysisCard')),
+            find.byKey(const ValueKey('homeMedicationRegisterCard')),
           );
           expect(
             firstActionRect.top - dashboardRect.bottom,
@@ -405,7 +415,7 @@ void main() {
       (size: Size(360, 640), textScale: 2.0),
     ]) {
       // 함수이름: 큰 글씨 홈 화면 스크롤 테스트
-      // 함수역할: 강제 줄바꿈 없이 표시된 기능 제목과 설명을 스크롤로 확인할 수 있는지 검사한다.
+      // 함수역할: 강제 줄바꿈 없이 표시된 기능 제목을 스크롤로 확인할 수 있는지, 좁은 화면에서는 버튼마다 한 줄을 쓰는지 검사한다.
       // 매개변수: tester (WidgetTester): 화면 배치와 상호작용을 검증하는 도구.
       // 반환값: 모든 기능에 접근할 수 있는지 검증하는 Future<void>.
       testWidgets('홈 화면은 ${viewportCase.size.width.toInt()} 너비와 '
@@ -455,8 +465,34 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byKey(const ValueKey('homeBrandLogo')), findsOneWidget);
-        expect(find.text('약 등록·관리'), findsOneWidget);
+        expect(find.text('약 등록'), findsOneWidget);
+        expect(find.text('약 관리'), findsOneWidget);
+        expect(find.text('약 검색'), findsOneWidget);
         expect(find.text('근처 운영 병원·약국'), findsOneWidget);
+        // 큰 글씨에서는 버튼 줄이 내용만큼 자라 넘치는 대신 화면이 스크롤된다.
+        final scrollable = tester.state<ScrollableState>(
+          find
+              .descendant(
+                of: find.byKey(const ValueKey('homeDashboardScrollView')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        expect(scrollable.position.maxScrollExtent, greaterThan(0));
+        // 350dp보다 좁은 화면에서는 버튼마다 가로 전체 한 줄을 쓴다.
+        if (viewportCase.size.width < 350) {
+          final tiles = [
+            for (final key in _homeTileKeys)
+              tester.getRect(find.byKey(ValueKey(key))),
+          ];
+          for (final tile in tiles) {
+            expect(tile.width, moreOrLessEquals(tiles.first.width));
+            expect(tile.height, moreOrLessEquals(tiles.first.height));
+          }
+          for (var i = 1; i < tiles.length; i++) {
+            expect(tiles[i].top, greaterThan(tiles[i - 1].bottom));
+          }
+        }
         await tester.drag(
           find.byKey(const ValueKey('homeDashboardScrollView')),
           const Offset(0, -300),

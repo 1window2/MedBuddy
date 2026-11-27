@@ -47,6 +47,7 @@ from api.dependencies import (
     get_set_caregiver_notification,
     get_set_notification,
     get_sync_dose,
+    get_plan_photo_dose,
 )
 from api.route_support import (
     enforce_chat_daily_quota,
@@ -70,6 +71,8 @@ from controls.check_prescription_change_control import CheckPrescriptionChange
 from controls.authorization_control import AuthorizationControl
 from controls.check_schedule_control import CheckSchedule
 from controls.sync_dose_control import SyncDose
+from controls.plan_photo_dose_control import PlanPhotoDose
+from schemas.photo_dose import PhotoDoseConfirmRequest, PhotoDosePlanRequest
 from schemas.dose_sync import DoseSyncRequest
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
@@ -798,6 +801,54 @@ async def sync_dose_operation(
     await run_request_database_work(
         queue_completion_alerts, background_tasks, events, sync_dose.db,
     )
+    return response
+
+
+# Function Name: plan_photo_dose
+# Description: Matches the pills found in one photo with the signed-in user's own active medicines and
+#   chooses the dose day and slot to record. Read-only: the app records through completion-operations
+#   (scheduled) and care/history (as-needed). Caregivers cannot plan for a patient.
+# Parameters: payload (PhotoDosePlanRequest) holds candidate products, observed shape and colours, answers
+#   and an optional chosen slot; principal and authorization resolve the owner; db is the request session.
+# Returns: The plan described in docs/Photo Dose Recording.md.
+@router.post("/schedule/photo-intake/plan")
+async def plan_photo_dose(
+    payload: PhotoDosePlanRequest,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    planner: PlanPhotoDose = Depends(get_plan_photo_dose),
+) -> dict[str, object]:
+    owner = authorization.resolvePatientScope(principal, None, allow_caregiver=False)
+    return await run_request_database_work(planner.plan, owner, payload)
+
+
+# Function Name: confirm_photo_dose
+# Description: Recomputes the photo plan at the photo time held in its signed token and, only when the
+#   write set equals what the app showed, records every slot and as-needed dose in one transaction with
+#   the photo time as the taken time. Replays of the same operation return the first result.
+# Parameters: payload (PhotoDoseConfirmRequest); background_tasks defers caregiver alerts; principal and
+#   authorization resolve the owner; planner and check_schedule are request-scoped controls.
+# Returns: The recorded groups plus today's schedule, shaped like completion-operations.
+@router.post("/schedule/photo-intake/confirm")
+async def confirm_photo_dose(
+    payload: PhotoDoseConfirmRequest,
+    background_tasks: BackgroundTasks,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    planner: PlanPhotoDose = Depends(get_plan_photo_dose),
+    check_schedule: CheckSchedule = Depends(get_check_schedule),
+) -> dict[str, object]:
+    owner = authorization.resolvePatientScope(principal, None, allow_caregiver=False)
+    result, events = await run_request_database_work(planner.confirm, owner, payload)
+    schedule_response = await run_request_database_work(
+        check_schedule.requestTodayMedicationSchedule, owner,
+    )
+    response = {
+        **result,
+        "schedule_date": application_today().isoformat(),
+        "data": schedule_response["data"],
+    }
+    await run_request_database_work(queue_completion_alerts, background_tasks, events, planner.db)
     return response
 
 

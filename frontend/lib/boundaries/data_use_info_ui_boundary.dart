@@ -141,15 +141,20 @@ class DataUseInfoUI extends StatelessWidget {
                         'Pill identification, health tips and external AI',
                       ),
                       _text(
-                        '낱알약 식별을 요청하면 선택한 알약 사진이 서버와 외부 AI인 Google Gemini로 '
-                            '전송되어 분석될 수 있습니다. 건강 관리 추천을 요청하면 복용 중인 약 정보도 '
+                        '낱알약 식별이나 사진으로 복용 기록을 요청하면 찍은 알약 사진이 서버와 외부 AI인 '
+                            'Google Gemini로 전송되어 분석될 수 있습니다. 사진으로 복용 기록은 분석한 알약의 '
+                            '후보 품목 번호와 모양·색 이름만으로 복약 중인 약과 시간대를 정하고, 확인을 누르면 '
+                            '일반 복용 기록으로 저장되어 연결된 보호자도 볼 수 있습니다. 건강 관리 추천을 요청하면 복용 중인 약 정보도 '
                             '서버를 통해 Gemini에 전달되어 추천 생성에 사용됩니다. Gemini에 장애가 있으면 '
                             '같은 사진과 정보가 대신 외부 AI인 Anthropic Claude로 전송되어 처리될 수 있습니다. '
                             '얼굴이나 신분증 등 불필요한 개인정보가 사진에 포함되지 않게 해주세요. '
                             'AI 분석과 추천은 틀릴 수 있으며 진단이나 처방을 대신하지 않습니다. '
                             'AI 식별이 필요하지 않으면 직접 등록을 이용할 수 있습니다.',
-                        'Pill identification can send your selected pill photos through the server to Google Gemini '
-                            'for analysis. Health recommendation requests also send medication information '
+                        'Pill identification and recording a dose from a photo can send your pill photos through '
+                            'the server to Google Gemini for analysis. Recording a dose from a photo then uses only the '
+                            'candidate product numbers and the shape and colour names to find your medicine and its '
+                            'time; after you confirm, it is saved as an ordinary dose record that linked caregivers '
+                            'can see. Health recommendation requests also send medication information '
                             'through the server to Gemini to generate recommendations. When Gemini is unavailable, '
                             'the same photos and information may be sent to Anthropic Claude instead. '
                             'Keep faces, identity documents and other unnecessary personal data out of photos. '
@@ -162,8 +167,8 @@ class DataUseInfoUI extends StatelessWidget {
                       _text(
                         '무료 Gemini API를 사용하는 환경에서는 입력 내용과 응답이 서비스 개선에 '
                             '사용되거나 검토될 수 있으며, 개인정보·민감정보를 전송해서는 안 됩니다. '
-                            '이 환경에서는 실제 환자의 처방전·복약 정보로 AI 분석이나 건강 추천을 '
-                            '이용하지 마세요. 이름을 지우거나 계정 식별값을 해시로 바꾸는 것만으로 '
+                            '이 환경에서는 실제 환자의 처방전·복약 정보와 매일 찍는 약 사진으로 AI 분석이나 '
+                            '건강 추천을 이용하지 마세요. 이름을 지우거나 계정 식별값을 해시로 바꾸는 것만으로 '
                             '건강 정보가 익명화되지는 않습니다.',
                         'In environments using the unpaid Gemini API, inputs and responses may be used '
                             'for service improvement or reviewed. Personal and sensitive information must '

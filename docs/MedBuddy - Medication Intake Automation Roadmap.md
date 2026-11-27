@@ -201,6 +201,13 @@ and false completion rate must be reported independently.
 
 ## Stage 2: Match Observations to the Current Dose
 
+**Status (1.1.0):** implemented as "사진으로 복용 기록" with deliberate changes after two
+design reviews; the rules, the reasons and the differences from this stage are in
+[Photo Dose Recording](Photo%20Dose%20Recording.md). In short: matching and slot choice stay
+on the server, slots are chosen per medicine, unknown or unsafe pills are shown and left
+unrecorded while the safe ones are recorded after one confirmation, and the physical-device
+corpus below is still owed before any zero-confirmation mode.
+
 After Stage 1 meets its acceptance evidence, compare the confirmed observations
 with the still-incomplete medications in the selected or inferred time slot.
 
@@ -217,6 +224,10 @@ count mismatch, or a medication that is not part of the authenticated patient's
 active schedule.
 
 ## Stage 3: Automated Completion
+
+**Status (1.1.0):** the "future atomic subset operation" is `POST /schedule/photo-intake/confirm`,
+which recomputes the plan at the photo time and writes every slot and as-needed dose in one
+transaction (idempotent by operation ID). The first release keeps one summary confirmation.
 
 Use the existing atomic schedule-completion transaction as the only write
 boundary. The first release should offer one summary confirmation. A later

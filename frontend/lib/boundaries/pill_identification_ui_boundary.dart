@@ -2904,7 +2904,7 @@ class _PillIdentificationText {
   // 함수이름: modeTitle
   // 함수역할: 선택한 촬영 방식의 화면 제목을 번역한다. 매개변수: singlePhoto. 반환값: 제목.
   String modeTitle(bool singlePhoto) => singlePhoto
-      ? (isEnglish ? 'Pills in one photo' : '여러 알약 찾기')
+      ? (isEnglish ? 'Identify loose pills' : '낱알약 식별')
       : (isEnglish ? 'Pills individually' : '알약 하나씩 찾기');
 
   // 함수이름: safetyNotice
@@ -2916,15 +2916,15 @@ class _PillIdentificationText {
   // 함수이름: photoSectionTitle
   // 함수역할: 해당 방식에서 필요한 사진만 안내한다. 매개변수: singlePhoto. 반환값: 구역 제목.
   String photoSectionTitle(bool singlePhoto) => singlePhoto
-      ? (isEnglish ? 'Add a photo of your pills' : '여러 알약이 담긴 사진을 추가하세요')
+      ? (isEnglish ? 'Add a photo of your pills' : '알약 사진을 추가하세요')
       : (isEnglish ? 'Add the front of each pill' : '알약 앞면 사진을 추가하세요');
 
   // 함수이름: photoSectionDescription
   // 함수역할: 다른 방식의 설명을 제외한 촬영 조건을 안내한다. 매개변수: singlePhoto. 반환값: 설명.
   String photoSectionDescription(bool singlePhoto) => singlePhoto
       ? (isEnglish
-            ? 'Up to 10 pills, clearly visible and not overlapping.'
-            : '최대 10개까지, 서로 겹치지 않게 촬영해주세요.')
+            ? 'One pill or several, up to 10 in one photo, not overlapping. You can add a back photo for each pill afterwards.'
+            : '한 알이든 여러 알이든 한 장에 찍어 주세요. 최대 10개까지, 서로 겹치지 않게요. 찍은 뒤 알약마다 뒷면을 더할 수 있어요.')
       : (isEnglish
             ? 'Add the back if needed. Up to 10 pills, photographed separately.'
             : '필요하면 뒷면도 추가해주세요. 최대 10개까지 각각 촬영할 수 있어요.');
