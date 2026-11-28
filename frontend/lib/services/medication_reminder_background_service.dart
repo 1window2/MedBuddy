@@ -11,6 +11,7 @@ import 'package:workmanager/workmanager.dart';
 import '../entities/calendar_days.dart';
 import '../entities/json_value_reader.dart';
 import '../entities/medication_alarm_entity.dart';
+import '../entities/medication_reminder_text.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/medication_slot_label.dart';
 import '../entities/patient_hash_entity.dart';
@@ -241,7 +242,8 @@ class MedicationReminderRefreshService {
              * - schedule (MedicationSchedule): Medication course with name, dose, duration, and slots.
              * Returns:
              * - Whether the schedule contains the requested slot.
-             */ (schedule) => schedule.slotKeys.contains(slotKey),
+             */
+              (schedule) => schedule.slotKeys.contains(slotKey),
             )
             .toList(growable: false);
         if (!setting.isEnabled || slotSchedules.isEmpty) {
@@ -326,6 +328,13 @@ class MedicationReminderRefreshService {
         notificationsEnabled: notificationsEnabled,
         language: language,
       );
+      // 예약하는 사이에 로그아웃의 알림 정리가 끝났으면 방금 건 알림을 직접 지운다(시간대 알림과 같다).
+      if (!await _stillOwnsReminders()) {
+        await _cancelReminder(
+          packReminderNotificationId,
+          slotKey: packReminderSlotKey,
+        );
+      }
     } catch (error) {
       developer.log(
         'Pack reminder refresh failed: ${error.runtimeType}.',

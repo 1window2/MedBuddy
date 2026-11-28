@@ -26,7 +26,7 @@
 | --- | --- |
 | App | Flutter / Dart (Android), Firebase Auth and Cloud Messaging |
 | Server | FastAPI, PostgreSQL, Redis, Alembic; Cloudflare Tunnel in production |
-| AI and data | Gemini (Anthropic Claude as a fallback when Gemini fails), OpenCV, Korean public data APIs (MFDS, NEMC, KASI) |
+| AI & data | Gemini (Anthropic Claude as a fallback), OpenCV, Korean public data APIs (MFDS, NEMC, KASI) |
 
 The code follows the project UML in a Boundary-Control-Entity structure
 ([class view](docs/UML/class/README.md)). UI design:

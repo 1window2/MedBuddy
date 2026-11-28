@@ -4,6 +4,8 @@
 const asNeededReminderSlotKey = 'as_needed';
 // 외출 전 약 챙기기 알림. 복용 시간대가 아니라 점심·저녁 약을 챙겨 가라는 아침 알림이다.
 const packReminderSlotKey = 'pack';
+// 외출 전 약 챙기기 알림의 기본 ID. 필요시 확인 알림(84005)과 시간대 알림 ID 범위(100000~1099999)와 겹치지 않는다.
+const packReminderNotificationId = 84010;
 
 // Function Name: medicationReminderTitle
 // Description: Builds the reminder title for a slot; the as-needed check has its own fixed title.

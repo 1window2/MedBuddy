@@ -248,7 +248,8 @@ void main() {
     // 필요시 확인과 외출 전 약 챙기기 알림의 예약 계획, 외출 전 알림 설정도 계정과 함께 지운다.
     'medbuddy_reminder_plan_${owner}_as_needed': '{}',
     'medbuddy_reminder_plan_${owner}_pack': '{}',
-    'medbuddy_pack_reminder_$owner': '{"enabled":true,"time":"07:30","days":[1,2,3,4,5]}',
+    'medbuddy_pack_reminder_$owner':
+        '{"enabled":true,"time":"07:30","days":[1,2,3,4,5]}',
     'medbuddy.chat_links_present.$owner': true,
     'caregiver_patient_label.$owner.patient-1': 'Family',
     'caregiver_alert.$owner.patient-1.morning.snapshot_data': '{}',

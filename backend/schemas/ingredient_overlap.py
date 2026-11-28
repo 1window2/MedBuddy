@@ -8,7 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from entities.patient_hash_entity import MAX_PATIENT_HASH_LENGTH
 
 MAX_INGREDIENT_OVERLAP_ITEMS = 50
-MAX_INGREDIENT_OVERLAPS_PER_ITEM = 10
+# 한 품목에 대해 알려 줄 다른 품목 수의 상한. 그 품목들과 겹친 성분은 모두 담는다.
+MAX_INGREDIENT_OVERLAP_PARTNERS_PER_ITEM = 10
 
 IngredientOverlapItemSeq = Annotated[
     str,
@@ -58,7 +59,7 @@ class IngredientOverlap(BaseModel):
 
 # Class Name: IngredientOverlapItem
 # Role: Overlaps of one checked product number.
-# Responsibilities: Keep at most MAX_INGREDIENT_OVERLAPS_PER_ITEM entries.
+# Responsibilities: Name at most MAX_INGREDIENT_OVERLAP_PARTNERS_PER_ITEM other products, with every ingredient shared with each.
 # Attributes: item_seq (str) is the checked product; overlaps (list[IngredientOverlap]) may be empty.
 class IngredientOverlapItem(BaseModel):
     item_seq: str

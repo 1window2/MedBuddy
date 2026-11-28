@@ -80,26 +80,30 @@ class IngredientOverlap {
 
 // Function Name: filterIngredientOverlapsForSource
 // Description:
-// - For a prescription, drops entries of the same result screen (the prescriber combined them) and the same product
-//   already in the list (refills repeat products); pill-photo and manual results keep every entry.
-// Parameters: overlaps (List<IngredientOverlap>): server entries of one row; source (MedicationResultSource): result screen source.
+// - For a prescription, drops entries of the same result screen (the prescriber combined them), the same product
+//   already in the list (refills repeat products) and saved products that this prescription also contains (an early
+//   refill of a combination the prescriber chose); pill-photo and manual results keep every entry.
+// Parameters: overlaps (List<IngredientOverlap>): server entries of one row; source (MedicationResultSource): result
+//   screen source; resultItemSeqs (Set<String>): product numbers of every row on the same result screen.
 // Returns: An unmodifiable filtered list.
 List<IngredientOverlap> filterIngredientOverlapsForSource(
   List<IngredientOverlap> overlaps,
-  MedicationResultSource source,
-) {
+  MedicationResultSource source, {
+  Set<String> resultItemSeqs = const {},
+}) {
   if (source != MedicationResultSource.prescription) {
     return List.unmodifiable(overlaps);
   }
   return List.unmodifiable(
     overlaps.where(
       // 함수이름: where 콜백
-      // 함수역할: 처방전에서는 복약 목록의 다른 품목과 겹친 항목만 남긴다.
+      // 함수역할: 처방전에서는 이 처방전에 없는 복약 목록의 다른 품목과 겹친 항목만 남긴다.
       // 매개변수: overlap (IngredientOverlap): 판정할 항목.
       // 반환값: 남길 항목이면 true.
       (overlap) =>
           overlap.source == IngredientOverlapSource.saved &&
-          !overlap.sameProduct,
+          !overlap.sameProduct &&
+          !resultItemSeqs.contains(overlap.withItemSeq),
     ),
   );
 }

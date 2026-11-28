@@ -375,6 +375,28 @@ void main() {
       expect(colorOf('월'), MedBuddyColors.primaryDark);
     });
 
+    testWidgets('shows off while the app medication notifications are off', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PackReminderCard(
+              userSetting: const UserSetting(
+                language: 'ko',
+                medicationNotificationsEnabled: false,
+              ),
+              loadSetting: () async => const PackReminderSetting(enabled: true),
+              saveSetting: (_) async => true,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('꺼짐'), findsOneWidget);
+      expect(find.text('매일 07:30'), findsNothing);
+    });
+
     testWidgets('the last selected weekday cannot be turned off', (
       tester,
     ) async {

@@ -91,7 +91,10 @@ class _PackReminderCardState extends State<PackReminderCard> {
   Widget build(BuildContext context) {
     final setting = _setting ?? const PackReminderSetting();
     final text = _text;
-    final summary = setting.enabled
+    // 앱 복약 알림을 꺼 두면 예약되지 않으므로 시간대 알림처럼 꺼짐으로 보인다.
+    final active =
+        setting.enabled && widget.userSetting.medicationNotificationsEnabled;
+    final summary = active
         ? text.summary(setting, widget.userSetting)
         : text.off;
     return Semantics(
@@ -146,7 +149,7 @@ class _PackReminderCardState extends State<PackReminderCard> {
                       KeepWordsText(
                         summary,
                         style: TextStyle(
-                          color: setting.enabled
+                          color: active
                               ? MedBuddyColors.primaryDark
                               : MedBuddyColors.textSubtle,
                           fontSize: 14,
