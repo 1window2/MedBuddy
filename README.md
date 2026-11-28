@@ -58,7 +58,7 @@ and [Production Deployment](docs/Production%20Deployment.md).
 
 | Profile | Name | Role | GitHub |
 | :---: | :---: | :---: | :---: |
-| <img src="https://github.com/1window2.png" width="80"> | **1window2** | Full-Stack Architecture & AI Pipeline Lead | [@1window2](https://github.com/1window2) |
-| <img src="https://github.com/tmdgusdl9647.png" width="80"> | **tmdgusdl9647** | Team Lead & Developer | [@tmdgusdl9647](https://github.com/tmdgusdl9647) |
-| <img src="https://github.com/jeeon0318.png" width="80"> | **jeeon0318** | UML Documentation & Legal Compliance Lead | [@jeeon0318](https://github.com/jeeon0318) |
-| <img src="https://github.com/onlyone130.png" width="80"> | **onlyone130** | UI/UX Design Lead | [@onlyone130](https://github.com/onlyone130) |
+| <img src="https://github.com/tmdgusdl9647.png" width="80"> | **tmdgusdl9647** | Team Lead & Full-Stack Developer | [@tmdgusdl9647](https://github.com/tmdgusdl9647) |
+| <img src="https://github.com/1window2.png" width="80"> | **1window2** | Full-Stack Developer & System Architect | [@1window2](https://github.com/1window2) |
+| <img src="https://github.com/jeeon0318.png" width="80"> | **jeeon0318** | UML Documentation | [@jeeon0318](https://github.com/jeeon0318) |
+| <img src="https://github.com/onlyone130.png" width="80"> | **onlyone130** | Frontend Design | [@onlyone130](https://github.com/onlyone130) |
