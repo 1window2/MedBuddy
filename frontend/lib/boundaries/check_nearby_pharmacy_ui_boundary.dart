@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import '../controls/find_hospital_department_control.dart';
 import '../widgets/medbuddy_search_field.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -45,11 +46,28 @@ enum _HospitalSearchWarning { partialResults, wideArea }
 // 속성: installedMapApp/googleMaps/copyAddress: 이동 방식 값.
 enum _PharmacyDirectionsChoice { installedMapApp, googleMaps, copyAddress }
 
+// Class Name: _NearbyCareListView
+// Role: Display lists derived from the latest results and favorites mode.
+// Responsibilities: Keeps live places (map markers, selection, sharing) apart from list-only snapshot favorites.
+// Attributes: live: sorted live results; snapshots: favorites outside the results, nearest first.
+class _NearbyCareListView {
+  final List<NearbyCarePlace> live;
+  final List<NearbyCarePlace> snapshots;
+
+  // Function Name: _NearbyCareListView
+  // Description: Pairs the live and snapshot lists.
+  // Parameters: live, snapshots: display lists.
+  // Returns: A _NearbyCareListView.
+  const _NearbyCareListView(this.live, this.snapshots);
+}
+
 const _refreshCooldownDuration = Duration(seconds: 10);
 const _mapDistanceGuideDuration = Duration(seconds: 4);
 const _hospitalSearchWarningDuration = Duration(seconds: 5);
 const _hospitalSearchGuidePreference = 'medbuddy.hospital_search_guide_v1';
 const _hospitalWideSearchRadiusKm = 3.0;
+// 즐겨찾기만 보기 버튼(아래 100~148dp)이 상단 안내(48~56dp, 큰 글씨 두 줄)와 겹치지 않는 최소 지도 높이.
+const _favoritesToggleMinMapHeight = 210.0;
 
 // 국립중앙의료원 진료과목 코드를 검색 요청과 표시 문구에 함께 사용한다.
 const _hospitalDepartments = <String, (String, String)>{
@@ -210,12 +228,25 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   late final CheckNearbyCare _control;
   late final bool _ownsControl;
   late final PharmacyFavoriteService _favoriteService;
-  late final NearbyCarePlace? _initialPlace;
-  bool _initialPlaceResolved = false;
+  // 최신 조회에서 찾아 선택할 장소. 채팅 공유 장소로 시작하고 즐겨찾기 스냅샷을 누르면 바뀐다.
+  NearbyCarePlace? _focusPlace;
+  bool _focusPlaceResolved = false;
+  bool _focusFromFavorite = false;
   List<NearbyCarePlace> _pharmacies = const [];
   Set<String> _favoritePharmacyIds = const {};
   bool _favoritesLoaded = false;
   bool _isSavingFavorite = false;
+  // 목록 전용 즐겨찾기 스냅샷. 불러오기 전에는 저장소를 덮어쓰지 않는다.
+  Map<String, FavoritePlaceSnapshot> _favoriteSnapshots = const {};
+  bool _snapshotsLoaded = false;
+  Future<void> _snapshotWork = Future.value();
+  bool _favoritesOnly = false;
+  // 즐겨찾기 모드가 잠시 바꾼 조회 조건과 진료과. 모드를 끄면 사용자의 선택으로 되돌린다.
+  _PharmacyFilter? _filterBeforeFavorites;
+  bool _restoreDepartment = false;
+  String? _departmentBeforeFavorites;
+  // 즐겨찾기 모드에서 해제한 선택 장소는 선택을 닫을 때까지 목록에 남긴다.
+  String? _retainedFavoriteId;
   DeviceCoordinate? _deviceLocation;
   String? _errorMessage;
   bool _isLoading = true;
@@ -224,10 +255,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   final _detailExtent = ValueNotifier<double>(
     _PharmacyDetailsSheet.initialExtent,
   );
-  // 정렬 결과는 원본 목록과 즐겨찾기 집합이 교체될 때만 다시 계산한다.
-  List<NearbyCarePlace>? _sortedPharmacies;
-  List<NearbyCarePlace>? _sortedFromPharmacies;
-  Set<String>? _sortedFromFavorites;
+  // 정렬·즐겨찾기 거르기 결과는 원본 목록·즐겨찾기·스냅샷·모드가 바뀔 때만 다시 계산한다.
+  _NearbyCareListView? _listViewCache;
+  Object? _listViewKey;
   bool _isRefreshCoolingDown = false;
   Timer? _refreshCooldownTimer;
   Timer? _mapDistanceGuideTimer;
@@ -353,8 +383,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     _control =
         widget.control ??
         (widget.hospitals ? CheckNearbyHospital() : CheckNearbyPharmacy());
-    _initialPlace = widget.initialPlace;
-    final initialPlace = _initialPlace;
+    _focusPlace = widget.initialPlace;
+    final initialPlace = _focusPlace;
     _isLoading = initialPlace != null || !widget.hospitals;
     if (initialPlace != null) {
       // 현재 응답을 받기 전에는 공유 당시 상세를 화면에 배치하지 않는다.
@@ -417,14 +447,16 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     _lastSearchStartedAt = _now();
     _resumeRefreshPending = false;
     final requestedArea = searchArea ?? (locate ? null : _searchArea);
-    final resolveSharedPlace =
-        _initialPlace != null &&
-        (!_initialPlaceResolved ||
-            _selectedPharmacyId == _initialPlace.placeId) &&
+    final focusPlace = _focusPlace;
+    final focusFromFavorite = _focusFromFavorite;
+    // 공유 장소와 즐겨찾기 스냅샷은 저장된 상세 대신 같은 ID의 최신 결과를 찾는다.
+    final resolveFocusPlace =
+        focusPlace != null &&
+        (!_focusPlaceResolved || _selectedPharmacyId == focusPlace.placeId) &&
         searchArea == null &&
         !locate &&
         _filter == _PharmacyFilter.all;
-    if (searchArea != null || locate) _initialPlaceResolved = true;
+    if (searchArea != null || locate) _focusPlaceResolved = true;
     // Only an explicitly chosen calendar date survives a later search.
     if (!_hasSelectedSearchDate) {
       _targetDateTime = _now();
@@ -442,9 +474,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       NearbyCareSearchResult result;
       var sharedPlaceMissing = false;
       try {
-        result = resolveSharedPlace
+        result = resolveFocusPlace
             ? await _control.requestSelectedPlaceSearch(
-                place: _initialPlace,
+                place: focusPlace,
                 targetDateTime: _targetDateTime,
                 searchArea: requestedArea,
                 maxDistanceKm: widget.hospitals
@@ -498,10 +530,10 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
           _selectedPhoneVerified = false;
         }
         _pharmacies = result.data;
-        if (resolveSharedPlace) {
-          if (!_initialPlaceResolved) _centerRevision++;
-          _initialPlaceResolved = true;
-          if (!sharedPlaceMissing) _selectedPharmacyId = _initialPlace.placeId;
+        if (resolveFocusPlace) {
+          if (!_focusPlaceResolved) _centerRevision++;
+          _focusPlaceResolved = true;
+          if (!sharedPlaceMissing) _selectedPharmacyId = focusPlace.placeId;
         }
         _catalogIsStale = result.catalogIsStale;
         _searchTruncated = result.searchTruncated;
@@ -522,9 +554,16 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         }
         _lastRefreshedAt = _now();
       });
+      _refreshSnapshots();
       if (sharedPlaceMissing) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: KeepWordsText(_text.sharedPlaceMissing)),
+          SnackBar(
+            content: KeepWordsText(
+              focusFromFavorite
+                  ? _text.favoritePlaceMissing
+                  : _text.sharedPlaceMissing,
+            ),
+          ),
         );
       }
       if (expanded) {
@@ -756,46 +795,147 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   }
 
   // Function Name: _visiblePharmacies
-  // Description: Sorts a copy by opening status, late-night operation, favorites and distance; reuses it while source-list and favorite-set identities are unchanged.
+  // Description: Returns the live results shown on the map and in the list; in favorites mode only favorites and a just un-starred selected place remain.
   // Parameters: None.
   // Returns: The cached display list; callers must not mutate it.
-  List<NearbyCarePlace> get _visiblePharmacies {
-    final cached = _sortedPharmacies;
-    // 두 필드는 항상 새 객체로 교체되므로 동일 객체 여부만으로 변경을 알 수 있다.
-    if (cached != null &&
-        identical(_pharmacies, _sortedFromPharmacies) &&
-        identical(_favoritePharmacyIds, _sortedFromFavorites)) {
-      return cached;
-    }
-    _sortedFromPharmacies = _pharmacies;
-    _sortedFromFavorites = _favoritePharmacyIds;
-    return _sortedPharmacies = sortNearbyCarePlaces(
+  List<NearbyCarePlace> get _visiblePharmacies => _listView.live;
+
+  // Function Name: _listView
+  // Description: Sorts a copy by opening status, late-night operation, favorites and distance, then applies favorites mode: live favorites first and list-only snapshots of other favorites by distance from the search centre. Chat selection never lists snapshots.
+  // Parameters: None.
+  // Returns: The cached live and snapshot lists; reused while sources, mode and the retained place are unchanged.
+  _NearbyCareListView get _listView {
+    final retained =
+        _retainedFavoriteId != null &&
+            _retainedFavoriteId == _selectedPharmacyId
+        ? _retainedFavoriteId
+        : null;
+    // 목록·집합·지역은 항상 새 객체로 교체되므로 레코드 비교가 동일 객체 여부로 변경을 알린다.
+    final key = (
+      _pharmacies,
+      _favoritePharmacyIds,
+      _favoriteSnapshots,
+      _favoritesOnly,
+      retained,
+      _searchArea,
+    );
+    final cached = _listViewCache;
+    if (cached != null && key == _listViewKey) return cached;
+    _listViewKey = key;
+    final sorted = sortNearbyCarePlaces(
       _pharmacies,
       favoriteIds: _favoritePharmacyIds,
       hospitals: widget.hospitals,
     );
+    if (!_favoritesOnly) {
+      return _listViewCache = _NearbyCareListView(sorted, const []);
+    }
+    final live = sorted
+        .where(
+          (place) =>
+              _favoritePharmacyIds.contains(place.placeId) ||
+              place.placeId == retained,
+        )
+        .toList(growable: false);
+    if (widget.selectionMode) {
+      return _listViewCache = _NearbyCareListView(live, const []);
+    }
+    final liveIds = {for (final place in _pharmacies) place.placeId};
+    final center = _searchArea?.center;
+    final snapshots =
+        _favoriteSnapshots.values
+            .where(
+              (snapshot) =>
+                  _favoritePharmacyIds.contains(snapshot.placeId) &&
+                  !liveIds.contains(snapshot.placeId),
+            )
+            .map(
+              (snapshot) => snapshot.toPlace(
+                distanceKm: center == null
+                    ? 0
+                    : Geolocator.distanceBetween(
+                            center.latitude,
+                            center.longitude,
+                            snapshot.latitude,
+                            snapshot.longitude,
+                          ) /
+                          1000,
+              ),
+            )
+            .toList(growable: false)
+          ..sort((left, right) => left.distanceKm.compareTo(right.distanceKm));
+    return _listViewCache = _NearbyCareListView(live, snapshots);
   }
 
   // Function Name: _loadFavorites
-  // Description: Loads this user's saved place IDs and applies them only while mounted; a failed load leaves favorites unavailable.
+  // Description: Loads this user's saved place IDs, then their snapshots pruned against those IDs; a failed ID load leaves favorites unavailable, and a failed snapshot load only leaves snapshots off.
   // Parameters: None.
   // Returns: Future completing after the favorites lookup.
   Future<void> _loadFavorites() async {
+    Set<String> favoriteIds;
     try {
-      final favoriteIds = await _favoriteService.loadFavoriteIds();
-      if (mounted) {
-        setState(() {
-          _favoritePharmacyIds = favoriteIds;
-          _favoritesLoaded = true;
-        });
-      }
+      favoriteIds = await _favoriteService.loadFavoriteIds();
     } catch (_) {
       if (mounted) _showActionMessage(_text.favoriteLoadFailed);
+      return;
     }
+    if (!mounted) return;
+    setState(() {
+      _favoritePharmacyIds = favoriteIds;
+      _favoritesLoaded = true;
+    });
+    Map<String, FavoritePlaceSnapshot> snapshots;
+    try {
+      snapshots = await _favoriteService.loadSnapshots(favoriteIds);
+    } catch (_) {
+      // 스냅샷은 목록 보조 정보라서 저장소 오류를 알리지 않고 쓰기도 막는다.
+      return;
+    }
+    if (!mounted) return;
+    // 불러오는 동안 해제한 장소는 ID 목록을 기준으로 다시 정리한다.
+    final current = Map.of(snapshots)
+      ..removeWhere((id, _) => !_favoritePharmacyIds.contains(id));
+    setState(() {
+      _favoriteSnapshots = current;
+      _snapshotsLoaded = true;
+    });
+    if (current.length != snapshots.length) _persistSnapshots(current);
+    _refreshSnapshots();
+  }
+
+  // Function Name: _refreshSnapshots
+  // Description: Rewrites snapshots only for favorites in the current results that are missing one or whose stored fields changed.
+  // Parameters: None.
+  // Returns: None; nothing is written before snapshots load.
+  void _refreshSnapshots() {
+    if (!_snapshotsLoaded || !mounted) return;
+    final updated = PharmacyFavoriteService.refreshedSnapshots(
+      _favoriteSnapshots,
+      _pharmacies,
+      _favoritePharmacyIds,
+      _now(),
+    );
+    if (updated == null) return;
+    setState(() => _favoriteSnapshots = updated);
+    _persistSnapshots(updated);
+  }
+
+  // Function Name: _persistSnapshots
+  // Description: Queues a snapshot write after earlier writes so the newest map is stored last; storage failures are ignored.
+  // Parameters: snapshots (Map<String, FavoritePlaceSnapshot>): map to store.
+  // Returns: None.
+  void _persistSnapshots(Map<String, FavoritePlaceSnapshot> snapshots) {
+    _snapshotWork = _snapshotWork.then((_) async {
+      try {
+        await _favoriteService.saveSnapshots(snapshots);
+      } catch (_) {
+        // 다음 스냅샷 변경 때 전체 목록을 다시 저장한다.
+      }
+    });
   }
 
   // Function Name: _toggleFavorite
-  // Description: Serializes optimistic favorite changes and restores the prior set with feedback if persistence rejects or throws.
+  // Description: Serializes optimistic favorite changes and restores the prior set with feedback if persistence rejects or throws; a saved change writes or removes the place's snapshot. In favorites mode an un-starred selected place stays listed until it is deselected.
   // Parameters: pharmacy (NearbyCarePlace): place to toggle.
   // Returns: Future completing after save or rollback; no action before favorites load.
   Future<void> _toggleFavorite(NearbyCarePlace pharmacy) async {
@@ -809,6 +949,12 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     setState(() {
       _favoritePharmacyIds = updatedIds;
       _isSavingFavorite = true;
+      // 열린 상세가 해제 직후 사라지지 않게 선택한 장소만 남긴다.
+      if (isFavorite &&
+          _favoritesOnly &&
+          pharmacy.placeId == _selectedPharmacyId) {
+        _retainedFavoriteId = pharmacy.placeId;
+      }
     });
     var saved = false;
     try {
@@ -817,11 +963,107 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       // 저장소 예외도 저장 거절과 같은 복구 경로로 처리한다.
     }
     if (!mounted) return;
+    Map<String, FavoritePlaceSnapshot>? snapshots;
+    if (saved && _snapshotsLoaded) {
+      snapshots = Map.of(_favoriteSnapshots);
+      if (isFavorite) {
+        snapshots.remove(pharmacy.placeId);
+      } else {
+        snapshots[pharmacy.placeId] = FavoritePlaceSnapshot.fromPlace(
+          pharmacy,
+          _now(),
+        );
+      }
+    }
     setState(() {
       if (!saved) _favoritePharmacyIds = previousIds;
+      if (snapshots != null) _favoriteSnapshots = snapshots;
       _isSavingFavorite = false;
     });
+    if (snapshots != null) _persistSnapshots(snapshots);
     if (!saved) _showActionMessage(_text.favoriteSaveFailed);
+  }
+
+  // Function Name: _setFavoritesOnly
+  // Description: Turns favorites mode on or off. Turning it on clears the selection and, for pharmacies, searches all opening states so closed favorites appear live. Turning it off restores a filter or department that favorites mode changed and the user did not choose since.
+  // Parameters: enabled (bool): requested mode.
+  // Returns: None; a changed search condition starts a new lookup.
+  void _setFavoritesOnly(bool enabled) {
+    if (enabled == _favoritesOnly) return;
+    final control = _control;
+    var reload = false;
+    setState(() {
+      _favoritesOnly = enabled;
+      _retainedFavoriteId = null;
+      if (enabled) {
+        _selectedPharmacyId = null;
+        _selectedPhoneVerified = false;
+        _filterBeforeFavorites = null;
+        _restoreDepartment = false;
+        _departmentBeforeFavorites = null;
+        if (!widget.hospitals && _filter != _PharmacyFilter.all) {
+          _filterBeforeFavorites = _filter;
+          _filter = _PharmacyFilter.all;
+          reload = true;
+        }
+      } else {
+        final filter = _filterBeforeFavorites;
+        if (filter != null && filter != _filter) {
+          _filter = filter;
+          reload = true;
+        }
+        if (_restoreDepartment &&
+            control is CheckNearbyHospital &&
+            control.department != _departmentBeforeFavorites) {
+          control.department = _departmentBeforeFavorites;
+          reload = true;
+        }
+        _filterBeforeFavorites = null;
+        _restoreDepartment = false;
+        _departmentBeforeFavorites = null;
+        if (reload) {
+          _selectedPharmacyId = null;
+          _selectedPhoneVerified = false;
+        }
+      }
+      // 이전 조건의 결과를 새 조건의 결과처럼 보이지 않게 한다.
+      if (reload) _pharmacies = [];
+    });
+    if (reload) unawaited(_loadPharmacies());
+  }
+
+  // Function Name: _focusFavoriteSnapshot
+  // Description: Looks up a snapshot favorite in a fresh search of every opening state (and every department for hospitals) through the shared focus-place path; success selects the live place and moves the map.
+  // Parameters: place (NearbyCarePlace): snapshot list item supplying the ID and coordinate hint.
+  // Returns: None; a missing place leaves nearby results and shows a notice.
+  void _focusFavoriteSnapshot(NearbyCarePlace place) {
+    if (_isLoading) return;
+    final control = _control;
+    setState(() {
+      _focusPlace = place;
+      _focusPlaceResolved = false;
+      _focusFromFavorite = true;
+      _selectedPharmacyId = null;
+      _selectedPhoneVerified = false;
+      _retainedFavoriteId = null;
+      _listExpanded = false;
+      _detailExtent.value = _PharmacyDetailsSheet.initialExtent;
+      if (_filter != _PharmacyFilter.all) {
+        _filterBeforeFavorites ??= _filter;
+        _filter = _PharmacyFilter.all;
+        _pharmacies = [];
+      }
+      // 다른 진료과의 즐겨찾기 병원도 찾을 수 있게 진료과 조건을 잠시 푼다.
+      if (control is CheckNearbyHospital && control.department != null) {
+        if (!_restoreDepartment) {
+          _restoreDepartment = true;
+          _departmentBeforeFavorites = control.department;
+        }
+        control.department = null;
+        _pharmacies = [];
+      }
+    });
+    unawaited(_loadPharmacies());
   }
 
   // 함수이름: _canChangeFavorite
@@ -856,6 +1098,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     // Returns: No payload; applies the captured state changes.
     setState(() {
       _filter = nextFilter;
+      // An explicit choice replaces the filter favorites mode would restore.
+      _filterBeforeFavorites = null;
       _selectedPharmacyId = null;
       // Never label the previous condition's pins as new-filter results.
       _pharmacies = [];
@@ -907,6 +1151,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     setState(() {
       _hasSelectedHospitalDepartment = true;
       control.department = selected.isEmpty ? null : selected;
+      // 직접 고른 진료과는 즐겨찾기 모드를 꺼도 유지한다.
+      _restoreDepartment = false;
+      _departmentBeforeFavorites = null;
       _selectedPharmacyId = null;
       _selectedPhoneVerified = false;
       _pharmacies = [];
@@ -1057,6 +1304,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     }
     setState(() {
       _filter = selected.filter;
+      // 직접 고른 조건은 즐겨찾기 모드를 꺼도 유지한다.
+      _filterBeforeFavorites = null;
       _hasSelectedSearchDate = selected.date != null;
       _targetDateTime = selected.date ?? _now();
       _selectedPharmacyId = null;
@@ -1088,7 +1337,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !_listExpanded && _selectedPharmacyId == null,
+      canPop: !_listExpanded && _selectedPharmacyId == null && !_favoritesOnly,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) _handleBack();
       },
@@ -1108,7 +1357,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   }
 
   // Function Name: _handleBack
-  // Description: Closes the expanded list first, then selected-place details, then the nearby-care screen.
+  // Description: Closes the expanded list first, then selected-place details, then favorites mode, then the nearby-care screen.
   // Parameters: None.
   // Returns: None.
   void _handleBack() {
@@ -1119,17 +1368,20 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       });
     } else if (_selectedPharmacyId != null) {
       _closePharmacyDetails();
+    } else if (_favoritesOnly) {
+      _setFavoritesOnly(false);
     } else {
       Navigator.pop(context);
     }
   }
 
   // 함수이름: _closePharmacyDetails
-  // 함수역할: 지도 위치는 유지하고 약국 선택과 전화 확인 상태만 해제한다.
+  // 함수역할: 지도 위치는 유지하고 약국 선택과 전화 확인 상태, 해제 후 남겨 둔 즐겨찾기만 정리한다.
   // 매개변수: 없음. 반환값: 없음.
   void _closePharmacyDetails() => setState(() {
     _selectedPharmacyId = null;
     _selectedPhoneVerified = false;
+    _retainedFavoriteId = null;
   });
 
   // 함수이름: _buildHeader
@@ -1299,6 +1551,41 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                           ),
                         ),
                       ),
+                      if (!_listExpanded)
+                        ValueListenableBuilder<double>(
+                          valueListenable: _detailExtent,
+                          builder: (context, detailExtent, _) {
+                            final bottomInset = showDetails
+                                ? constraints.maxHeight *
+                                      detailExtent.clamp(0.0, .92)
+                                : 0.0;
+                            // 상단 안내(큰 글씨에서 두 줄)와 겹치지 않을 만큼 지도가 보일 때만 둔다.
+                            // 숨길 때도 Positioned를 유지해 Stack 크기 계산에 끼어들지 않게 한다.
+                            if (constraints.maxHeight - bottomInset <
+                                _favoritesToggleMinMapHeight) {
+                              return const Positioned(
+                                right: 0,
+                                bottom: 0,
+                                child: SizedBox.shrink(),
+                              );
+                            }
+                            return Positioned(
+                              right: 8,
+                              bottom:
+                                  bottomInset + nearbyMapFavoritesToggleBottom,
+                              child: NearbyMapFavoritesToggle(
+                                key: const Key('nearby-favorites-toggle'),
+                                active: _favoritesOnly,
+                                tooltip: _favoritesOnly
+                                    ? _text.showAllPlaces
+                                    : _text.favoritesOnlyTooltip,
+                                onPressed: _isLoading
+                                    ? null
+                                    : () => _setFavoritesOnly(!_favoritesOnly),
+                              ),
+                            );
+                          },
+                        ),
                       if (showDetails)
                         _PharmacyDetailsSheet(
                           key: ValueKey(
@@ -1347,7 +1634,10 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                         Positioned.fill(
                           top: 12,
                           child: _PharmacyListPanel(
-                            header: _buildListStatus(),
+                            header: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [_buildListStatus()],
+                            ),
                             showMapLabel: english ? 'Show map' : '지도 크게 보기',
                             onDismissed: _handleBack,
                             child: _buildBody(showStatus: false),
@@ -1393,7 +1683,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                   label: KeepWordsText(
                     _listExpanded
                         ? (english ? 'Show map' : '지도 크게 보기')
-                        : _text.showList(pharmacies.length),
+                        : _text.showList(
+                            pharmacies.length + _listView.snapshots.length,
+                          ),
                   ),
                 ),
               ),
@@ -1483,17 +1775,14 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     if (failureState != null && !widget.hospitals) return failureState;
 
     final visiblePharmacies = _visiblePharmacies;
+    final snapshotFavorites = _listView.snapshots;
+    final listIsEmpty = visiblePharmacies.isEmpty && snapshotFavorites.isEmpty;
     final body = Column(
       mainAxisSize: widget.hospitals ? MainAxisSize.min : MainAxisSize.max,
       children: [
         if (showStatus) _buildListStatus(),
         Padding(
-          padding: EdgeInsets.fromLTRB(
-            20,
-            visiblePharmacies.isEmpty ? 18 : 2,
-            20,
-            10,
-          ),
+          padding: EdgeInsets.fromLTRB(20, listIsEmpty ? 18 : 2, 20, 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1548,7 +1837,17 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
           fit: widget.hospitals ? FlexFit.loose : FlexFit.tight,
           child:
               failureState ??
-              (visiblePharmacies.isEmpty
+              (listIsEmpty && _favoritesOnly
+                  ? _PharmacyMessageState(
+                      icon: Icons.star_outline_rounded,
+                      title: _favoritePharmacyIds.isEmpty
+                          ? text.noFavorites
+                          : text.noFavoritesHere,
+                      message: text.addFavoriteHint,
+                      actionLabel: text.showAllPlaces,
+                      onAction: () => _setFavoritesOnly(false),
+                    )
+                  : listIsEmpty
                   ? _PharmacyMessageState(
                       icon: widget.hospitals
                           ? Icons.local_hospital_outlined
@@ -1587,7 +1886,10 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                           ? const NeverScrollableScrollPhysics()
                           : null,
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-                      itemCount: visiblePharmacies.length + 1,
+                      itemCount:
+                          visiblePharmacies.length +
+                          snapshotFavorites.length +
+                          1,
                       // 함수이름: _buildBody.separatorBuilder callback
                       // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 인접 항목 사이에 지정한 간격 또는 구분선을 배치한다.
                       // 매개변수:
@@ -1602,12 +1904,28 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                       // - index (int): 대상 약품·사진·행의 0부터 시작하는 목록 위치.
                       // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
                       itemBuilder: (context, index) {
-                        if (index == visiblePharmacies.length) {
+                        if (index ==
+                            visiblePharmacies.length +
+                                snapshotFavorites.length) {
                           return _PharmacySourceNotice(
                             message: text.sourceNotice(
                               catalogIsStale: _catalogIsStale,
                               holidayScheduleStatus: _holidayScheduleStatus,
                             ),
+                          );
+                        }
+                        // 즐겨찾기 모드에서 현재 결과에 없는 즐겨찾기는 운영 정보 없이 뒤에 둔다.
+                        if (index >= visiblePharmacies.length) {
+                          final snapshot =
+                              snapshotFavorites[index -
+                                  visiblePharmacies.length];
+                          return _FavoriteSnapshotCard(
+                            place: snapshot,
+                            text: text,
+                            onSelected: () => _focusFavoriteSnapshot(snapshot),
+                            onFavoriteRequested: _canChangeFavorite
+                                ? () => _toggleFavorite(snapshot)
+                                : null,
                           );
                         }
                         final pharmacy = visiblePharmacies[index];
@@ -1763,7 +2081,13 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   }) {
     final text = _text;
     final selectedPharmacy = _findSelectedPharmacy(pharmacies);
-    final statusText = pharmacies.isEmpty
+    // 즐겨찾기 모드에서 지도 밖 즐겨찾기만 있으면 목록을 열도록 안내한다.
+    final statusText = _favoritesOnly && pharmacies.isEmpty
+        ? (_listView.snapshots.isEmpty
+              ? '${_favoritePharmacyIds.isEmpty ? text.noFavorites : text.noFavoritesHere}. '
+                    '${text.addFavoriteHint}'
+              : text.mapInstruction)
+        : pharmacies.isEmpty
         ? text.noMapMatches
         : selectedPharmacy == null
         ? text.mapInstruction
@@ -1840,6 +2164,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     setState(() {
       if (_selectedPharmacyId != pharmacy.placeId) {
         _selectedPhoneVerified = false;
+        _retainedFavoriteId = null;
       }
       _selectedPharmacyId = pharmacy.placeId;
       _listExpanded = false;
@@ -2436,23 +2761,15 @@ class _PharmacyCard extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 10),
-                            IconButton(
+                            _favoriteStarButton(
                               key: embedded
                                   ? const Key('pharmacy-detail-favorite')
-                                  : null,
-                              tooltip: isFavorite
-                                  ? text.removeFavorite
-                                  : text.addFavorite,
+                                  : ValueKey(
+                                      'pharmacy-favorite-${pharmacy.placeId}',
+                                    ),
+                              isFavorite: isFavorite,
+                              text: text,
                               onPressed: onFavoriteRequested,
-                              visualDensity: VisualDensity.compact,
-                              icon: Icon(
-                                isFavorite
-                                    ? Icons.star_rounded
-                                    : Icons.star_border_rounded,
-                                color: isFavorite
-                                    ? const Color(0xFFF2A900)
-                                    : MedBuddyColors.textSubtle,
-                              ),
                             ),
                             if (onClose != null)
                               IconButton(
@@ -2568,6 +2885,130 @@ class _PharmacyCard extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Function Name: _favoriteStarButton
+// Description: Builds the 48x48 dp favorite toggle shared by result rows, details and snapshot rows, without compact density.
+// Parameters: key: button identity; isFavorite: current state; text: tooltips; onPressed: toggle command, null while favorites cannot change.
+// Returns: An IconButton with the thick-outline or filled amber star.
+IconButton _favoriteStarButton({
+  Key? key,
+  required bool isFavorite,
+  required _NearbyPharmacyText text,
+  required VoidCallback? onPressed,
+}) {
+  return IconButton(
+    key: key,
+    tooltip: isFavorite ? text.removeFavorite : text.addFavorite,
+    onPressed: onPressed,
+    style: IconButton.styleFrom(
+      fixedSize: const Size.square(48),
+      minimumSize: const Size.square(48),
+      padding: EdgeInsets.zero,
+    ),
+    icon: FavoriteStarIcon(selected: isFavorite),
+  );
+}
+
+// Class Name: _FavoriteSnapshotCard
+// Role: Favorites-mode row for a favorite that is not in the current results.
+// Responsibilities: Shows only the stored name, distance and address with no live status, and hands taps to a fresh focus search.
+// Attributes: place: snapshot item; text: labels; onSelected: focus search; onFavoriteRequested: un-star command.
+class _FavoriteSnapshotCard extends StatelessWidget {
+  final NearbyCarePlace place;
+  final _NearbyPharmacyText text;
+  final VoidCallback onSelected;
+  final VoidCallback? onFavoriteRequested;
+
+  // 함수이름: _FavoriteSnapshotCard
+  // 함수역할: 스냅샷 장소와 문구, 확인 검색·즐겨찾기 해제 콜백을 보관한다.
+  // 매개변수: place: 스냅샷 목록 항목; text: 표시 문구; onSelected: 최신 정보 확인; onFavoriteRequested: 즐겨찾기 해제.
+  // 반환값: 입력 설정이 반영된 _FavoriteSnapshotCard 인스턴스.
+  const _FavoriteSnapshotCard({
+    required this.place,
+    required this.text,
+    required this.onSelected,
+    required this.onFavoriteRequested,
+  });
+
+  // Function Name: build
+  // Description: Lays out the stored name with the star, then distance, address and the tap-to-check hint.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: A tappable outlined card.
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      button: true,
+      label: '${place.name}, ${place.distanceLabel}',
+      hint: text.snapshotHint,
+      child: Material(
+        key: ValueKey('pharmacy-snapshot-${place.placeId}'),
+        color: Colors.white,
+        elevation: 1,
+        shadowColor: Colors.black.withValues(alpha: 0.14),
+        shape: const RoundedRectangleBorder(
+          borderRadius: MedBuddyRadii.card,
+          side: BorderSide(color: MedBuddyColors.outline),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onSelected,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: KeepWordsText(
+                        place.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: MedBuddyColors.textStrong,
+                          fontSize: 20,
+                          height: 1.25,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    _favoriteStarButton(
+                      key: ValueKey('pharmacy-favorite-${place.placeId}'),
+                      isFavorite: true,
+                      text: text,
+                      onPressed: onFavoriteRequested,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _PharmacyInfoLine(
+                  icon: Icons.near_me_outlined,
+                  text: text.distance(place.distanceLabel),
+                ),
+                if (place.address.isNotEmpty) ...[
+                  const SizedBox(height: 7),
+                  _PharmacyInfoLine(
+                    icon: Icons.location_on_outlined,
+                    text: place.address,
+                  ),
+                ],
+                const SizedBox(height: 7),
+                _PharmacyInfoLine(
+                  icon: Icons.touch_app_outlined,
+                  text: text.snapshotHint,
                 ),
               ],
             ),
@@ -3175,6 +3616,42 @@ class _NearbyPharmacyText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get removeFavorite => isEnglish ? 'Remove favorite' : '즐겨찾기 해제';
+  // Function Name: favoritesOnlyTooltip
+  // Description: Labels the map command that shows favorites only.
+  // Parameters: None. Returns: Localized tooltip.
+  String get favoritesOnlyTooltip =>
+      isEnglish ? 'Show favorites only' : '즐겨찾기만 보기';
+  // Function Name: showAllPlaces
+  // Description: Labels the command that leaves favorites mode.
+  // Parameters: None. Returns: Localized label.
+  String get showAllPlaces => isEnglish ? 'Show all' : '모두 보기';
+  // Function Name: snapshotHint
+  // Description: Explains that a favorite outside the results has no live status until tapped.
+  // Parameters: None. Returns: Localized hint.
+  String get snapshotHint =>
+      isEnglish ? 'Tap to check current hours' : '운영 정보는 누르면 확인해요';
+  // Function Name: favoritePlaceMissing
+  // Description: Reports that a tapped favorite was not found in a fresh search.
+  // Parameters: None. Returns: Localized notice.
+  String get favoritePlaceMissing =>
+      isEnglish ? 'Could not find this place.' : '이 곳의 정보를 찾지 못했어요';
+  // Function Name: noFavorites
+  // Description: Empty favorites-mode title when nothing is saved yet.
+  // Parameters: None. Returns: Localized title naming pharmacies or hospitals.
+  String get noFavorites => isEnglish
+      ? 'No favorite ${hospitals ? 'hospitals' : 'pharmacies'} yet'
+      : '아직 즐겨찾기한 ${hospitals ? '병원' : '약국'}이 없어요';
+  // Function Name: noFavoritesHere
+  // Description: Empty favorites-mode title when saved favorites are neither in the results nor stored as snapshots.
+  // Parameters: None. Returns: Localized title naming pharmacies or hospitals.
+  String get noFavoritesHere => isEnglish
+      ? 'No favorite ${hospitals ? 'hospitals' : 'pharmacies'} in this area'
+      : '이 지역에는 즐겨찾기한 ${hospitals ? '병원' : '약국'}이 없어요';
+  // Function Name: addFavoriteHint
+  // Description: Tells how to add a favorite.
+  // Parameters: None. Returns: Localized hint.
+  String get addFavoriteHint =>
+      isEnglish ? 'Tap the star button to add one.' : '별 버튼으로 추가할 수 있어요.';
   // 함수이름: favoriteLoadFailed
   // 함수역할: 즐겨찾기 조회 실패와 재시도 방법을 현재 언어로 알린다.
   // 매개변수: 없음. 반환값: 오류 안내 문구.

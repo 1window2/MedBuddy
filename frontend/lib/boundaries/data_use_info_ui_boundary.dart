@@ -109,10 +109,15 @@ class DataUseInfoUI extends StatelessWidget {
                       _text(
                         '로그인에는 Firebase 인증을 사용합니다. 약 이름·용량·일정·복용 기록과 설정은 '
                             'MedBuddy 서버에서 계정에 연결해 관리합니다. 서버의 사용자 식별값을 해시로 '
-                            '구분하더라도 계정과 연결된 건강 정보가 완전히 익명화되는 것은 아닙니다.',
+                            '구분하더라도 계정과 연결된 건강 정보가 완전히 익명화되는 것은 아닙니다. '
+                            '등록 결과 화면에서는 아직 저장하지 않은 약의 품목 번호를 서버로 보내 복약 목록의 약과 '
+                            '같은 성분이 있는지 확인합니다. 이 품목 번호는 이 확인에만 쓰고 저장하거나 기록하지 않습니다.',
                         'Sign-in uses Firebase Authentication. Medication names, doses, schedules, dose records '
                             'and preferences are associated with your account on the MedBuddy server. '
-                            'A hashed user identifier does not make account-linked health information fully anonymous.',
+                            'A hashed user identifier does not make account-linked health information fully anonymous. '
+                            'On the registration result screen, the product numbers of medicines you have not saved yet '
+                            'are sent to the server to check for the same ingredient in your medication list. '
+                            'They are used for this check only and are not stored or logged.',
                       ),
                     ),
                     _section(

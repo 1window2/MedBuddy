@@ -614,6 +614,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         analyzedMedicationList: viewModel.analyzedMedicationList,
         prescriptionChangeRadar: viewModel.prescriptionChangeRadar,
         isPrescriptionChangeLoading: viewModel.isPrescriptionChangeLoading,
+        ingredientOverlaps: viewModel.ingredientOverlapsByMedicationIndex,
         userSetting: viewModel.userSetting,
         // Function Name: _buildActiveScreen.statusMessageProvider callback
         // Description: Supplies `viewModel.prescriptionStatusMessage` from the captured state of the active screen selected by prescription flow and navigation destination.

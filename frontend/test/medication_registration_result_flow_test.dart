@@ -72,6 +72,11 @@ void main() {
           expect(flow.requests, isEmpty);
           await pumpEventQueue();
           expect(flow.requests, isEmpty);
+          expect(flow.overlapRequests, hasLength(1));
+          expect(jsonDecode(flow.overlapRequests.single.body)['item_seqs'], [
+            _firstId,
+            _secondId,
+          ]);
           expect(flow.rows, isEmpty);
           expect(await directory.list(recursive: true).toList(), isEmpty);
           final first = flow.model.analyzedMedicationList.first;
@@ -120,6 +125,8 @@ void main() {
           expect(await flow.model.requestMedicationSave(first, 0), isTrue);
           expect(await flow.model.requestAllAnalyzedMedicationSave(), isTrue);
           expect(flow.saveNames, [_first, _second]);
+          // 저장 뒤에도 성분 중복 확인은 다시 보내지 않는다.
+          expect(flow.overlapRequests, hasLength(1));
           expect(flow.rows.first['dosage_per_time'], '0.5mg');
           expect(flow.rows.first['prescription_date'], '2026-11-16');
           expect(flow.rows.first['schedule_slot_keys'], ['morning', 'evening']);
@@ -594,6 +601,8 @@ class _Flow {
   late final MockClient client;
   late final MedBuddyViewModel model;
   final requests = <http.Request>[];
+  // 결과 화면을 열 때 한 번 보내는 성분 중복 확인은 조회·저장 요청과 따로 센다.
+  final overlapRequests = <http.Request>[];
   final rows = <Map<String, dynamic>>[];
   final saveNames = <String>[];
   final failedNames = <String>{};
@@ -666,8 +675,12 @@ class _Flow {
       .findImagePath(patientHash: _patient, medicationId: 1);
 
   Future<http.Response> _respond(http.Request request) async {
-    requests.add(request);
     final path = request.url.path;
+    if (path.endsWith('/ingredient-overlap')) {
+      overlapRequests.add(request);
+      return _json({'success': true, 'items': []});
+    }
+    requests.add(request);
     final body = request.body.isEmpty
         ? <String, dynamic>{}
         : jsonDecode(request.body) as Map<String, dynamic>;

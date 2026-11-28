@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../entities/medication_history_export.dart';
+import '../entities/medication_reminder_text.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../services/api_config.dart';
 import '../services/caregiver_alert_delivery_service.dart';
@@ -14,6 +15,7 @@ import '../services/user_setting_preference_keys.dart';
 import 'as_needed_check_reminder_control.dart';
 import 'manage_chat_list_control.dart';
 import 'manage_user_setting_control.dart';
+import 'pack_reminder_control.dart';
 
 // 파일명: manage_account_control.dart
 // 역할: 사용자 데이터 전체 삭제 요청과 기기 캐시 정리를 담당한다.
@@ -95,6 +97,13 @@ class ManageAccount {
     for (final slot in medicationScheduleSlotKeys)
       'medbuddy_medication_reminder_$slot',
   ];
+  // Every reminder kind with a dated plan: the four slots, the as-needed check and the
+  // morning "pack your medicines" reminder.
+  static const List<String> _reminderPlanSlotKeys = [
+    ...medicationScheduleSlotKeys,
+    asNeededReminderSlotKey,
+    packReminderSlotKey,
+  ];
   // Every namespace whose key carries an owner hash. A key of one of these
   // shapes that survives the cleanup below belongs to another account.
   static final List<RegExp> _accountScopedKeyPatterns = [
@@ -104,10 +113,11 @@ class ManageAccount {
     ),
     // The plan written without a signed-in owner is device state, not an account.
     RegExp(
-      '^medbuddy_reminder_plan_(?!guest_(?:${medicationScheduleSlotKeys.join('|')})\$)'
-      '.+_(?:${medicationScheduleSlotKeys.join('|')})\$',
+      '^medbuddy_reminder_plan_(?!guest_(?:${_reminderPlanSlotKeys.join('|')})\$)'
+      '.+_(?:${_reminderPlanSlotKeys.join('|')})\$',
     ),
-    RegExp(r'^medbuddy\.favorite_(?:pharmacy|hospital)_ids\..+$'),
+    RegExp(r'^medbuddy_pack_reminder_.+$'),
+    RegExp(r'^medbuddy\.favorite_(?:pharmacy|hospital)_(?:ids|places)\..+$'),
     RegExp(
       '^(?:'
       '${RegExp.escape(CaregiverPatientLocalStateService.linkedPatientsKeyPrefix)}|'
@@ -179,9 +189,26 @@ class ManageAccount {
         normalizedUserHash,
         hospitals: true,
       ),
+      PharmacyFavoriteService.snapshotStorageKeyFor(
+        normalizedUserHash,
+        hospitals: false,
+      ),
+      PharmacyFavoriteService.snapshotStorageKeyFor(
+        normalizedUserHash,
+        hospitals: true,
+      ),
       '${CaregiverPatientLocalStateService.linkedPatientsKeyPrefix}'
           '$normalizedUserHash',
       AsNeededCheckReminderControl.storageKeyFor(normalizedUserHash),
+      PackReminderControl.storageKeyFor(normalizedUserHash),
+      NotificationService.reminderPlanKey(
+        normalizedUserHash,
+        asNeededReminderSlotKey,
+      ),
+      NotificationService.reminderPlanKey(
+        normalizedUserHash,
+        packReminderSlotKey,
+      ),
       ManageChatList.linkPresenceKeyFor(normalizedUserHash),
     };
     // Only the namespace owner counts; a patient/message reference in another

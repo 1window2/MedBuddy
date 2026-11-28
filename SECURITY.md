@@ -104,6 +104,12 @@ as untrusted input:
   confirmation endpoints receive only candidate item numbers and observed
   features, never the photo, are patient-only, and verify a short-lived
   HMAC-signed plan token before writing.
+- The ingredient-overlap notice on the registration result screen sends the
+  product numbers (item_seq) of the medicines that are not saved yet to the
+  authenticated, owner-scoped `POST /api/v1/medication/ingredient-overlap`
+  endpoint. They are compared only with the local approval catalog and the
+  caller's own active saved medicines, used for this check only, and are not
+  stored or logged (not even as counts). No AI or external service is called.
 - Direct medication-entry images are optional and remain in app-owned local
   storage. They are not uploaded by the direct-entry flow. Delete unreferenced
   copies when an entry is abandoned or removed, without deleting gallery

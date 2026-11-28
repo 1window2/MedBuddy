@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
 import '../controls/check_health_recommendation_control.dart';
+import '../controls/check_ingredient_overlap_control.dart';
 import '../controls/check_medication_detail_control.dart';
 import '../entities/medication_match_review_entity.dart';
 import '../controls/check_prescription_change_control.dart';
@@ -19,10 +20,12 @@ import '../controls/check_today_medication_info_control.dart';
 import '../controls/input_prescription_control.dart';
 import '../controls/manage_user_setting_control.dart';
 import '../controls/manage_account_control.dart';
+import '../controls/pack_reminder_control.dart';
 import '../controls/set_notification_control.dart';
 import '../entities/analyzed_medication_entity.dart';
 import '../entities/health_recommendation_entity.dart';
 import '../entities/identified_pill_save_request_entity.dart';
+import '../entities/ingredient_overlap_entity.dart';
 import '../entities/manual_medication_entry_entity.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_detail_entity.dart';
@@ -89,6 +92,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   late final MedBuddyPrescriptionViewModel _prescriptions;
   late final CheckMedicationDetail checkMedicationDetail;
   late final CheckPrescriptionChange checkPrescriptionChange;
+  late final CheckIngredientOverlap checkIngredientOverlap;
   late final CheckSavedMedication checkSavedMedication;
   late final MedBuddySavedMedicationViewModel _savedMedications;
   late final CheckSchedule checkSchedule;
@@ -413,6 +417,13 @@ class MedBuddyViewModel extends ChangeNotifier {
   bool get isPrescriptionChangeLoading =>
       _prescriptions.isPrescriptionChangeLoading;
 
+  // Function Name: ingredientOverlapsByMedicationIndex
+  // Description: Exposes the ingredient overlaps of the current result rows by row index.
+  // Parameters: None.
+  // Returns: The prescription feature's filtered overlaps; empty without a notice.
+  Map<int, List<IngredientOverlap>> get ingredientOverlapsByMedicationIndex =>
+      _prescriptions.ingredientOverlapsByMedicationIndex;
+
   // Function Name: savedMedicationInfoList
   // Description: Exposes an unmodifiable view of the currently loaded saved-medication details.
   // Parameters:
@@ -474,6 +485,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   // - inputPrescription (InputPrescription?): 이미지 선택·로컬 OCR·분석 요청 Control
   // - checkMedicationDetail (CheckMedicationDetail?): 공공데이터 약 상세 조회 Control
   // - checkPrescriptionChange (CheckPrescriptionChange?): 이전 처방 비교 조회 Control
+  // - checkIngredientOverlap (CheckIngredientOverlap?): 등록 결과의 성분 중복 확인 Control
   // - checkSavedMedication (CheckSavedMedication?): 저장 약 등록·조회·삭제 Control
   // - checkSchedule (CheckSchedule?): 일정 조회와 완료 상태 변경 Control
   // - checkTodayMedicationInfo (CheckTodayMedicationInfo?): 오늘 복약 요약 조회 Control
@@ -491,6 +503,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     InputPrescription? inputPrescription,
     CheckMedicationDetail? checkMedicationDetail,
     CheckPrescriptionChange? checkPrescriptionChange,
+    CheckIngredientOverlap? checkIngredientOverlap,
     CheckSavedMedication? checkSavedMedication,
     CheckSchedule? checkSchedule,
     CheckTodayMedicationInfo? checkTodayMedicationInfo,
@@ -520,6 +533,12 @@ class MedBuddyViewModel extends ChangeNotifier {
     this.checkPrescriptionChange =
         checkPrescriptionChange ??
         CheckPrescriptionChange(
+          patientHash: this.patientHash,
+          client: _apiClient,
+        );
+    this.checkIngredientOverlap =
+        checkIngredientOverlap ??
+        CheckIngredientOverlap(
           patientHash: this.patientHash,
           client: _apiClient,
         );
@@ -614,6 +633,7 @@ class MedBuddyViewModel extends ChangeNotifier {
       inputPrescription: this.inputPrescription,
       checkMedicationDetail: this.checkMedicationDetail,
       checkPrescriptionChange: this.checkPrescriptionChange,
+      checkIngredientOverlap: this.checkIngredientOverlap,
       savedMedications: _savedMedications,
       fetchTodayMedicationSchedule: fetchTodayMedicationSchedule,
       synchronizeReminders:
@@ -817,6 +837,14 @@ class MedBuddyViewModel extends ChangeNotifier {
     minute: minute,
     schedules: schedules,
   );
+  // 함수이름: loadPackReminderSetting
+  // 함수역할: 외출 전 약 챙기기 알림 설정을 읽는다. 매개변수: 없음. 반환값: 설정.
+  Future<PackReminderSetting> loadPackReminderSetting() =>
+      _reminders.loadPackReminderSetting();
+  // 함수이름: savePackReminderSetting
+  // 함수역할: 외출 전 약 챙기기 알림 설정을 저장하고 다시 예약한다. 매개변수: setting. 반환값: 성공 여부.
+  Future<bool> savePackReminderSetting(PackReminderSetting setting) =>
+      _reminders.savePackReminderSetting(setting);
   // Function Name: requestMedicationReminderCancel
   // Description: Cancels a slot reminder or a specific time within that slot.
   // Parameters: slotKey and slotTitle: Reminder identity and label; hour/minute: Optional targeted alarm time.
@@ -1108,6 +1136,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     inputPrescription.dispose();
     checkMedicationDetail.dispose();
     checkPrescriptionChange.dispose();
+    checkIngredientOverlap.dispose();
     checkSavedMedication.dispose();
     checkSchedule.dispose();
     checkTodayMedicationInfo.dispose();

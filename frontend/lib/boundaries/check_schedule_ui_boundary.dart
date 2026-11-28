@@ -16,6 +16,7 @@ import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
+import '../widgets/pack_reminder_card.dart';
 import '../widgets/medbuddy_confirm_dialog.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../widgets/medbuddy_select_all_bar.dart';
@@ -726,6 +727,17 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
                         text: text,
                       ),
                 ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            // 점심·저녁 약을 밖에서 먹는 사람을 위한 아침 알림. 오늘 정기 약이 있을 때만 보이고,
+            //   오늘 복약 카드보다 아래(필요시 약 위)에 둔다.
+            if (!noRegularDoses) ...[
+              PackReminderCard(
+                key: ValueKey('schedule-pack-${viewModel.patientHash}'),
+                userSetting: viewModel.userSetting,
+                loadSetting: viewModel.loadPackReminderSetting,
+                saveSetting: viewModel.savePackReminderSetting,
               ),
               const SizedBox(height: 12),
             ],

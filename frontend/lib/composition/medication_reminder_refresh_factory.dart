@@ -2,9 +2,11 @@
 // 역할: 복약 알림 갱신 서비스가 쓰는 설정·일정 Control과 로컬 알림 의존성을 조립한다.
 
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../controls/check_schedule_control.dart';
 import '../controls/manage_user_setting_control.dart';
+import '../controls/pack_reminder_control.dart';
 import '../controls/set_notification_control.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
@@ -97,10 +99,30 @@ class MedicationReminderRefreshFactory {
       cancelReminder: resolvedNotificationService.cancelReminder,
       setPrivacy: resolvedNotificationService.setShowSensitiveDetails,
       now: clock,
-      ownsReminders: () =>
-          MedicationReminderBackgroundScheduler.ownsReminders(
-            normalizedPatientHash,
-          ),
+      ownsReminders: () => MedicationReminderBackgroundScheduler.ownsReminders(
+        normalizedPatientHash,
+      ),
+      synchronizePack:
+          ({
+            required schedules,
+            required notificationsEnabled,
+            required language,
+          }) async {
+            final preferences = await SharedPreferences.getInstance();
+            await preferences.reload();
+            await PackReminderControl.synchronize(
+              setting: PackReminderControl.load(
+                preferences,
+                normalizedPatientHash,
+              ),
+              schedules: schedules,
+              notificationsEnabled: notificationsEnabled,
+              language: language,
+              register: resolvedNotificationService.registerNotification,
+              cancel: resolvedNotificationService.cancelReminder,
+              now: clock(),
+            );
+          },
       onDispose: /* 함수이름: onDispose 콜백
        * 함수역할: 갱신 서비스가 생성한 알림·일정·사용자 설정 제어기를 해제한다.
        * 매개변수:

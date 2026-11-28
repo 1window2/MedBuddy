@@ -607,6 +607,28 @@ date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again
   and `PILL_IDENTIFICATION_MODEL_NAME` in `deploy/backend.env`; remove the retry block in
   `services/gemini_outage_fallback.py`.
 
+## 2026-11-28: exhibition feedback in 1.1.0 (build 30)
+
+- **Chosen (owner):** three items from the graduation exhibition feedback go into 1.1.0 as a
+  rebuild (`1.1.0+30`, same tag): favorites (larger star, a favorites-only star button on
+  the map, snapshots for favorites outside the results), the 외출 전 약 챙기기 알림 and a
+  same-ingredient notice at registration. Skipped: a lock-screen widget (most Android phones
+  cannot place app widgets on the lock screen; reminders already show there), an
+  administrator account, dose-adequacy judgement and judging over-the-counter use (both need
+  a pharmacist or doctor).
+- **Pack reminder:** a fixed time on chosen weekdays, not location; only days with a lunch or
+  evening medicine (the same active-day rule as slot reminders); no medicine names in the
+  text because the text is kept in the notification inbox and the plan signature.
+- **Ingredient notice:** MFDS `main_ingredient` codes (`[M040353]…`) are the comparison key,
+  so salts and spellings do not matter. The notice asks the user to check with a pharmacist
+  or doctor and never says "no overlap". Within one prescription the prescriber combined the
+  medicines on purpose, so batch-internal and same-product overlaps are not shown there.
+- **Favorites view:** no chip above the list in favorites mode (owner: no other filter shows a
+  chip); the map star or back leaves it.
+- **To undo:** remove `PackReminderCard` from the schedule screen and the pack sync calls,
+  the overlap trigger in the prescription view model (the endpoint can stay), and the map
+  toggle in the nearby screen.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the

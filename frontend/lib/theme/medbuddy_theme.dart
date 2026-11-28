@@ -34,6 +34,8 @@ class MedBuddyColors {
   static const Color textSubtle = Color(0xFF6A726E);
   static const Color textLight = Color(0xFF9AA19D);
   static const Color infoBlue = Color(0xFF2F4A8A);
+  // 요일 표기: 토요일 파란색, 일요일 빨간색(danger).
+  static const Color saturdayBlue = Color(0xFF1F6FD1);
   static const Color reminderAccent = Color(0xFF8A5A00);
   static const Color danger = Color(0xFFC0352B);
   static const Color dangerSurface = Color(0xFFFDEEEE);

@@ -79,6 +79,14 @@ typedef MedicationReminderCanceler =
 // Returns:
 // - Future<SharedPreferences>: Supplies the local preference store used while refreshing reminder settings and language.
 typedef ReminderPreferencesLoader = Future<SharedPreferences> Function();
+// 함수이름: PackReminderSynchronizer
+// 함수역할: 계정의 외출 전 약 챙기기 알림을 주어진 일정으로 다시 예약하거나 지운다(조립 계층이 계정과 함께 넘긴다).
+typedef PackReminderSynchronizer =
+    Future<void> Function({
+      required List<MedicationSchedule> schedules,
+      required bool notificationsEnabled,
+      required String language,
+    });
 // 함수이름: ReminderPrivacySetter
 // 함수역할: 이후 예약할 알림에 민감한 약명 등 세부 내용을 표시할지 적용하는 계약이다.
 // 매개변수:
@@ -119,6 +127,7 @@ class MedicationReminderRefreshService {
   final DateTime Function() _now;
   final VoidCallback? _onDispose;
   final Future<bool> Function()? _ownsReminders;
+  final PackReminderSynchronizer? _synchronizePack;
 
   // Function Name: MedicationReminderRefreshService
   // Description: Binds data loaders and platform callbacks without reading or scheduling anything yet.
@@ -145,23 +154,27 @@ class MedicationReminderRefreshService {
     DateTime Function()? now,
     VoidCallback? onDispose,
     Future<bool> Function()? ownsReminders,
+    PackReminderSynchronizer? synchronizePack,
   }) : _loadSettings = loadSettings,
        _loadSchedules = loadSchedules,
        _loadTodaySchedules = loadTodaySchedules,
-       _loadUserSetting = loadUserSetting ?? (/* 함수이름: callback 콜백
+       _loadUserSetting =
+           loadUserSetting ??
+           ( /* 함수이름: callback 콜백
         * 함수역할: 사용자 설정 로더가 주입되지 않았을 때 기본 사용자 설정을 제공한다.
         * 매개변수:
         * - 없음.
         * 반환값:
         * - 기본 사용자 설정으로 완료하는 Future.
-        */() async => const UserSetting()),
+        */ () async => const UserSetting()),
        _registerReminder = registerReminder,
        _cancelReminder = cancelReminder,
        _loadPreferences = preferencesLoader,
        _setPrivacy = setPrivacy,
        _now = now ?? DateTime.now,
        _onDispose = onDispose,
-       _ownsReminders = ownsReminders;
+       _ownsReminders = ownsReminders,
+       _synchronizePack = synchronizePack;
 
   // 함수이름: synchronize
   // 함수역할: 인증된 서버 상태를 기준으로 모든 로컬 시간대 알림을 갱신한다. 일시적 오류에서는 false를 반환해 Workmanager가 재시도하게 한다.
@@ -206,6 +219,11 @@ class MedicationReminderRefreshService {
             slotKey: setting.slotKey,
           );
         }
+        await _runPackReminder(
+          schedules,
+          notificationsEnabled: false,
+          language: language,
+        );
         return true;
       }
 
@@ -216,13 +234,15 @@ class MedicationReminderRefreshService {
         final setting =
             settingsBySlot[slotKey] ?? MedicationAlarm.defaults(slotKey);
         final slotSchedules = schedules
-            .where(/* Function Name: where callback
+            .where(
+              /* Function Name: where callback
              * Description: Selects medications belonging to the reminder's time slot.
              * Parameters:
              * - schedule (MedicationSchedule): Medication course with name, dose, duration, and slots.
              * Returns:
              * - Whether the schedule contains the requested slot.
-             */(schedule) => schedule.slotKeys.contains(slotKey))
+             */ (schedule) => schedule.slotKeys.contains(slotKey),
+            )
             .toList(growable: false);
         if (!setting.isEnabled || slotSchedules.isEmpty) {
           if (!await _stillOwnsReminders()) return true;
@@ -271,6 +291,11 @@ class MedicationReminderRefreshService {
           return true;
         }
       }
+      await _runPackReminder(
+        [...schedules, ...?todaySchedules],
+        notificationsEnabled: true,
+        language: language,
+      );
       return true;
     } catch (error, stackTrace) {
       developer.log(
@@ -280,6 +305,32 @@ class MedicationReminderRefreshService {
         stackTrace: stackTrace,
       );
       return false;
+    }
+  }
+
+  // 함수이름: _runPackReminder
+  // 함수역할: 외출 전 약 챙기기 알림을 같은 일정으로 다시 예약하거나 지운다. 계정이 바뀌었으면 건드리지 않고,
+  //   실패해도 시간대 알림 갱신 결과는 바꾸지 않는다.
+  // 매개변수: schedules: 기간·오늘 일정; notificationsEnabled: 앱 복약 알림 허용; language: 알림 언어.
+  // 반환값: 완료 Future.
+  Future<void> _runPackReminder(
+    List<MedicationSchedule> schedules, {
+    required bool notificationsEnabled,
+    required String language,
+  }) async {
+    final synchronizePack = _synchronizePack;
+    if (synchronizePack == null || !await _stillOwnsReminders()) return;
+    try {
+      await synchronizePack(
+        schedules: schedules,
+        notificationsEnabled: notificationsEnabled,
+        language: language,
+      );
+    } catch (error) {
+      developer.log(
+        'Pack reminder refresh failed: ${error.runtimeType}.',
+        name: 'MedicationReminderRefreshService',
+      );
     }
   }
 

@@ -326,7 +326,12 @@ class NotificationService {
     final preferences = await preferencesLoader();
     await preferences.reload();
     final plans = <String, Map<String, dynamic>>{};
-    for (final slotKey in medicationScheduleSlotKeys) {
+    // 시간대 알림에 더해 필요시 확인·외출 전 약 챙기기 알림도 같은 계획 저장소를 쓴다.
+    for (final slotKey in [
+      ...medicationScheduleSlotKeys,
+      asNeededReminderSlotKey,
+      packReminderSlotKey,
+    ]) {
       final rawPlan = preferences.getString(reminderPlanKey(owner, slotKey));
       // 부정확 알람이 없는 계획은 해석하지 않고 넘어간다.
       if (rawPlan == null || !rawPlan.contains(_inexactScheduleMarker)) {
@@ -1026,8 +1031,10 @@ class NotificationService {
     final unsignedPayload =
         'schedule:$slotKey:$id:${formatJsonDate(scheduleDate ?? scheduledDate)!}';
     // 다른 앱도 알림 동작과 같은 인텐트를 보낼 수 있으므로, 빠른 동작이 있는 알림은 이 앱만 아는
-    // 키로 서명해 둔다. 필요시 확인 알림은 빠른 동작이 없어 서명하지 않는다.
-    final payload = slotKey == 'as_needed'
+    // 키로 서명해 둔다. 필요시 확인과 외출 전 약 챙기기 알림은 빠른 동작이 없어 서명하지 않는다.
+    final withoutActions =
+        slotKey == asNeededReminderSlotKey || slotKey == packReminderSlotKey;
+    final payload = withoutActions
         ? unsignedPayload
         : '$unsignedPayload:${await MedicationReminderActionTag.sign(owner: owner ?? '', payload: unsignedPayload)}';
     if (owner != _historyUserHash) return null;
@@ -1047,7 +1054,7 @@ class NotificationService {
           importance: Importance.high,
           priority: Priority.high,
           groupKey: _reminderGroupKey(slotKey),
-          actions: slotKey == 'as_needed'
+          actions: withoutActions
               ? const []
               : <AndroidNotificationAction>[
                   AndroidNotificationAction(

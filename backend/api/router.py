@@ -28,6 +28,7 @@ from api.dependencies import (
     get_authorization_control,
     get_check_medication_detail,
     get_medication_search_cache,
+    get_check_ingredient_overlap,
     get_check_prescription_change,
     get_check_schedule,
     get_check_saved_medication,
@@ -67,6 +68,7 @@ from boundaries.pill_identification_boundary import (
 )
 from repositories.medication_search_cache_repository import AsyncMedicationSearchCache
 from controls.check_medication_detail_control import CheckMedicationDetail
+from controls.check_ingredient_overlap_control import CheckIngredientOverlap
 from controls.check_prescription_change_control import CheckPrescriptionChange
 from controls.authorization_control import AuthorizationControl
 from controls.check_schedule_control import CheckSchedule
@@ -119,6 +121,10 @@ from schemas.medication import (
 from schemas.pill_identification import (
     MultiplePillIdentificationResponse,
     PillIdentificationResponse,
+)
+from schemas.ingredient_overlap import (
+    IngredientOverlapRequest,
+    IngredientOverlapResponse,
 )
 from schemas.prescription_change import (
     PrescriptionChangeRequest,
@@ -552,6 +558,52 @@ def check_prescription_change(
         return check_prescription_change_control.request_prescription_change(
             request.model_copy(update={"patient_hash": authorized_patient_hash})
         )
+
+
+# Function Name: check_ingredient_overlap
+# Description:
+# - Resolves the caller's own scope (a caregiver is never switched to a linked patient) and reports
+#   shared main ingredients between the requested products and the active saved medicines.
+# - Product numbers are used for this check only; they are not stored, and no log line names them
+#   or counts them.
+# Parameters:
+# - request (IngredientOverlapRequest): Product numbers of one result screen.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - check_ingredient_overlap (CheckIngredientOverlap): Local-catalog overlap control.
+# Returns:
+# - IngredientOverlapResponse with one item per distinct requested product number.
+@router.post(
+    "/ingredient-overlap",
+    response_model=IngredientOverlapResponse,
+)
+async def check_ingredient_overlap(
+    request: IngredientOverlapRequest,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    check_ingredient_overlap_control: CheckIngredientOverlap = Depends(
+        get_check_ingredient_overlap
+    ),
+) -> IngredientOverlapResponse:
+    # 함수이름: find_overlaps
+    # 함수역할: 본인 범위를 확인해 성분 겹침을 계산하고 성공·실패 모두 읽기 트랜잭션을 되돌린다.
+    # 매개변수: 없음. 외부 request·principal·authorization·control을 사용한다.
+    # 반환값: IngredientOverlapResponse. 권한·DB 오류는 전달한다.
+    def find_overlaps() -> IngredientOverlapResponse:
+        try:
+            owner = authorization.resolvePatientScope(principal, request.patient_hash)
+            return check_ingredient_overlap_control.request_ingredient_overlap(
+                owner,
+                request.item_seqs,
+            )
+        finally:
+            check_ingredient_overlap_control.db.rollback()
+
+    with _internal_failures_as_http_errors(
+        "Ingredient overlap check failed: %s",
+        "성분 중복을 확인하지 못했습니다.",
+    ):
+        return await run_request_database_work(find_overlaps)
 
 
 # Function Name: save_medication

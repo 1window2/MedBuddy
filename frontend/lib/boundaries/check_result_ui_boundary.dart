@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../entities/analyzed_medication_entity.dart';
+import '../entities/ingredient_overlap_entity.dart';
 import '../entities/json_value_reader.dart';
 import '../entities/prescription_change_entity.dart';
 import '../entities/prescription_flow_entity.dart';
@@ -29,12 +30,14 @@ import '../widgets/keep_words_text.dart';
 // - analyzedMedicationList (List<AnalyzedMedication>): Prescription analysis results containing medication details and schedules.
 // - prescriptionChangeRadar (PrescriptionChangeRadar?): Comparison status and changes against a previous prescription.
 // - isPrescriptionChangeLoading (bool): Whether the associated save, analysis, or medication update is in progress.
+// - ingredientOverlaps (Map<int, List<IngredientOverlap>>): Filtered ingredient overlaps by result row index; rows without an entry show no notice.
 // - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
 class CheckResultUI extends StatelessWidget {
   final MedicationResultSource source;
   final List<AnalyzedMedication> analyzedMedicationList;
   final PrescriptionChangeRadar? prescriptionChangeRadar;
   final bool isPrescriptionChangeLoading;
+  final Map<int, List<IngredientOverlap>> ingredientOverlaps;
   final UserSetting userSetting;
   final String Function() statusMessageProvider;
   final int? savingMedicationIndex;
@@ -53,7 +56,7 @@ class CheckResultUI extends StatelessWidget {
 
   // Function Name: CheckResultUI
   // Description: Binds analyzed medications, comparison results and externally owned per-item/bulk save state to result review and navigation.
-  // Parameters: key: identity; analyzedMedicationList: analyzed details/schedules; prescriptionChangeRadar/isPrescriptionChangeLoading: comparison result/progress; userSetting: display settings; statusMessageProvider: latest result text; savingMedicationIndex/completedMedicationSaveIndexes/isAllMedicationSaving: save progress; onCloseRequested/onTodayScheduleRequested/onSavedMedicationRequested/onHomeRequested: navigation; onAllMedicationSaveRequested/onMedicationSaveRequested: persistence callbacks returning success.
+  // Parameters: key: identity; analyzedMedicationList: analyzed details/schedules; prescriptionChangeRadar/isPrescriptionChangeLoading: comparison result/progress; ingredientOverlaps: per-row overlap notices; userSetting: display settings; statusMessageProvider: latest result text; savingMedicationIndex/completedMedicationSaveIndexes/isAllMedicationSaving: save progress; onCloseRequested/onTodayScheduleRequested/onSavedMedicationRequested/onHomeRequested: navigation; onAllMedicationSaveRequested/onMedicationSaveRequested: persistence callbacks returning success.
   // Returns: A configured CheckResultUI.
   const CheckResultUI({
     super.key,
@@ -61,6 +64,7 @@ class CheckResultUI extends StatelessWidget {
     required this.analyzedMedicationList,
     this.prescriptionChangeRadar,
     this.isPrescriptionChangeLoading = false,
+    this.ingredientOverlaps = const {},
     required this.userSetting,
     required this.statusMessageProvider,
     required this.savingMedicationIndex,
@@ -156,6 +160,12 @@ class CheckResultUI extends StatelessWidget {
                               key: ValueKey(medicationIndex),
                               medicationIndex: medicationIndex,
                               analyzedMedication: analyzedMedication,
+                              ingredientOverlapNotice:
+                                  ingredientOverlapNoticeText(
+                                    ingredientOverlaps[medicationIndex] ??
+                                        const [],
+                                    isEnglish: text.isEnglish,
+                                  ),
                               text: text,
                               isMedicationSaving:
                                   savingMedicationIndex == medicationIndex,
@@ -635,6 +645,7 @@ class _BulkSaveButton extends StatelessWidget {
 class _MedicationResultCard extends StatelessWidget {
   final int medicationIndex;
   final AnalyzedMedication analyzedMedication;
+  final String ingredientOverlapNotice;
   final _ResultText text;
   final bool isMedicationSaving;
   final bool isMedicationSaved;
@@ -647,6 +658,7 @@ class _MedicationResultCard extends StatelessWidget {
   // - key (Key?): Preserve this card's element identity when the list changes.
   // - medicationIndex (int): Zero-based result position used for the displayed one-based number and child keys.
   // - analyzedMedication (AnalyzedMedication): Medication details and schedule to review.
+  // - ingredientOverlapNotice (String): Ingredient-overlap notice shown under the header even while collapsed; empty shows none.
   // - text (_ResultText): Localized labels.
   // - isMedicationSaving, isMedicationSaved, isAllMedicationSaving (bool): Per-item progress, saved state and batch-save progress that govern the save button.
   // - onMedicationSaveRequested (Future<void> Function()): Save this medication when the button is enabled.
@@ -655,6 +667,7 @@ class _MedicationResultCard extends StatelessWidget {
     super.key,
     required this.medicationIndex,
     required this.analyzedMedication,
+    this.ingredientOverlapNotice = '',
     required this.text,
     required this.isMedicationSaving,
     required this.isMedicationSaved,
@@ -731,7 +744,7 @@ class _MedicationResultCard extends StatelessWidget {
               Expanded(child: name),
             ],
           );
-          return Container(
+          final header = Container(
             key: Key('result-medication-header-$medicationIndex'),
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
@@ -741,6 +754,19 @@ class _MedicationResultCard extends StatelessWidget {
               actions: actions,
               spacing: 10,
             ),
+          );
+          if (ingredientOverlapNotice.isEmpty) return header;
+          // 성분 안내는 접히는 상세 밖, 머리글 바로 아래에 두어 접힌 카드에서도 보인다.
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              header,
+              _IngredientOverlapNotice(
+                key: Key('result-medication-overlap-$medicationIndex'),
+                message: ingredientOverlapNotice,
+              ),
+            ],
           );
         },
         details: Column(
@@ -807,6 +833,59 @@ class _MedicationResultCard extends StatelessWidget {
   // Returns: The trimmed value or missing-information text.
   String _displayValue(String value) {
     return value.trim().isEmpty ? text.noInformation : value.trim();
+  }
+}
+
+// Class Name: _IngredientOverlapNotice
+// Role: Amber notice that another medicine already has the same ingredient or is the same product.
+// Responsibilities: Shows the notice under the card header with a warning icon; it never states that there is no overlap.
+// Attributes: message (String): Localized notice text.
+class _IngredientOverlapNotice extends StatelessWidget {
+  final String message;
+
+  // Function Name: _IngredientOverlapNotice
+  // Description: Keeps the notice text.
+  // Parameters: key (Key?): identity; message (String): notice text.
+  // Returns: A configured _IngredientOverlapNotice.
+  const _IngredientOverlapNotice({super.key, required this.message});
+
+  // Function Name: build
+  // Description: Renders the amber notice box with an icon and wrapped text.
+  // Parameters: context (BuildContext): theme and accessibility scope.
+  // Returns: The notice widget tree.
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: MedBuddyColors.warningSurface,
+        borderRadius: MedBuddyRadii.small,
+        border: Border.all(color: MedBuddyColors.warningBorder),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.warning_amber_rounded,
+            color: MedBuddyColors.reminderAccent,
+            size: 21,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: KeepWordsText(
+              message,
+              style: const TextStyle(
+                color: MedBuddyColors.reminderAccent,
+                height: 1.4,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

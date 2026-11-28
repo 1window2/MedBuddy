@@ -8,7 +8,6 @@ from datetime import date, timedelta
 from sqlalchemy.orm import Session
 
 from core.application_clock import application_today
-from entities.medication_detail_entity import _DrugApprovalInfo
 from entities.patient_hash_entity import normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
 from repositories.saved_medication_repository import SavedMedicationRepository
@@ -21,6 +20,7 @@ from schemas.prescription_change import (
     PrescriptionScheduleSnapshot,
 )
 from services.medication_dose_rhythm import read_duration_days
+from services.medication_ingredients import load_main_ingredients
 from services.prescription_similarity import (
     PRESCRIPTION_COMPARISON_WINDOW_DAYS,
     PrescriptionSimilarityMedication,
@@ -268,28 +268,14 @@ class CheckPrescriptionChange:
         current_medications: list[PrescriptionChangeMedication],
         previous_medications: list[_SavedMedication],
     ) -> dict[str, str]:
-        item_sequences = {
-            self._read_text(getattr(medication, "item_seq", ""))
-            for medication in [*current_medications, *previous_medications]
-            if self._read_text(getattr(medication, "item_seq", ""))
-        }
-        if not item_sequences:
-            return {}
-
-        # 주성분만 필요하므로 원문 문서와 raw_json 열은 읽지 않는다.
-        rows = (
-            self.db.query(
-                _DrugApprovalInfo.item_seq,
-                _DrugApprovalInfo.main_ingredient,
-            )
-            .filter(_DrugApprovalInfo.item_seq.in_(item_sequences))
-            .all()
+        # 성분 중복 안내와 같은 두 열 조회를 공유한다.
+        return load_main_ingredients(
+            self.db,
+            (
+                self._read_text(getattr(medication, "item_seq", ""))
+                for medication in [*current_medications, *previous_medications]
+            ),
         )
-        return {
-            self._read_text(row.item_seq): self._read_text(row.main_ingredient)
-            for row in rows
-            if self._read_text(row.item_seq)
-        }
 
     # 함수이름: _to_similarity_medications
     # 함수역할:

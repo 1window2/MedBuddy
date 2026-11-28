@@ -114,6 +114,31 @@ class SavedMedicationRepository:
             .all()
         )
 
+    # Function Name: list_ingredient_check_medications
+    # Description: Load only the identity, name and course columns of the owner's medications that carry a product number, for the ingredient-overlap check; other columns raise when read.
+    # Parameters: patient_hash (str) identifies the owner.
+    # Returns: list[_SavedMedication] ordered by ID, without rows whose item_seq is null; database errors propagate.
+    def list_ingredient_check_medications(
+        self, patient_hash: str,
+    ) -> list[_SavedMedication]:
+        return (
+            self.db.query(_SavedMedication)
+            .options(load_only(
+                _SavedMedication.id, _SavedMedication.item_seq,
+                _SavedMedication.item_name, _SavedMedication.prescription_date,
+                _SavedMedication.created_date, _SavedMedication.total_days,
+                _SavedMedication.daily_frequency, _SavedMedication.dosing_mode,
+                _SavedMedication.regimen_effective_from, _SavedMedication.stopped_on,
+                _SavedMedication.superseded_by_id, raiseload=True,
+            ))
+            .filter(
+                _SavedMedication.patient_hash == patient_hash,
+                _SavedMedication.item_seq.is_not(None),
+            )
+            .order_by(_SavedMedication.id.asc())
+            .all()
+        )
+
     # 함수이름: find_owned_by_id
     # 함수역할:
     # - 약 ID와 환자 소유권을 함께 확인하여 저장 약 한 건을 조회한다.

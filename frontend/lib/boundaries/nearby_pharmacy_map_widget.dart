@@ -792,6 +792,107 @@ class _MapControlButton extends StatelessWidget {
   }
 }
 
+// 즐겨찾기 별의 채움 색. 지도 마커의 진한 금색과 달리 버튼 표시에 쓴다.
+const nearbyFavoriteStarColor = Color(0xFFF2A900);
+
+// 즐겨찾기만 보기 버튼의 하단 위치. 현재 위치 버튼(아래 54, 높이 40) 위에 6dp 간격으로 둔다.
+const nearbyMapFavoritesToggleBottom = 100.0;
+
+// Class Name: FavoriteStarIcon
+// Role: Favorite star drawn at a fixed size.
+// Responsibilities: Shows a filled amber star when selected and a thick outline otherwise; Material Icons has no stroke weight, so the outline is a dark star with a smaller white star centred on it.
+// Attributes: selected (bool): favorite state; size (double): outer star size.
+class FavoriteStarIcon extends StatelessWidget {
+  final bool selected;
+  final double size;
+
+  // Function Name: FavoriteStarIcon
+  // Description: Stores the favorite state and outer star size.
+  // Parameters: key: identity; selected: favorite state; size: outer star size, 32 by default.
+  // Returns: A FavoriteStarIcon.
+  const FavoriteStarIcon({super.key, required this.selected, this.size = 32});
+
+  // Function Name: build
+  // Description: Draws the filled star, or the dark star with a white star of about 22/32 of its size on top.
+  // Parameters: context (BuildContext): widget tree position.
+  // Returns: A square star of the given size.
+  @override
+  Widget build(BuildContext context) {
+    if (selected) {
+      return Icon(
+        Icons.star_rounded,
+        size: size,
+        color: nearbyFavoriteStarColor,
+      );
+    }
+    return SizedBox.square(
+      dimension: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(
+            Icons.star_rounded,
+            size: size,
+            color: MedBuddyColors.textStrong,
+          ),
+          Icon(Icons.star_rounded, size: size * 22 / 32, color: Colors.white),
+        ],
+      ),
+    );
+  }
+}
+
+// Class Name: NearbyMapFavoritesToggle
+// Role: Round 48 dp map command that switches favorites-only mode.
+// Responsibilities: Matches the map control buttons; shows an outline star when off and a filled amber star on a light amber circle when on.
+// Attributes: active (bool): favorites-only mode; tooltip (String): action description; onPressed (VoidCallback?): toggle command, null while disabled.
+class NearbyMapFavoritesToggle extends StatelessWidget {
+  final bool active;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  // Function Name: NearbyMapFavoritesToggle
+  // Description: Stores the mode, tooltip and command.
+  // Parameters: key: identity; active: favorites-only mode; tooltip: action description; onPressed: toggle command.
+  // Returns: A NearbyMapFavoritesToggle.
+  const NearbyMapFavoritesToggle({
+    super.key,
+    required this.active,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  // Function Name: build
+  // Description: Draws the round button with the state-dependent star and background.
+  // Parameters: context (BuildContext): widget tree position.
+  // Returns: A 48 dp circular icon button.
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: active
+          ? MedBuddyColors.warningSurface
+          : Colors.white.withValues(alpha: 0.94),
+      shape: CircleBorder(
+        side: active
+            ? const BorderSide(color: MedBuddyColors.warningBorder)
+            : BorderSide.none,
+      ),
+      elevation: 2,
+      child: IconButton(
+        tooltip: tooltip,
+        isSelected: active,
+        onPressed: onPressed,
+        style: IconButton.styleFrom(
+          fixedSize: const Size.square(48),
+          minimumSize: const Size.square(48),
+          padding: EdgeInsets.zero,
+        ),
+        icon: FavoriteStarIcon(selected: active, size: 28),
+      ),
+    );
+  }
+}
+
 // Class Name: _MapUnavailableState
 // Role: Map-unavailable presentation.
 // Responsibilities: Explains missing map configuration or usable coordinates.

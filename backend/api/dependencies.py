@@ -88,6 +88,7 @@ from controls.check_medication_detail_control import (
 from boundaries.medication_detail_cache_boundary import MedicationDetailCache
 from controls.check_nearby_pharmacy_control import CheckNearbyPharmacy
 from controls.check_nearby_hospital_control import CheckNearbyHospital
+from controls.check_ingredient_overlap_control import CheckIngredientOverlap
 from controls.check_prescription_change_control import CheckPrescriptionChange
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
 from controls.check_schedule_control import CheckSchedule
@@ -1109,6 +1110,19 @@ def get_check_prescription_change(
     db: Session = Depends(get_db),
 ) -> CheckPrescriptionChange:
     return CheckPrescriptionChange(db=db)
+
+
+# Function Name: get_check_ingredient_overlap
+# Description:
+# - Binds the ingredient-overlap check to the request database session.
+# Parameters:
+# - db (Session): SQLAlchemy session for this unit of work.
+# Returns:
+# - Request-scoped CheckIngredientOverlap control.
+def get_check_ingredient_overlap(
+    db: Session = Depends(get_db),
+) -> CheckIngredientOverlap:
+    return CheckIngredientOverlap(db=db)
 
 
 # Function Name: get_check_saved_medication
