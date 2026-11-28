@@ -1173,6 +1173,7 @@ void main() {
 
   // 함수이름: testWidgets: '빈 저장 목록의 촬영 버튼은 세 가지 약 등록 방식을 제공한다'
   // 함수역할: 빈 목록의 등록 버튼을 열어 약봉투·처방전, 낱알약 식별, 직접 등록 선택지를 확인하고 낱알약 식별을 선택한다.
+  //   사진으로 복용 기록은 보이지 않고, 낱알약 식별은 한 장 촬영 식별 화면을 바로 연다.
   // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
   // 반환값: 반환값 없음; 선택 전에는 식별 화면이 없고 선택한 뒤에만 열린다.
   testWidgets('빈 저장 목록의 촬영 버튼은 세 가지 약 등록 방식을 제공한다', (tester) async {
@@ -1209,13 +1210,17 @@ void main() {
     expect(find.text('약봉투·처방전 등록'), findsOneWidget);
     expect(find.text('낱알약 식별'), findsOneWidget);
     expect(find.text('직접 등록'), findsOneWidget);
+    // 사진으로 복용 기록은 홈에서 연 약 등록 화면에만 있다.
+    expect(
+      find.byKey(const ValueKey('registrationPhotoDoseTile')),
+      findsNothing,
+    );
 
+    expect(find.byType(PillIdentificationUI), findsNothing);
     await tester.tap(find.text('낱알약 식별'));
     await tester.pumpAndSettle();
-    expect(find.byType(PillIdentificationUI), findsNothing);
-    await tester.tap(find.text('알약 하나씩 찾기'));
-    await tester.pumpAndSettle();
 
+    // 촬영 방식 시트 없이 알약 식별 화면이 바로 열린다.
     expect(find.byType(PillIdentificationUI), findsOneWidget);
   });
 

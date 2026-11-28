@@ -39,7 +39,7 @@ AUTH_MODE=disabled
 AUTO_CREATE_SCHEMA=true
 PILL_IMAGE_API_ENABLED=true
 PILL_IMAGE_API_TIMEOUT_SECONDS=8
-PILL_IDENTIFICATION_MODEL_NAME=gemini-3.1-flash-lite
+PILL_IDENTIFICATION_MODEL_NAME=gemini-3.5-flash-lite
 PILL_IDENTIFICATION_TIMEOUT_SECONDS=20
 PILL_IDENTIFICATION_CATALOG_TTL_HOURS=168
 PILL_IDENTIFICATION_CATALOG_REFRESH_TIMEOUT_SECONDS=30
@@ -66,10 +66,13 @@ Android application does not use it as its default API endpoint.
 
 With `ANTHROPIC_API_KEY` set, prescription text structuring, pill photo
 analysis, medication summaries and health recommendations are answered by
-Claude (`CLAUDE_FALLBACK_MODEL`, default `claude-opus-5-5`, effort
-`CLAUDE_FALLBACK_EFFORT`, default `low`) when Gemini itself fails: a 5xx such as
+Claude (`CLAUDE_FALLBACK_MODEL`, default `claude-haiku-5-5`, effort
+`CLAUDE_FALLBACK_EFFORT`, default `high`) when Gemini itself fails: a 5xx such as
 503, a 429, a connection failure inside the Gemini SDK, or a deadline that
 expired while the Gemini request was in flight. Nothing else triggers it.
+Gemini comes first: a fast failure (5xx, 429, connection) within 10 seconds gets
+one more Gemini attempt after a one-second pause; only a second outage, or a
+timeout, goes to Claude.
 
 The Gemini code is unchanged. `services/gemini_outage_fallback.py` wraps each
 boundary: a Gemini answer is returned as is, every other error is re-raised as

@@ -436,6 +436,25 @@ async def test_single_complete_exact_product_exits_immediately(mode: str) -> Non
     control._fetch_drug_info.assert_awaited_once()
 
 
+# 함수이름: test_export_only_twin_does_not_block_the_domestic_exact_product
+# 함수역할:
+# - 폰 테스트: "파모터정20mg"이 국내 품목과 같은 이름의 수출용 품목 때문에 확인 후보로 떨어졌다.
+#   수출용 품목은 국내에서 조제되지 않으므로 국내 정확 일치 품목 하나면 확정한다. 국내 품목이 없으면 그대로 둔다.
+# 매개변수:
+# - mode: str; 검색 모드.
+# 반환값:
+# - None.
+@pytest.mark.parametrize('mode', MODES)
+@pytest.mark.anyio
+async def test_export_only_twin_does_not_block_the_domestic_exact_product(mode: str) -> None:
+    domestic = detail(PRODUCT, '1')
+    export = detail(f'{PRODUCT}(수출용)', '2')
+    control = control_with_results(MedicationLookupResult([domestic, export]))
+    response = await control.requestMedicationDetail(PRODUCT, search_mode=mode)
+    assert response.data == [domestic]
+    assert not response.requires_confirmation
+
+
 # 함수이름: test_only_thorough_continues_after_ambiguous_product
 # 함수역할:
 # - 모호한 첫 후보 뒤 추가 조회는 thorough만 수행하며 다른 모드는 확인 후보로 반환하는지 확인한다.

@@ -1,7 +1,6 @@
 # 파일명: dispatch_caregiver_alert_control.py
 # 역할: 환자의 복약 완료 이벤트를 연결된 보호자 푸시 알림으로 변환한다.
 
-import logging
 from datetime import date, datetime, time
 from typing import NamedTuple
 
@@ -31,9 +30,6 @@ from entities.medication_schedule_entity import (
 )
 from services.push_recipient_resolver import PushRecipientResolver
 from services.as_needed_caregiver_events import load_as_needed_taken_event_keys
-
-logger = logging.getLogger(__name__)
-
 
 
 # Class Name: _PreparedPush

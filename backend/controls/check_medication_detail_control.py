@@ -139,8 +139,8 @@ class CheckMedicationDetail:
                         and not can_auto_match(reference, existing.item_name)
                     ):
                         candidates_by_product[key] = item
-                exact = [item for item in candidates_by_product.values()
-                         if can_auto_match(reference, item.item_name)]
+                exact = _prefer_domestic([item for item in candidates_by_product.values()
+                                          if can_auto_match(reference, item.item_name)])
                 if len(exact) == 1 and lookup_complete:
                     break
                 if candidates_by_product and search_mode != 'thorough':
@@ -157,8 +157,8 @@ class CheckMedicationDetail:
         # 원문과 그대로 맞는 품목이 없으면, 처방 약명 보정과 같은 OCR 모음 한 글자 차이로 맞는 품목이
         # 정확히 하나일 때만 확정한다(예: "에니펜정"으로 읽힌 "애니펜정").
         if not exact:
-            exact = [item for item in safe_by_product.values()
-                     if can_auto_match_ocr_vowel_slip(reference, item.item_name)]
+            exact = _prefer_domestic([item for item in safe_by_product.values()
+                                      if can_auto_match_ocr_vowel_slip(reference, item.item_name)])
         # 최대 8회×5개만 누적한다. 표시 개수 제한이 다른 동일명 품목의 존재를 지우면 안 된다.
         if len(exact) == 1 and lookup_complete:
             medication_details = exact
@@ -373,3 +373,14 @@ class CheckMedicationDetail:
         ]
 
         return medication_details
+
+
+# 함수이름: _prefer_domestic
+# 함수역할: 같은 이름의 국내 품목이 있으면 수출용 품목을 자동 확정 후보에서 뺀다. 수출용 품목은 국내 약국에서
+#   조제되지 않으므로 처방·약봉투의 약이 될 수 없다(예: "파모터정20밀리그램(파모티딘)(수출용)").
+# 매개변수: exact (list[MedicationDetail]): 원문과 그대로 맞는 품목들.
+# 반환값: 국내 품목이 하나라도 있으면 국내 품목만, 없으면 그대로.
+def _prefer_domestic(exact: list[MedicationDetail]) -> list[MedicationDetail]:
+    domestic = [item for item in exact if "수출용" not in (item.item_name or "")]
+    return domestic or exact
+

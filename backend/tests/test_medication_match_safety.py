@@ -443,22 +443,31 @@ def test_export_variant_does_not_block_the_single_domestic_product() -> None:
     assert [item.item_seq for item in result.data] == ['200404690']
 
 
-# Function Name: test_two_suffix_twins_still_need_confirmation
+# Function Name: test_two_suffix_twins_prefer_the_domestic_product
 # Description:
-# - Two products that both reduce to the bag name (for example a plain and an export-only item)
-#   stay a confirmation choice; the suffix rule never picks between them.
+# - Owner's rule (2026-11-28): when a domestic item and an export-only item both match the bag
+#   name exactly, the domestic one is chosen (export-only products are not dispensed in Korea).
+#   Two domestic twins still stay a confirmation choice.
 # Parameters:
 # - None.
 # Returns:
 # - None.
-def test_two_suffix_twins_still_need_confirmation() -> None:
+def test_two_suffix_twins_prefer_the_domestic_product() -> None:
     control = control_with_results([
         detail('테스트정(성분)', '1'),
         detail('테스트정(수출용)', '2'),
     ])
     result = asyncio.run(control.requestMedicationDetail('테스트정'))
-    assert result.requires_confirmation
-    assert len(result.candidates) == 2
+    assert not result.requires_confirmation
+    assert [item.item_seq for item in result.data] == ['1']
+
+    domestic_twins = control_with_results([
+        detail('테스트정(성분)', '1'),
+        detail('테스트정(다른성분)', '3'),
+    ])
+    twins = asyncio.run(domestic_twins.requestMedicationDetail('테스트정'))
+    assert twins.requires_confirmation
+    assert len(twins.candidates) == 2
 
 
 # Function Name: test_single_ocr_vowel_slip_matches_only_within_confusion_groups

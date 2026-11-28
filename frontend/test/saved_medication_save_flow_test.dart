@@ -10,7 +10,6 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_medication_detail_control.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
-import 'package:medbuddy_frontend/entities/identified_pill_save_request_entity.dart';
 import 'package:medbuddy_frontend/entities/manual_medication_entry_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_match_review_entity.dart';
@@ -527,43 +526,6 @@ void main() {
     }
   }
 
-  // 함수이름: test callback
-  // 함수역할:
-  // - 첫 식별약 조회 중 계정을 초기화하면 두 결과 모두 미완료가 되고 후속 조회·저장·목록·일정·알림 갱신이 실행되지 않는지 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
-  test(
-    'identified batch stops lookups and refresh after account clear',
-    () async {
-      final gate = Completer<MedicationDetail?>();
-      final harness = _Harness((_) => gate.future);
-      addTearDown(harness.model.dispose);
-      final request = harness.model.saveIdentifiedPills([
-        IdentifiedPillSaveRequest(
-          candidate: _chosenCandidate,
-          medicationSchedule: _chosenSchedule,
-        ),
-        IdentifiedPillSaveRequest(
-          candidate: _chosenCandidate,
-          medicationSchedule: _chosenSchedule,
-        ),
-      ]);
-      harness.model.clear();
-      gate.complete(null);
-      final results = await request;
-      expect(results, hasLength(2));
-      expect(results.every((result) => !result.isCompleted), isTrue);
-      expect(harness.lookup.requestedItemSeqs, hasLength(1));
-      expect(harness.lookup.requestedNames, isEmpty);
-      expect(harness.saved.savedDetails, isEmpty);
-      expect(harness.saved.listRequests, 0);
-      expect(harness.scheduleRefreshes, 0);
-      expect(harness.reminderSyncs, 0);
-    },
-  );
-
   group('identified pill', () {
     // Function Name: test callback
     // Description:
@@ -710,88 +672,6 @@ void main() {
         }
       },
     );
-
-    // Function Name: test callback
-    // Description:
-    // - Expected behavior: a batch keeps the request order, isolates a rejected and a crashed
-    //   save, and refreshes the list, schedule and reminders once at the end.
-    // Parameters:
-    // - None.
-    // Returns:
-    // - Future<void>; completes when the assertions pass.
-    test(
-      'a batch keeps its order, isolates failures and refreshes once',
-      () async {
-        final harness = _Harness((_) async => null);
-        addTearDown(harness.model.dispose);
-        harness.saved.failingNames.add('rejected pill');
-        harness.saved.throwingNames.add('crashing pill');
-        // Function Name: request
-        // Description:
-        // - Creates a batch request whose confirmed candidate and schedule share the supplied name.
-        // Parameters:
-        // - itemSeq (String): Confirmed catalog code.
-        // - name (String): Candidate and schedule name.
-        // Returns:
-        // - IdentifiedPillSaveRequest for one batch entry.
-        IdentifiedPillSaveRequest request(String itemSeq, String name) =>
-            IdentifiedPillSaveRequest(
-              candidate: PillIdentificationCandidate(
-                itemSeq: itemSeq,
-                itemName: name,
-              ),
-              medicationSchedule: MedicationSchedule(medicationName: name),
-            );
-
-        final results = await harness.model.saveIdentifiedPills([
-          request('1', 'first pill'),
-          request('2', 'rejected pill'),
-          request('3', 'crashing pill'),
-          request('4', 'last pill'),
-        ]);
-
-        expect(results.map((result) => result.status), [
-          MedicationSaveStatus.saved,
-          MedicationSaveStatus.failed,
-          MedicationSaveStatus.failed,
-          MedicationSaveStatus.saved,
-        ]);
-        expect(harness.lookup.requestedItemSeqs, ['1', '2', '3', '4']);
-        expect(harness.lookup.requestedNames, isEmpty);
-        expect(harness.saved.listRequests, 1);
-        expect(harness.scheduleRefreshes, 1);
-        expect(harness.reminderSyncs, 1);
-      },
-    );
-
-    // Function Name: test callback
-    // Description:
-    // - Expected behavior: a batch in which every save fails does not refresh anything.
-    // Parameters:
-    // - None.
-    // Returns:
-    // - Future<void>; completes when the assertions pass.
-    test('a batch without a completed save does not refresh', () async {
-      final harness = _Harness((_) async => null);
-      addTearDown(harness.model.dispose);
-      harness.saved.failingNames.add('rejected pill');
-
-      final results = await harness.model.saveIdentifiedPills([
-        IdentifiedPillSaveRequest(
-          candidate: const PillIdentificationCandidate(
-            itemSeq: '2',
-            itemName: 'rejected pill',
-          ),
-          medicationSchedule: const MedicationSchedule(
-            medicationName: 'rejected pill',
-          ),
-        ),
-      ]);
-
-      expect(results.single.status, MedicationSaveStatus.failed);
-      expect(harness.saved.listRequests, 0);
-      expect(harness.scheduleRefreshes, 0);
-    });
   });
 
   group('manual entry', () {

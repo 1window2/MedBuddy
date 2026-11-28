@@ -27,6 +27,7 @@ import '../entities/manual_medication_entry_entity.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
+import '../entities/photo_dose_plan_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../entities/pill_identification_entity.dart';
 import '../entities/prescription_change_entity.dart';
@@ -723,6 +724,72 @@ class MedBuddyViewModel extends ChangeNotifier {
       unawaited(_reminders.synchronizeAfterDoseChange());
     }
     return result;
+  }
+
+  // 함수이름: hasOwnMedicinesForPhotoDose
+  // 함수역할: 사진으로 복용 기록을 열기 전에 본인 약이 있는지 본다. 서버는 항상 본인 약만 다룬다.
+  // 매개변수: 없음.
+  // 반환값: 저장한 본인 약이나 오늘 본인 일정이 있으면 true.
+  bool get hasOwnMedicinesForPhotoDose =>
+      savedMedicationInfoList.isNotEmpty ||
+      (userSetting.homeScheduleSource == 'self' &&
+          todayMedicationScheduleList.isNotEmpty);
+
+  // 함수이름: flushPendingDoses
+  // 함수역할: 사진 계획 전에 쌓여 있는 복용 기록 큐를 먼저 보낸다(최대 4초, 실패해도 계속).
+  // 매개변수: 없음.
+  // 반환값: 전송 시도 완료.
+  Future<void> flushPendingDoses() async => doseSync?.flushPending();
+
+  // 함수이름: hasPendingDoseOverlap
+  // 함수역할: 기록할 묶음과 같은 날짜·시간대·약의 미전송 기록이 큐에 남았는지 본다. 남았으면 나중에 전송된
+  //   기록(예: 취소)이 사진 기록을 되돌릴 수 있으므로 기록하지 않는다.
+  // 매개변수: plan (PhotoDosePlan): 확인 화면에 보인 계획.
+  // 반환값: 겹치는 미전송 기록이 있으면 true.
+  bool hasPendingDoseOverlap(PhotoDosePlan plan) {
+    final operations = doseSync?.operations ?? const <Map<String, dynamic>>[];
+    for (final group in plan.groups) {
+      for (final op in operations) {
+        final ids = (op['medication_ids'] as List? ?? const [])
+            .whereType<int>();
+        if (op['schedule_date'] == group.scheduleDate &&
+            op['slot_key'] == group.slotKey &&
+            ids.any(group.medicationIds.contains)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // 함수이름: recordPhotoDose
+  // 함수역할: 사진 기록 뒤 앱 상태를 맞춘다. 서버가 돌려준 오늘 일정을 기기 저장소에 넣어 홈·위젯을 갱신하고,
+  //   그다음 알림을 다시 맞추고, 복용 기록 화면이 새로 읽게 한다.
+  // 매개변수: result (PhotoDoseRecordResult): 확인 응답.
+  // 반환값: 갱신 완료. 저장소 갱신이 실패하면 오늘 일정을 다시 읽는다.
+  Future<void> recordPhotoDose(PhotoDoseRecordResult result) async {
+    final sync = doseSync;
+    var applied = false;
+    if (sync != null && result.todaySchedule.isNotEmpty) {
+      try {
+        final schedules = MedicationSchedule.fromScheduleJsonList(
+          result.todaySchedule,
+        );
+        await sync.cacheSchedules(schedules, scheduleDate: result.scheduleDate);
+        // 기기 저장소만으로는 화면 목록이 바뀌지 않으므로, 조회 경로처럼 큐를 반영한 일정을 화면에 둔다.
+        applyConfirmedTodaySchedules(sync.project(schedules));
+        applied = true;
+      } catch (_) {
+        applied = false;
+      }
+    }
+    if (!applied) {
+      await fetchTodayMedicationSchedule();
+    }
+    if (_isDisposed) return;
+    unawaited(_reminders.synchronizeAfterDoseChange());
+    _asNeededHistory?.snapshot = null;
+    savedDoseRecords.value++;
   }
 
   // Function Name: loadMedicationReminderSettings

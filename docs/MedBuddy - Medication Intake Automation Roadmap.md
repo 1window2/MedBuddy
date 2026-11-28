@@ -10,9 +10,10 @@ record.
 
 - The schedule can update one medication dose or atomically check/uncheck every
   active medication in one time slot.
-- The loose-pill flow accepts either per-pill front/back photos or one image with
-  up to ten spatially distinct pills. One-image observations are numbered and
-  ranked independently against one shared catalog snapshot.
+- The loose-pill flow takes one image with up to ten spatially distinct pills
+  (since 1.1.0 there is no per-pill photo mode). Observations are numbered and
+  ranked independently against one shared catalog snapshot; a single pill can be
+  re-identified with a closer crop or a back photo.
 - Every pill candidate requires confirmation before it becomes a saved schedule.
 
 ## Chat Intake Confirmation
@@ -58,14 +59,16 @@ record.
   1칸(약 51dp) 아래로 두어야 4 x 1 요청을 받아들인다. 더 크게 늘리면 정보가 늘어난다.
   `DoseWidgetLayout`은 실제 배정 높이와 글자 배율에 맞춰 배치·여백·상세 정보량을 고른다.
   어느 높이에서도 시간대, 저장 상태와 핵심 버튼을 유지하며 복용 권한은 바꾸지 않는다.
-  110dp 미만(Pixel 1칸)은 `dose_home_widget_row` 한 줄 배치로 시간대(보호자는 환자 이름
-  포함)·저장 상태와 복용 버튼만 둔다. 110~180dp(삼성 1칸, 가로 화면 2칸)는 제목 줄이
-  시간대와 저장 상태를 대신 보여주고 본문·시간대 이동·진행 막대를 숨긴다. 두 배치 모두
+  110dp 미만(Pixel 1칸)은 `dose_home_widget_row` 한 줄 배치로 이전·다음 시간대 화살표,
+  시간대(보호자는 환자 이름 포함)·저장 상태와 복용 버튼을 둔다. 110~180dp(삼성 1칸, 가로 화면 2칸)는 제목 줄이
+  시간대와 저장 상태를 대신 보여주고 본문·시간대 이동·진행 막대를 숨긴다. 이 배치에서
   놓친 일정이면 시간대 오른쪽 빈 칸에 짧은 안내("놓친 약은 처방·복약지도 확인")를 두고,
   보호자 이름·좁은 폭·큰 글씨로 자리가 모자라면 끝을 말줄임으로 줄인다.
   Android 15 Pixel 8의 4열 5행 환경에서 3 x 5로 늘어나는 현상을 재현했고, 0.2.3에서
   Android 16 Pixel 런처의 위젯 추가 화면이 4 x 1로 놓는 것을 확인했다. 기존 위젯의 저장된
   크기가 자동으로 바뀌거나 모든 런처에서 같은 칸 수가 된다는 보장은 아니다.
+  1.0.1부터 위젯 추가 화면은 기본 4 x 1과 확장 4 x 3(`dose_home_widget_large_info`)
+  미리보기를 함께 보여준다.
 - 연결된 환자가 여러 명이면 앱 홈은 별칭 양옆 화살표로 한 명씩 전환한다.
   홈 미리보기의 슬라이드는 아침·점심·저녁·취침 전 요약만 바꾼다.
   위젯은 상단 환자 별칭 옆 화살표로 환자를 전환하고,
@@ -199,6 +202,13 @@ and false completion rate must be reported independently.
 
 ## Stage 2: Match Observations to the Current Dose
 
+**Status (1.1.0):** implemented as "사진으로 복용 기록" with deliberate changes after two
+design reviews; the rules, the reasons and the differences from this stage are in
+[Photo Dose Recording](Photo%20Dose%20Recording.md). In short: matching and slot choice stay
+on the server, slots are chosen per medicine, unknown or unsafe pills are shown and left
+unrecorded while the safe ones are recorded after one confirmation, and the physical-device
+corpus below is still owed before any zero-confirmation mode.
+
 After Stage 1 meets its acceptance evidence, compare the confirmed observations
 with the still-incomplete medications in the selected or inferred time slot.
 
@@ -215,6 +225,10 @@ count mismatch, or a medication that is not part of the authenticated patient's
 active schedule.
 
 ## Stage 3: Automated Completion
+
+**Status (1.1.0):** the "future atomic subset operation" is `POST /schedule/photo-intake/confirm`,
+which recomputes the plan at the photo time and writes every slot and as-needed dose in one
+transaction (idempotent by operation ID). The first release keeps one summary confirmation.
 
 Use the existing atomic schedule-completion transaction as the only write
 boundary. The first release should offer one summary confirmation. A later

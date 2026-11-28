@@ -110,6 +110,7 @@ from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_caregiver_notification_control import SetCaregiverNotification
 from controls.set_notification_control import SetNotification
 from controls.sync_dose_control import SyncDose
+from controls.plan_photo_dose_control import PlanPhotoDose
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from repositories.async_pharmacy_catalog import AsyncPharmacyCatalog
 from repositories.medication_search_cache_repository import AsyncMedicationSearchCache
@@ -1244,6 +1245,16 @@ def get_sync_dose(
     db: Session = Depends(get_db),
 ) -> SyncDose:
     return SyncDose(db)
+
+
+# 함수이름: get_plan_photo_dose
+# 함수역할: 요청 세션으로 사진 복용 기록 계획 Control을 만든다.
+# 매개변수: db (Session): 요청 세션.
+# 반환값: PlanPhotoDose.
+def get_plan_photo_dose(
+    db: Session = Depends(get_db),
+) -> PlanPhotoDose:
+    return PlanPhotoDose(db)
 
 
 # Function Name: get_check_caregiver_medication

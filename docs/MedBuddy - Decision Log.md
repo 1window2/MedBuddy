@@ -479,7 +479,8 @@ date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again
   Strength and dosage-form conflicts are still checked on the full name, and the lookup
   still confirms only when exactly one found product matches: an export-only twin
   ("…(파모티딘)(수출용)") keeps its inner parenthesis and does not count, while two items
-  that both reduce to the bag name stay a manual choice.
+  that both reduce to the bag name stay a manual choice. Since 2026-11-28 (owner) an
+  export-only item never competes with a domestic exact match: the domestic one is chosen.
 - **Also chosen (owner: rows should almost always end as "약품 확인됨"):** when no found
   product matches the bag name itself, a product that differs from it by exactly one
   Hangul vowel from the OCR confusion groups the name verifier already corrects with
@@ -508,6 +509,9 @@ date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again
   outage. A failed copy, or less than 5 of the 40 seconds left since the Gemini call
   started (the app waits 45), returns the original Gemini error. A blank key installs no
   wrapper; a fallback module that cannot load leaves the Gemini boundary in place.
+  Since 2026-11-28 a pill-photo quality verdict from the copy ("no pill", "several pills")
+  is passed on as that answer (HTTP 422, retake) instead of the outage; the phone test
+  showed an empty-palm photo during a Gemini outage reported as a connection problem.
 - **Alternatives:** shortening the Gemini deadline so Claude always fits. Not chosen: it
   would cut Gemini answers that arrive late but in time today. The key as a GitHub
   repository secret: not used, because production is self-hosted and reads
@@ -539,6 +543,69 @@ date, which the analysis uses. To undo it, call `sensitiveLineFlags` alone again
   process runs today, and the hospital and pharmacy budgets work the same way.
 - **To undo:** set `ADVANCED_DRUG_API_BASE_URL` back to the 07 URL, or raise a budget in
   `deploy/backend.env` and restart.
+
+## 2026-11-27: one release branch after the exhibition
+
+- **Chosen:** after the graduation exhibition the owner continues alone toward 1.1.0
+  (first planned as 1.0.2; renamed the same day because the home screen and the
+  pill-photo dose recording change enough for a minor version).
+  Every merged branch was deleted (`beta/v1.0.0`, `v1.0.1` and the 11-25 topic branches;
+  the release tags stay), and 1.1.0 is developed on `v1.1.0` from `main` (`96d005bc`).
+  The signed workflow's off-Play exception moved from exactly `v1.0.1` to exactly
+  `v1.1.0`, so `v1.0.1` can no longer produce signed builds. The owner set the
+  `beta-android` environment to `main` and `v1.1.0`. The production checkout
+  moved from `v1.0.1` to `main` (same commit, no redeploy).
+- **To undo:** recreate a branch from the `v1.0.1` tag and point the exception back at it
+  in `release-android.yml` and `scripts/check_android_release_configuration.py`.
+
+## 2026-11-28: Photo dose recording and a flatter home (1.1.0)
+
+- **Chosen:** a photo of the pills in hand records the dose. The server plans (which of the
+  user's own medicines, which slot) and records in one transaction after one large
+  confirmation; the app draws the screens. The rules went through two independent design
+  reviews; the final rules and the table of what changed are in
+  [Photo Dose Recording](Photo%20Dose%20Recording.md).
+- **Home:** `약 등록·관리` became three green buttons (`약 등록`, `약 관리`, `약 검색`); every
+  home button shows only a large icon and its name (descriptions stay for screen readers);
+  rows share one height that fills the screen without scrolling at normal text. The owner
+  picked the layout from emulator previews.
+- **Registration:** 사진으로 복용 기록 sits second on the 약 등록 page as the only solid green
+  button (recording, not registration). 낱알약 식별 no longer asks how to photograph: one
+  photo finds one or several pills, and each found pill can still get a closer or back
+  photo. The camera/gallery and other two-way choices are large tiles.
+- **Alternatives:** a separate home button for photo recording (rejected by the owner's
+  placement); client-side matching over the existing outbox (rejected in review: non-atomic,
+  loses the photo time, and lets an unsent undo reverse the record).
+- **To undo:** remove the 사진으로 복용 기록 tile (`includePhotoDose`), the `photoDose`
+  feature-search destination and its data-use paragraph, the app side
+  (`PhotoDoseRecordingUI`, `PhotoDoseControl`, `photo_dose_plan_entity.dart` and the view
+  model's `hasOwnMedicinesForPhotoDose`, `flushPendingDoses`, `hasPendingDoseOverlap`,
+  `recordPhotoDose`), the two `/schedule/photo-intake/*` routes, `PlanPhotoDose`,
+  `schemas/photo_dose.py`, and the helpers added for it (`has_same_shape_and_colors`,
+  `PillIdentificationCatalogRepository.list_by_item_sequences`). Receipts already written
+  stay as ordinary `medication_care_operations` rows. The home split and the merged capture
+  modes do not depend on it.
+
+## 2026-11-28: Gemini 3.5 Flash-Lite, Gemini retried first, Claude Haiku 5.5 as the fallback
+
+- **Chosen (owner):** every Gemini path (prescription text, pill photos, medication summaries,
+  health recommendations) moves from `gemini-3.1-flash-lite` to `gemini-3.5-flash-lite`. The
+  owner's account is on the free tier, where both have the same limits (15 RPM, 250K TPM) and
+  no charge; paid prices are $0.25/$1.50 (3.1) and $0.30/$2.50 (3.5) per 1M input/output tokens.
+  A same-input comparison on the QA instance (envelope text ×5, 12 real-palm composites with
+  54 pills, 9 drawn-palm composites) gave the same accuracy (imprints read 38 vs 39 of 47
+  fronts, no pill matched to another medicine, all pills detected) and lower latency for 3.5
+  (prescription 1.6 s vs 2.0 s, pill photo mean 4.4 s vs 6.3 s, max 12.7 s vs 19.8 s); summaries
+  and health recommendations answered normally (1.5 s vs 1.8 s, 1.7 s vs 2.2 s). 3.5 ignores
+  `temperature`, so wording varies slightly ("2일" or "2일분", both read as 2 days).
+- Gemini comes first: a fast Gemini failure (5xx, 429, connection) within 10 s is retried once
+  on Gemini after 1 s; only a second outage or a timeout goes to Claude.
+- The Claude fallback default becomes `claude-haiku-5-5` with effort `high` (was
+  `claude-opus-5-5`, `low`). Same comparison: same accuracy as Gemini, prescription 7.0 s,
+  pill photo 7.8 s, one invalid response in 21 photos; within the 40 s budget.
+- **To undo:** set the model defaults back (`core/config.py`, the three boundary defaults)
+  and `PILL_IDENTIFICATION_MODEL_NAME` in `deploy/backend.env`; remove the retry block in
+  `services/gemini_outage_fallback.py`.
 
 ## Earlier decisions
 

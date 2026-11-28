@@ -3,6 +3,7 @@
 
 import asyncio
 import heapq
+import re
 import unicodedata
 from difflib import SequenceMatcher
 from functools import lru_cache
@@ -33,6 +34,17 @@ from entities.pill_identification_entity import (
 # - catalog_boundary (MFDSPillCatalogBoundary): Shared MFDS pill-reference catalog provider.
 # - candidate_limit (int): Maximum pill matches exposed to the user.
 # - _ranking_semaphore (asyncio.Semaphore): Shared concurrency gate for CPU-heavy catalog ranking.
+# MFDS imprint fields describe a logo ("마크") or a score line ("분할선", "십자분할선") in words.
+# They are not printed characters; score lines are compared through line_front/line_back.
+_IMPRINT_DESCRIPTOR_WORDS = re.compile("십자분할선|분할선|마크")
+# Elongated shapes a photo often cannot separate: MFDS 타원형 (ellipse) and 장방형 (capsule).
+_ADJACENT_SHAPES = {"oval": ("장방형", "장방정"), "oblong": ("타원형",)}
+_ADJACENT_SHAPE_SCORE = 0.5
+# "imprint" evidence means the same text (or a substantial containment), not a one-character
+# neighbour: "AN 400" must not count as an imprint match for "AG 400".
+_IMPRINT_MATCH_SCORE = 0.9
+
+
 class IdentifyPill:
     """Identifies candidate products without treating a visual match as a diagnosis."""
 
@@ -183,10 +195,21 @@ class IdentifyPill:
             MAX_RETURNED_PILL_CANDIDATES + 1,
         )
         if ranked_candidates:
-            cutoff = ranked_candidates[
-                min(self.candidate_limit, len(ranked_candidates)) - 1
-            ].match_score
-            eligible = [c for c in ranked_candidates if c.match_score >= cutoff]
+            # Keep the display count in rank order, plus later candidates tied with the last one
+            # (an exact imprint can rank above a higher look-only score, so filter by rank, not score).
+            limit = min(self.candidate_limit, len(ranked_candidates))
+
+            def rank_of(candidate: PillIdentificationCandidate) -> tuple[bool, float]:
+                return "imprint" in candidate.matched_attributes, candidate.match_score
+
+            last = rank_of(ranked_candidates[limit - 1])
+            # Every exact-imprint candidate stays: many products share an imprint ("AG 400"), and a
+            # misread colour must not push the right one past the display count.
+            eligible = ranked_candidates[:limit] + [
+                c
+                for c in ranked_candidates[limit:]
+                if rank_of(c) == last or "imprint" in c.matched_attributes
+            ]
         else:
             eligible = []
         return PillIdentificationResult(
@@ -230,7 +253,10 @@ class IdentifyPill:
                 continue
             if not has_imprint:
                 score = min(score, 0.68)
+            # The same imprint text outranks look-only evidence: colour and shape are often misread
+            # (a pink tablet read as orange), the printed text rarely matches by chance.
             ranking_key = (
+                int("imprint" in matched_attributes),
                 round(score, 4),
                 int(bool(entry.image_url)),
                 entry.item_seq,
@@ -259,7 +285,7 @@ class IdentifyPill:
                 ),
                 print_front=entry.print_front,
                 print_back=entry.print_back,
-                match_score=ranking_key[0],
+                match_score=ranking_key[1],
                 matched_attributes=matched_attributes,
             )
             for ranking_key, entry, matched_attributes in top_matches
@@ -370,7 +396,7 @@ class IdentifyPill:
                 entry.print_back,
             )
             components.append((0.48, imprint_score))
-            if imprint_score >= 0.78:
+            if imprint_score >= _IMPRINT_MATCH_SCORE:
                 matched_attributes.append("imprint")
 
         if self._has_line_observation(features):
@@ -392,12 +418,15 @@ class IdentifyPill:
     # - observed (str): Normalized shape label extracted from the image.
     # - catalog_shape (str): Registered MFDS pill shape label.
     # Returns:
-    # - 1.0 for an alias match; otherwise 0.0.
+    # - 1.0 for an alias match, 0.5 for the adjacent elongated shape (oval/oblong); otherwise 0.0.
     @classmethod
     def _shape_score(cls, observed: str, catalog_shape: str) -> float:
         normalized_catalog = cls._normalize_label(catalog_shape)
-        aliases = cls._SHAPE_ALIASES.get(observed, ())
-        return 1.0 if normalized_catalog in aliases else 0.0
+        if normalized_catalog in cls._SHAPE_ALIASES.get(observed, ()):
+            return 1.0
+        if normalized_catalog in _ADJACENT_SHAPES.get(observed, ()):
+            return _ADJACENT_SHAPE_SCORE
+        return 0.0
 
     # Function Name: _color_score
     # Description:
@@ -578,7 +607,8 @@ class IdentifyPill:
 
     # Function Name: _normalize_imprint
     # Description:
-    # - Applies NFKC normalization and uppercase, retaining at most 64 alphanumeric imprint characters.
+    # - Applies NFKC normalization and uppercase, drops the MFDS words for a logo or score line,
+    #   and retains at most 64 alphanumeric imprint characters.
     # Parameters:
     # - value (str): Raw pill imprint text, possibly blank.
     # Returns:
@@ -586,7 +616,7 @@ class IdentifyPill:
     @staticmethod
     @lru_cache(maxsize=131_072)
     def _normalize_imprint(value: str) -> str:
-        normalized = unicodedata.normalize("NFKC", value or "").upper()
+        normalized = _IMPRINT_DESCRIPTOR_WORDS.sub("", unicodedata.normalize("NFKC", value or "").upper())
         return "".join(character for character in normalized if character.isalnum())[:64]
 
     # Function Name: _normalize_label
@@ -629,3 +659,43 @@ class IdentifyPill:
         top_score = candidates[0].match_score
         runner_up_score = candidates[1].match_score if len(candidates) > 1 else 0.0
         return top_score >= 0.84 and (top_score - runner_up_score) >= 0.06
+
+
+# Function Name: has_same_shape_and_colors
+# Description:
+# - Tells whether a catalogue product looks the same as an observed pill: the observed shape is one of
+#   the product's shape aliases and the observed colors are exactly the product's colors (no missing
+#   or extra color). Imprints are not compared; this marks a look-alike to ask about, not a match.
+# Parameters:
+# - shape (str): Observed shape label such as "round"; "unknown" or empty never matches.
+# - colors (list[str]): Observed color labels such as ["white"]; an empty list never matches.
+# - entry (PillCatalogEntry): Catalogue row of a registered medicine.
+# Returns:
+# - True only when both the shape and the full color set agree.
+def has_same_shape_and_colors(
+    shape: str, colors: list[str], entry: PillCatalogEntry,
+) -> bool:
+    observed_colors = tuple(dict.fromkeys(color for color in colors if color))
+    if shape in {"", "unknown"} or not observed_colors:
+        return False
+    # The adjacent elongated shape counts too: a photo cannot tell MFDS 타원형 from 장방형.
+    if IdentifyPill._shape_score(shape, entry.shape) <= 0.0:
+        return False
+    catalog_colors = list(dict.fromkeys(
+        IdentifyPill._normalize_label(color)
+        for color in (entry.color_primary, entry.color_secondary)
+        if IdentifyPill._normalize_label(color)
+    ))
+    if len(catalog_colors) != len(observed_colors):
+        return False
+    remaining = list(catalog_colors)
+    for observed in observed_colors:
+        aliases = IdentifyPill._COLOR_ALIASES.get(observed, ())
+        match = next(
+            (color for color in remaining if any(alias in color for alias in aliases)),
+            None,
+        )
+        if match is None:
+            return False
+        remaining.remove(match)
+    return True

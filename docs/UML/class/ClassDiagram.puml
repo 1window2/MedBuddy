@@ -160,12 +160,23 @@ package "Flutter Frontend" {
         class "PillIdentificationUI" as PillIdentificationUI <<UI: 낱알 식별>> {
             + userSetting: UserSetting
             + control: IdentifyPill?
+            + onReviewRequested: bool Function(List<IdentifiedPillSaveRequest>)
+            + createState(): State
+        }
+
+        class "PhotoDoseRecordingUI" as PhotoDoseRecordingUI <<UI: 사진으로 복용 기록>> {
+            + userSetting: UserSetting
+            + hasOwnMedicines: bool
+            + onBeforePlan: Future<void> Function()
+            + hasPendingOverlap: bool Function(PhotoDosePlan)
+            + onRecorded: Future<void> Function(PhotoDoseRecordResult)
+            + onRegisterRequested: void Function()
             + createState(): State
         }
 
         class "ManualMedicationEntryUI" as ManualMedicationEntryUI <<UI: 복약정보 직접 등록>> {
             + userSetting: UserSetting
-            + onSaveRequested: Future<MedicationSaveResult> Function(ManualMedicationEntry)
+            + onReviewRequested: bool Function(List<ManualMedicationEntry>)
             + createState(): State
         }
 
@@ -468,10 +479,10 @@ package "Flutter Frontend" {
             + dispose(): void
         }
 
-        class "IdentifyPillBatch" as FIdentifyPillBatch <<Controller: 다중 낱알 일괄 식별>> {
-            + {static} maxBatchSize: int
-            + maxConcurrentRequests: int
-            + requestBatchIdentification(inputs): Future<List<PillIdentificationBatchOutcome>>
+        class "PhotoDoseControl" as FPhotoDoseControl <<Controller: 사진 복용 계획·확정 요청>> {
+            + baseUrl: String
+            + plan(pills, answers, planToken): Future<PhotoDosePlan>
+            + confirm(operationId, plan): Future<PhotoDoseRecordResult>
         }
 
         class "ResolveDuplicatePillSelectionControl" as FResolveDuplicatePillSelection <<Controller: 중복 낱알 일정 검토>> {
@@ -1134,6 +1145,24 @@ package "Flutter Frontend" {
             + fromJson(json): MultiplePillIdentificationResult
         }
 
+        class "PhotoDosePlan" as FPhotoDosePlan <<Entity: 사진 복용 계획>> {
+            + planToken: String
+            + pills: List<PhotoDosePill>
+            + groups: List<PhotoDoseGroup>
+            + asNeeded: List<PhotoDoseAsNeeded>
+            + questions: List<PhotoDosePill>
+            + warnings: List<PhotoDosePill>
+            + hasWrite: bool
+            + fromJson(json): PhotoDosePlan
+        }
+
+        class "PhotoDoseRecordResult" as FPhotoDoseRecordResult <<Entity: 사진 복용 기록 결과>> {
+            + operationId: String
+            + takenAt: DateTime
+            + scheduleDate: String
+            + todaySchedule: List<Map>
+        }
+
         class "ManualMedicationEntry" as FManualMedicationEntry <<Entity: 직접 입력 복약정보>> {
             + medicationName: String
             + dosageAmount: String
@@ -1572,6 +1601,21 @@ package "FastAPI Backend" {
             + requestPillIdentification(front, back): PillIdentificationResult
         }
 
+        class "PlanPhotoDose" as PlanPhotoDose <<Control: 사진 복용 계획·원자적 기록>> {
+            - db: Session
+            + plan(principal, request): dict
+            + confirm(principal, request): dict
+            - _compute(patient, pills, answers, as_of): _Plan
+        }
+        note right of PlanPhotoDose
+            plan은 읽기 전용이며 사진 시각을 서명한 15분 토큰(프로세스별 키)을 준다.
+            confirm은 같은 시각으로 다시 계산해 기록 묶음이 같을 때만 쓰고 다르면 409이다.
+            답 > 각인(2글자 이상) > 수가 맞는 같은 모양·색 묶음 순으로만 자동 배정한다.
+            약별 시간대: 지금 창 > 조금 일찍(3시간·간격 60%) > 놓친 시간대, 최근 복용 간격 확인.
+            필요시 약은 사진 시각에 1회, 같은 작업 ID는 영수증으로 처음 응답을 돌려준다.
+            환자 본인만 쓸 수 있다.
+        end note
+
         class "CheckNearbyPharmacy" as BCheckNearbyPharmacy <<Control: 근처 약국 정규화·정렬>> {
             + requestNearbyPharmacies(latitude, longitude, radius_km, current_time): list<NearbyPharmacy>
         }
@@ -1931,7 +1975,6 @@ package "FastAPI Backend" {
             + find_client_request(link_id, sender_hash, client_message_id): _ChatMessage?
             + add(message): void
             + mark_incoming_read(link_id, reader_hash, through_message_id): int
-            + unread_count(link_id, reader_hash): int
             + unread_summary(link_id, reader_hash, is_patient): tuple<int, int?>
             + recent_unread(link_id, reader_hash, is_patient): list<_ChatMessage>
         }
@@ -2029,6 +2072,21 @@ package "FastAPI Backend" {
             + extractVisualFeatures(front_image, back_image): PillVisualFeatures
             + extractMultipleVisualFeatures(image): tuple
             + close(): void
+        }
+
+        class "GeminiOutageFallback" as GeminiOutageFallback <<Wrapper: Gemini 장애 시 Claude 대체>> {
+            + label: str
+            + methods: frozenset<str>
+            + __getattr__(name): Any
+        }
+        note right of GeminiOutageFallback
+            Gemini 5xx·429·SDK 안 연결 실패·시간 초과일 때만 같은 호출을 Claude 사본으로 다시 한다.
+            그 밖의 오류와 정상 결과는 그대로 돌려주며 대체가 실패하면 원래 Gemini 오류를 낸다.
+            ANTHROPIC_API_KEY가 없으면 감싸지 않는다(api/dependencies.py).
+        end note
+
+        class "ClaudeGenerateContentClient" as ClaudeGenerateContentClient <<Wrapper: Claude Messages 어댑터>> {
+            + models: _ClaudeModels
         }
 
         class "MFDSPillAPI" as MFDSPillAPI <<Wrapper: 낱알식별정보 API>> {
@@ -2600,9 +2658,16 @@ HealthRecommendationUI ..> PillIdentificationUI : empty state identification
 HealthRecommendationUI ..> GuidedPrescriptionCameraUI : prescription shortcut
 CheckMedicationDetailUI ..> FRequestVoiceGuide
 PillIdentificationUI o-- FIdentifyPill
-PillIdentificationUI o-- FIdentifyPillBatch
 PillIdentificationUI o-- FResolveDuplicatePillSelection
 PillIdentificationUI ..> MedicationScheduleReviewBoundary
+HomeScreen ..> PhotoDoseRecordingUI : 약 등록 > 사진으로 복용 기록
+PhotoDoseRecordingUI o-- FIdentifyPill : 카메라 + 한 장 다중 후보
+PhotoDoseRecordingUI o-- FPhotoDoseControl
+PhotoDoseRecordingUI ..> MedBuddyViewModel : flushPendingDoses / hasPendingDoseOverlap / recordPhotoDose
+FPhotoDoseControl ..> FPhotoDosePlan
+FPhotoDoseControl ..> FPhotoDoseRecordResult
+FPhotoDoseControl ..> AuthenticatedApiClient
+FPhotoDoseControl ..> PlanPhotoDose : POST /schedule/photo-intake/plan · confirm
 ManualMedicationEntryUI ..> FManualMedicationEntry
 FManualMedicationEntry ..> FMedicationSchedule : 복용 주기를 포함한 변환
 FMedicationDetail ..> FDoseCycle : 다음 복용일
@@ -2715,7 +2780,6 @@ FCheckSchedule ..> AuthenticatedApiClient
 FCheckPrescriptionChange ..> AuthenticatedApiClient
 FCheckHealthRecommendation ..> AuthenticatedApiClient
 FIdentifyPill ..> AuthenticatedApiClient
-FIdentifyPillBatch *-- FIdentifyPill
 FCheckNearbyCare ..> AuthenticatedApiClient
 FCheckNearbyCare o-- DeviceLocationBoundary
 DeviceLocationBoundary --> DeviceCoordinate
@@ -2808,7 +2872,6 @@ FCheckPrescriptionChange ..> FPrescriptionChangeRadar
 FCheckHealthRecommendation ..> FHealthRecommendation
 FIdentifyPill ..> FPillIdentificationResult
 FIdentifyPill ..> FMultiplePillIdentificationResult
-FIdentifyPillBatch ..> FPillIdentificationResult
 FCheckNearbyCare ..> NearbyCarePlace
 FCheckNearbyCare ..> NearbyCareSearchArea : fallback coordinates with provider radius
 FCheckNearbyCare ..> NearbyCareSearchMode
@@ -3180,6 +3243,19 @@ ManageMedicationCare --> DBMedicationCompletion
 ManageMedicationCare --> DBMedicationCareAudit
 ManageMedicationCare --> DBMedicationCareOperation : 작업 영수증
 ManageMedicationCare --> DBCaregiverAlertOutbox : 필요시 복용 event_key
+PlanPhotoDose ..> BAuthorizationControl : resolvePatientScope(allow_caregiver=False)
+PlanPhotoDose ..> BCheckSchedule : 오늘 일정 응답·시간대 완료 이벤트
+PlanPhotoDose ..> MedicationCoursePolicy
+PlanPhotoDose ..> SavedMedicationRepository
+PlanPhotoDose ..> PillCatalogRepository : list_by_item_sequences
+PlanPhotoDose --> DBMedicationCompletion : apply_completion_report(source=photo)
+PlanPhotoDose --> DBMedicationCareOperation : 작업 영수증
+PlanPhotoDose --> DBCaregiverAlertOutbox : 오늘 기록의 완료·필요시 알림
+GeminiOutageFallback o-- ClaudeGenerateContentClient : 장애 시에만 생성
+GeminiOutageFallback ..> PillVisionBoundary : pill_vision 감쌈
+GeminiOutageFallback ..> GeminiPrescriptionTextClient : prescription_text 감쌈
+GeminiOutageFallback ..> LLMService : health 감쌈
+GeminiOutageFallback ..> MedicationSummaryGenerator : summary 감쌈
 BManageLinkedChat ..> ManageMedicationCare : history_share_context
 MedicationCareReceipts .. BCheckSavedMedication
 MedicationCareReceipts .. SavedMedicationRetentionPolicy

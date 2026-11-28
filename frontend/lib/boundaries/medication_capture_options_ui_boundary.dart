@@ -4,29 +4,18 @@ import 'package:image_picker/image_picker.dart';
 import 'medication_photo_source_sheet.dart';
 
 import '../entities/user_setting_entity.dart';
-import '../widgets/medbuddy_option_sheet.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/keep_words_text.dart';
 
 // 파일명: medication_capture_options_ui_boundary.dart
-// 역할: 약 정보 분석 작업과 처방전 이미지 출처 선택을 제공한다.
+// 역할: 약 등록 화면(약봉투·처방전, 사진으로 복용 기록, 낱알약 식별, 직접 등록)과 사진 출처 선택을 제공한다.
 
 // 클래스명: MedicationCaptureTask
-// 역할: 약 등록 메뉴에서 선택하는 알약 식별·직접 입력 작업.
-// 주요 책임: 한 사진의 여러 알약·알약별 사진·직접 등록을 구분한다.
-// 속성: multiplePills/individualPills/manual: 작업 값. 처방전 출처는 별도 열거형을 사용한다.
-enum MedicationCaptureTask {
-  multiplePills,
-  individualPills,
-  manual,
-}
-
-// 클래스명: PillCaptureMode
-// 역할: 알약 사진 입력 방식 구분.
-// 주요 책임: 한 사진의 여러 알약과 알약별 앞뒷면 촬영 흐름을 구별한다.
-// 속성: singlePhoto/individualPhotos: 입력 모드.
-enum PillCaptureMode { singlePhoto, individualPhotos }
+// 역할: 약 등록 화면에서 고르는 작업.
+// 주요 책임: 낱알약 식별(한 장에 한 알 또는 여러 알)·직접 등록·사진으로 복용 기록을 구분한다.
+// 속성: pills/manual/photoDose: 작업 값. 처방전 출처는 별도 열거형을 사용한다.
+enum MedicationCaptureTask { pills, manual, photoDose }
 
 // 클래스명: PrescriptionImageSource
 // 역할: 처방전 사진을 가져올 출처.
@@ -35,12 +24,13 @@ enum PillCaptureMode { singlePhoto, individualPhotos }
 enum PrescriptionImageSource { camera, gallery }
 
 // 함수이름: showMedicationCaptureTaskOptions
-// 함수역할: 약봉투·처방전, 낱알약 식별, 직접 등록 중 하나를 고르는 약 등록 화면을 연다.
+// 함수역할: 약봉투·처방전, (홈에서 열 때) 사진으로 복용 기록, 낱알약 식별, 직접 등록 중 하나를 고르는 약 등록 화면을 연다.
 // 매개변수:
 // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-// - onTaskSelected: 등록 화면을 유지한 채 고른 낱알약·직접 등록 작업을 시작한다.
+// - userSetting (UserSetting): 언어 설정.
+// - onTaskSelected: 등록 화면을 유지한 채 고른 작업을 시작한다.
 // - onSourceSelected: 등록 화면을 유지한 채 고른 사진 출처로 처방전 인식을 시작한다.
+// - includePhotoDose (bool): 사진으로 복용 기록을 보일지. 약 관리·건강 관리 추천에서 열면 숨긴다.
 // 반환값: 등록 화면이 닫히면 완료되는 Future<void>.
 Future<void> showMedicationCaptureTaskOptions({
   required BuildContext context,
@@ -49,6 +39,7 @@ Future<void> showMedicationCaptureTaskOptions({
   onTaskSelected,
   required Future<void> Function(BuildContext, PrescriptionImageSource)
   onSourceSelected,
+  bool includePhotoDose = false,
 }) {
   final text = _MedicationCaptureText(userSetting.language);
   var opening = false;
@@ -70,59 +61,89 @@ Future<void> showMedicationCaptureTaskOptions({
     MaterialPageRoute(
       builder: (pageContext) => Scaffold(
         key: const Key('medication-registration-page'),
+        backgroundColor: MedBuddyColors.pageBackground,
         body: Column(
           children: [
             MedBuddyPageHeader(
               title: text.isEnglish ? 'Add medication' : '약 등록',
-              subtitle: text.isEnglish
-                  ? 'Choose how to add your medication.'
-                  : '약을 등록할 방법을 선택합니다.',
+              subtitle: includePhotoDose
+                  ? (text.isEnglish
+                        ? 'Add a medicine, or record a dose from a photo.'
+                        : '약을 등록하거나 사진으로 복용을 기록해요.')
+                  : (text.isEnglish
+                        ? 'Choose how to add your medication.'
+                        : '약을 등록할 방법을 고르세요.'),
               onBackRequested: () => Navigator.pop(pageContext),
             ),
             Expanded(
-              child: MedBuddyOptionSheet(
-                showHandle: false,
-                children: [
-                  MedBuddyOptionTile(
-                    icon: Icons.document_scanner_outlined,
-                    title: text.prescriptionTask,
-                    subtitle: text.prescriptionTaskSubtitle,
-                    onTap: () => open(() async {
-                      final source = await showPrescriptionImageSourceOptions(
-                        context: pageContext,
-                        userSetting: userSetting,
-                      );
-                      if (!pageContext.mounted || source == null) return;
-                      await onSourceSelected(pageContext, source);
-                    }),
-                  ),
-                  const SizedBox(height: 10),
-                  MedBuddyOptionTile(
-                    icon: Icons.image_search_outlined,
-                    title: text.pillTask,
-                    subtitle: text.pillTaskSubtitle,
-                    onTap: () => open(() async {
-                      final task = await showPillCaptureModeOptions(
-                        pageContext,
-                        text.isEnglish,
-                      );
-                      if (!pageContext.mounted || task == null) return;
-                      await onTaskSelected(pageContext, task);
-                    }),
-                  ),
-                  const SizedBox(height: 10),
-                  MedBuddyOptionTile(
-                    icon: Icons.add_circle_outline,
-                    title: text.manualTask,
-                    subtitle: text.manualTaskSubtitle,
-                    onTap: () => open(
-                      () => onTaskSelected(
-                        pageContext,
-                        MedicationCaptureTask.manual,
+              child: SafeArea(
+                top: false,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      MedicationTaskTile(
+                        key: const ValueKey('registrationPrescriptionTile'),
+                        icon: Icons.document_scanner_outlined,
+                        title: text.prescriptionTask,
+                        semanticsHint: text.prescriptionTaskSubtitle,
+                        onTap: () => open(() async {
+                          final source =
+                              await showPrescriptionImageSourceOptions(
+                                context: pageContext,
+                                userSetting: userSetting,
+                              );
+                          if (!pageContext.mounted || source == null) return;
+                          await onSourceSelected(pageContext, source);
+                        }),
                       ),
-                    ),
+                      if (includePhotoDose) ...[
+                        const SizedBox(height: 12),
+                        MedicationTaskTile(
+                          key: const ValueKey('registrationPhotoDoseTile'),
+                          icon: Icons.photo_camera_rounded,
+                          badgeIcon: Icons.check_rounded,
+                          title: text.photoDoseTask,
+                          semanticsHint: text.photoDoseTaskSubtitle,
+                          emphasized: true,
+                          onTap: () => open(
+                            () => onTaskSelected(
+                              pageContext,
+                              MedicationCaptureTask.photoDose,
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      MedicationTaskTile(
+                        key: const ValueKey('registrationPillTile'),
+                        icon: Icons.image_search_outlined,
+                        title: text.pillTask,
+                        semanticsHint: text.pillTaskSubtitle,
+                        onTap: () => open(
+                          () => onTaskSelected(
+                            pageContext,
+                            MedicationCaptureTask.pills,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      MedicationTaskTile(
+                        key: const ValueKey('registrationManualTile'),
+                        icon: Icons.edit_note_rounded,
+                        title: text.manualTask,
+                        semanticsHint: text.manualTaskSubtitle,
+                        onTap: () => open(
+                          () => onTaskSelected(
+                            pageContext,
+                            MedicationCaptureTask.manual,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ],
@@ -132,76 +153,125 @@ Future<void> showMedicationCaptureTaskOptions({
   );
 }
 
-// 함수이름: showPillCaptureModeOptions
-// 함수역할: 한 사진의 여러 알약 또는 알약별 촬영 방식을 선택받으며 첫 선택만 반환한다.
-// 매개변수: context (BuildContext): 하단 메뉴 위치; isEnglish (bool): 언어.
-// 반환값: 선택한 MedicationCaptureTask 또는 취소 시 null인 Future.
-Future<MedicationCaptureTask?> showPillCaptureModeOptions(
-  BuildContext context,
-  bool isEnglish,
-) {
-  var selected = false;
-  return showModalBottomSheet<MedicationCaptureTask>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: MedBuddyColors.surface,
-    showDragHandle: true,
-    builder: (sheetContext) => SafeArea(
-      top: false,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final (task, icon, label) in [
-              (
-                MedicationCaptureTask.multiplePills,
-                Icons.center_focus_strong_outlined,
-                isEnglish ? 'Find pills in one photo' : '여러 알약 한 번에 찾기',
+// 클래스명: MedicationTaskTile
+// 역할: 약 등록 화면의 큰 작업 버튼. 큰 아이콘과 이름만 보이고 설명은 화면 읽기용으로 둔다.
+// 주요 책임: 기록 작업(사진으로 복용 기록)은 꽉 찬 초록, 등록 작업은 흰 바탕으로 구분한다.
+// 속성: icon·badgeIcon: 아이콘과 작은 덧표시; title: 이름; semanticsHint: 설명; emphasized: 초록 채움; onTap: 동작.
+class MedicationTaskTile extends StatelessWidget {
+  final IconData icon;
+  final IconData? badgeIcon;
+  final String title;
+  final String semanticsHint;
+  final bool emphasized;
+  final VoidCallback onTap;
+
+  const MedicationTaskTile({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.semanticsHint,
+    required this.onTap,
+    this.badgeIcon,
+    this.emphasized = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = emphasized ? Colors.white : MedBuddyColors.textStrong;
+    final accent = emphasized ? Colors.white : MedBuddyColors.primary;
+    return Semantics(
+      button: true,
+      hint: semanticsHint,
+      child: Material(
+        color: emphasized ? MedBuddyColors.primary : MedBuddyColors.surface,
+        borderRadius: MedBuddyRadii.largeCard,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: MedBuddyRadii.largeCard,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 104),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            decoration: BoxDecoration(
+              borderRadius: MedBuddyRadii.largeCard,
+              border: Border.all(
+                color: emphasized
+                    ? MedBuddyColors.primary
+                    : MedBuddyColors.cardBorder,
+                width: 1.5,
               ),
-              (
-                MedicationCaptureTask.individualPills,
-                Icons.medication_outlined,
-                isEnglish ? 'Find pills individually' : '알약 하나씩 찾기',
-              ),
-            ]) ...[
-              ListTile(
-                minTileHeight: 56,
-                leading: Icon(icon, color: MedBuddyColors.primaryDark),
-                title: KeepWordsText(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    height: 1.4,
-                    letterSpacing: 0,
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 72,
+                  height: 72,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          color: emphasized
+                              ? Colors.white.withValues(alpha: 0.18)
+                              : MedBuddyColors.successSurface,
+                          borderRadius: BorderRadius.circular(22),
+                        ),
+                        child: Icon(icon, color: accent, size: 44),
+                      ),
+                      if (badgeIcon != null)
+                        Positioned(
+                          right: -4,
+                          bottom: -4,
+                          child: Container(
+                            width: 30,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: emphasized
+                                  ? Colors.white
+                                  : MedBuddyColors.primary,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              badgeIcon,
+                              size: 21,
+                              color: emphasized
+                                  ? MedBuddyColors.primary
+                                  : Colors.white,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                onTap: () {
-                  if (selected ||
-                      ModalRoute.of(sheetContext)?.isCurrent != true) {
-                    return;
-                  }
-                  selected = true;
-                  Navigator.pop(sheetContext, task);
-                },
-              ),
-              if (task == MedicationCaptureTask.multiplePills)
-                const Divider(height: 1, color: MedBuddyColors.divider),
-            ],
-          ],
+                const SizedBox(width: 18),
+                Expanded(
+                  child: KeepWordsText(
+                    title,
+                    style: TextStyle(
+                      color: foreground,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: accent, size: 30),
+              ],
+            ),
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 // 함수이름: showPrescriptionImageSourceOptions
-// 함수역할: 처방전 분석에 사용할 카메라 또는 갤러리 이미지 출처를 선택하게 한다.
+// 함수역할: 공통 사진 출처 선택을 처방전 인식용 출처로 바꾼다.
 // 매개변수:
-// - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-// 반환값: Future<PrescriptionImageSource?>: 선택한 카메라·갤러리 출처; 취소 시 null.
+// - context (BuildContext): 시트를 열 위치.
+// - userSetting (UserSetting): 언어 설정.
+// 반환값: 고른 출처. 닫으면 null.
 Future<PrescriptionImageSource?> showPrescriptionImageSourceOptions({
   required BuildContext context,
   required UserSetting userSetting,
@@ -218,19 +288,11 @@ Future<PrescriptionImageSource?> showPrescriptionImageSourceOptions({
 }
 
 // 클래스명: _MedicationCaptureText
-// 역할: 약 정보 분석 작업과 처방전 이미지 출처 선택에 쓰는 한국어·영어 문구를 담당한다.
-// 주요 책임:
-// - 약 정보 분석 작업과 처방전 이미지 출처 선택에 쓰는 한국어·영어 문구의 언어를 선택하고 안내에 필요한 값을 문구에 반영한다.
-// 속성:
-// - language (String): 화면 문구를 선택할 언어 코드.
+// 역할: 약 등록 화면의 한국어·영어 문구.
+// 속성: language (String): 표시 언어 코드.
 class _MedicationCaptureText {
   final String language;
 
-  // 함수이름: _MedicationCaptureText
-  // 함수역할: 약 정보 분석 작업과 처방전 이미지 출처 선택에 쓰는 한국어·영어 문구 선택에 사용할 언어를 보관한다.
-  // 매개변수:
-  // - language (String): 화면 문구를 선택할 언어 코드.
-  // 반환값: 입력 설정이 반영된 _MedicationCaptureText 인스턴스.
   const _MedicationCaptureText(this.language);
 
   // Function Name: isEnglish
@@ -240,46 +302,36 @@ class _MedicationCaptureText {
   bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: prescriptionTask
-  // 함수역할: 현재 언어와 입력값에 맞춰 "처방전 분석" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // 함수역할: "약봉투·처방전 등록" 문구를 제공한다. 매개변수: 없음. 반환값: 문구.
   String get prescriptionTask =>
-      isEnglish ? 'Prescription or medication envelope' : '약봉투·처방전 등록';
+      isEnglish ? 'Scan prescription' : '약봉투·처방전 등록';
   // 함수이름: prescriptionTaskSubtitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "처방전에서 약 이름과 복약 일정을 확인합니다." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // 함수역할: 화면 읽기용 설명. 매개변수: 없음. 반환값: 문구.
   String get prescriptionTaskSubtitle => isEnglish
       ? 'Review medication names and schedules printed on your document.'
       : '약 이름과 복용 일정이 적힌 내용을 사진으로 확인합니다.';
+  // 함수이름: photoDoseTask
+  // 함수역할: "사진으로 복용 기록" 문구를 제공한다. 매개변수: 없음. 반환값: 문구.
+  String get photoDoseTask =>
+      isEnglish ? 'Record dose by photo' : '사진으로 복용 기록';
+  // 함수이름: photoDoseTaskSubtitle
+  // 함수역할: 화면 읽기용 설명. 매개변수: 없음. 반환값: 문구.
+  String get photoDoseTaskSubtitle => isEnglish
+      ? 'Photograph the pills in your hand before taking them to record the dose.'
+      : '먹기 전에 손에 든 약을 찍으면 복용을 기록합니다.';
   // 함수이름: pillTask
-  // 함수역할: 현재 언어와 입력값에 맞춰 "낱알약 식별" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get pillTask => isEnglish ? 'Identify a loose pill' : '낱알약 식별';
+  // 함수역할: "낱알약 식별" 문구를 제공한다. 매개변수: 없음. 반환값: 문구.
+  String get pillTask => isEnglish ? 'Identify pills' : '낱알약 식별';
   // 함수이름: pillTaskSubtitle
-  // 함수역할: 한 알 또는 여러 알약의 후보를 비교하는 기본 식별 기능을 안내한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // 함수역할: 화면 읽기용 설명. 매개변수: 없음. 반환값: 문구.
   String get pillTaskSubtitle => isEnglish
       ? 'Compare one or more photographed pills with MFDS product candidates.'
       : '알약을 한 개 또는 여러 개 촬영해 식약처 제품 후보와 비교합니다.';
-
   // 함수이름: manualTask
-  // 함수역할: 현재 언어와 입력값에 맞춰 "직접 등록" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // 함수역할: "직접 등록" 문구를 제공한다. 매개변수: 없음. 반환값: 문구.
   String get manualTask => isEnglish ? 'Add manually' : '직접 등록';
   // 함수이름: manualTaskSubtitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "사진이 없어도 약 이름과 복용 일정을 직접 입력합니다." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // 함수역할: 화면 읽기용 설명. 매개변수: 없음. 반환값: 문구.
   String get manualTaskSubtitle => isEnglish
       ? 'Enter a medication name and schedule without a photo.'
       : '사진이 없어도 약 이름과 복용 일정을 직접 입력합니다.';

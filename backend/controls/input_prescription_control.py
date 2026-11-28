@@ -124,7 +124,7 @@ class InputPrescription:
     def __init__(
         self,
         client: genai.Client | None = None,
-        model_name: str = "gemini-3.1-flash-lite",
+        model_name: str = "gemini-3.5-flash-lite",
         db: Session | None = None,
         medication_name_verifier: PrescriptionMedicationNameVerifier | None = None,
         ocr_service_boundary: OCRServiceBoundary | None = None,

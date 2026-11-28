@@ -60,8 +60,8 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     # Used only after Gemini itself times out or reports an outage; empty turns the fallback off.
     ANTHROPIC_API_KEY: str = ""
-    CLAUDE_FALLBACK_MODEL: str = Field(default="claude-opus-5-5", min_length=1)
-    CLAUDE_FALLBACK_EFFORT: Literal["low", "medium", "high"] = "low"
+    CLAUDE_FALLBACK_MODEL: str = Field(default="claude-haiku-5-5", min_length=1)
+    CLAUDE_FALLBACK_EFFORT: Literal["low", "medium", "high"] = "high"
     PUBLIC_DATA_API_KEY: str = ""
     APP_ENV: Literal["development", "test", "production"] = "development"
     RUNTIME_ROLE: Literal["api", "migration", "maintenance", "catalog_sync"] = (
@@ -149,7 +149,7 @@ class Settings(BaseSettings):
     PUBLIC_API_MAX_CONCURRENCY: int = Field(default=6, ge=1, le=20)
     PUBLIC_API_FAILURE_CACHE_SECONDS: int = Field(default=30, ge=1, le=300)
     PILL_IDENTIFICATION_MODEL_NAME: str = Field(
-        default="gemini-3.1-flash-lite",
+        default="gemini-3.5-flash-lite",
         min_length=1,
     )
     PILL_IDENTIFICATION_TIMEOUT_SECONDS: float = Field(

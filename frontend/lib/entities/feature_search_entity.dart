@@ -10,6 +10,7 @@ enum AppFeature {
   medicationSearch,
   prescription,
   pillIdentification,
+  photoDose,
   schedule,
   asNeeded,
   medicationCabinet,

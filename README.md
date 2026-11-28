@@ -26,7 +26,7 @@
 | --- | --- |
 | App | Flutter / Dart (Android), Firebase Auth and Cloud Messaging |
 | Server | FastAPI, PostgreSQL, Redis, Alembic; Cloudflare Tunnel in production |
-| AI and data | Gemini, OpenCV, Korean public data APIs (MFDS, NEMC, KASI) |
+| AI and data | Gemini (Anthropic Claude as a fallback when Gemini fails), OpenCV, Korean public data APIs (MFDS, NEMC, KASI) |
 
 The code follows the project UML in a Boundary-Control-Entity structure
 ([class view](docs/UML/class/README.md)). UI design:
@@ -50,7 +50,7 @@ and [Production Deployment](docs/Production%20Deployment.md).
 
 ## Documentation
 
-- [Release notes](docs/releases/v1.0.0.md) and the [release TODO](docs/TODO.md)
+- [Release notes](docs/releases/v1.1.0.md) and the [release TODO](docs/TODO.md)
 - [Scope](docs/MedBuddy%20-%20Beta%20Scope.md), [security architecture](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md) and [decision log](docs/MedBuddy%20-%20Decision%20Log.md)
 - [Contributing](CONTRIBUTING.md) and [security policy](SECURITY.md)
 

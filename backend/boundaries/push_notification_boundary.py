@@ -1,7 +1,6 @@
 # 파일명: push_notification_boundary.py
 # 역할: 보호자 알림 유스케이스와 Firebase Cloud Messaging SDK를 분리한다.
 
-import logging
 import re
 from dataclasses import dataclass
 from typing import Protocol
@@ -10,8 +9,6 @@ from firebase_admin import exceptions as firebase_exceptions
 from firebase_admin import messaging
 
 from boundaries.firebase_admin_boundary import get_firebase_admin_app
-
-logger = logging.getLogger(__name__)
 
 
 # 클래스명: PushDeliveryResult

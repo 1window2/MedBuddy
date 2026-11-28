@@ -16,7 +16,6 @@ import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/input_prescription_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/manual_medication_entry_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/medication_registration_flow.dart';
-import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/entities/manual_medication_entry_entity.dart';
 import 'package:medbuddy_frontend/entities/identified_pill_save_request_entity.dart';
@@ -55,12 +54,7 @@ void main() {
     )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
   });
 
-  for (final origin in [
-    'manual-home',
-    'manual-menu',
-    'pill-singlePhoto',
-    'pill-individualPhotos',
-  ]) {
+  for (final origin in ['manual-home', 'manual-menu', 'pill']) {
     testWidgets('$origin hands review to shared results before any save', (
       tester,
     ) async {
@@ -89,15 +83,7 @@ void main() {
         );
         await tester.pumpAndSettle();
       } else {
-        unawaited(
-          openPillIdentification(
-            home,
-            harness.model,
-            origin == 'pill-singlePhoto'
-                ? PillCaptureMode.singlePhoto
-                : PillCaptureMode.individualPhotos,
-          ),
-        );
+        unawaited(openPillIdentification(home, harness.model));
         await tester.pumpAndSettle();
       }
       final accepted = origin.startsWith('manual')
@@ -105,20 +91,20 @@ void main() {
                 .widget<ManualMedicationEntryUI>(
                   find.byType(ManualMedicationEntryUI),
                 )
-                .onReviewRequested!([entry])
+                .onReviewRequested([entry])
           : tester
                 .widget<PillIdentificationUI>(find.byType(PillIdentificationUI))
-                .onReviewRequested!([
-              IdentifiedPillSaveRequest(
-                candidate: const PillIdentificationCandidate(
-                  itemSeq: 'fixture-item',
-                  itemName: _medicationName,
-                  manufacturer: 'fixture',
-                  matchScore: 1,
-                ),
-                medicationSchedule: entry.toMedicationSchedule(),
-              ),
-            ]);
+                .onReviewRequested([
+                  IdentifiedPillSaveRequest(
+                    candidate: const PillIdentificationCandidate(
+                      itemSeq: 'fixture-item',
+                      itemName: _medicationName,
+                      manufacturer: 'fixture',
+                      matchScore: 1,
+                    ),
+                    medicationSchedule: entry.toMedicationSchedule(),
+                  ),
+                ]);
       expect(accepted, isTrue);
       await tester.pumpAndSettle();
       expect(harness.rootRoute.isCurrent, isTrue);

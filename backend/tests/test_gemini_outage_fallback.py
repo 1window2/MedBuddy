@@ -61,6 +61,14 @@ def _gemini_error(code: int) -> genai_errors.APIError:
     return genai_errors.ClientError(code, payload)
 
 
+# Function Name: _no_retry_pause
+# Description:
+# - Skip the one-second pause before the Gemini retry so the suite stays fast.
+@pytest.fixture(autouse=True)
+def _no_retry_pause(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(fallback_module, "_GEMINI_RETRY_DELAY_SECONDS", 0.0)
+
+
 # Function Name: _raised
 # Description:
 # - Raise an error from a cause and return it with its traceback, as a boundary would produce it.
@@ -265,6 +273,79 @@ async def test_failed_fallback_surfaces_the_original_gemini_error(fallback: str)
     assert caught.value.__cause__ is cause
 
 
+# Function Name: test_a_photo_verdict_from_the_fallback_is_its_answer
+# Description:
+# - During a Gemini outage the Claude copy can judge the photo itself ("no pill"); that verdict
+#   propagates (HTTP 422 "retake") instead of the Gemini outage (HTTP 503, shown as a connection
+#   problem). Found on the phone with an empty-palm photo. Other kinds keep hiding every error.
+@pytest.mark.anyio
+async def test_a_photo_verdict_from_the_fallback_is_its_answer() -> None:
+    from boundaries.pill_identification_boundary import PillImageQualityError
+    from services.gemini_outage_fallback import wrap_with_claude_fallback
+
+    outage = _raised(RuntimeError("failed"), _gemini_error(503))
+    verdict = PillImageQualityError("No separate pills were found.")
+    wrapper = wrap_with_claude_fallback(object(), "pill_vision")
+    object.__setattr__(wrapper, "_primary", _Boundary(error=outage))
+    object.__setattr__(wrapper, "_methods", frozenset({"analyse"}))
+    object.__setattr__(wrapper, "_fallback", _Boundary(error=verdict))
+    with pytest.raises(PillImageQualityError) as caught:
+        await wrapper.analyse("photo")
+    assert caught.value is verdict
+
+    other = wrap_with_claude_fallback(object(), "health_recommendation")
+    object.__setattr__(other, "_primary", _Boundary(error=outage))
+    object.__setattr__(other, "_methods", frozenset({"analyse"}))
+    object.__setattr__(other, "_fallback", _Boundary(error=PillImageQualityError("x")))
+    with pytest.raises(RuntimeError) as hidden:
+        await other.analyse("text")
+    assert hidden.value is outage
+
+
+# Class Name: _FlakyBoundary
+# Role: Gemini double that fails the first calls with a configured error, then answers.
+class _FlakyBoundary(_Boundary):
+    def __init__(self, failures: list[BaseException], result: Any = "gemini") -> None:
+        super().__init__(result=result)
+        self.failures = list(failures)
+
+    async def analyse(self, *args: Any, **kwargs: Any) -> Any:
+        self.calls.append((args, kwargs))
+        if self.failures:
+            raise self.failures.pop(0)
+        return self.result
+
+
+# Function Name: test_gemini_gets_one_retry_on_a_fast_failure_before_claude
+# Description:
+# - Owner's rule (2026-11-28): Gemini first. A fast 503/429 is retried once on Gemini; only a second
+#   outage goes to Claude. A timeout goes to Claude at once (a retry would not fit the app's wait).
+@pytest.mark.anyio
+async def test_gemini_gets_one_retry_on_a_fast_failure_before_claude(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(fallback_module, "_GEMINI_RETRY_DELAY_SECONDS", 0.0)
+    primary = _FlakyBoundary([_raised(RuntimeError("busy"), _gemini_error(503))])
+    claude = _Boundary(result="claude")
+    wrapper, built = _wrap(primary, claude)
+    assert await wrapper.analyse("photo") == "gemini"
+    assert len(primary.calls) == 2
+    assert built == [] and claude.calls == []
+
+    twice = _FlakyBoundary([_raised(RuntimeError("busy"), _gemini_error(503)),
+                            _raised(RuntimeError("limit"), _gemini_error(429))])
+    wrapper, built = _wrap(twice, claude)
+    assert await wrapper.analyse("photo") == "claude"
+    assert len(twice.calls) == 2
+
+    try:
+        await asyncio.wait_for(_stalled_gemini_request(), timeout=0.01)
+    except TimeoutError as exc:
+        timeout = _raised(TimeoutError("timed out"), exc)
+    slow = _FlakyBoundary([timeout])
+    wrapper, built = _wrap(slow, claude)
+    assert await wrapper.analyse("photo") == "claude"
+    assert len(slow.calls) == 1
+
+
 # Function Name: test_fallback_never_runs_past_the_app_wait
 @pytest.mark.anyio
 async def test_fallback_never_runs_past_the_app_wait(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -443,7 +524,8 @@ async def test_prescription_outage_is_answered_by_a_separate_claude_copy(monkeyp
     text = await wrapper.extractPrescriptionTextData("타이레놀정 500mg 1정 3회 3일\n주민번호 900101-1234567")
 
     assert json.loads(text)["medications"] == []
-    assert failing.calls == 1
+    # Gemini first: a fast 5xx gets one more Gemini attempt before Claude answers.
+    assert failing.calls == 2
     request = fake.requests[0]
     sent = json.dumps(request["messages"], ensure_ascii=False)
     assert "타이레놀정" in sent

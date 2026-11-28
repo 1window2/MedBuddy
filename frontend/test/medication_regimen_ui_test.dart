@@ -136,10 +136,7 @@ void main() {
       tester,
       ManualMedicationEntryUI(
         userSetting: const UserSetting(),
-        onSaveRequested: (_) async => const MedicationSaveResult(
-          status: MedicationSaveStatus.failed,
-          message: 'test',
-        ),
+        onReviewRequested: (_) => false,
       ),
     );
     for (final type in [
@@ -771,10 +768,7 @@ void main() {
       tester,
       ManualMedicationEntryUI(
         userSetting: const UserSetting(),
-        onSaveRequested: (_) async => const MedicationSaveResult(
-          status: MedicationSaveStatus.saved,
-          message: 'ok',
-        ),
+        onReviewRequested: (_) => false,
       ),
     );
     await _tap(tester, 'manual-medication-scheduled');
@@ -1338,13 +1332,9 @@ void main() {
       tester,
       ManualMedicationEntryUI(
         userSetting: const UserSetting(),
-        onSaveRequested: (value) async {
-          entry = value;
-          return const MedicationSaveResult(
-            status: MedicationSaveStatus.saved,
-            message: 'ok',
-            savedMedicationId: 8,
-          );
+        onReviewRequested: (entries) {
+          entry = entries.single;
+          return false;
         },
       ),
     );

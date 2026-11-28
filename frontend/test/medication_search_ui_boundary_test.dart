@@ -11,7 +11,6 @@ import 'package:medbuddy_frontend/boundaries/medication_search_ui_boundary.dart'
 import 'package:medbuddy_frontend/boundaries/check_medication_detail_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/manual_medication_entry_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_medication_detail_control.dart';
-import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_match_review_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
@@ -378,12 +377,9 @@ void main() {
         MaterialApp(
           home: ManualMedicationEntryUI(
             userSetting: const UserSetting(),
-            onSaveRequested: (entry) async {
-              saved = entry;
-              return const MedicationSaveResult(
-                status: MedicationSaveStatus.failed,
-                message: 'test',
-              );
+            onReviewRequested: (entries) {
+              saved = entries.single;
+              return false;
             },
           ),
         ),

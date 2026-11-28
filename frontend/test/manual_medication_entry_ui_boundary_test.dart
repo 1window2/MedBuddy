@@ -10,7 +10,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:medbuddy_frontend/boundaries/manual_medication_entry_ui_boundary.dart';
-import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/entities/manual_medication_entry_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -183,14 +182,9 @@ Future<void> _pickManualPhoto(WidgetTester tester) async {
 }
 
 // 함수이름: _keepManualEntryOpen
-// 함수역할: 화면 검증 중 저장 화면을 닫지 않는다.
-// 매개변수: entry (ManualMedicationEntry): 저장 요청. 반환값: 고정 실패 결과.
-Future<MedicationSaveResult> _keepManualEntryOpen(
-  ManualMedicationEntry entry,
-) async => const MedicationSaveResult(
-  status: MedicationSaveStatus.failed,
-  message: '테스트 저장 중단',
-);
+// 함수역할: 화면 검증 중 검토 인계를 거절해 입력 화면을 닫지 않는다.
+// 매개변수: entries (List<ManualMedicationEntry>): 검토 요청. 반환값: 항상 false.
+bool _keepManualEntryOpen(List<ManualMedicationEntry> entries) => false;
 
 // 함수이름: main
 // 함수역할:
@@ -222,14 +216,9 @@ void main() {
         home: ManualMedicationEntryUI(
           userSetting: const UserSetting(language: 'ko'),
           imagePicker: picker,
-          onSaveRequested: (entry) async {
-            entries.add(entry);
-            return MedicationSaveResult(
-              status: entries.length == 1
-                  ? MedicationSaveStatus.saved
-                  : MedicationSaveStatus.failed,
-              message: '',
-            );
+          onReviewRequested: (reviewed) {
+            entries.addAll(reviewed);
+            return false;
           },
         ),
       ),
@@ -275,78 +264,6 @@ void main() {
 
   // 함수이름: testWidgets callback
   // 함수역할:
-  // - 저장 중 뒤로가기 전환을 시작한 뒤 성공 응답이 와도 입력 진입 화면까지 닫거나 늦은 성공 안내를 띄우지 않는지 검증한다.
-  // 매개변수:
-  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
-  // 반환값:
-  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
-  testWidgets('저장 응답이 뒤로가기 전환 중 도착해도 아래 화면을 닫지 않는다', (tester) async {
-    final pending = Completer<MedicationSaveResult>();
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) {
-            return Scaffold(
-              body: TextButton(
-                child: const Text('menu'),
-                onPressed: () => Navigator.push<void>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) {
-                      return Scaffold(
-                        body: TextButton(
-                          child: const Text('entry'),
-                          onPressed: () => Navigator.push<void>(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) {
-                                return ManualMedicationEntryUI(
-                                  userSetting: const UserSetting(
-                                    language: 'ko',
-                                  ),
-                                  onSaveRequested: (_) => pending.future,
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-    await tester.tap(find.text('menu'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('entry'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const Key('manual-medication-name')),
-      'test',
-    );
-    await tester.tap(find.byKey(const Key('manual-medication-save')));
-    await tester.pump();
-    await tester.binding.handlePopRoute();
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(find.byType(ManualMedicationEntryUI), findsOneWidget);
-    pending.complete(
-      const MedicationSaveResult(
-        status: MedicationSaveStatus.saved,
-        message: 'saved',
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('entry'), findsOneWidget);
-    expect(find.text('복약 정보를 저장했습니다.'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
-
-  // 함수이름: testWidgets callback
-  // 함수역할:
   // - 폐기된 입력의 사진 선택이 늦게 완료되면 이전 사본만 지우고 새 입력에서 고른 사진을 저장 요청에 유지하는지 검증한다.
   // 매개변수:
   // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
@@ -367,7 +284,7 @@ void main() {
           key: const Key('old-entry'),
           userSetting: const UserSetting(language: 'ko'),
           imagePicker: _PhotoPicker()..pending = pending.future,
-          onSaveRequested: _keepManualEntryOpen,
+          onReviewRequested: _keepManualEntryOpen,
         ),
       ),
     );
@@ -379,9 +296,9 @@ void main() {
           key: const Key('new-entry'),
           userSetting: const UserSetting(language: 'ko'),
           imagePicker: _PhotoPicker()..path = newPhoto.path,
-          onSaveRequested: (entry) {
-            saved = entry;
-            return _keepManualEntryOpen(entry);
+          onReviewRequested: (entries) {
+            saved = entries.single;
+            return false;
           },
         ),
       ),
@@ -420,7 +337,7 @@ void main() {
         home: ManualMedicationEntryUI(
           userSetting: const UserSetting(language: 'ko'),
           imagePicker: picker,
-          onSaveRequested: _keepManualEntryOpen,
+          onReviewRequested: _keepManualEntryOpen,
         ),
       ),
     );
@@ -441,7 +358,7 @@ void main() {
 
   // 함수이름: testWidgets callback
   // 함수역할:
-  // - 사진 선택을 대기시키면 사진·저장 버튼이 잠기고 이전 저장 콜백도 무시되며 취소 응답 뒤 다시 저장할 수 있는지 검증한다.
+  // - 사진 선택을 대기시키면 사진·검토 버튼이 잠기고 이전 검토 콜백도 무시되며 취소 응답 뒤 다시 검토할 수 있는지 검증한다.
   // 매개변수:
   // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
   // 반환값:
@@ -459,9 +376,9 @@ void main() {
         home: ManualMedicationEntryUI(
           userSetting: const UserSetting(language: 'ko'),
           imagePicker: picker,
-          onSaveRequested: (entry) {
+          onReviewRequested: (entries) {
             saves++;
-            return _keepManualEntryOpen(entry);
+            return false;
           },
         ),
       ),
@@ -511,7 +428,7 @@ void main() {
           ),
           home: ManualMedicationEntryUI(
             userSetting: UserSetting(language: language),
-            onSaveRequested: _keepManualEntryOpen,
+            onReviewRequested: _keepManualEntryOpen,
           ),
         ),
       );
@@ -572,7 +489,7 @@ void main() {
             home: ManualMedicationEntryUI(
               userSetting: UserSetting(language: language),
               imagePicker: picker,
-              onSaveRequested: _keepManualEntryOpen,
+              onReviewRequested: _keepManualEntryOpen,
             ),
           ),
         );
@@ -580,10 +497,8 @@ void main() {
         await tester.ensureVisible(photo);
         await tester.tap(photo);
         await tester.pumpAndSettle();
-        final cameraLabel = language == 'ko' ? '카메라로 촬영' : 'Take Photo';
-        final galleryLabel = language == 'ko'
-            ? '갤러리에서 선택'
-            : 'Choose From Gallery';
+        final cameraLabel = language == 'ko' ? '카메라로 촬영' : 'Take photo';
+        final galleryLabel = language == 'ko' ? '갤러리에서 선택' : 'From gallery';
         expect(find.text(cameraLabel), findsOneWidget);
         expect(find.text(galleryLabel), findsOneWidget);
         await tester.tap(find.text(galleryLabel));
@@ -624,30 +539,24 @@ void main() {
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
-  // - 기대 동작: 약 이름이 없으면 직접 등록 저장 요청을 보내지 않는다.
+  // - 기대 동작: 약 이름이 없으면 직접 등록 검토 요청을 보내지 않는다.
   // 매개변수:
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  testWidgets('약 이름이 없으면 직접 등록 저장 요청을 보내지 않는다', (tester) async {
+  testWidgets('약 이름이 없으면 직접 등록 검토 요청을 보내지 않는다', (tester) async {
     var requestCount = 0;
     await tester.pumpWidget(
       MaterialApp(
         home: ManualMedicationEntryUI(
           userSetting: const UserSetting(language: 'ko'),
-          // 함수이름: onSaveRequested 콜백
-          // 함수역할:
-          // - 직접 등록 저장 호출 횟수를 기록하고 저장 성공 결과를 제공한다.
-          // 매개변수:
-          // - entry (ManualMedicationEntry): 직접 약 등록 화면에서 검증한 입력값. 이 대역에서는 직접 사용하지 않는다.
-          // 반환값:
-          // - saved 상태의 MedicationSaveResult.
-          onSaveRequested: (entry) async {
+          // 함수이름: onReviewRequested 콜백
+          // 함수역할: 검토 요청 횟수를 기록한다.
+          // 매개변수: entries (List<ManualMedicationEntry>): 검증한 입력값.
+          // 반환값: 인계를 받은 것으로 보는 true.
+          onReviewRequested: (entries) {
             requestCount += 1;
-            return const MedicationSaveResult(
-              status: MedicationSaveStatus.saved,
-              message: '저장됨',
-            );
+            return true;
           },
         ),
       ),
@@ -662,12 +571,12 @@ void main() {
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
-  // - 기대 동작: 입력한 약 이름과 복용 정보를 기존 저장 요청 값으로 전달한다.
+  // - 기대 동작: 입력한 약 이름과 복용 정보를 검토 요청 값으로 전달한다.
   // 매개변수:
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  testWidgets('입력한 약 이름과 복용 정보를 기존 저장 요청 값으로 전달한다', (tester) async {
+  testWidgets('입력한 약 이름과 복용 정보를 검토 요청 값으로 전달한다', (tester) async {
     tester.view.physicalSize = const Size(390, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -677,19 +586,13 @@ void main() {
       MaterialApp(
         home: ManualMedicationEntryUI(
           userSetting: const UserSetting(language: 'ko'),
-          // 함수이름: onSaveRequested 콜백
-          // 함수역할:
-          // - 사용자가 입력한 직접 등록 데이터를 보관하고 실패 결과로 화면을 유지한다.
-          // 매개변수:
-          // - entry (ManualMedicationEntry): 직접 약 등록 화면에서 검증한 입력값.
-          // 반환값:
-          // - failed 상태와 테스트 중단 메시지를 가진 저장 결과.
-          onSaveRequested: (entry) async {
-            submittedEntry = entry;
-            return const MedicationSaveResult(
-              status: MedicationSaveStatus.failed,
-              message: '테스트 저장 중단',
-            );
+          // 함수이름: onReviewRequested 콜백
+          // 함수역할: 사용자가 입력한 직접 등록 데이터를 보관하고 인계를 거절해 화면을 유지한다.
+          // 매개변수: entries (List<ManualMedicationEntry>): 검증한 입력값.
+          // 반환값: false.
+          onReviewRequested: (entries) {
+            submittedEntry = entries.single;
+            return false;
           },
         ),
       ),
@@ -736,9 +639,6 @@ void main() {
       submittedEntry!.scheduleSlotKeys,
       containsAll(['morning', 'evening']),
     );
-    // 서버 원문 대신 화면 언어의 실패 안내를 보여 준다.
-    expect(find.text('테스트 저장 중단'), findsNothing);
-    expect(find.text('복약 정보를 저장하지 못했습니다.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -754,17 +654,7 @@ void main() {
       MaterialApp(
         home: ManualMedicationEntryUI(
           userSetting: const UserSetting(language: 'en'),
-          // 함수이름: onSaveRequested 콜백
-          // 함수역할:
-          // - 단위 표시 번역 검사를 위한 직접 등록 저장 성공을 제공한다.
-          // 매개변수:
-          // - _ (ManualMedicationEntry): 콜백 계약을 유지하기 위해 받지만 사용하지 않는 인자.
-          // 반환값:
-          // - saved 상태의 MedicationSaveResult.
-          onSaveRequested: (_) async => const MedicationSaveResult(
-            status: MedicationSaveStatus.saved,
-            message: 'saved',
-          ),
+          onReviewRequested: _keepManualEntryOpen,
         ),
       ),
     );
@@ -790,14 +680,14 @@ void main() {
           home: ManualMedicationEntryUI(
             userSetting: UserSetting(language: language),
             imagePicker: picker,
-            onSaveRequested: _keepManualEntryOpen,
+            onReviewRequested: _keepManualEntryOpen,
           ),
         ),
       );
 
       await tester.tap(find.byKey(const Key('manual-medication-photo')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text(language == 'ko' ? '카메라로 촬영' : 'Take Photo'));
+      await tester.tap(find.text(language == 'ko' ? '카메라로 촬영' : 'Take photo'));
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
@@ -821,198 +711,6 @@ void main() {
     });
   }
 
-  // 함수이름: 저장 실패 범주 안내 테스트
-  // 함수역할: 저장 실패 시 서버 원문(한국어) 대신 화면 언어의 저장 한도·연결·일반 실패 안내를 보여 주는지 검증한다.
-  // 매개변수: tester. 반환값: 검증 완료.
-  for (final english in [false, true]) {
-    // Function Name: localized manual-save failure categories
-    // Description:
-    // - Exercises limit, network and generic save failures in each screen language, showing the category-specific guidance without exposing the raw server message.
-    // Parameters:
-    // - tester (WidgetTester): Drives the widget tree and advances the test clock.
-    // Returns:
-    // - Future<void>: Completes the checks; an unexpected result fails the test.
-    testWidgets('저장 실패는 범주별로 화면 언어의 안내를 보여 준다: english=$english', (
-      tester,
-    ) async {
-      tester.view.physicalSize = const Size(390, 1400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      var kind = MedicationSaveFailureKind.limitReached;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: ManualMedicationEntryUI(
-            userSetting: UserSetting(language: english ? 'en' : 'ko'),
-            // 함수이름: onSaveRequested 콜백
-            // 함수역할: 서버의 한국어 원문과 테스트가 고른 실패 범주를 담은 실패 결과를 돌려준다.
-            // 매개변수: entry (ManualMedicationEntry): 검증한 입력값. 반환값: failed 상태의 저장 결과.
-            onSaveRequested: (entry) async => MedicationSaveResult(
-              status: MedicationSaveStatus.failed,
-              message: '서버 원문 오류',
-              failureKind: kind,
-            ),
-          ),
-        ),
-      );
-      await tester.enterText(
-        find.byKey(const Key('manual-medication-name')),
-        'Test medicine',
-      );
-      final save = find.byKey(const Key('manual-medication-save'));
-      final expected = {
-        MedicationSaveFailureKind.limitReached: english
-            ? 'You have saved the maximum number of medications. Delete ones you no longer take from your pillbox, then try again.'
-            : '저장할 수 있는 약의 수를 넘었습니다. 복약함에서 쓰지 않는 약을 지운 뒤 다시 시도해주세요.',
-        MedicationSaveFailureKind.network: english
-            ? 'Check your internet connection and try again.'
-            : '인터넷 연결을 확인한 뒤 다시 시도해주세요.',
-        MedicationSaveFailureKind.other: english
-            ? 'Could not save the medication plan.'
-            : '복약 정보를 저장하지 못했습니다.',
-      };
-      for (final entry in expected.entries) {
-        kind = entry.key;
-        await tester.ensureVisible(save);
-        await tester.tap(save);
-        await tester.pumpAndSettle();
-        expect(find.text(entry.value), findsOneWidget, reason: '$kind');
-        expect(find.text('서버 원문 오류'), findsNothing);
-      }
-      expect(tester.takeException(), isNull);
-    });
-  }
-
-  // 함수이름: 저장 콜백 예외 테스트
-  // 함수역할: 저장 콜백이 예외로 끝나도 저장 중 상태에 머물지 않고 실패 안내 뒤 다시 저장할 수 있는지 검증한다.
-  // 매개변수: tester. 반환값: 검증 완료.
-  testWidgets('저장 콜백이 예외로 끝나면 저장 중 상태를 해제하고 다시 저장할 수 있다', (tester) async {
-    tester.view.physicalSize = const Size(390, 1400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    var requestCount = 0;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ManualMedicationEntryUI(
-          userSetting: const UserSetting(language: 'ko'),
-          // 함수이름: onSaveRequested 콜백
-          // 함수역할: 첫 요청은 예외로 끝내고 다음 요청은 실패 결과로 화면을 유지한다.
-          // 매개변수: entry (ManualMedicationEntry): 직접 약 등록 화면에서 검증한 입력값.
-          // 반환값: 두 번째 요청부터 failed 상태의 저장 결과.
-          onSaveRequested: (entry) async {
-            requestCount += 1;
-            if (requestCount == 1) {
-              throw StateError('refresh failed');
-            }
-            return _keepManualEntryOpen(entry);
-          },
-        ),
-      ),
-    );
-
-    await tester.enterText(
-      find.byKey(const Key('manual-medication-name')),
-      '직접입력약',
-    );
-    final save = find.byKey(const Key('manual-medication-save'));
-    await tester.tap(save);
-    await tester.pumpAndSettle();
-
-    expect(tester.takeException(), isNull);
-    expect(requestCount, 1);
-    expect(find.text('저장 중...'), findsNothing);
-    expect(find.text('복약 정보를 저장하지 못했습니다.'), findsOneWidget);
-    expect(tester.widget<FilledButton>(save).onPressed, isNotNull);
-
-    await tester.tap(save);
-    await tester.pumpAndSettle();
-    expect(requestCount, 2);
-    expect(find.text('복약 정보를 저장하지 못했습니다.'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  // 함수이름: 저장 중 재요청 차단 테스트
-  // 함수역할: 저장 응답을 기다리는 동안과 저장 성공 뒤 화면이 닫히는 동안 저장 요청이 다시 나가지 않는지 검증한다.
-  // 매개변수: tester. 반환값: 검증 완료.
-  testWidgets('저장 중이거나 저장을 마친 화면은 저장 요청을 다시 보내지 않는다', (tester) async {
-    tester.view.physicalSize = const Size(390, 1400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final pendingSave = Completer<MedicationSaveResult>();
-    var requestCount = 0;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          // 함수이름: builder 콜백
-          // 함수역할: 직접 등록 화면을 새 경로로 여는 버튼을 만든다. 매개변수: context. 반환값: 시작 화면.
-          builder: (context) => Scaffold(
-            body: TextButton(
-              // 함수이름: onPressed 콜백
-              // 함수역할: 직접 등록 화면을 연다. 매개변수: 없음. 반환값: 없음.
-              onPressed: () => Navigator.push<bool>(
-                context,
-                MaterialPageRoute(
-                  // 함수이름: builder 콜백
-                  // 함수역할: 응답을 미룬 저장 콜백으로 직접 등록 화면을 만든다. 매개변수: _. 반환값: 직접 등록 화면.
-                  builder: (_) => ManualMedicationEntryUI(
-                    userSetting: const UserSetting(language: 'ko'),
-                    // 함수이름: onSaveRequested 콜백
-                    // 함수역할: 요청 횟수를 세고 테스트가 끝낼 때까지 응답을 미룬다.
-                    // 매개변수: entry (ManualMedicationEntry): 직접 약 등록 화면에서 검증한 입력값.
-                    // 반환값: 테스트가 완료시키는 저장 결과 Future.
-                    onSaveRequested: (entry) {
-                      requestCount += 1;
-                      return pendingSave.future;
-                    },
-                  ),
-                ),
-              ),
-              child: const Text('열기'),
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.tap(find.text('열기'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const Key('manual-medication-name')),
-      '직접입력약',
-    );
-    final save = find.byKey(const Key('manual-medication-save'));
-    final saveRequested = tester.widget<FilledButton>(save).onPressed!;
-    await tester.tap(save);
-    await tester.pump();
-    expect(find.text('저장 중...'), findsOneWidget);
-    expect(tester.widget<FilledButton>(save).onPressed, isNull);
-    await tester.tap(save, warnIfMissed: false);
-    await tester.pump();
-    expect(requestCount, 1);
-
-    pendingSave.complete(
-      const MedicationSaveResult(
-        status: MedicationSaveStatus.saved,
-        message: 'saved',
-      ),
-    );
-    await tester.pump();
-    // 닫히는 전환이 진행되는 동안에도 저장 버튼은 잠긴 채로 남는다.
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(save, findsOneWidget);
-    expect(tester.widget<FilledButton>(save).onPressed, isNull);
-    // 이전 프레임의 콜백이 다시 호출되어도 아래 화면까지 닫지 않는다.
-    saveRequested();
-    await tester.pump();
-    await tester.pumpAndSettle();
-
-    expect(requestCount, 1);
-    expect(find.byType(ManualMedicationEntryUI), findsNothing);
-    expect(find.text('복약 정보를 저장했습니다.'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
   // 함수이름: 임시 사본 정리 테스트
   // 함수역할: 사진을 바꾸거나 지우면 앱 임시 폴더의 이전 사본만 지우고 폴더 밖의 원본은 남기는지 검증한다.
   // 매개변수: tester. 반환값: 검증 완료.
@@ -1031,7 +729,7 @@ void main() {
         home: ManualMedicationEntryUI(
           userSetting: const UserSetting(language: 'ko'),
           imagePicker: picker,
-          onSaveRequested: _keepManualEntryOpen,
+          onReviewRequested: _keepManualEntryOpen,
         ),
       ),
     );
@@ -1108,7 +806,7 @@ void main() {
           home: ManualMedicationEntryUI(
             userSetting: const UserSetting(language: 'ko'),
             imagePicker: picker,
-            onSaveRequested: _keepManualEntryOpen,
+            onReviewRequested: _keepManualEntryOpen,
           ),
         ),
       );
@@ -1122,18 +820,16 @@ void main() {
   );
 
   // 함수이름: 화면 종료 시 임시 사본 정리 테스트
-  // 함수역할: 저장하지 않고 닫으면 바로, 저장 중에 닫으면 저장이 끝난 뒤에 임시 사본을 지우는지 검증한다.
+  // 함수역할: 검토로 넘기지 않고 닫으면 임시 사본을 바로 지우는지 검증한다.
   // 매개변수: tester. 반환값: 검증 완료.
-  testWidgets('화면을 닫으면 임시 사본을 지우되 저장 중이면 저장이 끝난 뒤 지운다', (tester) async {
+  testWidgets('검토 없이 화면을 닫으면 임시 사본을 지운다', (tester) async {
     tester.view.physicalSize = const Size(390, 1400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final sandbox = _PhotoSandbox.create();
     final abandoned = sandbox.cachePhoto('abandoned.png');
-    final submitted = sandbox.cachePhoto('submitted.png');
     final picker = _PhotoPicker();
-    final pendingSave = Completer<MedicationSaveResult>();
     final navigatorKey = GlobalKey<NavigatorState>();
     // 함수이름: openManualEntry
     // 함수역할: 직접 등록 화면을 새 경로로 연다. 매개변수: 없음. 반환값: 화면 전환 완료.
@@ -1142,13 +838,11 @@ void main() {
         navigatorKey.currentState!.push<bool>(
           MaterialPageRoute(
             // 함수이름: builder 콜백
-            // 함수역할: 응답을 미룬 저장 콜백으로 직접 등록 화면을 만든다. 매개변수: _. 반환값: 직접 등록 화면.
+            // 함수역할: 직접 등록 화면을 만든다. 매개변수: _. 반환값: 직접 등록 화면.
             builder: (_) => ManualMedicationEntryUI(
               userSetting: const UserSetting(language: 'ko'),
               imagePicker: picker,
-              // 함수이름: onSaveRequested 콜백
-              // 함수역할: 테스트가 끝낼 때까지 저장 응답을 미룬다. 매개변수: entry. 반환값: 저장 결과 Future.
-              onSaveRequested: (entry) => pendingSave.future,
+              onReviewRequested: _keepManualEntryOpen,
             ),
           ),
         ),
@@ -1163,7 +857,7 @@ void main() {
       ),
     );
 
-    // 저장하지 않고 닫으면 선택했던 사본을 바로 지운다.
+    // 검토로 넘기지 않고 닫으면 선택했던 사본을 바로 지운다.
     await openManualEntry();
     picker.path = abandoned.path;
     await _pickManualPhoto(tester);
@@ -1172,31 +866,6 @@ void main() {
     await _settleFileCleanup(tester, abandoned);
     expect(abandoned.existsSync(), isFalse);
 
-    // 저장 응답을 기다리는 중에 닫으면 저장 흐름이 사진을 읽을 수 있도록 남겨 둔다.
-    await openManualEntry();
-    picker.path = submitted.path;
-    await _pickManualPhoto(tester);
-    await tester.enterText(
-      find.byKey(const Key('manual-medication-name')),
-      '직접입력약',
-    );
-    await tester.tap(find.byKey(const Key('manual-medication-save')));
-    await tester.pump();
-    navigatorKey.currentState!.pop();
-    await tester.pumpAndSettle();
-    await _settleFileCleanup(tester);
-    expect(find.byType(ManualMedicationEntryUI), findsNothing);
-    expect(submitted.existsSync(), isTrue);
-
-    pendingSave.complete(
-      const MedicationSaveResult(
-        status: MedicationSaveStatus.saved,
-        message: 'saved',
-      ),
-    );
-    await tester.pump();
-    await _settleFileCleanup(tester, submitted);
-    expect(submitted.existsSync(), isFalse);
     expect(tester.takeException(), isNull);
   });
 }

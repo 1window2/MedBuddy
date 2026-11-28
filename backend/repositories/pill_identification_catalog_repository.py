@@ -89,6 +89,39 @@ class PillIdentificationCatalogRepository:
             for row in rows
         ]
 
+    # Function Name: list_by_item_sequences
+    # Description:
+    # - Read the public reference rows of the given products only, for comparing a user's own medicines
+    #   with an observed pill without loading the whole catalogue.
+    # Parameters:
+    # - item_sequences (set[str]): Product numbers; at most a user's saved-medication count.
+    # Returns:
+    # - PillCatalogEntry rows keyed by item sequence; unknown products are absent.
+    def list_by_item_sequences(self, item_sequences: set[str]) -> dict[str, PillCatalogEntry]:
+        if not item_sequences:
+            return {}
+        rows = (
+            self.db.query(PillIdentificationReference)
+            .filter(PillIdentificationReference.item_seq.in_(sorted(item_sequences)))
+            .all()
+        )
+        return {
+            row.item_seq: PillCatalogEntry(
+                item_seq=row.item_seq,
+                item_name=row.item_name,
+                entp_name=row.entp_name or "",
+                image_url=row.image_url or "",
+                shape=row.shape or "",
+                color_primary=row.color_primary or "",
+                color_secondary=row.color_secondary or "",
+                print_front=row.print_front or "",
+                print_back=row.print_back or "",
+                line_front=row.line_front or "",
+                line_back=row.line_back or "",
+            )
+            for row in rows
+        }
+
     # Function Name: is_fresh
     # Description:
     # - Require enough catalog rows and ensure even the oldest update timestamp lies within the allowed age.

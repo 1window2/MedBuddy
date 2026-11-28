@@ -246,7 +246,7 @@ Owner prerequisites, to configure when enrollment resumes:
   and [App Check IAM reference](https://docs.cloud.google.com/iam/docs/roles-permissions/firebaseappcheck).
 - Configure Workload Identity Federation for the exact repository identity,
   `beta-android` environment and `release-android.yml` workflow, restricted to
-  `main` and the active release branch (`v1.0.1`). Grant the scoped federated principal
+  `main` and the active release branch (`v1.1.0`). Grant the scoped federated principal
   `roles/iam.workloadIdentityUser` on that service account, not a general
   repository-wide deployment grant. Set protected variables
   `GCP_APP_CHECK_WORKLOAD_IDENTITY_PROVIDER` and `GCP_APP_CHECK_SERVICE_ACCOUNT`.
@@ -293,9 +293,17 @@ issuance, quota headroom, or physical-device acceptance. Those gates stay open.
 
 ## Start or Update Production
 
+### Photo dose recording rollout (1.1.0)
+
+No migration and no new configuration. Deploy the backend before distributing the
+1.1.0 app; an older server answers the two `/schedule/photo-intake/*` routes with 404.
+Plan tokens are signed with a per-process key, so a restart only invalidates plans
+that are still open (the app asks for a new photo). This relies on the current single
+backend worker; running several workers would need a shared signing key first.
+
 ### Settings ordering rollout (`ab29d71c4e60`)
 
-The current head adds `user_settings.revision`, initializing existing rows to
+This revision adds `user_settings.revision`, initializing existing rows to
 `1` without changing their preferences. A missing settings row has API revision
 `0`. Back up first and apply `alembic upgrade head` before starting the updated
 backend, then distribute the matching client. Do not stamp past the migration.

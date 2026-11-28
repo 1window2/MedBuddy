@@ -2,7 +2,7 @@
 
 ## Project Status
 
-MedBuddy publishes Android releases off Play; `v1.0.1` is the current one. Play
+MedBuddy publishes Android releases off Play; `v1.1.0` is the current one. Play
 Integrity enforcement remains open; see
 [the release TODO](docs/TODO.md).
 
@@ -10,7 +10,8 @@ Integrity enforcement remains open; see
 
 | Version | Status | Security Handling |
 | --- | --- | --- |
-| `v1.0.1` source | Current release | Critical fixes are evaluated for the supported release line. |
+| `v1.1.0` source and tag | Current release | Critical fixes are evaluated for the supported release line. |
+| `v1.0.1` | Superseded release | Receives no routine backports; the production server stays compatible with its clients. |
 | `v1.0.0` | Superseded release | Receives no routine backports; the production server stays compatible with its clients. |
 | `v0.2.5-beta`, `v0.2.4-beta`, `v0.2.3-beta`, `v0.2.2-beta`, `v0.2.1-beta`, `v0.2.0-beta`, `v0.1.1-beta` and `v0.1.0-beta` | Superseded betas | Receive no routine backports. The production server stays compatible with `v0.2.0-beta` clients. |
 | `v0.0.9-alpha` and earlier | Published alpha demos | Superseded demos receive no routine backports. |
@@ -82,7 +83,9 @@ Security updates should be evaluated by impact:
 
 ## External Services
 
-MedBuddy uses Gemini and Korean public drug data APIs. Treat all API responses
+MedBuddy uses Gemini, Anthropic Claude (only when Gemini fails and
+`ANTHROPIC_API_KEY` is set; it receives the same de-identified data) and Korean
+public drug data APIs. Treat all API responses
 as untrusted input:
 
 - Validate structured model/API responses before using them.
@@ -97,6 +100,10 @@ as untrusted input:
 - Loose-pill photos follow a separate flow and may be sent to an external AI
   service for visible-attribute extraction. Do not persist or log those
   images.
+- Photo dose recording reuses that pill-photo flow. Its planning and
+  confirmation endpoints receive only candidate item numbers and observed
+  features, never the photo, are patient-only, and verify a short-lived
+  HMAC-signed plan token before writing.
 - Direct medication-entry images are optional and remain in app-owned local
   storage. They are not uploaded by the direct-entry flow. Delete unreferenced
   copies when an entry is abandoned or removed, without deleting gallery
@@ -223,7 +230,7 @@ Debug builds retain a local-demo exception, and `ApiConfig` limits it to
 `10.0.2.2` or loopback hosts on port 8000 when
 `MEDBUDDY_ALLOW_LOCAL_HTTP=true`. Profile and release builds require the public
 HTTPS backend contract. The beta backend runs FastAPI, PostgreSQL, Redis, and
-`cloudflared` on a dedicated team-controlled Ubuntu host. PostgreSQL and Redis
+`cloudflared` on a dedicated owner-controlled Ubuntu host. PostgreSQL and Redis
 remain on the private Docker network, FastAPI port 8000 is bound only to host
 loopback, and Cloudflare Tunnel is the only public ingress path. Router port
 forwarding, Tailscale Funnel, and direct-public Caddy ingress are not used.

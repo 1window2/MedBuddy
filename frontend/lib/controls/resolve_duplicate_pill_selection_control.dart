@@ -1,7 +1,6 @@
 import '../entities/identified_pill_save_request_entity.dart';
 import '../entities/json_value_reader.dart';
 import '../entities/pill_identification_entity.dart';
-import 'check_saved_medication_control.dart';
 
 // 파일명: resolve_duplicate_pill_selection_control.dart
 // 역할: 다중 낱알 식별에서 같은 품목과 같은 복약 일정을 안전하게 구분한다.
@@ -47,50 +46,11 @@ class PillSavePlan {
     required this.sourceToRequestIndex,
   });
 
-  // Function Name: mergedCount
-  // Description: Count sources eliminated by request merging.
-  // Parameters: None.
-  // Returns: int: source count minus outgoing request count.
-  int get mergedCount => sourceToRequestIndex.length - uniqueRequests.length;
-}
-
-// Class Name: PillSaveSummary
-// Role: Represent request outcomes and corresponding photo-selection outcomes.
-// Responsibilities: Keep missing-result failures and merged-source statuses explicit.
-// Attributes: requestStatuses/perSourceStatus (List<MedicationSaveStatus>): request/source outcomes; savedCount/duplicateCount/failedCount (int): request totals.
-class PillSaveSummary {
-  final List<MedicationSaveStatus> requestStatuses;
-  final List<MedicationSaveStatus> perSourceStatus;
-  final int savedCount;
-  final int duplicateCount;
-  final int failedCount;
-
-  // Function Name: PillSaveSummary
-  // Description: Bundle request and source outcomes with precomputed status totals.
-  // Parameters: requestStatuses/perSourceStatus (List<MedicationSaveStatus>): ordered statuses; savedCount/duplicateCount/failedCount (int): request counts.
-  // Returns: PillSaveSummary: supplied result summary.
-  const PillSaveSummary({
-    required this.requestStatuses,
-    required this.perSourceStatus,
-    required this.savedCount,
-    required this.duplicateCount,
-    required this.failedCount,
-  });
-
-  // Function Name: isSourceStored
-  // Description: Check whether a source was saved or already existed; reject out-of-range indices.
-  // Parameters: sourceIndex (int): original selection position.
-  // Returns: bool: true for saved or duplicate, false for failed or invalid positions.
-  bool isSourceStored(int sourceIndex) {
-    return sourceIndex >= 0 &&
-        sourceIndex < perSourceStatus.length &&
-        perSourceStatus[sourceIndex] != MedicationSaveStatus.failed;
-  }
 }
 
 // Class Name: ResolveDuplicatePillSelectionControl
 // Role: Merge equivalent pill selections only when requested.
-// Responsibilities: Compare item identity and reviewed schedules, then map request outcomes back to every source.
+// Responsibilities: Compare item identity and reviewed schedules and map every source to its outgoing request.
 // Attributes: No instance state; comparison helpers derive normalized identity and schedule keys.
 class ResolveDuplicatePillSelectionControl {
   // 함수이름: ResolveDuplicatePillSelectionControl
@@ -122,28 +82,6 @@ class ResolveDuplicatePillSelectionControl {
          * - 후보 키가 선택 대상 키와 같으면 true.
          */(candidate) => _candidateKey(candidate) == targetKey)
         .length;
-  }
-
-  // 함수이름: uniqueCandidates
-  // 함수역할: 품목번호가 없는 후보도 약명 기준으로 구분하며 같은 품목만 하나로 묶는다.
-  // 매개변수:
-  // - candidates (Iterable<PillIdentificationCandidate>): 일치 여부를 비교할 후보 목록
-  // 반환값:
-  // - List<PillIdentificationCandidate>: 품목번호가 없는 후보도 약명 기준으로 구분하며 같은 품목만 하나로 묶는다.
-  List<PillIdentificationCandidate> uniqueCandidates(
-    Iterable<PillIdentificationCandidate> candidates,
-  ) {
-    final uniqueCandidates = <String, PillIdentificationCandidate>{};
-    for (final candidate in candidates) {
-      uniqueCandidates.putIfAbsent(_candidateKey(candidate), /* 함수이름: putIfAbsent 콜백
-       * 함수역할: 같은 키의 후보가 없을 때 현재 후보를 대표 항목으로 등록한다.
-       * 매개변수:
-       * - 없음.
-       * 반환값:
-       * - 현재 약 식별 후보.
-       */() => candidate);
-    }
-    return uniqueCandidates.values.toList(growable: false);
   }
 
   // 함수이름: findDuplicateGroups
@@ -207,47 +145,6 @@ class ResolveDuplicatePillSelectionControl {
         uniqueRequests,
       ),
       sourceToRequestIndex: List<int>.unmodifiable(sourceToRequestIndex),
-    );
-  }
-
-  // Function Name: summarizePillSaveResults
-  // Description: Expand request results to source statuses; treat missing results or invalid mappings as failed and ignore excess results.
-  // Parameters: plan (PillSavePlan): outgoing requests and source map; results (List<MedicationSaveResult>): request-order outcomes.
-  // Returns: PillSaveSummary: immutable statuses and request-level saved/duplicate/failed totals.
-  PillSaveSummary summarizePillSaveResults(
-    PillSavePlan plan,
-    List<MedicationSaveResult> results,
-  ) {
-    final requestStatuses = <MedicationSaveStatus>[
-      for (var index = 0; index < plan.uniqueRequests.length; index += 1)
-        index < results.length
-            ? results[index].status
-            : MedicationSaveStatus.failed,
-    ];
-    var savedCount = 0;
-    var duplicateCount = 0;
-    var failedCount = 0;
-    for (final status in requestStatuses) {
-      switch (status) {
-        case MedicationSaveStatus.saved:
-          savedCount += 1;
-        case MedicationSaveStatus.duplicate:
-          duplicateCount += 1;
-        case MedicationSaveStatus.failed:
-          failedCount += 1;
-      }
-    }
-    return PillSaveSummary(
-      requestStatuses: List<MedicationSaveStatus>.unmodifiable(requestStatuses),
-      perSourceStatus: List<MedicationSaveStatus>.unmodifiable([
-        for (final requestIndex in plan.sourceToRequestIndex)
-          requestIndex >= 0 && requestIndex < requestStatuses.length
-              ? requestStatuses[requestIndex]
-              : MedicationSaveStatus.failed,
-      ]),
-      savedCount: savedCount,
-      duplicateCount: duplicateCount,
-      failedCount: failedCount,
     );
   }
 

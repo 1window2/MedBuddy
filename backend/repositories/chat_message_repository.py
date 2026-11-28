@@ -138,23 +138,6 @@ class ChatMessageRepository:
             row.read_at = read_at
         return len(rows), int(rows[-1].id)
 
-    # 함수이름: unread_count
-    # 함수역할:
-    # - 현재 사용자가 읽지 않은 상대 메시지 수를 계산한다.
-    # 매개변수:
-    # - link_id (int): 환자와 보호자 간 연동 ID.
-    # - reader_hash (str): 미확인 수를 조회할 참여자의 소유권 해시.
-    # - is_patient (bool): 환자의 숨김 상태를 적용할지; False이면 보호자의 숨김 상태.
-    # 반환값:
-    # - 읽지 않은 메시지 수
-    def unread_count(
-        self, *, link_id: int, reader_hash: str, is_patient: bool = False,
-    ) -> int:
-        """현재 사용자가 아직 읽지 않은 상대 메시지 개수를 반환한다."""
-        return self.unread_summary(
-            link_id=link_id, reader_hash=reader_hash, is_patient=is_patient,
-        )[0]
-
     # Function Name: unread_summary
     # Description: Aggregates visible incoming unread count and its earliest ID in a single database query.
     # Parameters: link_id (int) scopes the chat; reader_hash (str) excludes the reader's own messages; is_patient (bool) selects side-specific visibility.

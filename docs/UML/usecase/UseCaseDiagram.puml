@@ -38,7 +38,7 @@ rectangle "메드버디" {
         usecase "UC-17\n문자 인식 결과 수정" as UC17
         usecase "UC-18\n분석 약 저장" as UC18
         usecase "UC-19\n처방 변경 비교 확인" as UC19
-        usecase "UC-20\n낱알 약 후보 식별" as UC20
+        usecase "UC-20\n낱알 약 한 알 재식별" as UC20
         usecase "UC-21\n가이드 기반 처방전 촬영" as UC21
         usecase "UC-25\n복약정보 직접 등록" as UC25
         usecase "UC-26\n다중 낱알 약 일괄 식별" as UC26
@@ -58,6 +58,7 @@ rectangle "메드버디" {
         usecase "UC-33\n사용자 복용 보고 정정" as UC33
         usecase "UC-34\n필요시 복용 기록·확인 알림" as UC34
         usecase "UC-35\n기간별 복약 기록 텍스트·채팅 공유" as UC35
+        usecase "UC-39\n사진으로 복용 기록" as UC39
     }
 
     package "환자 및 보호자 관리" {
@@ -134,6 +135,7 @@ P -- UC32
 P -- UC33
 P -- UC34
 P -- UC35
+P -- UC39
 
 C -- UC4C
 C -- UC6
@@ -161,6 +163,7 @@ Gemini -- UC2
 Gemini -- UC10
 Gemini -- UC20
 Gemini -- UC26
+Gemini -- UC39
 
 MFDS -- UC2
 MFDS -- UC20
@@ -183,6 +186,7 @@ Camera -- UC20
 Camera -- UC21
 Camera -- UC25
 Camera -- UC26
+Camera -- UC39
 
 Location -- UC27
 ExternalApp -- UC27
@@ -224,6 +228,15 @@ note right of UC32
 최근 90일 중 한 번에 최대 31일을 조회한다.
 기록 작성·정정은 환자만 하며 활성 연동 보호자는 조회·공유만 한다.
 사용자 보고는 실제 복용의 증명이 아니다.
+end note
+
+note bottom of UC39
+손에 든 알약 사진 한 장(카메라만)으로 본인 활성 약을 맞추고
+약마다 시간대를 정해 확인 한 번으로 기록한다.
+각인 또는 같은 모양·색 묶음만 자동으로 고르고 나머지는 묻는다.
+최근·이미 드신 약과 아직 때가 아닌 약은 주의 띠로 알리고 기록하지 않는다.
+서버가 사진 시각으로 다시 계산해 한 트랜잭션으로 기록한다(UC-08, UC-34 경로).
+보호자는 이 기능으로 환자의 복용을 기록할 수 없다.
 end note
 
 note bottom of UC34
@@ -311,6 +324,7 @@ UC4C <.. UC22 : <<extend>>
 UC4P <.. UC25 : <<extend>>
 UC1 <.. UC29 : <<extend>>
 UC20 <.. UC29 : <<extend>>
+UC26 <.. UC20 : <<extend>>
 UC26 <.. UC29 : <<extend>>
 UC4P <.. UC31 : <<extend>>
 UC3P <.. UC32 : <<extend>>

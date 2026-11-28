@@ -315,8 +315,8 @@ void main() {
           await tester.binding.handlePopRoute();
         } else {
           final label = source == ImageSource.camera
-              ? (language == 'en' ? 'Take Photo' : '카메라로 촬영')
-              : (language == 'en' ? 'Choose From Gallery' : '갤러리에서 선택');
+              ? (language == 'en' ? 'Take photo' : '카메라로 촬영')
+              : (language == 'en' ? 'From gallery' : '갤러리에서 선택');
           await tester.ensureVisible(find.text(label));
           await tester.tap(find.text(label));
         }

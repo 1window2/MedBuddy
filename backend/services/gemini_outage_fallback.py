@@ -8,7 +8,9 @@ re-raised as the same exception object. Only a Gemini 5xx, a Gemini 429, a
 connection failure inside the Gemini SDK, or a timeout whose cancellation
 landed inside the Gemini SDK lets a separate Claude-backed copy of the boundary
 answer instead. If that copy fails for any reason, the original Gemini error is
-raised, so a defect in the fallback can only cost the fallback itself.
+raised, so a defect in the fallback can only cost the fallback itself. The one
+exception is a pill-photo quality verdict from the copy ("no pill", "several
+pills"): that is its answer about the photo and is raised as such.
 """
 
 import asyncio
@@ -32,6 +34,10 @@ _RATE_LIMITED = 429
 # counted from the moment the Gemini call started, with a margin for the response itself.
 _CALL_BUDGET_SECONDS = 40.0
 _MIN_FALLBACK_SECONDS = 5.0
+# Gemini comes first: a fast failure (5xx, 429, connection) within this many seconds gets one more
+# Gemini attempt after a short pause before Claude is asked. A timeout goes to Claude at once.
+_GEMINI_RETRY_WITHIN_SECONDS = 10.0
+_GEMINI_RETRY_DELAY_SECONDS = 1.0
 
 _client_lock = Lock()
 _claude_client: Any = None
@@ -159,8 +165,10 @@ class GeminiOutageFallback:
         label: str,
         methods: frozenset[str],
         fallback_factory: Callable[[Any], Any],
+        answer_errors: tuple[type[Exception], ...] = (),
     ) -> None:
         object.__setattr__(self, "_primary", primary)
+        object.__setattr__(self, "_answer_errors", answer_errors)
         object.__setattr__(self, "_label", label)
         object.__setattr__(self, "_methods", methods)
         object.__setattr__(self, "_fallback_factory", fallback_factory)
@@ -180,7 +188,8 @@ class GeminiOutageFallback:
             return attribute
 
         async def guarded(*args: Any, **kwargs: Any) -> Any:
-            started_at = asyncio.get_running_loop().time()
+            loop = asyncio.get_running_loop()
+            started_at = loop.time()
             try:
                 return await attribute(*args, **kwargs)
             except Exception as primary_error:
@@ -188,6 +197,15 @@ class GeminiOutageFallback:
                 if reason is None:
                     raise
                 outage = primary_error
+            if reason != "gemini_timeout" and loop.time() - started_at < _GEMINI_RETRY_WITHIN_SECONDS:
+                await asyncio.sleep(_GEMINI_RETRY_DELAY_SECONDS)
+                try:
+                    return await attribute(*args, **kwargs)
+                except Exception as retry_error:
+                    retry_reason = gemini_outage_reason(retry_error)
+                    if retry_reason is None:
+                        raise
+                    outage, reason = retry_error, retry_reason
             remaining = _CALL_BUDGET_SECONDS - (asyncio.get_running_loop().time() - started_at)
             return await self._serve_with_claude(name, reason, outage, remaining, args, kwargs)
 
@@ -221,6 +239,8 @@ class GeminiOutageFallback:
     # Description:
     # - Run the same method on the Claude copy within the time left before the app stops waiting.
     # - With too little time left, or on any failure, log the type only and raise the original Gemini error.
+    # - An answer error (the copy judged the input, e.g. "no pill in the photo") is the copy's answer and
+    #   propagates instead of the outage.
     # Parameters:
     # - name (str): Method name.
     # - reason (str): Outage classification.
@@ -251,6 +271,12 @@ class GeminiOutageFallback:
         try:
             async with asyncio.timeout(remaining):
                 result = await getattr(self._get_fallback(), name)(*args, **kwargs)
+        except self._answer_errors as answer:
+            logger.warning(
+                "Claude fallback answered %s.%s with %s.",
+                self._label, name, type(answer).__name__,
+            )
+            raise
         except Exception as fallback_error:
             logger.warning(
                 "Claude fallback failed on %s.%s: %s",
@@ -321,6 +347,12 @@ def _prescription_copy(primary: Any) -> Any:
 # - primary (Any): Gemini PillVisionBoundary.
 # Returns:
 # - Separate PillVisionBoundary instance.
+def _pill_vision_answer_errors() -> tuple[type[Exception], ...]:
+    from boundaries.pill_identification_boundary import PillImageQualityError
+
+    return (PillImageQualityError,)
+
+
 def _pill_vision_copy(primary: Any) -> Any:
     from boundaries.pill_identification_boundary import PillVisionBoundary
 
@@ -357,4 +389,6 @@ def wrap_with_claude_fallback(primary: Any, kind: str) -> GeminiOutageFallback:
         label=kind,
         methods=methods,
         fallback_factory=factory,
+        # A photo-quality verdict from the Claude copy ("no pill", "several pills") is an answer.
+        answer_errors=_pill_vision_answer_errors() if kind == "pill_vision" else (),
     )

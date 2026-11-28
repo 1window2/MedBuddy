@@ -6,7 +6,6 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:medbuddy_frontend/boundaries/health_recommendation_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/manual_medication_entry_ui_boundary.dart';
-import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_health_recommendation_control.dart';
 import 'package:medbuddy_frontend/controls/input_prescription_control.dart';
@@ -177,43 +176,35 @@ void main() {
     },
   );
 
-  for (final mode in PillCaptureMode.values) {
-    // 함수이름: 낱알약 등록 지름길 테스트
-    // 함수역할: 선택한 촬영 방식과 저장 콜백이 기존 식별 화면에 전달된다. 매개변수: tester. 반환값: 검증 완료.
-    testWidgets('registration preserves pill capture mode $mode', (
-      tester,
-    ) async {
-      final model = _ViewModel(_HealthControl());
-      addTearDown(model.dispose);
-      await _pumpScreen(tester, model);
-      await tester.tap(find.byKey(const ValueKey('healthRegisterMedication')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('낱알약 식별'));
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.text(
-          mode == PillCaptureMode.singlePhoto ? '여러 알약 한 번에 찾기' : '알약 하나씩 찾기',
-        ),
-      );
-      await tester.pumpAndSettle();
-      final page = tester.widget<PillIdentificationUI>(
-        find.byType(PillIdentificationUI),
-      );
-      expect(page.captureMode, mode);
-      expect(page.onSaveRequested, isNotNull);
-      expect(page.onBatchSaveRequested, isNotNull);
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('medication-registration-page')),
-        findsOneWidget,
-      );
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      expect(find.byType(HealthRecommendationUI), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
-  }
+  // 함수이름: 낱알약 등록 지름길 테스트
+  // 함수역할: 낱알약 식별은 촬영 방식 시트 없이 한 장 촬영 방식과 저장 콜백을 기존 식별 화면에 전달한다.
+  //   이 등록 화면은 홈에서 연 것이 아니므로 사진으로 복용 기록을 보이지 않는다. 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('registration opens single-photo pill identification directly', (
+    tester,
+  ) async {
+    final model = _ViewModel(_HealthControl());
+    addTearDown(model.dispose);
+    await _pumpScreen(tester, model);
+    await tester.tap(find.byKey(const ValueKey('healthRegisterMedication')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('registrationPhotoDoseTile')),
+      findsNothing,
+    );
+    await tester.tap(find.text('낱알약 식별'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PillIdentificationUI), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('medication-registration-page')),
+      findsOneWidget,
+    );
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(HealthRecommendationUI), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   // 함수이름: 갤러리 분석 진입 테스트
   // 함수역할: 중간 일정 화면이 있어도 최상위 분석 화면으로 돌아와 갤러리 요청을 수행한다. 매개변수: tester. 반환값: 검증 완료.
