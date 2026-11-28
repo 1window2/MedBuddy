@@ -10,7 +10,7 @@ from entities.patient_hash_entity import normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
 from repositories.saved_medication_repository import SavedMedicationRepository
 from schemas.ingredient_overlap import (
-    MAX_INGREDIENT_OVERLAPS_PER_ITEM,
+    MAX_INGREDIENT_OVERLAP_PARTNERS_PER_ITEM,
     IngredientOverlap,
     IngredientOverlapItem,
     IngredientOverlapPartner,
@@ -95,7 +95,7 @@ class CheckIngredientOverlap:
                     batch_partner_seqs.add(partner_seq)
                 for code, name in shared:
                     overlaps.append(self._overlap(code, name, partner_seq, "", "batch"))
-            overlaps_by_seq[seq] = overlaps[:MAX_INGREDIENT_OVERLAPS_PER_ITEM]
+            overlaps_by_seq[seq] = self._cap_partners(overlaps)
 
         # 결과 화면의 다른 약 이름은 허가정보 품목명으로 채운다. 겹침이 있을 때만 조회한다.
         batch_names = load_catalog_item_names(self.db, batch_partner_seqs)
@@ -174,6 +174,25 @@ class CheckIngredientOverlap:
             for code, name in own.items()
             if code in other
         ]
+
+    # Function Name: _cap_partners
+    # Description: Keeps the entries of the first MAX_INGREDIENT_OVERLAP_PARTNERS_PER_ITEM other products, with every ingredient shared with each.
+    # Parameters: overlaps (list[IngredientOverlap]) are one item's entries in report order.
+    # Returns: list[IngredientOverlap] in the same order.
+    @staticmethod
+    def _cap_partners(overlaps: list[IngredientOverlap]) -> list[IngredientOverlap]:
+        # 성분 수가 아니라 다른 품목 수로 자른다. 복합제끼리는 품목 하나에 여러 성분이 겹쳐서
+        # 항목 수로 자르면 뒤쪽 품목이 통째로 빠지고 안내의 "외 N개"가 줄어든다.
+        partners: set[tuple[str, str]] = set()
+        kept: list[IngredientOverlap] = []
+        for overlap in overlaps:
+            partner = (overlap.with_.source, overlap.with_.item_seq)
+            if partner not in partners:
+                if len(partners) >= MAX_INGREDIENT_OVERLAP_PARTNERS_PER_ITEM:
+                    continue
+                partners.add(partner)
+            kept.append(overlap)
+        return kept
 
     # Function Name: _overlap
     # Description: Builds one overlap entry.

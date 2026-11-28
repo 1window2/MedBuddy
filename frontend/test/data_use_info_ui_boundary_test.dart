@@ -190,7 +190,11 @@ void main() {
         ),
         300,
       );
-      await tester.ensureVisible(find.text(english ? 'Access and manage your information' : '내 정보 확인과 관리'));
+      await tester.ensureVisible(
+        find.text(
+          english ? 'Access and manage your information' : '내 정보 확인과 관리',
+        ),
+      );
       await tester.pumpAndSettle();
       await tester.tap(
         find.text(
@@ -199,7 +203,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
-        find.textContaining(english ? 'Do not post prescriptions' : '공개 게시판에 처방전', skipOffstage: false),
+        find.textContaining(
+          english ? 'Do not post prescriptions' : '공개 게시판에 처방전',
+          skipOffstage: false,
+        ),
         250,
       );
       expect(

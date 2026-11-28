@@ -113,7 +113,7 @@ class PackReminderControl {
   const PackReminderControl._();
 
   // 필요시 확인 알림(84005)과 시간대 알림 ID 범위(100000~1099999)와 겹치지 않는 기본 ID.
-  static const notificationId = 84010;
+  static const notificationId = packReminderNotificationId;
   // 챙겨 갈 약으로 보는 시간대.
   static const packSlotKeys = {'lunch', 'evening'};
 
@@ -178,7 +178,8 @@ class PackReminderControl {
   // 함수역할: 설정과 일정에 맞춰 외출 전 약 챙기기 알림을 다시 예약하거나 지운다. 알림이 꺼졌거나 설정이
   //   꺼졌거나 챙길 날이 없으면 지운다.
   // 매개변수: setting: 설정; schedules: 오늘·기간 일정; notificationsEnabled: 앱 복약 알림 허용;
-  //   language: 알림 언어; register/cancel: 예약·취소 함수; now: 현재 시각.
+  //   language: 알림 언어; register/cancel: 예약·취소 함수; now: 현재 시각;
+  //   lastAllowedDate: 이 날짜 뒤는 예약하지 않는 상한(없으면 제한 없음).
   // 반환값: 완료 Future. 예약 오류는 호출자에게 전파한다.
   static Future<void> synchronize({
     required PackReminderSetting setting,
@@ -188,9 +189,18 @@ class PackReminderControl {
     required PackReminderRegistrar register,
     required PackReminderCanceler cancel,
     required DateTime now,
+    DateTime? lastAllowedDate,
   }) async {
     final dates = notificationsEnabled && setting.enabled
-        ? activeDates(schedules: schedules, setting: setting, now: now)
+        ? [
+            for (final date in activeDates(
+              schedules: schedules,
+              setting: setting,
+              now: now,
+            ))
+              if (lastAllowedDate == null || !date.isAfter(lastAllowedDate))
+                date,
+          ]
         : const <DateTime>[];
     if (dates.isEmpty) {
       await cancel(notificationId, slotKey: packReminderSlotKey);

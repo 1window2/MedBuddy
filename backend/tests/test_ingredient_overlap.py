@@ -296,7 +296,7 @@ def test_ended_course_and_other_owner_are_ignored(fk_db: Session) -> None:
 
 
 # Function Name: test_overlaps_per_item_are_capped_at_ten
-# Description: Returns at most ten overlap entries for one checked product.
+# Description: Names at most ten other products for one checked product.
 # Parameters: fk_db (Session) is the test session. Returns: None.
 def test_overlaps_per_item_are_capped_at_ten(fk_db: Session) -> None:
     _seed_catalog(fk_db)
@@ -315,6 +315,34 @@ def test_overlaps_per_item_are_capped_at_ten(fk_db: Session) -> None:
         seed_medication(fk_db, item_seq=item_seq, item_name=f"아세트아미노펜제{index}")
 
     assert len(_check(fk_db, TYLENOL)[TYLENOL]) == 10
+
+
+# Function Name: test_cap_counts_products_not_shared_ingredients
+# Description: A combination product sharing two ingredients with each of twelve saved combinations names ten
+#   products and keeps both ingredients of each, so no product is cut for having several shared ingredients.
+# Parameters: fk_db (Session) is the test session. Returns: None.
+def test_cap_counts_products_not_shared_ingredients(fk_db: Session) -> None:
+    combination = "[M040702]아세트아미노펜|[M040535]카페인무수물"
+    for index in range(13):
+        item_seq = f"31000000{index:02d}"
+        fk_db.add(
+            _DrugApprovalInfo(
+                item_seq=item_seq,
+                item_name=f"복합감기약{index}",
+                normalized_item_name=f"복합감기약{index}",
+                main_ingredient=combination,
+                raw_json="{}",
+            )
+        )
+        fk_db.commit()
+        if index:
+            seed_medication(fk_db, item_seq=item_seq, item_name=f"복합감기약{index}")
+
+    overlaps = _check(fk_db, "3100000000")["3100000000"]
+
+    partners = {overlap["with"]["item_seq"] for overlap in overlaps}
+    assert len(partners) == 10
+    assert len(overlaps) == 20
 
 
 # Function Name: test_request_accepts_only_numeric_product_numbers_and_known_fields

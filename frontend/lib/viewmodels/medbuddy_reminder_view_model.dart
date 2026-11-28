@@ -113,7 +113,11 @@ class MedBuddyReminderViewModel {
       userSetting.showNotificationDetails,
     );
     await _restoreAsNeededCheckReminder(current);
-    await _synchronizePackReminder(current, window: courses);
+    await _synchronizePackReminder(
+      current,
+      window: courses,
+      lastAllowedDate: lastAllowedDate ?? DateTime.now(),
+    );
     for (final setting in _medicationReminderSettings.values.toList()) {
       if (!current()) return;
       if (!setting.isEnabled) continue;
@@ -668,19 +672,31 @@ class MedBuddyReminderViewModel {
   // 함수이름: _synchronizePackReminder
   // 함수역할: 외출 전 약 챙기기 알림을 설정과 오늘·기간 일정에 맞춰 다시 예약하거나 지운다.
   //   이 알림의 실패가 시간대 알림 동기화를 막지 않게 오류는 삼킨다.
-  // 매개변수: isCurrent: 계정·수명 검사; window: 이미 읽은 기간 일정(없으면 필요할 때 읽는다).
+  // 매개변수: isCurrent: 계정·수명 검사; window: 이미 읽은 기간 일정(없으면 필요할 때 읽는다);
+  //   lastAllowedDate: 이 날짜 뒤는 예약하지 않는 상한(로그아웃 실패 뒤 복원).
   // 반환값: 완료 Future.
   Future<void> _synchronizePackReminder(
     bool Function() isCurrent, {
     List<MedicationSchedule>? window,
+    DateTime? lastAllowedDate,
   }) async {
     if (!isCurrent()) return;
     try {
       final preferences = await SharedPreferences.getInstance();
-      final setting = PackReminderControl.load(preferences, patientHash);
+      var setting = PackReminderControl.load(preferences, patientHash);
       var courses = window;
-      if (setting.enabled && courses == null && _loadScheduleWindow != null) {
+      final needsCourses =
+          setting.enabled &&
+          userSetting.medicationNotificationsEnabled &&
+          _loadScheduleWindow != null;
+      if (needsCourses && courses == null) {
         courses = await _loadScheduleWindowOrNull();
+        if (!isCurrent()) return;
+        // 기간 일정을 읽지 못하면 오늘 일정만으로 판단하지 않는다. 오늘 먹지 않는 격일 약만 있는
+        // 날이면 앞으로의 알림까지 지워지므로, 다음 동기화까지 기존 예약을 그대로 둔다.
+        if (courses == null) return;
+        // 기다리는 사이에 사용자가 설정을 바꿨으면 새 설정으로 예약한다.
+        setting = PackReminderControl.load(preferences, patientHash);
       }
       if (!isCurrent()) return;
       await PackReminderControl.synchronize(
@@ -691,6 +707,7 @@ class MedBuddyReminderViewModel {
         register: setNotification.registerNotification,
         cancel: notificationService.cancelReminder,
         now: DateTime.now(),
+        lastAllowedDate: lastAllowedDate,
       );
     } catch (_) {
       // 외출 전 알림을 예약하지 못해도 다른 복약 알림은 그대로 둔다.

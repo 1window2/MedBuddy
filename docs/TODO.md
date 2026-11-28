@@ -97,6 +97,11 @@ checked on the phone on 2026-11-23 ([1.0.1 notes](releases/v1.0.1.md)).
 
 ## P2: security and operations
 
+- [ ] firebase-admin 7.7 deprecates `MulticastMessage.tokens` (used for push in
+      `boundaries/push_notification_boundary.py`) in favour of `fids`. FIDs are Firebase
+      Installation IDs, not the FCM registration tokens the app registers, so switching
+      needs the client to send installation IDs first; it is not a rename. Track before
+      upgrading firebase-admin past the release that removes `tokens`.
 - [ ] A Postgres role without superuser rights for the API and catalog jobs (security
       audit); only the migration needs the owner role. The code is ready
       (`scripts/provision_database_roles.py`, opt-in through

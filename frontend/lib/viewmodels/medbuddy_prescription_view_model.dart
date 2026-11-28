@@ -1046,17 +1046,25 @@ class MedBuddyPrescriptionViewModel {
         () => medication.displayName,
       );
     }
+    final resultItemSeqs = {
+      for (final itemSeq in rowNames.keys)
+        if (itemSeq.isNotEmpty) itemSeq,
+    };
     final overlapsByIndex = <int, List<IngredientOverlap>>{};
     for (var index = 0; index < medications.length; index++) {
       final itemSeq = medications[index].detail.itemSeq.trim();
-      final overlaps = filterIngredientOverlapsForSource([
-        for (final overlap in overlapsByItemSeq[itemSeq] ?? const [])
-          if (overlap.source == IngredientOverlapSource.batch &&
-              (rowNames[overlap.withItemSeq] ?? '').isNotEmpty)
-            overlap.copyWithName(rowNames[overlap.withItemSeq]!)
-          else
-            overlap,
-      ], source);
+      final overlaps = filterIngredientOverlapsForSource(
+        [
+          for (final overlap in overlapsByItemSeq[itemSeq] ?? const [])
+            if (overlap.source == IngredientOverlapSource.batch &&
+                (rowNames[overlap.withItemSeq] ?? '').isNotEmpty)
+              overlap.copyWithName(rowNames[overlap.withItemSeq]!)
+            else
+              overlap,
+        ],
+        source,
+        resultItemSeqs: resultItemSeqs,
+      );
       if (overlaps.isNotEmpty) overlapsByIndex[index] = overlaps;
     }
     if (overlapsByIndex.isEmpty) return;

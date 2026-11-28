@@ -389,6 +389,33 @@ void main() {
       );
     });
 
+    test(
+      'an early prescription refill of a co-prescribed pair shows no notice',
+      () {
+        // 지난 처방의 A·B가 아직 복약 목록에 있고, 같은 성분인 A·B를 다시 처방받았다.
+        final refill = [
+          _overlap('200000005', '타이레놀ER'),
+          _overlap('200000009', '다른처방약'),
+        ];
+        expect(
+          filterIngredientOverlapsForSource(
+            refill,
+            MedicationResultSource.prescription,
+            resultItemSeqs: {_tylenol, '200000005'},
+          ).map((overlap) => overlap.withItemName),
+          ['다른처방약'],
+        );
+        expect(
+          filterIngredientOverlapsForSource(
+            refill,
+            MedicationResultSource.pillPhoto,
+            resultItemSeqs: {_tylenol, '200000005'},
+          ),
+          refill,
+        );
+      },
+    );
+
     test('pill and manual results keep same products and batch entries', () {
       for (final source in [
         MedicationResultSource.pillPhoto,
