@@ -57,8 +57,6 @@ htmlcov/
 # IDE/local workspace files
 .idea/
 .vscode/
-.codex/
-.codex_tmp/
 *.iml
 *.ipr
 *.iws
@@ -112,3 +110,8 @@ frontend/ios/Runner/GeneratedPluginRegistrant.*
 *.aab
 
 deploy/backend.env
+
+# Local AI-agent workspaces (temporary worktrees, session state)
+.claude/
+.codex/
+.codex_tmp/

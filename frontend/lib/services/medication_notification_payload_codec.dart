@@ -4,6 +4,7 @@
 import '../entities/caregiver_alert_context_entity.dart';
 import '../entities/caregiver_notification_entity.dart';
 import '../entities/medication_notification_selection_entity.dart';
+import '../entities/medication_reminder_text.dart';
 import 'slot_check_notification_context.dart';
 
 // 클래스명: MedicationNotificationPayloadCodec
@@ -77,9 +78,10 @@ class MedicationNotificationPayloadCodec {
     if (segments.length >= 3 &&
         segments.length <= 5 &&
         segments[0] == 'schedule' &&
-        caregiverNotificationSlotKeys.contains(
-          segments[1].trim().toLowerCase(),
-        )) {
+        (caregiverNotificationSlotKeys.contains(
+              segments[1].trim().toLowerCase(),
+            ) ||
+            segments[1].trim().toLowerCase() == packReminderSlotKey)) {
       // The fifth segment is the app's own signature tag (see MedicationReminderActionTag).
       if (segments.length == 5 &&
           !RegExp(r'^[A-Za-z0-9_-]{22}$').hasMatch(segments[4])) {
@@ -107,7 +109,10 @@ class MedicationNotificationPayloadCodec {
         signedPayload: segments.take(4).join(':'),
         actionTag: segments.length == 5 ? segments[4] : null,
         // 필요시 확인 알림은 복용 처리와 다시 알림을 자동 실행하지 않는다.
-        action: segments[1].trim().toLowerCase() == 'as_needed'
+        // 필요시 확인과 외출 전 약 챙기기 알림은 복용 버튼 없이 일정만 연다.
+        action:
+            segments[1].trim().toLowerCase() == 'as_needed' ||
+                segments[1].trim().toLowerCase() == packReminderSlotKey
             ? MedicationNotificationAction.open
             : switch (actionId) {
                 markSlotTakenActionId =>

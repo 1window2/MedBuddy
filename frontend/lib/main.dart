@@ -21,6 +21,7 @@ import 'composition/linked_chat_notification_monitor_factory.dart';
 import 'controls/app_language_control.dart';
 import 'controls/authentication_control.dart';
 import 'controls/caregiver_alert_action_control.dart';
+import 'entities/medication_reminder_text.dart';
 import 'entities/user_setting_entity.dart';
 import 'services/notification_inbox_store.dart';
 import 'services/medication_reminder_action_tag.dart';
@@ -891,7 +892,13 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
         unawaited(_performMedicationNotificationAction(navigator, selection));
         return;
       }
-      _openSchedule(navigator, initialSlotKey: selection.slotKey);
+      // 외출 전 약 챙기기 알림은 챙길 점심 약부터 보이게 연다.
+      _openSchedule(
+        navigator,
+        initialSlotKey: selection.slotKey == packReminderSlotKey
+            ? 'lunch'
+            : selection.slotKey,
+      );
       return;
     }
     if (selection.destination == MedicationNotificationDestination.linkedChat) {

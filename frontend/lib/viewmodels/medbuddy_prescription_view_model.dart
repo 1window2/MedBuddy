@@ -3,10 +3,12 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import '../controls/input_prescription_control.dart';
+import '../controls/check_ingredient_overlap_control.dart';
 import '../controls/check_medication_detail_control.dart';
 import '../controls/check_prescription_change_control.dart';
 import '../controls/check_saved_medication_control.dart';
 import '../entities/analyzed_medication_entity.dart';
+import '../entities/ingredient_overlap_entity.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_match_review_entity.dart';
 import '../entities/medication_schedule_entity.dart';
@@ -261,9 +263,22 @@ class MedBuddyPrescriptionViewModel {
   // Parameters: None.
   // Returns: The comparison-loading flag.
   bool get isPrescriptionChangeLoading => _isPrescriptionChangeLoading;
+  // 성분 중복 확인 결과는 확인한 결과 목록 인스턴스에만 속한다. 목록이 바뀌면 행 번호가 달라지므로 보이지 않는다.
+  Map<int, List<IngredientOverlap>> _ingredientOverlaps = const {};
+  List<AnalyzedMedication>? _ingredientOverlapList;
+  int? _ingredientOverlapOperationId;
+  // Function Name: ingredientOverlapsByMedicationIndex
+  // Description: Exposes the filtered ingredient overlaps of the current result rows by row index.
+  // Parameters: None.
+  // Returns: An unmodifiable map; empty until the check answers, after any failure and for another result list.
+  Map<int, List<IngredientOverlap>> get ingredientOverlapsByMedicationIndex =>
+      identical(_ingredientOverlapList, _analyzedMedicationList)
+      ? _ingredientOverlaps
+      : const {};
   final InputPrescription inputPrescription;
   final CheckMedicationDetail checkMedicationDetail;
   final CheckPrescriptionChange checkPrescriptionChange;
+  final CheckIngredientOverlap? checkIngredientOverlap;
   final MedBuddySavedMedicationViewModel savedMedications;
   final Future<void> Function() fetchTodayMedicationSchedule;
   final Future<void> Function()
@@ -274,12 +289,13 @@ class MedBuddyPrescriptionViewModel {
   String _statusMessage = '';
   // Function Name: MedBuddyPrescriptionViewModel
   // Description: Bind borrowed prescription controls and save/refresh dependencies without starting analysis.
-  // Parameters: inputPrescription (InputPrescription): image/OCR input; checkMedicationDetail (CheckMedicationDetail): catalog lookup; checkPrescriptionChange (CheckPrescriptionChange): prior-prescription comparison; savedMedications (MedBuddySavedMedicationViewModel): save owner; fetchTodayMedicationSchedule (Future<void> Function()): schedule refresh; synchronizeReminders (Future<void> Function()): reminder refresh; readEnglish (bool Function()): locale; onChanged (void Function(String)): feature update callback.
+  // Parameters: inputPrescription (InputPrescription): image/OCR input; checkMedicationDetail (CheckMedicationDetail): catalog lookup; checkPrescriptionChange (CheckPrescriptionChange): prior-prescription comparison; checkIngredientOverlap (CheckIngredientOverlap?): ingredient-overlap check, none when null; savedMedications (MedBuddySavedMedicationViewModel): save owner; fetchTodayMedicationSchedule (Future<void> Function()): schedule refresh; synchronizeReminders (Future<void> Function()): reminder refresh; readEnglish (bool Function()): locale; onChanged (void Function(String)): feature update callback.
   // Returns: MedBuddyPrescriptionViewModel: independent prescription state owner.
   MedBuddyPrescriptionViewModel({
     required this.inputPrescription,
     required this.checkMedicationDetail,
     required this.checkPrescriptionChange,
+    this.checkIngredientOverlap,
     required this.savedMedications,
     required this.fetchTodayMedicationSchedule,
     required Future<void> Function() synchronizeReminders,
@@ -343,6 +359,7 @@ class MedBuddyPrescriptionViewModel {
     _statusMessage = '';
     // 사진 후보·직접 입력은 전체 처방전이 아니므로 누락 약 비교를 추정하지 않는다.
     _notifyViewModelListeners();
+    _startIngredientOverlapCheck();
     return true;
   }
 
@@ -971,6 +988,82 @@ class MedBuddyPrescriptionViewModel {
     _notifyViewModelListeners();
   }
 
+  // Function Name: _startIngredientOverlapCheck
+  // Description: Starts the ingredient-overlap check once for the result list on screen; a later call for the same operation and list, such as after saves, does nothing.
+  // Parameters: None.
+  // Returns: None; the check runs without blocking the result screen.
+  void _startIngredientOverlapCheck() {
+    final control = checkIngredientOverlap;
+    final operationId = _prescriptionOperationId;
+    final medications = _analyzedMedicationList;
+    if (control == null ||
+        (_ingredientOverlapOperationId == operationId &&
+            identical(_ingredientOverlapList, medications))) {
+      return;
+    }
+    _ingredientOverlapOperationId = operationId;
+    _ingredientOverlapList = medications;
+    _ingredientOverlaps = const {};
+    unawaited(
+      _refreshIngredientOverlaps(
+        control,
+        operationId,
+        medications,
+        _resultSource,
+      ),
+    );
+  }
+
+  // Function Name: _refreshIngredientOverlaps
+  // Description: Asks for overlaps of the result rows' product numbers, filters them for the result source and keys them by row index.
+  // Parameters: control: overlap control; operationId: owning generation; medications: result rows; source: result screen source.
+  // Returns: Completion; any failure, a 404 or an obsolete screen leaves no notice.
+  Future<void> _refreshIngredientOverlaps(
+    CheckIngredientOverlap control,
+    int operationId,
+    List<AnalyzedMedication> medications,
+    MedicationResultSource source,
+  ) async {
+    final Map<String, List<IngredientOverlap>> overlapsByItemSeq;
+    try {
+      overlapsByItemSeq = await control.requestIngredientOverlap(
+        medications.map((medication) => medication.detail.itemSeq),
+      );
+    } catch (_) {
+      return;
+    }
+    if (!_isCurrentPrescriptionOperation(operationId) ||
+        _prescriptionFlowState != PrescriptionFlowState.resultReady ||
+        !identical(_ingredientOverlapList, medications) ||
+        overlapsByItemSeq.isEmpty) {
+      return;
+    }
+    // 같은 결과 화면의 약은 사용자가 보는 행 이름으로 부른다.
+    final rowNames = <String, String>{};
+    for (final medication in medications) {
+      rowNames.putIfAbsent(
+        medication.detail.itemSeq.trim(),
+        () => medication.displayName,
+      );
+    }
+    final overlapsByIndex = <int, List<IngredientOverlap>>{};
+    for (var index = 0; index < medications.length; index++) {
+      final itemSeq = medications[index].detail.itemSeq.trim();
+      final overlaps = filterIngredientOverlapsForSource([
+        for (final overlap in overlapsByItemSeq[itemSeq] ?? const [])
+          if (overlap.source == IngredientOverlapSource.batch &&
+              (rowNames[overlap.withItemSeq] ?? '').isNotEmpty)
+            overlap.copyWithName(rowNames[overlap.withItemSeq]!)
+          else
+            overlap,
+      ], source);
+      if (overlaps.isNotEmpty) overlapsByIndex[index] = overlaps;
+    }
+    if (overlapsByIndex.isEmpty) return;
+    _ingredientOverlaps = Map.unmodifiable(overlapsByIndex);
+    _notifyViewModelListeners();
+  }
+
   // Function Name: showMedicationAnalysisResult
   // Description: Shows available analysis results and requests comparison only when every recognized row is represented.
   // Parameters: None.
@@ -986,6 +1079,8 @@ class MedBuddyPrescriptionViewModel {
     }
 
     _prescriptionFlowState = PrescriptionFlowState.resultReady;
+    // 성분 중복은 행마다 확인하므로 일부 약만 확인된 결과에서도 실행한다.
+    _startIngredientOverlapCheck();
     if (_analyzedMedicationList.length !=
         _recognizedMedicationScheduleList.length) {
       _prescriptionChangeRadar = null;
@@ -1306,6 +1401,9 @@ class MedBuddyPrescriptionViewModel {
     _unverifiedMedicationScheduleIndexes.clear();
     _prescriptionChangeRadar = null;
     _isPrescriptionChangeLoading = false;
+    _ingredientOverlaps = const {};
+    _ingredientOverlapList = null;
+    _ingredientOverlapOperationId = null;
     // 이전 작업의 저장 응답은 세대가 달라 표시를 되돌리지 못하므로 여기서 함께 지운다.
     _completedMedicationSaveIndexes.clear();
     _isAllMedicationSaving = false;

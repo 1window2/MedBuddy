@@ -58,6 +58,10 @@ void main() {
     await tester.tap(find.text('계정과 복약 정보'));
     await tester.pumpAndSettle();
     expect(find.textContaining('완전히 익명화되는 것은 아닙니다'), findsOneWidget);
+    expect(
+      find.textContaining('이 품목 번호는 이 확인에만 쓰고 저장하거나 기록하지 않습니다.'),
+      findsOneWidget,
+    );
     await tester.tap(find.byTooltip('뒤로').last);
     await tester.pumpAndSettle();
     expect(find.byType(DataUseInfoUI), findsNothing);

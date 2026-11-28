@@ -6,6 +6,8 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 
+from services.medication_ingredients import parse_ingredient_codes
+
 
 PRESCRIPTION_COMPARISON_WINDOW_DAYS = 90
 
@@ -248,11 +250,21 @@ class PrescriptionSimilarityService:
     # 함수이름: _split_ingredient_keys
     # 함수역할:
     # - 복합 주성분 문자열을 용량이 제거된 개별 성분 키로 나눈다.
+    # - 허가정보의 "[코드]성분명|[코드]성분명" 형식은 성분 코드 단위로 나누고 성분명을 키로 쓴다.
+    # - 코드가 없는 이전 형식만 구분 기호로 나눈다.
     # 매개변수:
     # - value (str): 허가정보에서 읽은 주성분 문자열
     # 반환값:
     # - 개별 성분 비교 키 집합
     def _split_ingredient_keys(self, value: str) -> set[str]:
+        coded_ingredients = parse_ingredient_codes(value)
+        if coded_ingredients:
+            # 이름이 비어 있는 코드는 같은 코드끼리만 맞도록 코드 키로 남긴다.
+            return {
+                self._normalize_key(self._DOSAGE_PATTERN.sub("", name))
+                or f"code:{code.lower()}"
+                for code, name in coded_ingredients.items()
+            }
         without_dosage = self._DOSAGE_PATTERN.sub("", value)
         return {
             normalized

@@ -186,6 +186,12 @@ checked on the phone on 2026-11-23 ([1.0.1 notes](releases/v1.0.1.md)).
       correct it, but the value is not guessed.
 - [ ] Dropping a pill-photo crop for a low-score multi-pill image needs real
       photographs before the rule changes.
+- [ ] The same-ingredient notice checks only medicines with an MFDS product number: a
+      manually typed name without a linked product, or a product whose catalogue row
+      has no main ingredient (57 of 42,717), is not compared.
+- [ ] The 외출 전 약 챙기기 알림 rings at a fixed time; it does not know whether the user
+      has left home, and it still rings on a day whose lunch and evening doses were
+      already taken early.
 
 ## P4: low priority
 

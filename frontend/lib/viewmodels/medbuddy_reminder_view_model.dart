@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../controls/as_needed_check_reminder_control.dart';
+import '../controls/pack_reminder_control.dart';
 import '../controls/set_notification_control.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_schedule_entity.dart';
@@ -112,6 +113,7 @@ class MedBuddyReminderViewModel {
       userSetting.showNotificationDetails,
     );
     await _restoreAsNeededCheckReminder(current);
+    await _synchronizePackReminder(current, window: courses);
     for (final setting in _medicationReminderSettings.values.toList()) {
       if (!current()) return;
       if (!setting.isEnabled) continue;
@@ -555,6 +557,7 @@ class MedBuddyReminderViewModel {
     await _restoreAsNeededCheckReminder(isCurrent);
     if (!isCurrent()) return;
     if (_medicationReminderSettings.isEmpty) {
+      await _synchronizePackReminder(isCurrent);
       return;
     }
 
@@ -624,6 +627,73 @@ class MedBuddyReminderViewModel {
         courseSchedules: courseSchedules,
         isCurrent: isCurrent,
       );
+    }
+    await _synchronizePackReminder(isCurrent, window: window);
+  }
+
+  // 함수이름: loadPackReminderSetting
+  // 함수역할: 이 계정의 외출 전 약 챙기기 알림 설정을 기기에서 읽는다.
+  // 매개변수: 없음. 반환값: 설정(없으면 꺼짐·07:30·매일).
+  Future<PackReminderSetting> loadPackReminderSetting() async =>
+      PackReminderControl.load(
+        await SharedPreferences.getInstance(),
+        patientHash,
+      );
+
+  // 함수이름: savePackReminderSetting
+  // 함수역할: 외출 전 약 챙기기 알림 설정을 저장하고 바로 다시 예약한다. 켤 때 알림 권한이 없으면 켜지 않는다.
+  // 매개변수: setting: 새 설정. 반환값: 저장했으면 true, 권한 거부·실패면 false.
+  Future<bool> savePackReminderSetting(PackReminderSetting setting) async {
+    if (_disposed) return false;
+    bool current() => !_disposed;
+    if (setting.enabled) {
+      bool allowed;
+      try {
+        allowed = await notificationService.requestPermission();
+      } catch (_) {
+        allowed = false;
+      }
+      if (!current()) return false;
+      if (!allowed) return false;
+    }
+    final preferences = await SharedPreferences.getInstance();
+    if (!current()) return false;
+    if (!await PackReminderControl.save(preferences, patientHash, setting)) {
+      return false;
+    }
+    await _synchronizePackReminder(current);
+    return true;
+  }
+
+  // 함수이름: _synchronizePackReminder
+  // 함수역할: 외출 전 약 챙기기 알림을 설정과 오늘·기간 일정에 맞춰 다시 예약하거나 지운다.
+  //   이 알림의 실패가 시간대 알림 동기화를 막지 않게 오류는 삼킨다.
+  // 매개변수: isCurrent: 계정·수명 검사; window: 이미 읽은 기간 일정(없으면 필요할 때 읽는다).
+  // 반환값: 완료 Future.
+  Future<void> _synchronizePackReminder(
+    bool Function() isCurrent, {
+    List<MedicationSchedule>? window,
+  }) async {
+    if (!isCurrent()) return;
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final setting = PackReminderControl.load(preferences, patientHash);
+      var courses = window;
+      if (setting.enabled && courses == null && _loadScheduleWindow != null) {
+        courses = await _loadScheduleWindowOrNull();
+      }
+      if (!isCurrent()) return;
+      await PackReminderControl.synchronize(
+        setting: setting,
+        schedules: [...?courses, ..._readSchedules()],
+        notificationsEnabled: userSetting.medicationNotificationsEnabled,
+        language: userSetting.language,
+        register: setNotification.registerNotification,
+        cancel: notificationService.cancelReminder,
+        now: DateTime.now(),
+      );
+    } catch (_) {
+      // 외출 전 알림을 예약하지 못해도 다른 복약 알림은 그대로 둔다.
     }
   }
 
