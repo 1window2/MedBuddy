@@ -4,7 +4,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import '../controls/find_hospital_department_control.dart';
 import '../widgets/medbuddy_search_field.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,6 +13,7 @@ import 'package:flutter/rendering.dart';
 import '../controls/check_nearby_hospital_control.dart';
 import '../controls/check_nearby_pharmacy_control.dart';
 import '../controls/check_nearby_care_control.dart';
+import '../controls/nearby_care_list_view.dart';
 import '../entities/device_coordinate_entity.dart';
 import '../entities/json_value_reader.dart';
 import '../entities/nearby_care_entity.dart';
@@ -46,19 +46,49 @@ enum _HospitalSearchWarning { partialResults, wideArea }
 // 속성: installedMapApp/googleMaps/copyAddress: 이동 방식 값.
 enum _PharmacyDirectionsChoice { installedMapApp, googleMaps, copyAddress }
 
-// Class Name: _NearbyCareListView
-// Role: Display lists derived from the latest results and favorites mode.
-// Responsibilities: Keeps live places (map markers, selection, sharing) apart from list-only snapshot favorites.
-// Attributes: live: sorted live results; snapshots: favorites outside the results, nearest first.
-class _NearbyCareListView {
-  final List<NearbyCarePlace> live;
-  final List<NearbyCarePlace> snapshots;
+// 클래스명: _FavoritesModeStash
+// 역할: 즐겨찾기 모드가 잠시 바꾼 조회 조건과 진료과를 기억했다가, 모드를 끌 때 사용자의 선택으로 되돌린다.
+// 주요 책임: 처음 바꾼 값만 기억하고, 사용자가 직접 고른 조건은 되돌리지 않게 잊는다.
+// 속성: filter: 되돌릴 약국 조회 조건; hasDepartment/department: 되돌릴 병원 진료과(null은 전체).
+class _FavoritesModeStash {
+  _PharmacyFilter? filter;
+  bool hasDepartment = false;
+  String? department;
 
-  // Function Name: _NearbyCareListView
-  // Description: Pairs the live and snapshot lists.
-  // Parameters: live, snapshots: display lists.
-  // Returns: A _NearbyCareListView.
-  const _NearbyCareListView(this.live, this.snapshots);
+  // 함수이름: rememberFilter
+  // 함수역할: 아직 기억한 조건이 없을 때만 현재 조건을 기억한다.
+  // 매개변수: current: 바꾸기 전 조건. 반환값: 없음.
+  void rememberFilter(_PharmacyFilter current) => filter ??= current;
+
+  // 함수이름: rememberDepartment
+  // 함수역할: 아직 기억한 진료과가 없을 때만 현재 진료과를 기억한다.
+  // 매개변수: current: 바꾸기 전 진료과. 반환값: 없음.
+  void rememberDepartment(String? current) {
+    if (hasDepartment) return;
+    hasDepartment = true;
+    department = current;
+  }
+
+  // 함수이름: forgetFilter
+  // 함수역할: 사용자가 조건을 직접 골랐으므로 되돌리지 않는다.
+  // 매개변수: 없음. 반환값: 없음.
+  void forgetFilter() => filter = null;
+
+  // 함수이름: forgetDepartment
+  // 함수역할: 사용자가 진료과를 직접 골랐으므로 되돌리지 않는다.
+  // 매개변수: 없음. 반환값: 없음.
+  void forgetDepartment() {
+    hasDepartment = false;
+    department = null;
+  }
+
+  // 함수이름: clear
+  // 함수역할: 기억한 조건과 진료과를 모두 잊는다.
+  // 매개변수: 없음. 반환값: 없음.
+  void clear() {
+    forgetFilter();
+    forgetDepartment();
+  }
 }
 
 const _refreshCooldownDuration = Duration(seconds: 10);
@@ -242,9 +272,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   Future<void> _snapshotWork = Future.value();
   bool _favoritesOnly = false;
   // 즐겨찾기 모드가 잠시 바꾼 조회 조건과 진료과. 모드를 끄면 사용자의 선택으로 되돌린다.
-  _PharmacyFilter? _filterBeforeFavorites;
-  bool _restoreDepartment = false;
-  String? _departmentBeforeFavorites;
+  final _favoritesStash = _FavoritesModeStash();
   // 즐겨찾기 모드에서 해제한 선택 장소는 선택을 닫을 때까지 목록에 남긴다.
   String? _retainedFavoriteId;
   DeviceCoordinate? _deviceLocation;
@@ -256,7 +284,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     _PharmacyDetailsSheet.initialExtent,
   );
   // 정렬·즐겨찾기 거르기 결과는 원본 목록·즐겨찾기·스냅샷·모드가 바뀔 때만 다시 계산한다.
-  _NearbyCareListView? _listViewCache;
+  NearbyCareListView? _listViewCache;
   Object? _listViewKey;
   bool _isRefreshCoolingDown = false;
   Timer? _refreshCooldownTimer;
@@ -801,10 +829,10 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   List<NearbyCarePlace> get _visiblePharmacies => _listView.live;
 
   // Function Name: _listView
-  // Description: Sorts a copy by opening status, late-night operation, favorites and distance, then applies favorites mode: live favorites first and list-only snapshots of other favorites by distance from the search centre. Chat selection never lists snapshots.
+  // Description: Builds the display lists with NearbyCareListView.build and caches them.
   // Parameters: None.
   // Returns: The cached live and snapshot lists; reused while sources, mode and the retained place are unchanged.
-  _NearbyCareListView get _listView {
+  NearbyCareListView get _listView {
     final retained =
         _retainedFavoriteId != null &&
             _retainedFavoriteId == _selectedPharmacyId
@@ -822,49 +850,16 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     final cached = _listViewCache;
     if (cached != null && key == _listViewKey) return cached;
     _listViewKey = key;
-    final sorted = sortNearbyCarePlaces(
-      _pharmacies,
+    return _listViewCache = NearbyCareListView.build(
+      places: _pharmacies,
       favoriteIds: _favoritePharmacyIds,
+      snapshots: _favoriteSnapshots,
+      favoritesOnly: _favoritesOnly,
+      selectionMode: widget.selectionMode,
       hospitals: widget.hospitals,
+      retainedPlaceId: retained,
+      center: _searchArea?.center,
     );
-    if (!_favoritesOnly) {
-      return _listViewCache = _NearbyCareListView(sorted, const []);
-    }
-    final live = sorted
-        .where(
-          (place) =>
-              _favoritePharmacyIds.contains(place.placeId) ||
-              place.placeId == retained,
-        )
-        .toList(growable: false);
-    if (widget.selectionMode) {
-      return _listViewCache = _NearbyCareListView(live, const []);
-    }
-    final liveIds = {for (final place in _pharmacies) place.placeId};
-    final center = _searchArea?.center;
-    final snapshots =
-        _favoriteSnapshots.values
-            .where(
-              (snapshot) =>
-                  _favoritePharmacyIds.contains(snapshot.placeId) &&
-                  !liveIds.contains(snapshot.placeId),
-            )
-            .map(
-              (snapshot) => snapshot.toPlace(
-                distanceKm: center == null
-                    ? 0
-                    : Geolocator.distanceBetween(
-                            center.latitude,
-                            center.longitude,
-                            snapshot.latitude,
-                            snapshot.longitude,
-                          ) /
-                          1000,
-              ),
-            )
-            .toList(growable: false)
-          ..sort((left, right) => left.distanceKm.compareTo(right.distanceKm));
-    return _listViewCache = _NearbyCareListView(live, snapshots);
   }
 
   // Function Name: _loadFavorites
@@ -998,29 +993,25 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       if (enabled) {
         _selectedPharmacyId = null;
         _selectedPhoneVerified = false;
-        _filterBeforeFavorites = null;
-        _restoreDepartment = false;
-        _departmentBeforeFavorites = null;
+        _favoritesStash.clear();
         if (!widget.hospitals && _filter != _PharmacyFilter.all) {
-          _filterBeforeFavorites = _filter;
+          _favoritesStash.rememberFilter(_filter);
           _filter = _PharmacyFilter.all;
           reload = true;
         }
       } else {
-        final filter = _filterBeforeFavorites;
+        final filter = _favoritesStash.filter;
         if (filter != null && filter != _filter) {
           _filter = filter;
           reload = true;
         }
-        if (_restoreDepartment &&
+        if (_favoritesStash.hasDepartment &&
             control is CheckNearbyHospital &&
-            control.department != _departmentBeforeFavorites) {
-          control.department = _departmentBeforeFavorites;
+            control.department != _favoritesStash.department) {
+          control.department = _favoritesStash.department;
           reload = true;
         }
-        _filterBeforeFavorites = null;
-        _restoreDepartment = false;
-        _departmentBeforeFavorites = null;
+        _favoritesStash.clear();
         if (reload) {
           _selectedPharmacyId = null;
           _selectedPhoneVerified = false;
@@ -1049,16 +1040,13 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       _listExpanded = false;
       _detailExtent.value = _PharmacyDetailsSheet.initialExtent;
       if (_filter != _PharmacyFilter.all) {
-        _filterBeforeFavorites ??= _filter;
+        _favoritesStash.rememberFilter(_filter);
         _filter = _PharmacyFilter.all;
         _pharmacies = [];
       }
       // 다른 진료과의 즐겨찾기 병원도 찾을 수 있게 진료과 조건을 잠시 푼다.
       if (control is CheckNearbyHospital && control.department != null) {
-        if (!_restoreDepartment) {
-          _restoreDepartment = true;
-          _departmentBeforeFavorites = control.department;
-        }
+        _favoritesStash.rememberDepartment(control.department);
         control.department = null;
         _pharmacies = [];
       }
@@ -1099,7 +1087,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     setState(() {
       _filter = nextFilter;
       // An explicit choice replaces the filter favorites mode would restore.
-      _filterBeforeFavorites = null;
+      _favoritesStash.forgetFilter();
       _selectedPharmacyId = null;
       // Never label the previous condition's pins as new-filter results.
       _pharmacies = [];
@@ -1152,8 +1140,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       _hasSelectedHospitalDepartment = true;
       control.department = selected.isEmpty ? null : selected;
       // 직접 고른 진료과는 즐겨찾기 모드를 꺼도 유지한다.
-      _restoreDepartment = false;
-      _departmentBeforeFavorites = null;
+      _favoritesStash.forgetDepartment();
       _selectedPharmacyId = null;
       _selectedPhoneVerified = false;
       _pharmacies = [];
@@ -1305,7 +1292,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     setState(() {
       _filter = selected.filter;
       // 직접 고른 조건은 즐겨찾기 모드를 꺼도 유지한다.
-      _filterBeforeFavorites = null;
+      _favoritesStash.forgetFilter();
       _hasSelectedSearchDate = selected.date != null;
       _targetDateTime = selected.date ?? _now();
       _selectedPharmacyId = null;
